@@ -2,6 +2,8 @@
 
 const engine = require("../../core/games/tuTienEngine");
 const { createTuTienEffects } = require("../../core/games/tuTienEffects");
+const arena = require("../../core/games/tuTienArena");
+const { sendBattleMedia } = require("../../core/games/tuTienBattleMedia");
 
 module.exports.config = {
   name: "tutien", aliases: ["tu-tien", "tiendao"], version: "4.0.0", role: 0,
@@ -190,6 +192,143 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
       const identity = await getZaloIdentity(api, event, uid);
       player.displayName = identity.displayName || player.displayName;
       player.avatarUrl = identity.avatarUrl || player.avatarUrl;
+    }
+
+    if (["pvp", "dau", "thachdau"].includes(action)) {
+      const sub = String(args[1] || "help").toLowerCase();
+      const getPending = () => Users.getAll().find((row) =>
+        row?.data?.tuTien?.arena?.pendingChallenge?.toUid === uid &&
+        row.data.tuTien.arena.pendingChallenge.status === "pending"
+      );
+      if (["help", "menu"].includes(sub)) {
+        return send(api, event, "⚔️ ĐẤU TRƯỜNG TIÊN ĐẠO\n/tutien pvp @nguoichoi — Gửi lời thách đấu\n/tutien pvp chapnhan — Chấp nhận\n/tutien pvp tuchoi — Từ chối\n/tutien pvp danh — Đánh thường\n/tutien pvp skill — Thiên Lôi Chưởng (20 khí)\n/tutien pvp ultimate — Cửu Trọng Kiếm Quyết (45 khí)\n/tutien pvp defend — Phòng thủ và hồi khí\n/tutien pvp status — Xem trận hiện tại");
+      }
+      if (["chapnhan", "accept", "yes"].includes(sub)) {
+        const pendingRow = getPending();
+        if (!pendingRow) return sendPhase(api, event, "📭 Không có lời thách đấu nào đang chờ ngươi.");
+        const challenger = pendingRow.data.tuTien;
+        const challenge = challenger.arena.pendingChallenge;
+        const started = arena.startBattle(challenge);
+        if (!started.ok) {
+          challenger.arena.pendingChallenge = null;
+          await Users.setData(pendingRow.userId, pendingRow.data);
+          return sendPhase(api, event, "⌛ Lời thách đấu đã hết hạn hoặc không còn hợp lệ.");
+        }
+        const battle = started.battle;
+        challenger.arena.pendingChallenge = null;
+        challenger.arena.battle = battle;
+        player.arena = player.arena || {};
+        player.arena.battle = JSON.parse(JSON.stringify(battle));
+        savePlayer(stored, player);
+        await Users.setData(pendingRow.userId, pendingRow.data);
+        await Users.setData(uid, stored);
+        await runPhases(api, event, [
+          { message: "🏟️ ĐẤU TRƯỜNG ĐÃ MỞ — hai đạo hữu bước vào kết giới!", delay: 450 },
+          { message: "⚔️ Trận đấu bắt đầu! Người thách đấu được đi trước.", delay: 450 }
+        ]);
+        return send(api, event, `⚔️ ${battle.fighters[0].name} VS ${battle.fighters[1].name}\nLượt 1: ${battle.fighters[0].name} ra chiêu trước.\nDùng /tutien pvp danh | skill | ultimate | defend`);
+      }
+      if (["tuchoi", "decline", "no"].includes(sub)) {
+        const pendingRow = getPending();
+        if (!pendingRow) return sendPhase(api, event, "📭 Không có lời thách đấu nào đang chờ.");
+        pendingRow.data.tuTien.arena.pendingChallenge = null;
+        await Users.setData(pendingRow.userId, pendingRow.data);
+        return send(api, event, "🕊️ Ngươi đã từ chối lời thách đấu.");
+      }
+      if (["status", "trangthai"].includes(sub)) {
+        const battle = player.arena?.battle;
+        if (!battle || battle.status !== "active") return sendPhase(api, event, "🏟️ Ngươi hiện không ở trong trận PvP nào.");
+        const lines = battle.fighters.map((fighter) => `${fighter.name} — ❤️ ${fighter.hp}/${fighter.maxHp} • 🔷 Khí ${fighter.qi}`);
+        return send(api, event, `⚔️ TRẠNG THÁI ĐẤU TRƯỜNG\n${lines.join("\n")}\nLượt hiện tại: ${battle.fighters.find((x) => x.uid === battle.turnUid)?.name || "?"}`);
+      }
+      const battle = player.arena?.battle;
+      if (!battle || battle.status !== "active") {
+        const targetUid = String(event?.mentions?.[0]?.uid || event?.mentions?.[0]?.id || "");
+        if (!targetUid) return sendPhase(api, event, "🎯 Hãy tag một đạo hữu để thách đấu: /tutien pvp @uid");
+        const targetRecord = await Users.getData(targetUid);
+        const targetStored = targetRecord?.data && typeof targetRecord.data === "object" ? targetRecord.data : targetRecord || {};
+        const targetPlayer = targetStored.tuTien ? engine.normalizePlayer(targetStored.tuTien) : null;
+        if (!targetPlayer) return sendPhase(api, event, "📜 Đối thủ chưa khai mở tiên lộ. Họ cần dùng /tutien batdau trước.");
+        if (targetPlayer.arena?.battle?.status === "active" || targetPlayer.arena?.pendingChallenge) return sendPhase(api, event, "⏳ Đối thủ đang có trận đấu hoặc lời mời chờ xử lý.");
+        const created = arena.createChallenge(uid, targetUid, player, targetPlayer);
+        if (!created.ok) return sendPhase(api, event, created.code === "POWER_GAP" ? "⚖️ Chênh lệch chiến lực quá lớn (trên 65%). Hãy tìm đối thủ cân bằng hơn." : "❌ Không thể tạo lời thách đấu.");
+        player.arena = player.arena || {};
+        player.arena.pendingChallenge = created.challenge;
+        savePlayer(stored, player);
+        await Users.setData(uid, stored);
+        return send(api, event, `📯 LỜI THÁCH ĐẤU ĐÃ ĐƯỢC GỬI!\n⚔️ ${player.displayName} thách đấu ${targetPlayer.displayName}.\n⏳ Đối thủ có 120 giây để dùng /tutien pvp chapnhan hoặc tuchoi.`);
+      }
+      const actionMap = { danh: "normal", attack: "normal", skill: "skill", ultimate: "ultimate", defend: "defend", phongthu: "defend" };
+      const move = actionMap[sub];
+      if (!move) return sendPhase(api, event, "❓ Chiêu thức không hợp lệ. Chọn danh, skill, ultimate hoặc defend.");
+      const turn = arena.takeTurn(battle, uid, move);
+      if (!turn.ok) {
+        const errors = {
+          NOT_YOUR_TURN: "⌛ Chưa đến lượt của ngươi.",
+          LOW_QI: `🔷 Không đủ linh khí. Cần ${turn.required} khí.`,
+          EXPIRED: "⌛ Trận đấu đã hết thời gian.",
+          NO_BATTLE: "🏟️ Không có trận đấu đang diễn ra."
+        };
+        return sendPhase(api, event, errors[turn.code] || "Không thể thực hiện lượt đánh.");
+      }
+      const opponentUid = battle.fighters.find((fighter) => fighter.uid !== uid)?.uid;
+      const opponentRecord = await Users.getData(opponentUid);
+      const opponentStored = opponentRecord?.data && typeof opponentRecord.data === "object" ? opponentRecord.data : opponentRecord || {};
+      const opponentPlayer = engine.normalizePlayer(opponentStored.tuTien || {});
+      if (turn.finished) {
+        const winnerUid = turn.winner.uid, loserUid = turn.loser.uid;
+        const winnerStored = winnerUid === uid ? stored : opponentStored;
+        const loserStored = loserUid === uid ? stored : opponentStored;
+        const winnerPlayer = winnerUid === uid ? player : opponentPlayer;
+        const loserPlayer = loserUid === uid ? player : opponentPlayer;
+        const reward = arena.settleRating(winnerPlayer, loserPlayer);
+        winnerPlayer.spiritStones = (Number(winnerPlayer.spiritStones) || 0) + reward.reward;
+        winnerPlayer.arena.battle = null;
+        loserPlayer.arena.battle = null;
+        winnerPlayer.arena.lastResult = { outcome: "win", at: Date.now(), opponent: loserPlayer.displayName };
+        loserPlayer.arena.lastResult = { outcome: "loss", at: Date.now(), opponent: winnerPlayer.displayName };
+        savePlayer(winnerStored, winnerPlayer); savePlayer(loserStored, loserPlayer);
+        await Users.setData(winnerUid, winnerStored); await Users.setData(loserUid, loserStored);
+      } else {
+        player.arena.battle = JSON.parse(JSON.stringify(battle));
+        opponentPlayer.arena = opponentPlayer.arena || {};
+        opponentPlayer.arena.battle = JSON.parse(JSON.stringify(battle));
+        savePlayer(stored, player); savePlayer(opponentStored, opponentPlayer);
+        await Users.setData(uid, stored); await Users.setData(opponentUid, opponentStored);
+      }
+      try {
+        await sendBattleMedia(api, event, battle, turn.entry, { includeVideo: turn.finished });
+      } catch (mediaError) {
+        console.warn("[tutien-pvp] Media render/send failed:", mediaError?.message || mediaError);
+      }
+      const actionText = turn.entry.dodged ? "💨 Đối thủ né được đòn đánh!" :
+        turn.entry.action === "defend" ? "🛡️ Đã dựng Hộ Thể Cương Khí." :
+        `${turn.entry.critical ? "💥 CHÍ MẠNG! " : "⚔️ "}${turn.entry.skill}: gây ${turn.entry.damage} sát thương.`;
+      if (turn.finished) return send(api, event, `🏆 TRẬN ĐẤU KẾT THÚC!\n👑 Người thắng: ${turn.winner.name}\n💎 Thưởng: +30 linh thạch thường\n📈 Điểm xếp hạng: +25\n🔥 Chuỗi thắng: ${winnerPlayer.arena.streak}`);
+      return send(api, event, `${actionText}\n❤️ HP đối thủ: ${turn.entry.enemyHp}\n🔷 Linh khí còn: ${turn.entry.qi}\n➡️ Đến lượt: ${battle.fighters.find((x) => x.uid === battle.turnUid)?.name}`);
+    }
+
+    if (["bxh", "rank", "leaderboard"].includes(action)) {
+      const metric = String(args[1] || "rating").toLowerCase();
+      const titles = { rating: "ĐIỂM ĐẤU TRƯỜNG", wins: "SỐ TRẬN THẮNG", power: "CHIẾN LỰC", seasonPoints: "ĐIỂM MÙA", bestStreak: "CHUỖI THẮNG" };
+      const rows = arena.leaderboard(Users.getAll(), metric, 10);
+      if (!rows.length) return sendPhase(api, event, "📊 Chưa có dữ liệu xếp hạng. Hãy tham gia đấu trường PvP.");
+      const lines = rows.map((row, i) => `${["🥇","🥈","🥉"][i] || `${i + 1}.`} ${row.name} — ${row.score} • ${row.realm}`);
+      return send(api, event, `🏆 BẢNG XẾP HẠNG TIÊN ĐẠO\n📊 ${titles[metric] || titles.rating}\n━━━━━━━━━━━━━━━━━━\n${lines.join("\n")}\n━━━━━━━━━━━━━━━━━━\n/tutien bxh wins | power | seasonPoints`);
+    }
+
+    if (["tranhdoat", "season", "mua"].includes(action)) {
+      const sub = String(args[1] || "info").toLowerCase();
+      const currentSeason = arena.seasonId();
+      if (["thamgia", "join"].includes(sub)) {
+        const a = arena.ensureArena(player);
+        a.joinedSeason = currentSeason;
+        savePlayer(stored, player); await Users.setData(uid, stored);
+        return send(api, event, `⚔️ ĐÃ GHI DANH TRANH ĐOẠT ${currentSeason}!\n🏆 Mỗi trận PvP thắng nhận 30 điểm mùa.\n🎁 Top 3 cuối mùa nhận thưởng linh thạch tông môn.`);
+      }
+      const contest = arena.contestStatus(Users.getAll());
+      const lines = contest.rows.length ? contest.rows.slice(0, 10).map((row, i) => `${i + 1}. ${row.name} — ${row.seasonPoints} điểm`) : ["Chưa có đạo hữu ghi danh mùa này."];
+      return send(api, event, `🏆 TRANH ĐOẠT TIÊN BẢNG ${contest.id}\n⚔️ Ghi danh: /tutien tranhdoat thamgia\n🎁 Phần thưởng: Top 1 +500, Top 2 +300, Top 3 +150 linh thạch tông môn.\n━━━━━━━━━━━━━━━━━━\n${lines.join("\n")}`);
     }
 
     if (["profile", "info", "hoso"].includes(action)) {
