@@ -1,5 +1,5 @@
 const logger = require("../../utils/logger");
-const { wrapApi } = require("../message");
+const { wrapForThread } = require("../runtime/adapters/zalo");
 const metrics = require("../metrics");
 const fs = require("fs");
 const path = require("path");
@@ -41,7 +41,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   const commandName = args.shift()?.toLowerCase();
   if (!commandName) return;
 
-  const wrappedApi = wrapApi(api, threadId, type, commandName, event);
+  const wrappedApi = wrapForThread(api, threadId, type, commandName, event);
   const command = resolveCommand(global.client.commands, commandName);
   if (!command) {
     if (wrappedApi && threadId && type) {
