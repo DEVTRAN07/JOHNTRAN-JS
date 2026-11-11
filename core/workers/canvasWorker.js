@@ -31,10 +31,6 @@ async function renderToPath(type, data) {
       const payload = data || {};
       return renderNowPlaying(payload.track || {}, payload.sourceLabel || "");
     }
-    case "tuTien-card": {
-      const { render } = require("../canvas/tuTien");
-      return render(data || {});
-    }
     case "vip-card": {
       const { renderVipCard } = require("../canvas/vip");
       return renderVipCard(data || {});
