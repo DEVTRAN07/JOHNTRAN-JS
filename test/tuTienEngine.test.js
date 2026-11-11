@@ -9,12 +9,13 @@ test("new cultivator starts as mortal with starter resources", () => {
   assert.equal(engine.realmLabel(player), "Phàm Nhân · Nhập môn");
   assert.equal(player.spiritStones, 100);
   assert.equal(player.createdAt, 123);
-  assert.equal(player.version, 2);
+  assert.equal(player.version, 3);
+  assert.equal("pets" in player, false);
+  assert.equal("inventory" in player, false);
 });
 
 test("cultivation grants progress and spirit stones", () => {
-  const player = engine.createPlayer(1000);
-  const result = engine.cultivate(player, 1000, () => 0.5);
+  const result = engine.cultivate(engine.createPlayer(1000), 1000, () => 0.5);
   assert.equal(result.ok, true);
   assert.equal(result.gain, 24);
   assert.equal(result.player.spiritStones, 103);
@@ -56,7 +57,7 @@ test("insufficient cultivation cannot trigger breakthrough", () => {
   assert.equal(result.code, "NOT_READY");
 });
 
-test("final Great Tribulation stage must use the dedicated tribulation action", () => {
+test("final Great Tribulation stage must use dedicated tribulation action", () => {
   const player = engine.createPlayer(1000);
   player.realmIndex = 9;
   player.stageIndex = engine.REALMS[9].stages.length - 1;
@@ -64,60 +65,6 @@ test("final Great Tribulation stage must use the dedicated tribulation action", 
   const result = engine.breakthrough(player, 1000, () => 0);
   assert.equal(result.ok, false);
   assert.equal(result.code, "TRIBULATION_REQUIRED");
-});
-
-test("secret realm can yield a spirit spring and cultivation resources", () => {
-  const result = engine.explore(engine.createPlayer(1000), 1000, () => 0.1);
-  assert.equal(result.ok, true);
-  assert.equal(result.event, "spirit_spring");
-  assert.equal(result.cultivationGain, 22);
-  assert.equal(result.player.inventory.spiritFruit, 1);
-  assert.equal(result.player.discoveries, 1);
-});
-
-test("secret realm combat rewards a sufficiently strong cultivator", () => {
-  const player = engine.createPlayer(1000);
-  player.attack = 100;
-  player.defense = 50;
-  const rolls = [0.3, 0.5];
-  const result = engine.explore(player, 1000, () => rolls.shift() ?? 0.5);
-  assert.equal(result.event, "monster_win");
-  assert.equal(result.player.wins, 1);
-  assert.ok(result.stoneGain >= 15);
-});
-
-test("secret realm can capture a spirit pet", () => {
-  const rolls = [0.6, 0.99, 0.1];
-  const result = engine.explore(engine.createPlayer(1000), 1000, () => rolls.shift() ?? 0.1);
-  assert.equal(result.event, "pet_captured");
-  assert.equal(result.pet.speciesId, "phoenix");
-  assert.equal(result.player.pets.length, 1);
-  assert.equal(result.player.activePetId, result.pet.id);
-});
-
-test("pet feeding levels up the companion and improves combat stats", () => {
-  const player = engine.createPlayer(1000);
-  player.pets = [{ id: "pet-1", speciesId: "cloud_fox", name: "Vân Hồ", rarity: "Linh", level: 1, exp: 0, attack: 3, defense: 5 }];
-  player.activePetId = "pet-1";
-  const result = engine.feedPet(player, "pet-1");
-  assert.equal(result.ok, true);
-  assert.equal(result.pet.level, 2);
-  assert.equal(result.pet.attack, 5);
-  assert.equal(result.player.spiritStones, 85);
-  assert.equal(engine.effectiveStats(result.player).attack, 17);
-});
-
-test("pet activation rejects unknown ids and switches active companion", () => {
-  const player = engine.createPlayer(1000);
-  player.pets = [
-    { id: "one", speciesId: "cloud_fox", name: "Vân Hồ", level: 1, attack: 3, defense: 5 },
-    { id: "two", speciesId: "phoenix", name: "Chu Tước", level: 1, attack: 13, defense: 8 }
-  ];
-  player.activePetId = "one";
-  assert.equal(engine.activatePet(player, "missing").ok, false);
-  const result = engine.activatePet(player, "two");
-  assert.equal(result.ok, true);
-  assert.equal(engine.effectiveStats(result.player).attack, 23);
 });
 
 test("ninefold tribulation opens the True Immortal realm", () => {
@@ -146,11 +93,25 @@ test("failed tribulation applies a severe but survivable setback", () => {
   assert.equal(result.player.hp, 65);
 });
 
-test("normalization migrates existing V1 cultivation data without losing progress", () => {
-  const player = engine.normalizePlayer({ realmIndex: 3, stageIndex: 2, cultivation: 321, spiritStones: 456 });
+test("V1/V2 player data migrates while removed systems are discarded", () => {
+  const player = engine.normalizePlayer({
+    version: 2,
+    realmIndex: 3,
+    stageIndex: 2,
+    cultivation: 321,
+    spiritStones: 456,
+    pets: [{ id: "old-pet" }],
+    activePetId: "old-pet",
+    lastExploreAt: 123,
+    discoveries: 4,
+    inventory: { spiritFruit: 2, ancientShard: 1 }
+  });
+  assert.equal(player.version, 3);
   assert.equal(player.realmIndex, 3);
   assert.equal(player.stageIndex, 2);
   assert.equal(player.cultivation, 321);
   assert.equal(player.spiritStones, 456);
-  assert.deepEqual(player.inventory, { spiritFruit: 0, ancientShard: 0 });
+  for (const key of ["pets", "activePetId", "lastExploreAt", "discoveries", "inventory"]) {
+    assert.equal(key in player, false, key + " should be removed from V3 game state");
+  }
 });
