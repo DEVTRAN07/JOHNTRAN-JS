@@ -9,13 +9,13 @@
 function createThreadService(controller) {
   if (!controller) throw new TypeError("Thread controller is required");
 
-  return Object.freeze({
+  return {
     getAll(...args) { return controller.getAll(...args); },
     getData(...args) { return controller.getData(...args); },
     setData(...args) { return controller.setData(...args); },
     delData(...args) { return controller.delData(...args); },
     createData(...args) { return controller.createData(...args); }
-  });
+  };
 }
 
 const service = createThreadService(require("../../controller/controllerThreads"));
