@@ -60,3 +60,12 @@ test("leaderboard sorts by rating and exposes PvP stats", () => {
   ];
   assert.equal(arena.leaderboard(rows, "rating", 10)[0].uid, "2");
 });
+
+test("completed season is retained for a one-time reward claim", () => {
+  const p = player("Season Winner");
+  p.arena = { rating: 1100, seasonId: "2000-S01", joinedSeason: "2000-S01", seasonPoints: 90 };
+  arena.ensureArena(p);
+  assert.equal(p.arena.previousSeason.id, "2000-S01");
+  assert.equal(p.arena.previousSeason.points, 90);
+  assert.equal(p.arena.seasonPoints, 0);
+});
