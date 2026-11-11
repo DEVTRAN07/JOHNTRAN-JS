@@ -17,39 +17,9 @@ function readAdminGroups() {
 
 const { resolve: resolveCommand } = require("../runtime/commandRegistry");
 const { commandLimiter } = require("../runtime/rateLimiter");
+const { checkCommandRole, checkGroupPermissions } = require("../runtime/middleware/permissions");
+const { consumeCooldown } = require("../runtime/middleware/cooldown");
 
-async function checkGroupPermissions({ api, threadId, type, UIDUsage, threadInfo }) {
-  const isBotAdmin = global.users?.admin?.includes(UIDUsage);
-  const isSupport = global.users?.support?.includes(UIDUsage);
-  let isGroupAdmin = false;
-
-  if (type == ThreadType.Group) {
-    if (threadInfo?.box_only && !isBotAdmin) {
-      try {
-        const info = await api.getGroupInfo(threadId);
-        const groupInfo = info?.gridInfoMap?.[threadId];
-        if (groupInfo) {
-          isGroupAdmin = groupInfo.creatorId == UIDUsage
-            || (Array.isArray(groupInfo.adminIds) && groupInfo.adminIds.includes(UIDUsage));
-        }
-      } catch (err) {
-        logger.log("Không thể lấy thông tin nhóm từ API: " + err.message, "warn");
-      }
-    }
-
-    if (threadInfo.admin_only && !isBotAdmin) {
-      return { denied: "❌ Nhóm đã bật chế độ chỉ admin bot được dùng lệnh." };
-    }
-    if (threadInfo.support_only && !isSupport && !isBotAdmin) {
-      return { denied: "❌ Nhóm đã bật chế độ chỉ support bot hoặc admin bot được dùng lệnh." };
-    }
-    if (threadInfo.box_only && !isGroupAdmin && !isBotAdmin) {
-      return { denied: "❌ Nhóm đã bật chế độ chỉ trưởng nhóm hoặc phó nhóm được dùng lệnh." };
-    }
-  }
-
-  return { isBotAdmin, isSupport, isGroupAdmin };
-}
 
 async function handleCommand(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
   const config = global.config;
@@ -110,11 +80,21 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     }
   }
 
-  if ((role === 2 && !isBotAdmin) || (role === 1 && !isBotAdmin && !isSupport)) {
-    return wrappedApi.sendMessage({ msg: "🚫 Bạn không có quyền sử dụng lệnh này." }, threadId, type);
+  const roleCheck = checkCommandRole({ role, isBotAdmin, isSupport });
+  if (roleCheck.denied) {
+    return wrappedApi.sendMessage({ msg: roleCheck.denied }, threadId, type);
   }
 
-  const groupCheck = await checkGroupPermissions({ api: wrappedApi, threadId, type, UIDUsage, threadInfo });
+  const groupCheck = await checkGroupPermissions({
+    api: wrappedApi,
+    threadId,
+    isGroup: type == ThreadType.Group,
+    UIDUsage,
+    threadInfo,
+    isBotAdmin,
+    isSupport,
+    logger
+  });
   if (groupCheck.denied) {
     return wrappedApi.sendMessage({ msg: groupCheck.denied }, threadId, type);
   }
@@ -125,19 +105,18 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   const isNav = isNavigation(commandName, messageText, prefix) || isCommandNav(commandName, messageText, prefix);
 
   if (cdTime > 0 && !isNav) {
-    if (!global.client.cooldowns.has(commandName)) {
-      global.client.cooldowns.set(commandName, new Map());
-    }
-    const cdMap = global.client.cooldowns.get(commandName);
-    const lastUsed = cdMap.get(UIDUsage);
-
-    if (lastUsed && Date.now() - lastUsed < cdTime) {
-      const timeLeft = ((cdTime - (Date.now() - lastUsed)) / 1000).toFixed(1);
+    const remainingMs = consumeCooldown({
+      cooldowns: global.client.cooldowns,
+      commandName,
+      userId: UIDUsage,
+      cooldownMs: cdTime
+    });
+    if (remainingMs > 0) {
+      const timeLeft = (remainingMs / 1000).toFixed(1);
       return wrappedApi.sendMessage({
         msg: `⏳ Vui lòng chờ ${timeLeft}s để dùng lại lệnh '${commandName}'`
       }, threadId, type);
     }
-    cdMap.set(UIDUsage, Date.now());
   }
 
   const userData = await Users.getData(UIDUsage).catch(() => null);
