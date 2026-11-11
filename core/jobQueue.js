@@ -112,7 +112,7 @@ function stats() {
     failed: lane.failed,
     rejected: lane.rejected,
     oldestPendingMs: lane.pending.length
-      ? Math.max(0, Date.now() - lane.pending[0].queuedAt)
+      ? Math.max(0, Date.now() - Math.min(...lane.pending.map((job) => job.queuedAt)))
       : 0
   }]));
 }
