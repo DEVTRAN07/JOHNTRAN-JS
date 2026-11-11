@@ -1,6 +1,5 @@
 const logger = require("../../utils/logger");
 const { wrapApi } = require("../message");
-const metrics = require("../metrics");
 const fs = require("fs");
 const path = require("path");
 
@@ -19,6 +18,7 @@ const { resolve: resolveCommand } = require("../runtime/commandRegistry");
 const { commandLimiter } = require("../runtime/rateLimiter");
 const { checkCommandRole, checkGroupPermissions } = require("../runtime/middleware/permissions");
 const { consumeCooldown } = require("../runtime/middleware/cooldown");
+const { dispatchCommand } = require("../runtime/dispatcher");
 
 
 async function handleCommand(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
@@ -121,48 +121,21 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
 
   const userData = await Users.getData(UIDUsage).catch(() => null);
 
-  try {
-    const replyData = {
-      content: event.data.content,
-      msgType: event.data.msgType,
-      propertyExt: event.data.propertyExt,
-      uidFrom: event.data.uidFrom,
-      msgId: event.data.msgId,
-      cliMsgId: event.data.cliMsgId,
-      ts: event.data.ts,
-    };
-    metrics.track("command", { command: commandName });
+  await dispatchCommand({
+    command,
+    commandName,
+    args,
+    event,
+    api: wrappedApi,
+    Users,
+    Threads,
+    threadData,
+    userData,
+    logger,
+    metrics: require("../metrics"),
+    Reactions
+  });
 
-    // MỌI lệnh đều có reaction trạng thái: 👍 đang xử lý → ✅ xong / 😢 lỗi.
-    // Lệnh TỰ thả reaction (nhạc, autodown...) thì hệ thống giữ im lặng.
-    // Reaction KHÔNG await: mỗi reaction là 1 round-trip tới server Zalo —
-    // chờ 2 lần/lệnh làm phản hồi chậm thêm ~0.5s (Render xa VN).
-    const reply = wrappedApi.__reply;
-    let autoReacted = false; // hệ thống đã thả
-    const reactAuto = (icon) => {
-        if (reply.reacted && !autoReacted) return;
-        autoReacted = true;
-        Promise.resolve(reply.react(icon)).catch(() => { /* khỏi cần */ });
-    };
-
-    reactAuto(Reactions.LIKE);
-    try {
-        await command.run({ args, event, api: wrappedApi, Users, Threads, replyData, reply, mentions: event.mentions || [], threadData, userData });
-        reactAuto(Reactions.OK);
-    } catch (err) {
-        logger.log(`Lỗi khi xử lý lệnh '${commandName}': ${err.message}`, "error");
-        metrics.track("error", { command: commandName });
-        reactAuto(Reactions.CRY);
-        try {
-          await reply.error("Đã xảy ra lỗi khi xử lý lệnh!");
-      } catch {
-        // bỏ qua nếu không gửi được thông báo lỗi
-      }
-    }
-  } catch (err) {
-    // Lỗi ngoài cùng (wrapApi hỏng, event thiếu dữ liệu...) — khỏi làm sập listener
-    logger.log(`Lỗi pipeline lệnh '${commandName}': ${err.message}`, "error");
-  }
 }
 
 module.exports = handleCommand;
