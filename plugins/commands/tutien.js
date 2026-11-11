@@ -1,24 +1,23 @@
 "use strict";
 
-const fs = require("fs");
 const engine = require("../../core/games/tuTienEngine");
-const { renderTuTienCard } = require("../../core/canvas/workerRender");
 
 module.exports.config = {
   name: "tutien",
   aliases: ["tu-tien", "tiendao"],
-  version: "2.0.0",
+  version: "3.0.0",
   role: 0,
   author: "JOHNTRAN",
-  description: "Game tu tiên nhập vai: tu luyện, bí cảnh, linh thú và độ kiếp",
+  description: "Game tu tiên: tu luyện, đột phá và Cửu Trọng Thiên Kiếp",
   category: "Game",
-  usage: "tutien [batdau|profile|tuluyen|dotpha|bicanh|linhthu|dotkiem|help]",
+  usage: "tutien [batdau|profile|tuluyen|dotpha|dotkiem|help]",
   cooldowns: 2,
   dependencies: {}
 };
 
 const locks = new Map();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const PHASE_DELAY_MS = 520;
 
 async function withUserLock(userId, task) {
   const key = String(userId);
@@ -40,115 +39,56 @@ function progressBar(value, max, size = 12) {
   return "█".repeat(filled) + "░".repeat(size - filled);
 }
 
-function petSymbol(pet) {
-  const symbols = { cloud_fox: "🦊", thunder_bird: "🦅", jade_turtle: "🐢", white_tiger: "🐅", phoenix: "🔥" };
-  return symbols[pet?.speciesId] || "🐉";
-}
-
 async function send(api, event, msg) {
   return api.sendMessage({ msg }, event.threadId, event.type);
 }
 
-async function sendScene(api, event, card, fallback) {
-  let filePath = null;
+// This calls the real Zalo typing-event endpoint shipped by vendor/zalo-client.
+// If the connected client lacks it or the endpoint errors, the text sequence still works.
+async function typingIndicator(api, event) {
+  if (typeof api?.sendTypingEvent !== "function") return false;
   try {
-    filePath = await renderTuTienCard(card, { timeout: 45000 });
-    const intro = card.kind === "profile"
-      ? "🧿 Thiên Đạo đang mở mệnh bàn, soi chiếu căn cơ..."
-      : card.kind === "pet"
-        ? "🐾 Linh thú hiện thân, khế ước đang cộng hưởng..."
-        : "✨ Dị tượng thiên địa đang ngưng tụ, kết quả sắp hiển lộ...";
-    await send(api, event, intro);
-    await sleep(180);
-    const response = await api.sendMessage({ msg: fallback || "", attachments: filePath }, event.threadId, event.type);
-    const cleanupTimer = setTimeout(() => {
-      try { if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* temporary file cleanup */ }
-    }, 60_000);
-    cleanupTimer.unref?.();
-    return response;
+    await api.sendTypingEvent(event.threadId, event.type);
+    return true;
   } catch (error) {
-    if (filePath) {
-      try { fs.unlinkSync(filePath); } catch { /* already removed */ }
-    }
-    console.error("[tutien] render card failed:", error?.message || error);
-    return send(api, event, fallback || "⚠️ Không thể tạo thẻ hình ảnh. Đạo hữu hãy thử lại sau.");
+    console.warn("[tutien] Zalo typing indicator unavailable:", error?.message || error);
+    return false;
   }
 }
 
-async function showProfile(api, event, player, name) {
+async function sendPhase(api, event, message, delay = PHASE_DELAY_MS) {
+  const typing = await typingIndicator(api, event);
+  await sleep(typing ? delay : Math.min(delay, 180));
+  return send(api, event, message);
+}
+
+async function runPhases(api, event, phases) {
+  const responses = [];
+  for (const phase of phases) {
+    responses.push(await sendPhase(api, event, phase.message, phase.delay ?? PHASE_DELAY_MS));
+  }
+  return responses;
+}
+
+function profileText(player, name) {
   const need = engine.requiredCultivation(player);
   const stats = engine.effectiveStats(player);
-  const pet = stats.pet;
   const percent = Math.min(100, Math.floor(player.cultivation / need * 100));
-  const fallback =
-    `☯ HỒ SƠ TU SĨ • JOHNTRAN
+  return `╔════ ☯ TIÊN ĐẠO VÔ HẠN ☯ ════╗
 👤 Đạo hữu: ${name || "Vô danh"}
 🏯 Cảnh giới: ${engine.realmLabel(player)}
-✨ Tu vi: ${player.cultivation}/${need} [${progressBar(player.cultivation, need)}] ${percent}%
+✨ Tu vi: ${player.cultivation}/${need}
+[${progressBar(player.cultivation, need)}] ${percent}%
 ❤️ Sinh lực: ${player.hp}/${player.maxHp}
 ⚔️ Công kích: ${stats.attack}  🛡️ Phòng ngự: ${stats.defense}
 💎 Linh thạch: ${player.spiritStones}
-🐾 Linh thú: ${pet ? pet.name + " • cấp " + pet.level : "Chưa có"}
-🧭 Bí cảnh đã khám phá: ${player.discoveries}
-🏆 Thắng: ${player.wins}  ☠️ Bại: ${player.losses}`;
-  return sendScene(api, event, {
-    kind: "profile",
-    name: name || "Vô danh",
-    realm: engine.realmLabel(player),
-    cultivation: player.cultivation,
-    required: need,
-    stones: player.spiritStones,
-    hp: `${player.hp}/${player.maxHp}`,
-    attack: stats.attack,
-    defense: stats.defense,
-    subtitle: pet ? `Linh thú hộ đạo: ${pet.name}` : "Mệnh cách đã được Thiên Đạo ghi nhận"
-  }, fallback);
+🏆 Thắng: ${player.wins}  ☠️ Bại: ${player.losses}
+╚══════════════════════════════╝`;
 }
 
-function describeExplore(result) {
-  switch (result.event) {
-    case "spirit_spring":
-      return {
-        card: { kind: "scene", title: "LINH TUYỀN HIỆN THẾ", subtitle: "Một dòng linh tuyền giữa tiên sơn", symbol: "💧", badge: "CƠ DUYÊN HIẾM GẶP", lines: [`Tu vi tăng ${result.cultivationGain}`, `Nhận ${result.fruitGain} linh quả`, "Linh khí vận chuyển khắp kinh mạch"], reward: "+ Tu vi • Linh quả" },
-        text: `💧 Phát hiện Linh Tuyền! Tu vi +${result.cultivationGain}, Linh quả +${result.fruitGain}.`
-      };
-    case "monster_win":
-      return {
-        card: { kind: "scene", title: "YÊU THÚ BỊ ĐÁNH BẠI", subtitle: "Đạo hữu chiến thắng trong bí cảnh", symbol: "⚔️", badge: "CHIẾN THẮNG", lines: [`Chiến lực của ngươi: ${result.power}`, `Địch thủ: ${result.enemyPower}`, `Linh thạch nhận được: ${result.stoneGain}`], reward: `+ ${result.stoneGain} linh thạch` },
-        text: `⚔️ Đánh bại yêu thú! Nhận ${result.stoneGain} linh thạch.`
-      };
-    case "monster_loss":
-      return {
-        card: { kind: "scene", title: "GẶP YÊU THÚ", subtitle: "Đạo hữu tạm thời lui khỏi chiến trường", symbol: "🐲", badge: "HUNG HIỂM", lines: [`Chiến lực của ngươi: ${result.power}`, `Địch thủ: ${result.enemyPower}`, `Sinh lực tổn thất: ${result.damage}`], reward: "Hãy tăng cường pháp bảo và linh thú" },
-        text: `🐲 Yêu thú quá mạnh! Ngươi mất ${result.damage} HP và phải rút lui.`
-      };
-    case "pet_captured":
-      return {
-        card: { kind: "pet", name: result.pet.name, rarity: result.pet.rarity, level: result.pet.level, attack: result.pet.attack, defense: result.pet.defense, symbol: petSymbol(result.pet), description: result.pet.description, subtitle: "Linh thú đã tự nguyện kết khế ước" },
-        text: `🐾 Thu phục thành công ${result.pet.name} (${result.pet.rarity})!`
-      };
-    case "pet_escaped":
-      return {
-        card: { kind: "scene", title: "LINH THÚ BỎ TRỐN", subtitle: "Cơ duyên chưa đến", symbol: "🌫️", badge: "LỠ MẤT CƠ DUYÊN", lines: [`Phát hiện ${result.species.name}`, "Linh thú cảnh giác và biến mất", "Hãy tiếp tục khám phá bí cảnh"], reward: "Chưa thể lập khế ước" },
-        text: `🌫️ ${result.species.name} đã bỏ trốn. Hãy thử vận may lần sau.`
-      };
-    default:
-      return {
-        card: { kind: "scene", title: "RƯƠNG CỔ KHAI MỞ", subtitle: "Bảo quang chiếu rọi cả bí cảnh", symbol: "🎁", badge: "TÌM THẤY CỔ BẢO", lines: [`Linh thạch +${result.stoneGain}`, `Mảnh cổ ngọc +${result.shardGain}`, "Một phần di tích đã được ghi vào bản đồ"], reward: "+ Linh thạch • Mảnh cổ ngọc" },
-        text: `🎁 Mở rương cổ! Linh thạch +${result.stoneGain}, mảnh cổ ngọc +${result.shardGain}.`
-      };
-  }
-}
-
-function listPets(player) {
-  if (!player.pets.length) return "🐾 Đạo hữu chưa có linh thú. Hãy dùng /tutien bicanh để tìm cơ duyên.";
-  const lines = player.pets.map((pet, index) => {
-    const active = pet.id === player.activePetId ? " ⭐ Đang hộ đạo" : "";
-    return `${index + 1}. ${petSymbol(pet)} ${pet.name} • ${pet.rarity} • Cấp ${pet.level} • Công ${pet.attack} • Thủ ${pet.defense}${active}`;
-  });
-  return "🐉 LINH THÚ KHế ƯỚC\n" + lines.join("\n") +
-    "\n\n/tutien linhthu chon <số> – chọn linh thú hộ đạo" +
-    "\n/tutien linhthu choan – cho linh thú ăn (15 linh thạch)";
+function savePlayer(stored, player) {
+  stored.tuTien = player;
+  return stored;
 }
 
 module.exports.run = async function ({ args = [], event, api, Users }) {
@@ -164,162 +104,187 @@ module.exports.run = async function ({ args = [], event, api, Users }) {
       : userRecord && typeof userRecord === "object" ? userRecord : {};
     let player = stored.tuTien ? engine.normalizePlayer(stored.tuTien) : null;
 
-    if (action === "batdau" || action === "start" || action === "begin") {
-      if (player) return showProfile(api, event, player, name);
+    if (["batdau", "start", "begin"].includes(action)) {
+      if (player) {
+        await sendPhase(api, event, "🧿 Thiên Đạo đang mở lại mệnh đăng của đạo hữu...");
+        return send(api, event, profileText(player, name));
+      }
+
       player = engine.createPlayer();
-      stored.tuTien = player;
+      savePlayer(stored, player);
       await Users.setData(uid, stored);
-      await send(api, event, "🌌 LINH KHÍ HỘI TỤ...\n📜 Thiên Đạo đang ghi danh một phàm nhân...");
-      await sleep(350);
-      return sendScene(api, event, {
-        kind: "scene", title: "TIÊN ĐỒ ĐÃ MỞ", subtitle: name + " chính thức bước vào tiên lộ",
-        symbol: "☯", badge: "MỆNH ĐĂNG ĐÃ LẬP",
-        lines: ["Cảnh giới: Phàm Nhân", "Linh thạch khởi đầu: 100", "Thiên địa rộng lớn, tiên duyên đang chờ"],
-        reward: "Dùng /tutien tuluyen để hấp thu linh khí"
-      }, "✨ ĐẠO LỘ ĐÃ MỞ! Ngươi đã bước chân vào con đường tu tiên. Gõ /tutien help để xem bí kíp.");
+      await runPhases(api, event, [
+        { message: "🌌 THIÊN ĐẠO ĐANG QUAN SÁT CĂN CỐT...", delay: 620 },
+        { message: "🌀 Linh khí hội tụ. Kinh mạch phàm thể bắt đầu khai mở...", delay: 620 },
+        { message: "📜 Mệnh đăng đã được khắc tên vào Tiên Lục...", delay: 620 }
+      ]);
+      return send(api, event,
+        `✨ ĐẠO LỘ ĐÃ MỞ! ✨
+Đạo hữu ${name} chính thức bước vào tiên đồ.
+🏯 Cảnh giới: ${engine.realmLabel(player)}
+💎 Linh thạch khởi đầu: ${player.spiritStones}
+📖 Dùng /tutien tuluyen để hấp thu linh khí.`
+      );
     }
 
-    if (!player) return send(api, event, "📜 Ngươi chưa nhập đạo. Hãy dùng /tutien batdau để lập mệnh đăng!");
+    if (!player) {
+      return sendPhase(api, event, "📜 Đạo hữu chưa nhập đạo. Hãy dùng /tutien batdau để lập mệnh đăng.");
+    }
 
-    if (["profile", "info", "hoso", "the"].includes(action)) {
-      return showProfile(api, event, player, name);
+    if (["profile", "info", "hoso"].includes(action)) {
+      await runPhases(api, event, [
+        { message: "🧿 ĐANG KẾT NỐI MỆNH ĐĂNG...", delay: 450 },
+        { message: "📖 Đang dò xét kinh mạch và căn cơ tu luyện...", delay: 450 }
+      ]);
+      return send(api, event, profileText(player, name));
     }
 
     if (["tuluyen", "tu-luyen", "cultivate"].includes(action)) {
       const result = engine.cultivate(player);
-      if (!result.ok) return send(api, event, `🧘 Đạo hữu đang vận công. Hãy tĩnh tâm thêm ${Math.ceil(result.remainingMs / 1000)}s rồi thử lại.`);
-      stored.tuTien = result.player;
+      if (!result.ok) {
+        return sendPhase(api, event, `🧘 Đạo hữu đang vận công. Còn ${Math.ceil(result.remainingMs / 1000)} giây mới có thể tiếp tục.`);
+      }
+
+      savePlayer(stored, result.player);
       await Users.setData(uid, stored);
-      await send(api, event, "🌀 ĐANG VẬN CHUYỂN CHU THIÊN...\n🌫️ Linh khí hội tụ quanh thân...");
-      await sleep(250);
-      return sendScene(api, event, {
-        kind: "scene", title: "HẤP THU LINH KHÍ", subtitle: "Linh mạch vận chuyển • Chu thiên tuần hoàn",
-        symbol: "☯", badge: "TU LUYỆN THÀNH CÔNG",
-        lines: [`Tu vi tăng ${result.gain}`, "Linh thạch +3", `Cảnh giới: ${engine.realmLabel(result.player)}`],
-        reward: `${progressBar(result.player.cultivation, result.required)} ${result.player.cultivation}/${result.required}`
-      }, `✨ Tu luyện thành công! Tu vi +${result.gain}, linh thạch +3. ${result.player.cultivation}/${result.required}.`);
+      const gained = result.gain;
+      const stages = [
+        { fraction: 0.25, text: "🧘 NHẬP ĐỊNH — Điều tức, ổn định tâm mạch..." },
+        { fraction: 0.55, text: "🌫️ TỤ KHÍ — Linh khí bắt đầu hội tụ quanh thân..." },
+        { fraction: 0.85, text: "🌀 VẬN CHU THIÊN — Linh lực lưu chuyển qua kinh mạch..." }
+      ];
+      for (const stage of stages) {
+        const interim = Math.min(result.player.cultivation, Math.max(0, result.player.cultivation - gained + Math.floor(gained * stage.fraction)));
+        const bar = progressBar(interim, result.required);
+        await sendPhase(api, event, `${stage.text}\nTu vi: [${bar}] ${interim}/${result.required}`, 560);
+      }
+      return send(api, event,
+        `✨ HẤP THU LINH KHÍ THÀNH CÔNG!
+━━━━━━━━━━━━━━━━━━━━
+➕ Tu vi +${gained}
+💎 Linh thạch +3
+☯ Cảnh giới: ${engine.realmLabel(result.player)}
+📊 [${progressBar(result.player.cultivation, result.required)}] ${result.player.cultivation}/${result.required}
+━━━━━━━━━━━━━━━━━━━━
+${result.player.cultivation >= result.required ? "⚡ Tu vi đã viên mãn, có thể thử đột phá!" : "Tiếp tục tu luyện để tích lũy đạo hạnh."}`
+      );
     }
 
     if (["dotpha", "độtphá", "breakthrough"].includes(action)) {
       const result = engine.breakthrough(player);
-      if (!result.ok && result.code === "NOT_READY") return send(api, event, `⚠️ Tu vi chưa đủ. Còn thiếu ${result.missing} điểm (cần ${result.required}).`);
-      if (!result.ok && result.code === "NEED_STONES") return send(api, event, "💎 Không đủ 20 linh thạch để bày trận đột phá.");
-      if (!result.ok && result.code === "COOLDOWN") return send(api, event, `⏳ Thiên cơ chưa đến. Hãy chờ ${Math.ceil(result.remainingMs / 1000)} giây.`);
-      if (!result.ok && result.code === "TRIBULATION_REQUIRED") return send(api, event, "⚡ Đã đến Độ Kiếp Cửu Trọng. Hãy dùng /tutien dotkiem để nghênh đón thiên kiếp!");
-      stored.tuTien = result.player;
+      if (!result.ok && result.code === "NOT_READY") {
+        return sendPhase(api, event, `⚠️ Thiên Đạo kiểm tra: tu vi còn thiếu ${result.missing} điểm (cần ${result.required}).`);
+      }
+      if (!result.ok && result.code === "NEED_STONES") {
+        return sendPhase(api, event, "💎 Không đủ 20 linh thạch để bày trận đột phá.");
+      }
+      if (!result.ok && result.code === "COOLDOWN") {
+        return sendPhase(api, event, `⏳ Thiên cơ chưa đến. Hãy chờ ${Math.ceil(result.remainingMs / 1000)} giây.`);
+      }
+      if (!result.ok && result.code === "TRIBULATION_REQUIRED") {
+        return sendPhase(api, event, "⚡ Đã đến Độ Kiếp Cửu Trọng. Hãy dùng /tutien dotkiem để nghênh đón thiên kiếp!");
+      }
+
+      savePlayer(stored, result.player);
       await Users.setData(uid, stored);
-      await send(api, event, "⚡ THIÊN ĐỊA CHẤN ĐỘNG!\n🌩️ Linh lực cuộn trào, đạo cơ rung chuyển...");
-      await sleep(350);
+      await runPhases(api, event, [
+        { message: "⚡ ĐỘT PHÁ BẮT ĐẦU — Tụ linh thạch, dựng hộ thân trận...", delay: 650 },
+        { message: "🌩️ Linh lực nghịch chuyển — Đạo cơ đang chịu áp lực...", delay: 700 },
+        { message: "💠 KIM ĐAN CHẤN ĐỘNG — Thiên Đạo sắp định kết quả...", delay: 700 }
+      ]);
+
       if (result.maxRealm) return send(api, event, "👑 Ngươi đã đứng trên đỉnh Tiên Đạo!");
       if (result.success) {
-        const fallback = `🌟 ĐỘT PHÁ THÀNH CÔNG! Cảnh giới mới: ${engine.realmLabel(result.player)}. HP ${result.player.hp}/${result.player.maxHp}, Công ${result.player.attack}, Thủ ${result.player.defense}.`;
-        return sendScene(api, event, {
-          kind: "scene", title: "ĐỘT PHÁ THÀNH CÔNG", subtitle: "Thiên địa dị tượng • Đạo cơ tái sinh",
-          symbol: "⚡", badge: engine.realmLabel(result.player),
-          lines: ["Sinh lực: " + result.player.hp + "/" + result.player.maxHp, "Công kích: " + result.player.attack, "Phòng ngự: " + result.player.defense],
-          reward: "Cảnh giới mới đã được khai mở"
-        }, fallback);
+        return send(api, event,
+          `🌟 ĐỘT PHÁ THÀNH CÔNG! 🌟
+╔════════════════════════════╗
+☯ Cảnh giới mới: ${engine.realmLabel(result.player)}
+❤️ Sinh lực: ${result.player.hp}/${result.player.maxHp}
+⚔️ Công kích: ${result.player.attack}
+🛡️ Phòng ngự: ${result.player.defense}
+╚════════════════════════════╝
+✨ Đạo cơ vững chắc hơn, linh lực đã tăng tiến!`
+        );
       }
-      return sendScene(api, event, {
-        kind: "scene", title: "TÂM MA PHẢN PHỆ", subtitle: "Đột phá thất bại • Đạo tâm dao động",
-        symbol: "☠", badge: "THẤT BẠI",
-        lines: ["Tu vi bị hao tổn", "Sinh lực còn: " + result.player.hp, "Hãy củng cố căn cơ trước lần thử tiếp theo"],
-        reward: "Không được nóng vội"
-      }, `💥 Đột phá thất bại! Tu vi hao tổn, HP còn ${result.player.hp}.`);
-    }
-
-    if (["bicanh", "bícanh", "explore"].includes(action)) {
-      const result = engine.explore(player);
-      if (!result.ok) return send(api, event, `⏳ Bí cảnh chưa ổn định. Còn ${Math.ceil(result.remainingMs / 1000)} giây mới có thể vào lại.`);
-      stored.tuTien = result.player;
-      await Users.setData(uid, stored);
-      await send(api, event, "🗺️ BÍ CẢNH ĐÃ MỞ!\n🌫️ Ngươi bước qua kết giới cổ xưa...");
-      await sleep(300);
-      const scene = describeExplore(result);
-      return sendScene(api, event, scene.card, scene.text);
-    }
-
-    if (["linhthu", "pet"].includes(action)) {
-      const sub = String(args[1] || "list").toLowerCase();
-      if (["choan", "feed"].includes(sub)) {
-        const result = engine.feedPet(player, args[2]);
-        if (!result.ok && result.code === "NO_PET") return send(api, event, "🐾 Ngươi chưa có linh thú để cho ăn.");
-        if (!result.ok) return send(api, event, "💎 Cần 15 linh thạch để mua linh đan cho linh thú.");
-        stored.tuTien = result.player;
-        await Users.setData(uid, stored);
-        const card = { kind: "pet", name: result.pet.name, rarity: result.pet.rarity, level: result.pet.level, attack: result.pet.attack, defense: result.pet.defense, symbol: petSymbol(result.pet), description: result.leveledUp ? "Linh thú đột phá cấp độ!" : "Linh thú hấp thu linh đan và tăng trưởng.", subtitle: result.leveledUp ? "TIẾN HÓA THÀNH CÔNG" : "BỒI DƯỠNG LINH THÚ" };
-        return sendScene(api, event, card, `🍖 ${result.pet.name} đã ăn linh đan. Cấp hiện tại: ${result.pet.level}.`);
-      }
-      if (["chon", "select", "active"].includes(sub)) {
-        const index = Number(args[2]) - 1;
-        const target = Number.isInteger(index) ? player.pets[index] : null;
-        const petId = target?.id || args[2];
-        const result = engine.activatePet(player, petId);
-        if (!result.ok) return send(api, event, "❌ Không tìm thấy linh thú. Dùng /tutien linhthu để xem danh sách.");
-        stored.tuTien = result.player;
-        await Users.setData(uid, stored);
-        return sendScene(api, event, {
-          kind: "pet", name: result.pet.name, rarity: result.pet.rarity,
-          level: result.pet.level, attack: result.pet.attack, defense: result.pet.defense,
-          symbol: petSymbol(result.pet), description: "Khế ước hộ đạo đã được kích hoạt.",
-          subtitle: "LINH THÚ ĐANG HỘ ĐẠO"
-        }, `🐾 ${result.pet.name} hiện là linh thú hộ đạo của ngươi.`);
-      }
-      await send(api, event, "🐾 Đang dò tìm dấu ấn khế ước trong thức hải...");
-      await sleep(180);
-      return send(api, event, listPets(player));
+      return send(api, event,
+        `💥 ĐỘT PHÁ THẤT BẠI!
+Tâm ma quấy nhiễu, linh lực phản phệ.
+Tu vi bị hao tổn, sinh lực còn ${result.player.hp}/${result.player.maxHp}.
+Hãy ổn định đạo tâm trước lần thử tiếp theo.`
+      );
     }
 
     if (["dotkiem", "do-kiem", "thienkiep", "tribulation"].includes(action)) {
       const result = engine.tribulation(player);
-      if (!result.ok && result.code === "WRONG_REALM") return send(api, event, "⚡ Chỉ có thể độ kiếp khi đạt Độ Kiếp Cửu Trọng.");
-      if (!result.ok && result.code === "NOT_READY") return send(api, event, `🌩️ Tu vi chưa đủ nghênh kiếp. Còn thiếu ${result.missing} điểm.`);
-      if (!result.ok && result.code === "NEED_STONES") return send(api, event, "💎 Cần 80 linh thạch để dựng trận hộ kiếp.");
-      if (!result.ok && result.code === "COOLDOWN") return send(api, event, `⏳ Thiên kiếp đang tích tụ. Chờ ${Math.ceil(result.remainingMs / 1000)} giây.`);
-      stored.tuTien = result.player;
-      await Users.setData(uid, stored);
-      await send(api, event, "🌩️ CỬU TRỌNG THIÊN KIẾP!\n⚡ Mây đen che phủ tiên sơn...\n🛡️ Trận pháp hộ thể đang tan vỡ...");
-      await sleep(550);
-      if (result.success) {
-        return sendScene(api, event, {
-          kind: "scene", title: "PHÁ KIẾP THÀNH TIÊN", subtitle: "Cửu trọng thiên lôi • Tiên môn khai mở",
-          symbol: "⚡", badge: "CHÂN TIÊN GIÁNG THẾ",
-          lines: ["Vượt qua Cửu Trọng Thiên Kiếp", "Sinh lực tối đa +100", "Công kích +20 • Phòng ngự +15"],
-          reward: "ĐẠT CẢNH GIỚI CHÂN TIÊN"
-        }, "🌟 ĐỘ KIẾP THÀNH CÔNG! Ngươi đã bước vào Chân Tiên.");
+      if (!result.ok && result.code === "WRONG_REALM") {
+        return sendPhase(api, event, "⚡ Chỉ có thể độ kiếp khi đạt Độ Kiếp Cửu Trọng.");
       }
-      return sendScene(api, event, {
-        kind: "scene", title: "THIÊN KIẾP PHẢN PHỆ", subtitle: "Thân thể trọng thương nhưng đạo tâm chưa diệt",
-        symbol: "🌩", badge: "ĐỘ KIẾP THẤT BẠI",
-        lines: ["Sinh lực tổn thất nặng", "Tu vi hao tổn", "Hãy hồi phục và chuẩn bị lại"],
-        reward: "Tiên lộ vẫn còn phía trước"
-      }, `💥 Độ kiếp thất bại! HP còn ${result.player.hp}; tu vi bị hao tổn.`);
-    }
+      if (!result.ok && result.code === "NOT_READY") {
+        return sendPhase(api, event, `🌩️ Tu vi chưa đủ nghênh kiếp. Còn thiếu ${result.missing} điểm.`);
+      }
+      if (!result.ok && result.code === "NEED_STONES") {
+        return sendPhase(api, event, "💎 Cần 80 linh thạch để dựng trận hộ kiếp.");
+      }
+      if (!result.ok && result.code === "COOLDOWN") {
+        return sendPhase(api, event, `⏳ Thiên kiếp đang tích tụ. Chờ ${Math.ceil(result.remainingMs / 1000)} giây.`);
+      }
 
-    if (["bang", "help", "menu"].includes(action)) {
-      await send(api, event, "📜 Thiên Đạo truyền xuống một quyển tu tiên bí lục...");
-      await sleep(150);
+      savePlayer(stored, result.player);
+      await Users.setData(uid, stored);
+      await runPhases(api, event, [
+        { message: "🌩️ CỬU TRỌNG THIÊN KIẾP — Mây đen phủ kín tiên sơn...", delay: 750 },
+        { message: "⚡ ĐỆ NHẤT LÔI — Thiên lôi đánh xuống hộ thể trận!", delay: 750 },
+        { message: "⚡ ĐỆ NGŨ LÔI — Đạo cơ rung chuyển, nguyên thần chống đỡ...", delay: 750 },
+        { message: "🔥 ĐỆ CỬU LÔI — Sinh tử chỉ còn trong một niệm!", delay: 850 }
+      ]);
+
+      if (result.success) {
+        return send(api, event,
+          `🌟 PHÁ KIẾP THÀNH TIÊN! 🌟
+☯ Cảnh giới: ${engine.realmLabel(result.player)}
+❤️ Sinh lực tối đa +100
+⚔️ Công kích +20
+🛡️ Phòng ngự +15
+👑 Đạo hữu đã bước vào hàng Chân Tiên!`
+        );
+      }
       return send(api, event,
-        `☯ JOHNTRAN – TIÊN ĐẠO VÔ HẠN V2 ☯
-/tutien batdau   – Bước vào tiên đồ
-/tutien profile  – Thẻ hồ sơ tu sĩ
-/tutien tuluyen  – Hấp thu linh khí (hồi 30 giây)
-/tutien dotpha   – Đột phá cảnh giới
-/tutien bicanh   – Khám phá bí cảnh (hồi 60 giây)
-/tutien linhthu  – Xem linh thú
-/tutien linhthu chon <số> – Chọn linh thú hộ đạo
-/tutien linhthu choan – Bồi dưỡng linh thú
-/tutien dotkiem  – Vượt Cửu Trọng Thiên Kiếp
-
-🎴 Bí cảnh tạo ngẫu nhiên cơ duyên, yêu thú, linh thú và cổ bảo.
-🐉 Linh thú cộng chỉ số chiến đấu cho chủ nhân.
-🌩️ Độ Kiếp Cửu Trọng mở ra con đường Chân Tiên.
-🖼️ Các sự kiện chính có thẻ hình ảnh; khi render lỗi bot tự chuyển sang chữ.`
+        `💥 ĐỘ KIẾP THẤT BẠI!
+Thiên lôi phản phệ, sinh lực tổn thất ${result.damage}.
+❤️ Sinh lực còn: ${result.player.hp}/${result.player.maxHp}
+✨ Tu vi còn: ${result.player.cultivation}/${result.required}
+Thiên Đạo chưa tuyệt đường sinh cơ. Hãy hồi phục rồi thử lại.`
       );
     }
 
-    return send(api, event, "❓ Lệnh chưa rõ. Dùng /tutien help để xem đạo pháp.");
+    if (["help", "bang", "menu"].includes(action)) {
+      await sendPhase(api, event, "📜 Thiên Đạo truyền xuống tu tiên bí lục...");
+      return send(api, event,
+        `☯ JOHNTRAN – TIÊN ĐẠO VÔ HẠN V3 ☯
+/tutien batdau  – Bước vào tiên đồ
+/tutien profile – Xem mệnh bàn tu sĩ
+/tutien tuluyen – Hấp thu linh khí (hồi 30 giây)
+/tutien dotpha  – Đột phá cảnh giới
+/tutien dotkiem  – Vượt Cửu Trọng Thiên Kiếp
+/tutien help    – Xem hướng dẫn
+
+🌌 12 đại cảnh giới, từ Phàm Nhân đến Tiên Đế.
+⚡ Đột phá có xác suất thành công và thất bại.
+🌩️ Độ Kiếp Cửu Trọng mở ra con đường Chân Tiên.
+🎭 Mỗi hành động đều có tín hiệu đang nhập của Zalo và các giai đoạn phản hồi bằng tin nhắn thật.
+Không có ảnh, bí cảnh, linh thú hay tông môn trong phiên bản này.`
+      );
+    }
+
+    return sendPhase(api, event, "❓ Đạo pháp không tồn tại. Dùng /tutien help để xem các lệnh hiện có.");
   });
 };
 
-module.exports._test = { progressBar, withUserLock, describeExplore, listPets };
+module.exports._test = {
+  progressBar,
+  withUserLock,
+  typingIndicator,
+  sendPhase,
+  runPhases,
+  profileText
+};
