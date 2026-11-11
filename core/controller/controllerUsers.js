@@ -1,4 +1,4 @@
-const { getData, saveData, hasData, delData, allData } = require("../../utils/db");
+const { getData, saveData, hasData, delData, allData } = require("../runtime/adapters/database");
 const logger = require("../../utils/logger");
 const { userCache } = require("../cache");
 
