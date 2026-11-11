@@ -27,8 +27,11 @@ module.exports = {
 
   setData: (threadId, data) => {
     const key = String(threadId);
-    saveData("Threads", "threadId", threadId, data);
-    threadCache.set(key, data);
+    const record = { threadId: key, data: data || {} };
+    const pending = saveData("Threads", "threadId", threadId, data || {});
+    // Keep the same { threadId, data } envelope returned by JsonStore.get().
+    threadCache.set(key, record);
+    return pending;
   },
 
   delData: (threadId) => {
@@ -41,9 +44,15 @@ module.exports = {
 
   createData: (threadId, defaultData = {}) => {
     const key = String(threadId);
+    let record;
     if (!hasData("Threads", "threadId", threadId)) {
-      saveData("Threads", "threadId", threadId, defaultData);
+      const data = defaultData || {};
+      record = { threadId: key, data };
+      saveData("Threads", "threadId", threadId, data);
+    } else {
+      record = getData("Threads", "threadId", threadId);
     }
-    threadCache.set(key, defaultData);
+    threadCache.set(key, record);
+    return record;
   }
 };
