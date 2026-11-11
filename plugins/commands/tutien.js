@@ -53,6 +53,13 @@ async function sendScene(api, event, card, fallback) {
   let filePath = null;
   try {
     filePath = await renderTuTienCard(card, { timeout: 45000 });
+    const intro = card.kind === "profile"
+      ? "🧿 Thiên Đạo đang mở mệnh bàn, soi chiếu căn cơ..."
+      : card.kind === "pet"
+        ? "🐾 Linh thú hiện thân, khế ước đang cộng hưởng..."
+        : "✨ Dị tượng thiên địa đang ngưng tụ, kết quả sắp hiển lộ...";
+    await send(api, event, intro);
+    await sleep(180);
     const response = await api.sendMessage({ msg: fallback || "", attachments: filePath }, event.threadId, event.type);
     const cleanupTimer = setTimeout(() => {
       try { if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* temporary file cleanup */ }
@@ -258,6 +265,8 @@ module.exports.run = async function ({ args = [], event, api, Users }) {
           subtitle: "LINH THÚ ĐANG HỘ ĐẠO"
         }, `🐾 ${result.pet.name} hiện là linh thú hộ đạo của ngươi.`);
       }
+      await send(api, event, "🐾 Đang dò tìm dấu ấn khế ước trong thức hải...");
+      await sleep(180);
       return send(api, event, listPets(player));
     }
 
@@ -288,6 +297,8 @@ module.exports.run = async function ({ args = [], event, api, Users }) {
     }
 
     if (["bang", "help", "menu"].includes(action)) {
+      await send(api, event, "📜 Thiên Đạo truyền xuống một quyển tu tiên bí lục...");
+      await sleep(150);
       return send(api, event,
         `☯ JOHNTRAN – TIÊN ĐẠO VÔ HẠN V2 ☯
 /tutien batdau   – Bước vào tiên đồ
