@@ -96,6 +96,9 @@ test("tribulation cooldown is enforced after an attempt", () => {
   const player = engine.createPlayer(1000);
   player.cultivation = engine.requiredCultivation(player);
   const first = engine.tribulation(player, 1000, () => 0);
+  // After ascending, accumulate enough progress for the next threshold so the
+  // cooldown branch is tested before the next NOT_READY branch.
+  first.player.cultivation = engine.requiredCultivation(first.player);
   const second = engine.tribulation(first.player, 2000, () => 0);
   assert.equal(second.ok, false);
   assert.equal(second.code, "COOLDOWN");
