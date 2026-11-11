@@ -39,7 +39,8 @@ panel:
   enabled: false # bật panel quản lý bot + bot con
   host: "0.0.0.0"
   port: 3000
-  token: "jt6132a94559f0bcc44662222e" # để trống = không cần đăng nhập (chỉ dùng khi mở public)
+  token: "" # đặt qua JT_PANEL__TOKEN; public Panel bắt buộc token mạnh tối thiểu 32 ký tự
+  bridge_token: "" # tùy chọn; để trống sẽ tự sinh token riêng cho bridge nội bộ
 
 # cấu hình của zalo-client
 zalo_client_config:
