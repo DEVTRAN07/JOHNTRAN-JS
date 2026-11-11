@@ -10,7 +10,7 @@
 function createUserService(controller) {
   if (!controller) throw new TypeError("User controller is required");
 
-  return Object.freeze({
+  return {
     getAll(...args) { return controller.getAll(...args); },
     getData(...args) { return controller.getData(...args); },
     setData(...args) { return controller.setData(...args); },
@@ -18,7 +18,7 @@ function createUserService(controller) {
     createData(...args) { return controller.createData(...args); },
     isBanned(...args) { return controller.isBanned(...args); },
     setBan(...args) { return controller.setBan(...args); }
-  });
+  };
 }
 
 const service = createUserService(require("../../controller/controllerUsers"));
