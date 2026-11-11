@@ -211,7 +211,7 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
         { fraction: 0.85, text: "🌀 VẬN CHU THIÊN — Linh lực lưu chuyển qua kinh mạch..." }
       ]) {
         const interim = Math.min(result.player.cultivation, Math.max(0, result.player.cultivation - result.gain + Math.floor(result.gain * stage.fraction)));
-        await sendPhase(api, event, `${stage.text}\nTu vi: [${progressBar(interim, result.required)}] ${interim}/${result.required}`, 540);
+        await effects.phase(`${stage.text}\nTu vi: [${progressBar(interim, result.required)}] ${interim}/${result.required}`, { delayMs: 540 });
       }
       const missions = engine.missionStatus(result.player);
       return send(api, event, `✨ HẤP THU LINH KHÍ THÀNH CÔNG!
