@@ -429,7 +429,7 @@ Panel có: danh sách bot con (pid, uptime, restart, crash-loop) • chạy/dừ
 
 ## 🔧 Yêu cầu
 
-- **Node.js** phiên bản **v20 trở lên**
+- **Node.js** phiên bản **v20.18 trở lên** (khuyến nghị Node.js 22, đồng nhất Render/Docker/CI)
 
 - **Khi sử dụng hệ điều hành Windowns bạn cần phải cài các font trong plugins/cache/... để có font chữ cho canvas**
 
