@@ -370,7 +370,7 @@ assets/
 ### Bước 2 — Deploy Render (không cần thẻ)
 
 1. Đăng ký [render.com](https://render.com) (bằng GitHub, **không cần thẻ**)
-2. **New +** → **Web Service** → chọn repo `DEVTRAN07/JOHNTRAN` (repo phải **Public**)
+2. **New +** → **Web Service** → chọn repo `DEVTRAN07/JOHNTRAN-JS` (repo phải **Public**)
 3. Cấu hình:
 
 | Ô | Chọn gì |
@@ -388,7 +388,8 @@ assets/
 | `SUPABASE_URL` | URL project Supabase |
 | `SUPABASE_SERVICE_KEY` | service_role key |
 | `JT_PANEL__ENABLED` | `1` (bật panel API) |
-| `JT_PANEL__TOKEN` | mật khẩu panel (bắt buộc khi public) |
+| `JT_PANEL__TOKEN` | tạo bằng `openssl rand -hex 32` (bắt buộc khi public) |
+| `JT_PANEL__ALLOWED_ORIGINS` | origin của GitHub Pages, ví dụ `https://<user>.github.io` |
 | `JT_ACCOUNT_JSON` | nội dung file `account.json` |
 | `JT_COOKIE_JSON` | nội dung file `cookie.json` |
 | `JT_AI__GEMINI_KEYS` | key Gemini (tuỳ chọn) |
@@ -414,7 +415,7 @@ Từ đó Render luôn có request mỗi 5 phút → bot không bao giờ ngủ 
 ### Bước 4 — Panel trên GitHub Pages
 
 1. Repo → **Settings → Pages** → Source: `main` branch, thư mục `/docs` → Save
-2. Mở `https://<user>.github.io/JOHNTRAN/panel.html`
+2. Mở `https://<user>.github.io/JOHNTRAN-JS/panel.html`
 3. Nhập **REMOTE PANEL URL** = URL Render + **TOKEN** = `JT_PANEL__TOKEN` → Bấm **Kết nối**
 
 Panel có: danh sách bot con (pid, uptime, restart, crash-loop) • chạy/dừng/khởi động lại/xoá • xem log realtime • xem QR đăng nhập • bật/tắt auto-restart • metrics • top lệnh • audit log admin.
