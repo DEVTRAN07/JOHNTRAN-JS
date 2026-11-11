@@ -216,7 +216,7 @@ listener(api);
 require("./core/panelBridge").start({
   api,
   port: Number(process.env.JT_BRIDGE_PORT) || 3901,
-  token: process.env.JT_BRIDGE_TOKEN || global.config?.panel?.bridge_token || global.config?.panel?.token || undefined
+  token: process.env.JT_BRIDGE_TOKEN || global.config?.panel?.bridge_token || undefined
 }).catch(() => { /* hỏng bridge không được làm chết bot */ });
 
 // Lazy preload heavy modules in background (jimp, cheerio, canvas, axios, ...)
