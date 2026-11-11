@@ -139,7 +139,6 @@ module.exports.run = async function ({ args = [], event, api, Users }) {
 ⚜️ ${engine.SECT.name}
 📜 Danh hiệu: ${engine.SECT.title}
 👑 Tông Chủ: ${masterName}
-🆔 Chủ nhân ID: ${masterId || "Chưa cấu hình"}
 👥 Môn đồ: ${getMemberCount(Users)}
 💎 Tiền tệ riêng: Linh thạch tông môn
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
