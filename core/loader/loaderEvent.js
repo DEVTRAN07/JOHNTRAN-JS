@@ -5,6 +5,7 @@ const { extractDependencies, installMissingDeps } = require("./pluginDeps");
 
 const Users = require("../controller/controllerUsers");
 const Threads = require("../controller/controllerThreads");
+const { invalidateEventRegistry } = require("../runtime/eventRegistry");
 
 async function loadEvents(dir = path.join(__dirname, "../..", "plugins", "events")) {
   // Bot thuần lệnh: thư mục events có thể không tồn tại (git không theo dõi
@@ -51,6 +52,7 @@ async function loadEvents(dir = path.join(__dirname, "../..", "plugins", "events
     }
   }
 
+  invalidateEventRegistry(global.client.events);
   logger.log(`Đã tải ${global.client.events.size} event module`, "info");
 
   if (shouldRestart) {
