@@ -71,7 +71,8 @@ module.exports.run = async function ({ args = [], event, api, Users, userData })
   const name = event?.data?.dName || event?.data?.name || "Đạo hữu";
 
   return withUserLock(uid, async () => {
-    const stored = userData && typeof userData === "object" ? userData : (await Users.getData(uid))?.data || {};
+    const userRecord = userData && typeof userData === "object" ? userData : await Users.getData(uid);
+    const stored = userRecord?.data && typeof userRecord.data === "object" ? userRecord.data : userRecord || {};
     let player = stored.tuTien ? engine.normalizePlayer(stored.tuTien) : null;
 
     if (action === "batdau" || action === "start" || action === "begin") {
