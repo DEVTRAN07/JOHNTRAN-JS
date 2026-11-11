@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { typingIndicator, sendPhase, runPhases } = require("../plugins/commands/tutien");
+const { typingIndicator, sendPhase, runPhases } = require("../plugins/commands/tutien")._test;
 
 test("chat stages trigger the real Zalo typing endpoint before each message", async () => {
   const calls = [];
