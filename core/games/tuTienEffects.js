@@ -25,7 +25,7 @@ function progressBar(value, max, width = 14) {
  * - changes the reaction on the command message while the action runs;
  * - calls Zalo's typing endpoint before each staged chat message;
  * - sends actual chat messages (not a local preview or image);
- * - finalizes the reaction as OK/CRY.
+ * - leaves the terminal OK/CRY reaction to handleCommand so existing bot flow stays canonical.
  */
 function createTuTienEffects({ api, event, reply, delayScale = 1 } = {}) {
   let started = false;
@@ -96,15 +96,15 @@ function createTuTienEffects({ api, event, reply, delayScale = 1 } = {}) {
   }
 
   async function finish() {
+    // handleCommand owns the terminal OK reaction after run() resolves.
     if (finished) return;
     finished = true;
-    await setReaction("done");
   }
 
   async function fail() {
+    // handleCommand owns the terminal CRY reaction when run() rejects.
     if (finished) return;
     finished = true;
-    await setReaction("failed");
   }
 
   return {
