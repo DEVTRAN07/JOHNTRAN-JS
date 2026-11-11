@@ -16,20 +16,9 @@ const REALMS = [
 ];
 
 const DEFAULT_PLAYER = Object.freeze({
-  version: 1,
-  realmIndex: 0,
-  stageIndex: 0,
-  cultivation: 0,
-  spiritStones: 100,
-  hp: 100,
-  maxHp: 100,
-  attack: 10,
-  defense: 5,
-  wins: 0,
-  losses: 0,
-  lastCultivateAt: 0,
-  lastBreakthroughAt: 0,
-  createdAt: 0
+  version: 1, realmIndex: 0, stageIndex: 0, cultivation: 0,
+  spiritStones: 100, hp: 100, maxHp: 100, attack: 10, defense: 5,
+  wins: 0, losses: 0, lastCultivateAt: 0, lastBreakthroughAt: 0, createdAt: 0
 });
 
 function createPlayer(now = Date.now()) {
@@ -55,13 +44,14 @@ function requiredCultivation(player) {
   return 100 + player.realmIndex * 65 + player.stageIndex * 35;
 }
 
-function cultivate(playerInput, now = Date.now()) {
+function cultivate(playerInput, now = Date.now(), random = Math.random) {
   const player = normalizePlayer(playerInput, now);
   const cooldownMs = 30_000;
   const remaining = cooldownMs - (now - player.lastCultivateAt);
-  if (remaining > 0) return { ok: false, code: "COOLDOWN", remainingMs: remaining, player };
-
-  const gain = 18 + Math.floor(player.realmIndex * 2) + Math.floor(Math.random() * 13);
+  if (player.lastCultivateAt > 0 && remaining > 0) {
+    return { ok: false, code: "COOLDOWN", remainingMs: remaining, player };
+  }
+  const gain = 18 + Math.floor(player.realmIndex * 2) + Math.floor(random() * 13);
   player.cultivation += gain;
   player.spiritStones += 3;
   player.lastCultivateAt = now;
@@ -71,15 +61,13 @@ function cultivate(playerInput, now = Date.now()) {
 function breakthrough(playerInput, now = Date.now(), random = Math.random) {
   const player = normalizePlayer(playerInput, now);
   const required = requiredCultivation(player);
-  if (player.cultivation < required) {
-    return { ok: false, code: "NOT_READY", missing: required - player.cultivation, required, player };
-  }
-  if (player.spiritStones < 20) {
-    return { ok: false, code: "NEED_STONES", player };
-  }
+  if (player.cultivation < required) return { ok: false, code: "NOT_READY", missing: required - player.cultivation, required, player };
+  if (player.spiritStones < 20) return { ok: false, code: "NEED_STONES", player };
   const cooldownMs = 60_000;
   const remaining = cooldownMs - (now - player.lastBreakthroughAt);
-  if (remaining > 0) return { ok: false, code: "COOLDOWN", remainingMs: remaining, player };
+  if (player.lastBreakthroughAt > 0 && remaining > 0) {
+    return { ok: false, code: "COOLDOWN", remainingMs: remaining, player };
+  }
 
   player.spiritStones -= 20;
   player.lastBreakthroughAt = now;
