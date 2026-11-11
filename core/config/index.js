@@ -140,7 +140,8 @@ const DEFAULTS = {
     host: "0.0.0.0",
     port: 3000,
     token: "",
-    bridge_token: ""
+    bridge_token: "",
+    allowed_origins: []
   },
   zalo_client_config: {},
   // Tải media pure JS (autodown) — cookies cho fetch khi trang yêu cầu đăng nhập
@@ -264,6 +265,9 @@ function validate(config) {
   }
   if (config.panel && config.panel.enabled && !Number.isFinite(config.panel.port)) {
     errors.push("panel.port phải là số khi panel.enabled = true");
+  }
+  if (config.panel && config.panel.allowed_origins !== undefined && !Array.isArray(config.panel.allowed_origins)) {
+    errors.push("panel.allowed_origins phải là mảng origin");
   }
   return errors;
 }

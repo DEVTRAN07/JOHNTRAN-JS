@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { botPaths } = require("./botManager");
+const { assertPanelToken, isPanelRequestAuthorized } = require("../utils/tokenSecurity");
 const { installMonitoring, httpMetricsMiddleware, register } = require("../core/monitoring");
 let dbUtils, storeDb;
 try { dbUtils = require("../utils/db"); storeDb = dbUtils.db || dbUtils; } catch { dbUtils = null; storeDb = null; }
@@ -84,6 +85,11 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 </header>
 <main>
   <div class="metrics" id="metricsBar"></div>
+  <div class="toolbar" id="authBar">
+    <input id="panelToken" type="password" placeholder="Panel token (để trống nếu chỉ chạy localhost)" autocomplete="current-password">
+    <button class="primary" onclick="connectPanel()">Kết nối Panel</button>
+    <small>Token chỉ được giữ trong phiên tab hiện tại.</small>
+  </div>
   <div class="toolbar">
     <input id="newBotName" placeholder="Tên bot con (vd: bot1)" maxlength="32">
     <button class="primary" onclick="createBot()">+ Tạo bot con</button>
@@ -105,9 +111,16 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <div class="toast" id="toast"></div>
 
 <script>
-const TOKEN = new URLSearchParams(location.search).get("token") || "";
+let TOKEN = sessionStorage.getItem("jt_panel_token") || "";
 let logTimer = null;
 const state = { bots: [] };
+
+function connectPanel() {
+  TOKEN = document.getElementById("panelToken")?.value.trim() || "";
+  if (TOKEN) sessionStorage.setItem("jt_panel_token", TOKEN);
+  else sessionStorage.removeItem("jt_panel_token");
+  refresh();
+}
 
 async function api(pathname, options = {}) {
   const res = await fetch("/api" + pathname, {
@@ -281,6 +294,7 @@ setInterval(() => {
   document.getElementById("clock").textContent = new Date().toLocaleString("vi-VN");
 }, 1000);
 
+if (TOKEN) document.getElementById("panelToken").value = TOKEN;
 refresh();
 setInterval(refresh, 5000);
 </script>
@@ -403,45 +417,58 @@ function enrichBot(bot) {
 }
 
 function startPanel({ manager, config }) {
-  const token = config?.panel?.token || "";
-  // Token dùng để proxy chat sang cầu nối bot (127.0.0.1) — phải GIỐNG nhau
-  // giữa panel proxy và env JT_BRIDGE_TOKEN mà bot con nhận được. Nếu để trống
-  // → sinh ngẫu nhiên một lần, dùng chung cho proxy + (nếu manager hỗ trợ) bot con.
-  let bridgeToken = config?.panel?.bridge_token || config?.panel?.token
-    || process.env.JT_BRIDGE_TOKEN || process.env.JT_PANEL__TOKEN || "";
-  if (!bridgeToken) bridgeToken = crypto.randomBytes(24).toString("hex");
+  const token = String(config?.panel?.token || process.env.JT_PANEL__TOKEN || "").trim();
+  const port = Number(process.env.PORT) || Number(config?.panel?.port) || 3000;
+  const host = config?.panel?.host || "0.0.0.0";
+  assertPanelToken(token, host);
+
+  // Bridge sử dụng secret riêng, không dùng lại token đăng nhập dashboard.
+  let bridgeToken = config?.panel?.bridge_token || process.env.JT_BRIDGE_TOKEN || "";
+  if (!bridgeToken) bridgeToken = crypto.randomBytes(32).toString("hex");
   if (manager && typeof manager.setBridgeToken === "function") {
     manager.setBridgeToken(bridgeToken);
   }
   // Koyeb/Railway inject PORT — panel phải bind đúng port đó để health check + routing
-  const port = Number(process.env.PORT) || Number(config?.panel?.port) || 3000;
-  const host = config?.panel?.host || "0.0.0.0";
 
   const server = http.createServer(async (req, res) => {
     const trackHttp = httpMetricsMiddleware();
     await new Promise((resolve) => trackHttp(req, res, resolve));
     try {
-      // Prometheus /metrics endpoint (raw http server)
-      const metricsUrl = new URL(req.url, `http://${req.headers.host}`);
-      if (req.method == "GET" && metricsUrl.pathname == "/metrics") {
-        const body = await register.metrics();
-        res.writeHead(200, { "Content-Type": register.contentType });
-        return res.end(body);
-      }
       const url = new URL(req.url, `http://${req.headers.host}`);
       const pathname = url.pathname;
 
-      // ===== CORS: cho phép dashboard tĩnh (Vercel) gọi API panel từ origin khác =====
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+      // CORS chỉ mở cho những dashboard origin do chủ bot cấu hình.
+      const origin = req.headers.origin || "";
+      const allowedOrigins = Array.isArray(config?.panel?.allowed_origins) ? config.panel.allowed_origins : [];
+      res.setHeader("Vary", "Origin");
+      if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+      }
       if (req.method === "OPTIONS") {
+        if (origin && !allowedOrigins.includes(origin)) return sendJson(res, 403, { error: "Origin chưa được cho phép trong panel.allowed_origins" });
         res.writeHead(204);
         return res.end();
       }
 
-      // Public QR endpoint (no token): serves only bot QR image for easy Render/cloud login.
-      // Does NOT bypass auth for /api/* and does not expose bot data.
+      // API, QR và metrics đều được bảo vệ. /health và tài nguyên giao diện tĩnh
+      // giữ public để health-check/deploy không bị phá vỡ.
+      const protectedPath = pathname === "/metrics" || pathname === "/qr" || pathname === "/qr.png"
+        || pathname.startsWith("/qr/") || pathname === "/api" || pathname.startsWith("/api/");
+      if (protectedPath && !isPanelRequestAuthorized(req, token, host)) {
+        res.setHeader("Cache-Control", "no-store");
+        return sendJson(res, 401, { error: "Unauthorized: cần Authorization: Bearer <panel-token>" });
+      }
+
+      // Prometheus metrics không công khai.
+      if (req.method === "GET" && pathname === "/metrics") {
+        const body = await register.metrics();
+        res.writeHead(200, { "Content-Type": register.contentType, "Cache-Control": "no-store" });
+        return res.end(body);
+      }
+
+      // QR endpoint cũng yêu cầu Bearer token; không còn URL public chứa QR session.
       if (req.method === "GET" && (pathname === "/qr" || pathname === "/qr.png" || pathname.startsWith("/qr/"))) {
         let botName = url.searchParams.get("bot") || "main";
         if (pathname.startsWith("/qr/")) {
@@ -460,14 +487,6 @@ function startPanel({ manager, config }) {
         const buffer = fs.readFileSync(qrFile);
         res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" });
         return res.end(buffer);
-      }
-
-      if (token && pathname.startsWith("/api")) {
-        const header = req.headers.authorization || "";
-        const provided = header.startsWith("Bearer ") ? header.slice(7) : url.searchParams.get("token");
-        if (provided !== token) {
-          return sendJson(res, 401, { error: "Sai token" });
-        }
       }
 
       // Panel UI tĩnh (docs/) — xử lý trước mọi route API

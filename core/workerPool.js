@@ -52,11 +52,15 @@ function runInWorker(scriptName, data, options = {}) {
 
       const size = Math.max(1, Number(options.size) || DEFAULT_POOL_SIZE);
       const pool = getOrCreatePool(scriptName, size);
-      const worker = pool.workers[pool.index];
+      const workerIndex = pool.index;
       pool.index = (pool.index + 1) % pool.workers.length;
 
-      if (worker._startupError) {
-        return reject(worker._startupError);
+      // Workers can exit after their idle timeout or be terminated after a
+      // task timeout. Never send a new task to a dead Worker instance.
+      let worker = pool.workers[workerIndex];
+      if (!worker || worker.threadId === -1 || worker._startupError) {
+        worker = createWorker(scriptName);
+        pool.workers[workerIndex] = worker;
       }
 
       let timer = null;
@@ -105,10 +109,8 @@ function runInWorker(scriptName, data, options = {}) {
       }
 
       function onExit(code) {
-        if (code !== 0) {
-          cleanup();
-          reject(new Error(`worker ${scriptName} exited with code ${code}`));
-        }
+        cleanup();
+        reject(new Error(`worker ${scriptName} exited before responding (code ${code})`));
       }
 
       worker.on("message", onMessage);

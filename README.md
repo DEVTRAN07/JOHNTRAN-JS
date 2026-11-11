@@ -241,7 +241,7 @@ assets/
 - **Menu phân trang thật sự**: `/menu next` / `/menu prev` / `/menu <số>` / `/menu out`; khi menu đang mở thì gõ trần `next` / `prev` / `out` (khỏi prefix) cũng chuyển trang được — không bị cooldown chặn. Nhạc (`/scl next`) cũng vậy.
 - **Tự thu hồi tin bot**: tin nhắn, ảnh/tệp, voice, video, sticker và thẻ liên hệ do bot gửi được thu hồi bằng API `undo` sau 1 phút. Đây không phải TTL gốc của Zalo nên không có đồng hồ đếm hay hiệu ứng nứt; lịch thu hồi trong RAM sẽ mất nếu bot khởi động lại trước hạn.
 - **Đổi storage**: bỏ better-sqlite3 (native), dùng JSON store atomic ghi `data/store.json`, mỗi bot con một file riêng.
-- **Web panel + bot con**: bật `panel.enabled: true` rồi chạy `npm start`, mở `http://localhost:3000` — tạo/dừng/xoá bot con, log realtime, QR đăng nhập, metrics bar, auto-restart, watchdog crash loop.
+- **Web panel + bot con**: bật `panel.enabled: true` rồi chạy `npm start`, mở `http://localhost:3000` — tạo/dừng/xoá bot con, log realtime, QR đăng nhập, metrics bar, auto-restart, watchdog crash loop. Khi bind `0.0.0.0` hoặc triển khai cloud, bắt buộc đặt `JT_PANEL__TOKEN` (ít nhất 32 ký tự; khuyến nghị `openssl rand -hex 32`). Dashboard gửi token bằng `Authorization: Bearer`, không dùng query string. CORS ngoài origin phải khai báo trong `panel.allowed_origins` hoặc `JT_PANEL__ALLOWED_ORIGINS`.
 - **Đã xoá toàn bộ lệnh game** (taixiu, baucua, daily, tiền tệ, dt/dautruong...) và dữ liệu liên quan.
 
 **Nguyên tắc bảo mật:**
@@ -370,7 +370,7 @@ assets/
 ### Bước 2 — Deploy Render (không cần thẻ)
 
 1. Đăng ký [render.com](https://render.com) (bằng GitHub, **không cần thẻ**)
-2. **New +** → **Web Service** → chọn repo `DEVTRAN07/JOHNTRAN` (repo phải **Public**)
+2. **New +** → **Web Service** → chọn repo `DEVTRAN07/JOHNTRAN-JS` (repo phải **Public**)
 3. Cấu hình:
 
 | Ô | Chọn gì |
@@ -388,7 +388,8 @@ assets/
 | `SUPABASE_URL` | URL project Supabase |
 | `SUPABASE_SERVICE_KEY` | service_role key |
 | `JT_PANEL__ENABLED` | `1` (bật panel API) |
-| `JT_PANEL__TOKEN` | mật khẩu panel (bắt buộc khi public) |
+| `JT_PANEL__TOKEN` | tạo bằng `openssl rand -hex 32` (bắt buộc khi public) |
+| `JT_PANEL__ALLOWED_ORIGINS` | origin của GitHub Pages, ví dụ `https://<user>.github.io` |
 | `JT_ACCOUNT_JSON` | nội dung file `account.json` |
 | `JT_COOKIE_JSON` | nội dung file `cookie.json` |
 | `JT_AI__GEMINI_KEYS` | key Gemini (tuỳ chọn) |
@@ -414,7 +415,7 @@ Từ đó Render luôn có request mỗi 5 phút → bot không bao giờ ngủ 
 ### Bước 4 — Panel trên GitHub Pages
 
 1. Repo → **Settings → Pages** → Source: `main` branch, thư mục `/docs` → Save
-2. Mở `https://<user>.github.io/JOHNTRAN/panel.html`
+2. Mở `https://<user>.github.io/JOHNTRAN-JS/panel.html`
 3. Nhập **REMOTE PANEL URL** = URL Render + **TOKEN** = `JT_PANEL__TOKEN` → Bấm **Kết nối**
 
 Panel có: danh sách bot con (pid, uptime, restart, crash-loop) • chạy/dừng/khởi động lại/xoá • xem log realtime • xem QR đăng nhập • bật/tắt auto-restart • metrics • top lệnh • audit log admin.
@@ -428,21 +429,32 @@ Panel có: danh sách bot con (pid, uptime, restart, crash-loop) • chạy/dừ
 
 ## 🔧 Yêu cầu
 
-- **Node.js** phiên bản **v20 trở lên**
+- **Node.js** phiên bản **v20.18 trở lên** (khuyến nghị Node.js 22, đồng nhất Render/Docker/CI)
 
 - **Khi sử dụng hệ điều hành Windowns bạn cần phải cài các font trong plugins/cache/... để có font chữ cho canvas**
 
 ### 📦 Cài đặt Bot
 
 ```bash
-git clone https://github.com/DEVTRAN07/JOHNTRAN
-cd JOHNTRAN
+git clone https://github.com/DEVTRAN07/JOHNTRAN-JS.git
+cd JOHNTRAN-JS
 npm install
 ```
 
 > **Lưu ý `zalo-client`:** thư viện chưa publish lên npm. Bot đang gắn bản build sẵn qua `file:../Zalo-Client` (clone + `npm run build` repo [Zalo-Client](https://github.com/DEVTRAN07/Zalo-Client) cạnh thư mục bot). Khi đã publish npm, đổi thành `"zalo-client": "^3.0.0"` trong package.json.
 
 ---
+
+### 🔐 Panel & triển khai an toàn (v4)
+
+- Panel mặc định tắt. Khi mở public/cloud, đặt `JT_PANEL__TOKEN` bằng secret mới sinh (không dùng token từng commit trong repo). Ví dụ: `openssl rand -hex 32`.
+- Có thể cấu hình bằng biến môi trường: `JT_PANEL__ENABLED=true`, `JT_PANEL__HOST=0.0.0.0`, `JT_PANEL__PORT=3000`, `JT_PANEL__TOKEN=<secret>`.
+- Chỉ chạy local có thể đặt `JT_PANEL__HOST=127.0.0.1`; ở chế độ loopback token không bắt buộc.
+- Bridge bot nội bộ dùng secret độc lập `JT_BRIDGE_TOKEN` (để trống sẽ tự sinh khi Panel khởi động), không tái sử dụng token dashboard.
+- Dashboard gửi token qua header `Authorization: Bearer <token>`; token chỉ lưu trong `sessionStorage` của tab và không được gắn vào URL. Token qua query string bị từ chối.
+- `/api/*`, `/metrics` và endpoint QR đều cần xác thực. `/health` và các file giao diện tĩnh vẫn public cho health-check và tải giao diện.
+- Dashboard chạy ở domain khác phải được thêm vào `panel.allowed_origins` hoặc `JT_PANEL__ALLOWED_ORIGINS` (các origin phân tách bằng dấu phẩy). Không bật wildcard CORS.
+- Nếu trước đây dùng token đã commit trong lịch sử Git, hãy coi token cũ đã lộ và thay mới ở mọi nơi đang triển khai.
 
 ## 🔐 Đăng nhập Bot
 

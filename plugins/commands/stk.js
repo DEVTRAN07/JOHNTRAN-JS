@@ -8,6 +8,7 @@ const { buildStickerUrl } = require("../../core/stickerFactory");
 const { parseQuote } = require("../../core/mediaReply");
 const { frameList } = require("../../core/stickerFrames");
 const { mediaCache } = require("../../core/mediaCache");
+const { enqueue } = require("../../core/jobQueue");
 
 const FRAMES = frameList();
 const frameOptions = () => FRAMES.map(({ id, name }) => `${id}. ${name}`).join("\n");
@@ -147,24 +148,25 @@ module.exports.run = async function ({ api, event, args }) {
     // Chuyển đổi ffmpeg chạy ở worker pool để không chặn main thread.
     let stickerFile;
     try {
-      stickerFile = await runInWorker("stickerWorker", {
+      stickerFile = await enqueue("sticker", () => runInWorker("stickerWorker", {
         url: srcPath,
         frameId: selection.frameId,
         forceStatic: false,
         threadId,
         type,
         apiToken: global.config?.token
-      }, { timeout: 300000 });
+      }, { timeout: 300000 }), { key: `${url}|${selection.frameId}` });
     } catch (error) {
       const detail = errDetail(error);
       console.error("[stk] worker failed:", detail || error);
       if (error?.stack) console.error(error.stack);
       try { fs.unlinkSync(srcPath); } catch { /* bỏ qua */ }
       const msg = error?.userMessage || ("❌ Tạo sticker thất bại: " + (detail || "lỗi không xác định"));
-      try { fs.unlinkSync(srcPath); } catch { /* bỏ qua */ }
       return safeSend(api, { plain: true, msg, ttl: 60000 }, threadId, type);
     }
 
+    // Worker đã đọc xong nguồn; giải phóng file ngay trước bước upload.
+    try { fs.unlinkSync(srcPath); } catch { /* already removed */ }
     let stickerUrl;
     try {
       stickerUrl = await uploadStickerToZalo(api, stickerFile, threadId, type);

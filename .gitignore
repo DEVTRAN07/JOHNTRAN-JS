@@ -26,3 +26,11 @@ vscode/
 
 # python
 __pycache__/
+
+# Runtime-generated caches and temporary artifacts
+core/assets/cache/
+assets/cache/media/
+assets/cache/sticker/
+*.tmp
+*.scratch
+*.session

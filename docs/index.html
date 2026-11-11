@@ -65,7 +65,7 @@
 
 <script>
 const url = localStorage.getItem("jt_panel_url") || "";
-const token = localStorage.getItem("jt_panel_token") || "";
+const token = sessionStorage.getItem("jt_panel_token") || "";
 async function check() {
   if (!url) {
     document.getElementById("runtimeState").textContent = "chưa cấu hình";
@@ -73,7 +73,7 @@ async function check() {
     return;
   }
   try {
-    const res = await fetch(url + "/api/bots?token=" + encodeURIComponent(token));
+    const res = await fetch(url + "/api/bots", { headers: token ? { Authorization: "Bearer " + token } : {} });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     const online = data.bots.filter(b => b.status === "online").length;

@@ -15,8 +15,9 @@ const VALID_TYPES = Object.keys(DEFAULT_TTL);
 
 function envTTL(type) {
   const raw = process.env["MEDIA_CACHE_TTL_" + type.toUpperCase()];
-  const ms = raw == null ? NaN : Number(raw);
-  return Number.isFinite(ms) && ms > 0 ? ms : DEFAULT_TTL[type] || 86400000;
+  // .env.example documents TTL values in seconds; convert to internal milliseconds.
+  const seconds = raw == null ? NaN : Number(raw);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : DEFAULT_TTL[type] || 86400000;
 }
 
 function sha256Hex(data) {
@@ -280,9 +281,40 @@ class MediaCache {
   }
 
   _isExpired(meta) {
-    if (!meta) return true;
+    if (!meta || typeof meta !== "object") return true;
     const expiresAt = Number(meta.expiresAt || 0);
     return expiresAt > 0 && Date.now() > expiresAt;
+  }
+
+  _removeLocal(type, key) {
+    for (const file of [this._blobPath(type, key), this._metaPath(type, key)]) {
+      try { fs.unlinkSync(file); } catch (e) { /* already removed */ }
+    }
+  }
+
+  _readLocal(type, key) {
+    const blobPath = this._blobPath(type, key);
+    const meta = this._readMeta(type, key);
+    if (!meta || this._isExpired(meta)) {
+      this._removeLocal(type, key);
+      return null;
+    }
+    try {
+      const stat = fs.statSync(blobPath);
+      if (!stat.isFile() || stat.size <= 0 || Number(meta.size) !== stat.size) {
+        this._removeLocal(type, key);
+        return null;
+      }
+      const buffer = fs.readFileSync(blobPath);
+      if (!buffer.length || (meta.sha256 && meta.sha256 !== sha256Hex(buffer)) || this._makeKey(buffer, meta.metadata || {}) !== key) {
+        this._removeLocal(type, key);
+        return null;
+      }
+      return { buffer, meta };
+    } catch (e) {
+      this._removeLocal(type, key);
+      return null;
+    }
   }
 
   _refreshLocalFileCount() {
@@ -310,8 +342,8 @@ class MediaCache {
     const expiresAt = Date.now() + ttl;
     const contentType = (metadata.contentType) || this._contentTypeFor(t);
 
-    const localMeta = this._readMeta(t, key);
-    if (localMeta && !this._isExpired(localMeta) && fs.existsSync(this._blobPath(t, key))) {
+    const localEntry = this._readLocal(t, key);
+    if (localEntry) {
       this._stats.hits++;
       this._refreshLocalFileCount();
       return { url: this.getUrl(key), key: key, cached: true };
@@ -358,15 +390,30 @@ class MediaCache {
   async _writeLocal(type, key, buffer, metadata, ttl, contentType, expiresAt) {
     const dir = this._typeDir(type);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(this._blobPath(type, key), buffer);
-    this._writeMeta(type, key, {
+    const blobPath = this._blobPath(type, key);
+    const metaPath = this._metaPath(type, key);
+    const suffix = `${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
+    const blobTemp = `${blobPath}.tmp-${suffix}`;
+    const metaTemp = `${metaPath}.tmp-${suffix}`;
+    const meta = {
       metadata: metadata,
       type: type,
       contentType: contentType,
       size: buffer.length,
+      sha256: sha256Hex(buffer),
       createdAt: Date.now(),
       expiresAt: expiresAt,
-    });
+    };
+    try {
+      fs.writeFileSync(blobTemp, buffer, { flag: "wx" });
+      fs.writeFileSync(metaTemp, JSON.stringify(meta), { flag: "wx" });
+      // Publish metadata first; an interrupted write is treated as a cache miss.
+      fs.renameSync(metaTemp, metaPath);
+      fs.renameSync(blobTemp, blobPath);
+    } finally {
+      try { fs.unlinkSync(blobTemp); } catch (e) { /* renamed or absent */ }
+      try { fs.unlinkSync(metaTemp); } catch (e) { /* renamed or absent */ }
+    }
   }
 
   _contentTypeFor(type) {
@@ -389,14 +436,11 @@ class MediaCache {
     }
 
     if (foundType) {
-      const meta = this._readMeta(foundType, key);
-      if (!this._isExpired(meta)) {
-        const buffer = fs.readFileSync(this._blobPath(foundType, key));
+      const local = this._readLocal(foundType, key);
+      if (local) {
         this._stats.hits++;
-        return { buffer: buffer, metadata: meta && meta.metadata ? meta.metadata : {} };
+        return { buffer: local.buffer, metadata: local.meta.metadata || {} };
       }
-      try { fs.unlinkSync(this._blobPath(foundType, key)); } catch (e) {}
-      this._removeMeta(foundType, key);
     }
 
     if (this.r2) {

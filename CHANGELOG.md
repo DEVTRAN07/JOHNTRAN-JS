@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## [4.0.0] — 2026-11-11
+
+### Security
+- Removed the committed default Panel credential; public binds now fail closed unless `JT_PANEL__TOKEN` is configured with at least 32 characters.
+- Panel API, QR and Prometheus metrics require `Authorization: Bearer`; query-string token authentication is removed.
+- Dashboard tokens are session-scoped in the browser; the internal bot bridge now uses a separate `JT_BRIDGE_TOKEN`.
+- Replaced wildcard CORS with an explicit `panel.allowed_origins` allowlist.
+
+### Runtime & cache
+- Aligned `npm start`, `npm run dev`, `start:prod` and package entry point with the supervisor `index.js`.
+- Aligned Render and CI with Node 22; added the Node engine requirement.
+- Local media-cache reads validate size, checksum and content-derived key; writes publish via temporary files and rename.
+- Corrected `MEDIA_CACHE_TTL_*` handling to interpret documented environment values as seconds.
+
+### Tests
+- Added focused test coverage for Panel token validation and media-cache corruption/expiry.
+- Added `npm test` to the GitHub Actions test job.
+
 ## [1.2.0] — 2026-11-08
 
 ### Added

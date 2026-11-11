@@ -14,6 +14,8 @@ const RESOLVE_TTL = 30 * 60 * 1000;
 const searchCache = caches.musicSearch;
 const resolveCache = caches.musicResolve;
 const pendingCache = caches.musicPending;
+const searchInFlight = new Map();
+const resolveInFlight = new Map();
 
 function registerProvider(provider) {
   if (!provider || typeof provider.search !== "function" || typeof provider.resolve !== "function") {
@@ -44,14 +46,18 @@ async function search(providerName, query, limit) {
   const hit = searchCache.get(cacheKey);
   if (hit !== undefined) return hit.tracks;
 
-  const tracks = await provider.search(query, maxResults);
-  if (!Array.isArray(tracks) || tracks.length === 0) {
-    const error = new Error(`Không tìm thấy bài hát nào cho '${query}' trên ${provider.label}`);
-    error.noResults = true;
-    throw error;
-  }
-  searchCache.set(cacheKey, { tracks }, SEARCH_TTL);
-  return tracks;
+  if (searchInFlight.has(cacheKey)) return searchInFlight.get(cacheKey);
+  const task = Promise.resolve().then(() => provider.search(query, maxResults)).then((tracks) => {
+    if (!Array.isArray(tracks) || tracks.length === 0) {
+      const error = new Error(`Không tìm thấy bài hát nào cho '${query}' trên ${provider.label}`);
+      error.noResults = true;
+      throw error;
+    }
+    searchCache.set(cacheKey, { tracks }, SEARCH_TTL);
+    return tracks;
+  }).finally(() => searchInFlight.delete(cacheKey));
+  searchInFlight.set(cacheKey, task);
+  return task;
 }
 
 async function resolve(providerName, track, options = {}) {
@@ -59,10 +65,14 @@ async function resolve(providerName, track, options = {}) {
   const hit = resolveCache.get(cacheKey);
   if (hit !== undefined) return hit.url;
 
+  if (resolveInFlight.has(cacheKey)) return resolveInFlight.get(cacheKey);
   const provider = getProvider(providerName);
-  const url = await provider.resolve(track, options);
-  if (url) resolveCache.set(cacheKey, { url }, RESOLVE_TTL);
-  return url;
+  const task = Promise.resolve().then(() => provider.resolve(track, options)).then((url) => {
+    if (url) resolveCache.set(cacheKey, { url }, RESOLVE_TTL);
+    return url;
+  }).finally(() => resolveInFlight.delete(cacheKey));
+  resolveInFlight.set(cacheKey, task);
+  return task;
 }
 
 function setPending(key, providerName, tracks, query = "", page = 1) {

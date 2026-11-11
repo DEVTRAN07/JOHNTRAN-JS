@@ -1,13 +1,13 @@
 {
   "name": "john_tran_bot",
-  "version": "1.2.0",
+  "version": "4.0.0",
   "description": "Chatbot Zalo Node.js dựa trên Zalo-Client.",
-  "main": "dist/index.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
     "build": "tsc",
-    "start:prod": "NODE_ENV=production node dist/index.js",
+    "start:prod": "NODE_ENV=production node index.js",
     "test": "node --test test/*.test.js",
     "monitor:memory": "node -e \"setInterval(() => { const mem = process.memoryUsage(); console.log(new Date().toISOString(), 'RSS:', (mem.rss / 1024 / 1024).toFixed(2), 'MB', 'Heap used:', (mem.heapUsed / 1024 / 1024).toFixed(2), 'MB', 'Heap total:', (mem.heapTotal / 1024 / 1024).toFixed(2), 'MB', 'External:', (mem.external / 1024 / 1024).toFixed(2), 'MB'); }, 30000);\"",
     "build:native": "node native/build.js"
@@ -22,12 +22,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DEVTRAN07/JOHNTRAN.git"
+    "url": "https://github.com/DEVTRAN07/JOHNTRAN-JS.git"
   },
   "bugs": {
-    "url": "https://github.com/DEVTRAN07/JOHNTRAN/issues"
+    "url": "https://github.com/DEVTRAN07/JOHNTRAN-JS/issues"
   },
-  "homepage": "https://github.com/DEVTRAN07/JOHNTRAN#readme",
+  "homepage": "https://github.com/DEVTRAN07/JOHNTRAN-JS#readme",
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
     "axios": "^1.11.0",
@@ -58,5 +58,8 @@
     "nodemon": "^3.0.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.18.0"
   }
 }

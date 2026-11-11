@@ -393,8 +393,6 @@ async function start({ api, port = 3901, token } = {}) {
   if (token) { resolved = String(token); source = "arg"; }
   else if (process.env.JT_BRIDGE_TOKEN) { resolved = process.env.JT_BRIDGE_TOKEN; source = "env:JT_BRIDGE_TOKEN"; }
   else if (global.config?.panel?.bridge_token) { resolved = global.config.panel.bridge_token; source = "config:panel.bridge_token"; }
-  else if (global.config?.panel?.token) { resolved = global.config.panel.token; source = "config:panel.token"; }
-  else if (process.env.JT_PANEL__TOKEN) { resolved = process.env.JT_PANEL__TOKEN; source = "env:JT_PANEL__TOKEN"; }
 
   if (resolved) {
     BRIDGE_TOKEN = resolved;

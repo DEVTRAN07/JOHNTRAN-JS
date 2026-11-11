@@ -12,8 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: npm install
+          node-version: "22"
+      - run: npm ci
+      - run: npm test
       - run: node scripts/test-commands.js
       - run: node scripts/test-all.js
 

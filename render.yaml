@@ -7,7 +7,7 @@ services:
     startCommand: node index.js
     envVars:
       - key: NODE_VERSION
-        value: "20.11.0"
+        value: "22.22.1"
     disk:
       name: bot-data
       mountPath: /opt/render/project/src
