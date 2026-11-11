@@ -190,9 +190,17 @@ async function runCmd(name, args = [], eventOverride = {}) {
     console.log("LỖI:");
     for (const f of failed) console.log(`  ✗ ${f.name}: ${f.detail}`);
   }
+  try {
+    await require(path.join(ROOT, "core/workerPool")).shutdown();
+  } catch (shutdownError) {
+    console.error("Không thể đóng worker pool:", shutdownError.message);
+  }
   clearInterval(testKeepAlive);
   process.exit(failed.length ? 1 : 0);
-})().catch(e => {
+})().catch(async e => {
+  try {
+    await require(path.join(ROOT, "core/workerPool")).shutdown();
+  } catch { /* preserve the original test failure */ }
   clearInterval(testKeepAlive);
   console.error("CRASH:", e);
   process.exit(1);
