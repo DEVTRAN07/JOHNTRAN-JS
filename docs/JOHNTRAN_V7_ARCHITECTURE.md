@@ -124,3 +124,26 @@ JOHNTRAN-JS/
 - Preserves the legacy callback fields: `api`, `event`, `eventType`, `isSelf`, `reply`, `Users`, `Threads`, `replyData` and `threadType`.
 - Wrapper errors fall back to the original API, matching the previous handler behavior.
 - Added isolated tests for thread-type normalization, reply payload mapping, successful wrapping and fallback behavior.
+
+
+## Phase 7 — Queue, concurrency, game services, cache and integration
+
+### Job Queue and concurrency
+- Extended the existing `core/jobQueue.js`; no parallel queue implementation was introduced.
+- Added bounded lanes for image, GIF, video and download workloads, with lower defaults for memory-heavy media.
+- Added a process-wide worker ceiling (`JT_JOB_GLOBAL_CONCURRENCY`, default 4) in addition to per-lane concurrency and pending/in-flight caps.
+- Kept stable priority ordering, per-key deduplication, backpressure errors and the legacy `stats()[laneName]` shape.
+- Queue metrics now also expose `stats().global`.
+
+### Game domain services
+- Added service boundaries for Tu Tiên engine, economy balance operations, PvP and leaderboard.
+- The existing engine/arena remain the source of game rules; this phase does not migrate player storage or rewrite game progression.
+- The existing `tutien` command now imports the service modules while persisted player fields remain unchanged.
+
+### Cache
+- Existing LRU cache now collapses concurrent `remember(key)` cache misses into one loader promise.
+- TTL, max-size eviction and existing get/set APIs remain intact.
+
+### Integration coverage
+- Added tests for global queue concurrency, cache single-flight/retry, game service transactions, integrated PvP/leaderboard flow and legacy command/event dispatcher contracts.
+- Existing `scripts/test-all.js` remains the broad legacy command smoke test.
