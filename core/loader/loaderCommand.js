@@ -4,6 +4,7 @@ const logger = require("../../utils/logger");
 const { extractDependencies, installMissingDeps } = require("./pluginDeps");
 const Users = require("../controller/controllerUsers");
 const Threads = require("../controller/controllerThreads");
+const { invalidate: invalidateCommandRegistry } = require("../runtime/commandRegistry");
 
 async function loadCommands(commandName = null) {
   const dir = path.join(__dirname, "../..", "plugins", "commands");
@@ -78,6 +79,9 @@ async function loadCommands(commandName = null) {
       }
     }
   }
+
+  // Rebuild alias index lazily after initial load or hot reload.
+  invalidateCommandRegistry(global.client.commands);
 
   logger.log(
     commandName
