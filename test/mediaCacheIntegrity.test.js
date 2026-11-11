@@ -37,7 +37,7 @@ test("local media cache rejects same-size tampering and can rebuild the entry", 
     assert.equal(valid.buffer.toString(), original.toString());
 
     // Giữ nguyên kích thước để kiểm tra checksum, không chỉ metadata.size.
-    fs.writeFileSync(blobPath, Buffer.from("tampered media payload"));
+    fs.writeFileSync(blobPath, Buffer.from("xxxxx media payload"));
     const rejected = await cache.get(uploaded.key);
     assert.equal(rejected, null);
     assert.equal(fs.existsSync(blobPath), false);
