@@ -320,6 +320,26 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
     if (["tranhdoat", "season", "mua"].includes(action)) {
       const sub = String(args[1] || "info").toLowerCase();
       const currentSeason = arena.seasonId();
+      if (["nhan", "claim", "reward"].includes(sub)) {
+        const allRows = Users.getAll();
+        for (const row of allRows) {
+          if (!row?.data?.tuTien) continue;
+          arena.ensureArena(row.data.tuTien);
+          await Users.setData(row.userId, row.data);
+        }
+        const previous = arena.previousSeasonLeaderboard(allRows);
+        const targetSeason = previous.map((row) => row.season).sort().at(-1);
+        const standings = previous.filter((row) => row.season === targetSeason);
+        const rank = standings.findIndex((row) => row.uid === uid);
+        if (!targetSeason || rank < 0 || rank > 2) return sendPhase(api, event, "🎁 Chưa có phần thưởng mùa trước dành cho ngươi. Chỉ Top 3 được nhận thưởng.");
+        arena.ensureArena(player);
+        if (player.arena.previousSeason?.claimed) return sendPhase(api, event, "✅ Phần thưởng mùa này đã được nhận trước đó.");
+        const reward = [500, 300, 150][rank];
+        player.arena.previousSeason.claimed = true;
+        player.sectStones = (Number(player.sectStones) || 0) + reward;
+        savePlayer(stored, player); await Users.setData(uid, stored);
+        return send(api, event, `🏆 VINH DANH TRANH ĐOẠT ${targetSeason}!\n🎖️ Thứ hạng: Top ${rank + 1}\n💎 Thưởng: +${reward} linh thạch tông môn\n🏯 Số dư: ${player.sectStones}`);
+      }
       if (["thamgia", "join"].includes(sub)) {
         const a = arena.ensureArena(player);
         a.joinedSeason = currentSeason;
