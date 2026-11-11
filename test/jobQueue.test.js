@@ -54,7 +54,7 @@ test("job queue rejects work when its pending limit is reached", async () => {
   assert.equal(stats()["test-backpressure"].pending, 0);
 });
 
-test("job queue runs higher-priority pending jobs first", async () => {
+test("job queue runs higher-priority pending jobs first and preserves FIFO ties", async () => {
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   const order = [];
@@ -65,10 +65,29 @@ test("job queue runs higher-priority pending jobs first", async () => {
 
   await new Promise((resolve) => setImmediate(resolve));
   const low = enqueue("test-priority", async () => { order.push("low"); }, { priority: -1 });
-  const normal = enqueue("test-priority", async () => { order.push("normal"); });
+  const normalA = enqueue("test-priority", async () => { order.push("normal-a"); });
   const high = enqueue("test-priority", async () => { order.push("high"); }, { priority: 10 });
+  const normalB = enqueue("test-priority", async () => { order.push("normal-b"); });
 
   release();
-  await Promise.all([first, low, normal, high]);
-  assert.deepEqual(order, ["active", "high", "low", "normal"]);
+  await Promise.all([first, low, normalA, high, normalB]);
+  assert.deepEqual(order, ["active", "high", "normal-a", "normal-b", "low"]);
+});
+
+test("job queue can enforce a total in-flight cap", async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const first = enqueue("test-total-cap", async () => gate, {
+    concurrency: 1, maxPending: 10, maxInFlight: 2
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = enqueue("test-total-cap", async () => "queued");
+  await assert.rejects(
+    enqueue("test-total-cap", async () => "overflow"),
+    /đang xử lý quá nhiều tác vụ/
+  );
+  release("done");
+  assert.deepEqual(await Promise.all([first, second]), ["done", "queued"]);
+  assert.equal(stats()["test-total-cap"].completed, 2);
+  assert.equal(stats()["test-total-cap"].rejected, 1);
 });
