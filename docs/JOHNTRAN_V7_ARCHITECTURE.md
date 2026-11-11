@@ -96,13 +96,14 @@ JOHNTRAN-JS/
 - Handler cũ gọi middleware/dispatcher mới; giữ nguyên command contract và lớp tương thích.
 - Thêm `core/runtime/services/userService.js` và `threadService.js` làm ranh giới nghiệp vụ; hiện ủy quyền cho controller cũ để giữ nguyên schema/cache.
 - Handler và loader dùng service facade mới, nhưng plugin vẫn nhận đúng API `Users`/`Threads` hiện có.
-- Có unit tests riêng cho quyền, cooldown, event registry, dispatcher và domain service facade.
+- Thêm `core/runtime/adapters/database.js`; controller người dùng/nhóm và metrics đi qua adapter, trong khi `utils/db.js` tiếp tục giữ lựa chọn JSON/Supabase và API tương thích.
+- Có unit tests riêng cho quyền, cooldown, event registry, dispatcher, domain service và database adapter.
 
 ### Các đợt tiếp theo
 1. Chuẩn hóa event context và router, nhưng giữ listener cũ làm adapter.
 2. Tách dispatcher khỏi transport handler, giữ nguyên command contract.
 3. Mở rộng domain services cho kinh tế / tu tiên / cộng đồng; chuyển logic ra khỏi controller theo từng nhóm, không đổi schema dữ liệu.
-4. Tách Zalo API và storage thành adapters.
+4. Mở rộng database adapter cho các consumer còn dùng trực tiếp `utils/db.js`, sau đó tách Zalo API thành adapter.
 5. Chuyển media/render sang bounded queue và worker.
 6. Chỉ sau khi parity tests đạt mới di chuyển thư mục hoặc xóa compatibility facade.
 
