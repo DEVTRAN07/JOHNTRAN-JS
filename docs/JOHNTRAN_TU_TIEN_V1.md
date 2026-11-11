@@ -51,3 +51,13 @@ Thưởng được ghi vào số dư riêng `sectStones`, không trộn với li
 - Không thêm dependency và không sửa các lệnh bot khác.
 - Unit tests bao phủ identity, tông môn cố định, nhiệm vụ, nhận thưởng, luyện nhanh, độ kiếp và typing phases.
 - Chưa thực hiện live smoke test trên tài khoản Zalo production.
+
+## Runtime effect engine – sử dụng trong bot thật
+- Module dùng trực tiếp: `core/games/tuTienEffects.js`.
+- Command `plugins/commands/tutien.js` tạo một effect session cho mỗi lần chạy lệnh và chuyển mọi phản hồi qua session này.
+- Trước mỗi pha, engine gọi `api.sendTypingEvent(event.threadId, event.type)`; sau đó gọi `api.sendMessage({ msg }, threadId, type)` để gửi tin thật.
+- Khi bắt đầu, engine gọi `reply.working()` để reaction của tin nhắn gọi lệnh chuyển sang trạng thái đang xử lý. Khi lệnh kết thúc, pipeline `handleCommand` vẫn là nơi kết thúc reaction bằng OK hoặc CRY; không tạo hai luồng reaction tranh chấp.
+- `sequence()` dùng cho hoạt cảnh nhiều pha; `phase()` dùng cho pha trung gian; `result()` gửi kết quả cuối và đóng session; `respond()` xử lý phản hồi ngắn một pha.
+- Nếu typing endpoint không có hoặc lỗi, engine chỉ fallback thời gian chờ ngắn rồi vẫn gửi tin nhắn; không chặn lệnh và không làm mất kết quả.
+- Độ trễ từng pha bị giới hạn tối đa 2.2 giây; engine không dùng timer nền, không gửi media và không render ảnh/GIF.
+- Unit test mô phỏng API Zalo để xác nhận thứ tự typing → sendMessage, fallback khi lỗi, reaction đang chạy và lệnh thực tế được nối vào effect engine.
