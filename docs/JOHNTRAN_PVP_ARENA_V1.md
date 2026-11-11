@@ -39,6 +39,6 @@ PvP statistics are stored under `Users.data.tuTien.arena`: rating, wins, losses,
 
 ## Known limitations to address in the next iteration
 
-- A season's final reward payout/claim flow is not yet automated.
+- Season rollover preserves the last completed season; Top 3 can claim their reward once with `/tutien tranhdoat nhan`.
 - PvP persistence uses the existing Users data controller; it is not a database transaction. Simultaneous opposing commands across multiple bot processes need a shared atomic lock/transaction before horizontal scaling.
 - Media sizes and upload limits are governed by the installed Zalo client/account settings.
