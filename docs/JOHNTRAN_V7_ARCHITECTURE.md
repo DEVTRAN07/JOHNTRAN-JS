@@ -91,8 +91,10 @@ JOHNTRAN-JS/
 ### V7 — Runtime modules (đợt hiện tại)
 - Tách kiểm tra role và group policy ra `core/runtime/middleware/permissions.js`.
 - Tách consume cooldown ra `core/runtime/middleware/cooldown.js`.
-- Handler cũ gọi middleware mới; giữ nguyên thứ tự kiểm tra và nội dung phản hồi.
-- Có unit tests riêng cho role, group policy và cooldown.
+- Thêm `core/runtime/eventRegistry.js`: index subscription theo event type, giữ thứ tự event plugin trước command `handleEvent`, cache và invalidate khi hot reload.
+- Tách gọi command, reaction trạng thái và cô lập lỗi sang `core/runtime/dispatcher.js`.
+- Handler cũ gọi middleware/dispatcher mới; giữ nguyên command contract và lớp tương thích.
+- Có unit tests riêng cho quyền, cooldown, event registry và dispatcher.
 
 ### Các đợt tiếp theo
 1. Chuẩn hóa event context và router, nhưng giữ listener cũ làm adapter.
