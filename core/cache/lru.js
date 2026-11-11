@@ -54,16 +54,21 @@ class LRUCache {
 
   async remember(key, fn, ttl = this.ttl) {
     const cached = this.get(key);
-    if (cached !== undefined) {
-      return cached;
-    }
-    const value = await fn();
-    this.set(key, value, ttl);
-    return value;
+    if (cached !== undefined) return cached;
+    if (this.inFlight.has(key)) return this.inFlight.get(key);
+    const pending = Promise.resolve().then(fn).then((value) => {
+      this.set(key, value, ttl);
+      return value;
+    }).finally(() => {
+      if (this.inFlight.get(key) === pending) this.inFlight.delete(key);
+    });
+    this.inFlight.set(key, pending);
+    return pending;
   }
 
   clear() {
     this.store.clear();
+    this.inFlight.clear();
   }
 
   stats() {
