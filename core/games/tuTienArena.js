@@ -28,6 +28,12 @@ function ensureArena(player) {
   a.draws = Math.max(0, Number(a.draws) || 0);
   a.streak = Math.max(0, Number(a.streak) || 0);
   a.bestStreak = Math.max(a.streak, Number(a.bestStreak) || 0);
+  const currentSeason = seasonId();
+  if (a.seasonId !== currentSeason) {
+    a.seasonId = currentSeason;
+    a.seasonPoints = 0;
+    a.joinedSeason = "";
+  }
   a.seasonPoints = Math.max(0, Number(a.seasonPoints) || 0);
   return a;
 }
@@ -113,7 +119,7 @@ function takeTurn(battle, uid, action = "attack", random = Math.random()) {
 function settleRating(winner, loser) {
   const wa = ensureArena(winner), la = ensureArena(loser);
   wa.wins++; wa.streak++; wa.bestStreak = Math.max(wa.bestStreak, wa.streak);
-  wa.rating += 25; wa.seasonPoints += 30;
+  wa.rating += 25; if (wa.joinedSeason === seasonId()) wa.seasonPoints += 30;
   la.losses++; la.streak = 0; la.rating = Math.max(500, la.rating - 15);
   return { winnerRating: wa.rating, loserRating: la.rating, reward: 30 };
 }
@@ -140,7 +146,7 @@ function seasonId(date = new Date()) {
 }
 function contestStatus(players, now = new Date()) {
   const id = seasonId(now);
-  const rows = leaderboard(players, "seasonPoints", 50).filter((row) => row.seasonPoints > 0);
+  const rows = leaderboard(players, "seasonPoints", 50).filter((row) => row.seasonPoints > 0 && players.some((p) => String(p.userId) === row.uid && p.data.tuTien.arena?.joinedSeason === id));
   return { id, endsAt: new Date(now.getTime() + (7 - ((now.getUTCDay() + 1) % 7)) * 86400000), rows };
 }
 module.exports = {
