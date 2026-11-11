@@ -96,15 +96,15 @@ function enqueue(laneName, run, options = {}) {
   return promise;
 }
 function stats() {
-  return {
-    global: { active: globalActive, concurrency: GLOBAL_CONCURRENCY },
-    lanes: Object.fromEntries([...lanes.entries()].map(([name, lane]) => [name, {
-      active: lane.active, pending: lane.pending.length, concurrency: lane.concurrency,
-      maxPending: lane.maxPending, maxInFlight: lane.maxInFlight,
-      completed: lane.completed, failed: lane.failed, rejected: lane.rejected,
-      oldestPendingMs: lane.pending.length
-        ? Math.max(0, Date.now() - Math.min(...lane.pending.map((job) => job.queuedAt))) : 0
-    }]))
-  };
+  const snapshot = Object.fromEntries([...lanes.entries()].map(([name, lane]) => [name, {
+    active: lane.active, pending: lane.pending.length, concurrency: lane.concurrency,
+    maxPending: lane.maxPending, maxInFlight: lane.maxInFlight,
+    completed: lane.completed, failed: lane.failed, rejected: lane.rejected,
+    oldestPendingMs: lane.pending.length
+      ? Math.max(0, Date.now() - Math.min(...lane.pending.map((job) => job.queuedAt))) : 0
+  }]));
+  // Keep stats()[laneName] intact for existing monitoring integrations.
+  snapshot.global = { active: globalActive, concurrency: GLOBAL_CONCURRENCY };
+  return snapshot;
 }
 module.exports = { enqueue, stats, DEFAULT_LANES, GLOBAL_CONCURRENCY };
