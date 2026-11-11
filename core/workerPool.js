@@ -86,8 +86,14 @@ function getOrCreatePool(scriptName, size) {
 
 function ensureWorkers(pool) {
   if (shuttingDown) return;
-  const alive = pool.workers.filter((record) => !record.dead).length;
-  for (let i = alive; i < pool.size; i++) createWorker(pool, pool.scriptName);
+  const aliveRecords = pool.workers.filter((record) => !record.dead);
+  const busy = aliveRecords.filter((record) => record.busy).length;
+  const idle = aliveRecords.length - busy;
+  // Grow on demand; do not respawn workers that intentionally exited idle.
+  const required = busy + Math.min(pool.size - busy, Math.max(0, pool.pending.length - idle));
+  for (let i = aliveRecords.length; i < required; i++) {
+    createWorker(pool, pool.scriptName);
+  }
 }
 
 function pump(pool) {
@@ -125,6 +131,7 @@ function pump(pool) {
         retireWorker(pool, record, error);
         terminateWorker(record.worker);
         settle(task, error);
+        ensureWorkers(pool);
       }
     }
   } finally {
