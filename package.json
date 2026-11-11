@@ -1,6 +1,6 @@
 {
   "name": "john_tran_bot",
-  "version": "1.2.0",
+  "version": "4.0.0",
   "description": "Chatbot Zalo Node.js dựa trên Zalo-Client.",
   "main": "index.js",
   "scripts": {
@@ -58,5 +58,8 @@
     "nodemon": "^3.0.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.18.0"
   }
 }
