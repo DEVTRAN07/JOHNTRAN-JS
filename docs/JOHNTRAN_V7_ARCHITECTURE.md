@@ -115,3 +115,12 @@ JOHNTRAN-JS/
 - `node scripts/test-commands.js`
 - `node scripts/test-all.js`
 - Kiểm tra hot reload command, alias, quyền admin/support, giới hạn nhóm, cooldown và command Tu Tiên.
+
+
+## Phase 6 — Event Context
+
+- Added `core/runtime/eventContext.js` to normalize thread type, legacy reply payload fields and wrapped Zalo API context.
+- Both event plugins and command `handleEvent` callbacks now receive context from the same factory.
+- Preserves the legacy callback fields: `api`, `event`, `eventType`, `isSelf`, `reply`, `Users`, `Threads`, `replyData` and `threadType`.
+- Wrapper errors fall back to the original API, matching the previous handler behavior.
+- Added isolated tests for thread-type normalization, reply payload mapping, successful wrapping and fallback behavior.
