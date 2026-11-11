@@ -90,7 +90,7 @@ async function renderBattleMedia(battle, entry) {
       const videoPath = path.join(dir, "battle.mp4");
       await execFileAsync(ffmpeg, ["-y", "-framerate", "10", "-i", input, "-vf", "fps=10,scale=640:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=128[p];[s1][p]paletteuse=dither=bayer", "-loop", "0", gifPath], { timeout: 30000 });
       await execFileAsync(ffmpeg, ["-y", "-framerate", "10", "-i", input, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-t", "2", videoPath], { timeout: 30000 });
-      return { gifPath, videoPath, cleanup: async () => fs.rm(dir, { recursive: true, force: true }) };
+      return { gifPath, videoPath, thumbnailPath: path.join(dir, "frame-000.png"), cleanup: async () => fs.rm(dir, { recursive: true, force: true }) };
     } catch (error) {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
       throw error;
@@ -104,10 +104,14 @@ async function sendBattleMedia(api, event, battle, entry, options = {}) {
     const gif = await api.sendMessage({ msg: "⚔️ Hiệu ứng chiêu thức", attachments: media.gifPath }, event.threadId, event.type);
     let videoSent = false;
     if (options.includeVideo && typeof api.uploadAttachment === "function" && typeof api.sendVideo === "function") {
-      const uploaded = await api.uploadAttachment(media.videoPath, event.threadId, event.type);
-      const video = Array.isArray(uploaded) ? uploaded.find((x) => x.fileType === "video") : null;
+      const [uploadedVideo, uploadedThumb] = await Promise.all([
+        api.uploadAttachment(media.videoPath, event.threadId, event.type),
+        api.uploadAttachment(media.thumbnailPath, event.threadId, event.type)
+      ]);
+      const video = Array.isArray(uploadedVideo) ? uploadedVideo.find((x) => x.fileType === "video") : null;
+      const thumb = Array.isArray(uploadedThumb) ? uploadedThumb.find((x) => x.fileType === "image") : null;
       if (video?.fileUrl) {
-        await api.sendVideo({ videoUrl: video.fileUrl, thumbnailUrl: video.fileUrl, duration: 2000, width: WIDTH, height: HEIGHT, msg: "🎬 Tóm tắt lượt đấu" }, event.threadId, event.type);
+        await api.sendVideo({ videoUrl: video.fileUrl, thumbnailUrl: thumb?.normalUrl || thumb?.hdUrl || "", duration: 2000, width: WIDTH, height: HEIGHT, msg: "🎬 Tóm tắt lượt đấu" }, event.threadId, event.type);
         videoSent = true;
       }
     }
