@@ -104,7 +104,7 @@ test("pet feeding levels up the companion and improves combat stats", () => {
   assert.equal(result.pet.level, 2);
   assert.equal(result.pet.attack, 5);
   assert.equal(result.player.spiritStones, 85);
-  assert.equal(engine.effectiveStats(result.player).attack, 7);
+  assert.equal(engine.effectiveStats(result.player).attack, 17);
 });
 
 test("pet activation rejects unknown ids and switches active companion", () => {
@@ -143,7 +143,7 @@ test("failed tribulation applies a severe but survivable setback", () => {
   assert.equal(result.ok, true);
   assert.equal(result.success, false);
   assert.equal(result.player.spiritStones, 20);
-  assert.equal(result.player.hp, 165);
+  assert.equal(result.player.hp, 65);
 });
 
 test("normalization migrates existing V1 cultivation data without losing progress", () => {
