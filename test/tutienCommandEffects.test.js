@@ -39,9 +39,9 @@ test("the live /tutien command uses real typing events and sends staged Zalo rep
   assert.deepEqual(calls.filter((call) => call.kind === "typing").map((call) => [call.threadId, call.type]), [
     ["live-group", 1], ["live-group", 1]
   ]);
-  assert.deepEqual(calls.filter((call) => call.kind === "message").map((call) => call.text).slice(-1), [
-    assert.match(calls.filter((call) => call.kind === "message").at(-1).text, /DEVTRAN TIÊN TÔNG/)
-  ]);
+  const messages = calls.filter((call) => call.kind === "message").map((call) => call.text);
+  assert.match(messages.at(-1), /DEVTRAN TIÊN TÔNG/);
+  assert.ok(messages.length >= 3, "the command sends its staged phases plus a final result");
   assert.equal(calls.some((call) => call.state === "done" || call.state === "failed"), false,
     "the existing handleCommand pipeline finalizes OK/CRY reactions");
 });
