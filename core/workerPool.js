@@ -3,141 +3,184 @@ const path = require("path");
 
 const WORKERS_DIR = path.join(__dirname, "workers");
 const DEFAULT_POOL_SIZE = 4;
-
 const pools = new Map();
 let shuttingDown = false;
 
-function createWorker(scriptName) {
-  const scriptPath = path.join(WORKERS_DIR, `${scriptName}.js`);
-  const worker = new Worker(scriptPath);
-  worker.on("error", (err) => {
-    worker._startupError = err;
+function terminateWorker(worker) {
+  try { return worker.terminate(); } catch { return undefined; }
+}
+
+function createWorker(pool, scriptName) {
+  const worker = new Worker(path.join(WORKERS_DIR, `${scriptName}.js`));
+  const record = { worker, busy: false, dead: false, task: null };
+  pool.workers.push(record);
+
+  worker.on("message", (result) => {
+    const task = record.task;
+    if (!task || task.settled) return;
+    clearTaskTimer(task);
+    record.task = null;
+    record.busy = false;
+
+    if (result && result.ok === false) {
+      const error = new Error(result.error || `worker ${pool.scriptName} failed`);
+      if (result.stack) error.stack = result.stack;
+      settle(task, error);
+    } else {
+      let data = result == null || result.data === undefined ? result : result.data;
+      if (data && typeof data === "object" && data.buffer &&
+          typeof data.buffer === "object" && !Buffer.isBuffer(data.buffer)) {
+        data.buffer = Buffer.from(data.buffer);
+      }
+      settle(task, null, data);
+    }
+    pump(pool);
   });
-  return worker;
+
+  worker.on("error", (error) => retireWorker(pool, record, error));
+  worker.on("exit", (code) => {
+    if (!record.dead) {
+      retireWorker(pool, record, new Error(
+        `worker ${pool.scriptName} exited before responding (code ${code})`
+      ));
+    }
+  });
+  return record;
+}
+
+function clearTaskTimer(task) {
+  if (task.timer) {
+    clearTimeout(task.timer);
+    task.timer = null;
+  }
+}
+
+function settle(task, error, value) {
+  if (task.settled) return;
+  task.settled = true;
+  clearTaskTimer(task);
+  if (error) task.reject(error);
+  else task.resolve(value);
+}
+
+function retireWorker(pool, record, error) {
+  if (record.dead) return;
+  record.dead = true;
+  record.busy = false;
+  const task = record.task;
+  record.task = null;
+  if (task) settle(task, error || new Error(`worker ${pool.scriptName} stopped`));
+  pump(pool);
 }
 
 function getOrCreatePool(scriptName, size) {
   let pool = pools.get(scriptName);
   if (!pool) {
-    pool = { workers: [], index: 0 };
-    for (let i = 0; i < size; i++) {
-      pool.workers.push(createWorker(scriptName));
-    }
+    pool = { scriptName, size, workers: [], pending: [], pumping: false };
     pools.set(scriptName, pool);
+  } else {
+    pool.size = Math.max(pool.size, size);
   }
   return pool;
 }
 
-function terminateWorker(worker) {
-  try {
-    return worker.terminate();
-  } catch {
-    return undefined;
+function ensureWorkers(pool) {
+  if (shuttingDown) return;
+  const aliveRecords = pool.workers.filter((record) => !record.dead);
+  const busy = aliveRecords.filter((record) => record.busy).length;
+  const idle = aliveRecords.length - busy;
+  // Grow on demand; do not respawn workers that intentionally exited idle.
+  const required = busy + Math.min(pool.size - busy, Math.max(0, pool.pending.length - idle));
+  for (let i = aliveRecords.length; i < required; i++) {
+    createWorker(pool, pool.scriptName);
   }
 }
 
-function settleTermination(ret) {
-  if (ret && typeof ret.then === "function") {
-    return ret;
+function pump(pool) {
+  if (pool.pumping || shuttingDown) return;
+  pool.pumping = true;
+  try {
+    ensureWorkers(pool);
+    while (pool.pending.length) {
+      const record = pool.workers.find((item) => !item.dead && !item.busy);
+      if (!record) break;
+
+      const task = pool.pending.shift();
+      record.busy = true;
+      record.task = task;
+      if (task.timeout > 0) {
+        task.timer = setTimeout(() => {
+          if (task.settled) return;
+          const error = new Error(
+            `workerPool: timeout (${task.timeout}ms) for ${pool.scriptName}`
+          );
+          record.task = null;
+          record.busy = false;
+          retireWorker(pool, record, error);
+          terminateWorker(record.worker);
+          settle(task, error);
+          pump(pool);
+        }, task.timeout);
+      }
+
+      try {
+        record.worker.postMessage(task.data);
+      } catch (error) {
+        record.task = null;
+        record.busy = false;
+        retireWorker(pool, record, error);
+        terminateWorker(record.worker);
+        settle(task, error);
+        ensureWorkers(pool);
+      }
+    }
+  } finally {
+    pool.pumping = false;
   }
-  return undefined;
 }
 
 function runInWorker(scriptName, data, options = {}) {
+  if (shuttingDown) return Promise.reject(new Error("workerPool: shutting down"));
+  const size = Math.max(1, Number(options.size) || DEFAULT_POOL_SIZE);
+  const pool = getOrCreatePool(scriptName, size);
+
   return new Promise((resolve, reject) => {
-    try {
-      if (shuttingDown) {
-        return reject(new Error("workerPool: shutting down"));
-      }
-
-      const size = Math.max(1, Number(options.size) || DEFAULT_POOL_SIZE);
-      const pool = getOrCreatePool(scriptName, size);
-      const workerIndex = pool.index;
-      pool.index = (pool.index + 1) % pool.workers.length;
-
-      // Workers can exit after their idle timeout or be terminated after a
-      // task timeout. Never send a new task to a dead Worker instance.
-      let worker = pool.workers[workerIndex];
-      if (!worker || worker.threadId === -1 || worker._startupError) {
-        worker = createWorker(scriptName);
-        pool.workers[workerIndex] = worker;
-      }
-
-      let timer = null;
-      if (options.timeout && options.timeout > 0) {
-        timer = setTimeout(() => {
-          cleanup();
-          terminateWorker(worker);
-          reject(new Error(`workerPool: timeout (${options.timeout}ms) for ${scriptName}`));
-        }, options.timeout);
-      }
-
-      function cleanup() {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-        worker.removeListener("message", onMessage);
-        worker.removeListener("error", onError);
-        worker.removeListener("exit", onExit);
-      }
-
-      function onMessage(result) {
-        cleanup();
-        if (result && result.ok === false) {
-          const err = new Error(result.error || `worker ${scriptName} failed`);
-          if (result.stack) err.stack = result.stack;
-          reject(err);
-        } else {
-          let data = result == null || result.data === undefined ? result : result.data;
-          if (
-            data &&
-            typeof data === "object" &&
-            data.buffer &&
-            typeof data.buffer === "object" &&
-            !Buffer.isBuffer(data.buffer)
-          ) {
-            data.buffer = Buffer.from(data.buffer);
-          }
-          resolve(data);
-        }
-      }
-
-      function onError(err) {
-        cleanup();
-        reject(err);
-      }
-
-      function onExit(code) {
-        cleanup();
-        reject(new Error(`worker ${scriptName} exited before responding (code ${code})`));
-      }
-
-      worker.on("message", onMessage);
-      worker.on("error", onError);
-      worker.on("exit", onExit);
-      worker.postMessage(data);
-    } catch (err) {
-      reject(err);
-    }
+    pool.pending.push({
+      data,
+      resolve,
+      reject,
+      timeout: Math.max(0, Number(options.timeout) || 0),
+      settled: false,
+      timer: null
+    });
+    pump(pool);
   });
 }
 
 async function shutdown() {
   shuttingDown = true;
-  const jobs = [];
+  const terminations = [];
   for (const pool of pools.values()) {
-    for (const worker of pool.workers) {
-      jobs.push(settleTermination(terminateWorker(worker)));
+    for (const task of pool.pending.splice(0)) {
+      settle(task, new Error("workerPool: shutting down"));
+    }
+    for (const record of pool.workers) {
+      if (record.task) {
+        settle(record.task, new Error("workerPool: shutting down"));
+        record.task = null;
+      }
+      if (!record.dead) terminations.push(terminateWorker(record.worker));
+      record.dead = true;
+      record.busy = false;
     }
   }
-  await Promise.all(jobs);
+  await Promise.all(terminations);
   pools.clear();
 }
 
 function poolSize(scriptName) {
   const pool = pools.get(scriptName);
-  return pool ? pool.workers.length : 0;
+  return pool ? pool.workers.filter((record) => !record.dead).length : 0;
 }
 
 module.exports = { runInWorker, shutdown, poolSize };
