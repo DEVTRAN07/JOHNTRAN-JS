@@ -1,31 +1,53 @@
-# JOHNTRAN – Tiên Đạo Vô Hạn (V3)
+# JOHNTRAN – Tiên Đạo Vô Hạn (V4)
 
 ## Hướng game
-V3 tập trung hoàn toàn vào hành trình tu luyện cá nhân, đột phá cảnh giới và Cửu Trọng Thiên Kiếp. Không có lập tông môn, linh thú hoặc bí cảnh.
+V4 tập trung vào tu luyện cá nhân, một con đường thăng cảnh giới duy nhất bằng Độ Kiếp, và hệ thống nhiệm vụ của một tông môn cố định. Không có lệnh đột phá riêng, không có lập tông môn, linh thú hoặc bí cảnh.
+
+## Nhân vật Zalo
+- Lần đầu dùng `/tutien batdau`, bot gọi API `getUserInfo(uid, 240)` của `zalo-client`.
+- Lưu `displayName` và URL `avatar` trong `Users.data.tuTien`; fallback sang tên/avatar của event nếu API hồ sơ không trả dữ liệu.
+- Hồ sơ nhân vật hiển thị tên Zalo và trạng thái đồng bộ avatar. URL avatar được lưu cùng nhân vật, không gửi ảnh trong hiệu ứng chat.
+
+## Tông môn cố định
+- Chỉ tồn tại một tông môn: `DEVTRAN TIÊN TÔNG` với ID cố định `devtran-tien-tong`.
+- Tông Chủ là admin đầu tiên trong `global.users.admin`, nạp từ `admin_bot` trong `config.yml`.
+- Mọi nhân vật được tự động gắn vào tông môn này; không có lệnh gia nhập, đổi tông hoặc tạo tông môn khác.
+- `/tutien tongmon` hiển thị thông tin Tông Chủ và số môn đồ.
 
 ## Lệnh
-- `/tutien batdau`: lập mệnh đăng, tạo nhân vật.
-- `/tutien profile`: xem mệnh bàn, cảnh giới, tu vi và chỉ số.
-- `/tutien tuluyen`: nhập định, tụ khí, vận chu thiên và nhận tu vi; hồi chiêu 30 giây.
-- `/tutien dotpha`: dựng trận, nghịch chuyển linh lực và thử đột phá; cần đủ tu vi, 20 linh thạch.
-- `/tutien dotkiem`: vượt Cửu Trọng Thiên Kiếp tại Độ Kiếp Cửu Trọng; cần đủ tu vi, 80 linh thạch.
-- `/tutien help`: xem hướng dẫn.
+- `/tutien batdau`: lập nhân vật theo tên và avatar Zalo.
+- `/tutien profile`: xem hồ sơ, cảnh giới, tu vi, linh thạch thường và linh thạch tông môn.
+- `/tutien tuluyen`: tu luyện thường, hồi chiêu 30 giây; mỗi lần thành công tăng tu vi, linh thạch thường và tiến độ nhiệm vụ.
+- `/tutien dotkiem`: con đường duy nhất để thăng tầng/cảnh giới. Tiểu thiên kiếp cho từng tầng; đại thiên kiếp khi chuyển đại cảnh giới; Cửu Trọng Thiên Kiếp để bước vào Chân Tiên.
+- `/tutien tongmon`: xem Tông Môn DEVTRAN duy nhất.
+- `/tutien nhiemvu`: xem nhiệm vụ hằng ngày.
+- `/tutien nhiemvu diem-danh`: hoàn thành nhiệm vụ điểm danh hằng ngày.
+- `/tutien nhiemvu nhan`: nhận toàn bộ thưởng nhiệm vụ đủ điều kiện.
+- `/tutien luyennhanh`: tiêu 30 linh thạch tông môn để nhận 100+ tu vi; hồi chiêu 60 giây.
+- `/tutien help`: hướng dẫn.
 
-## Hiệu ứng chat thật (không dùng ảnh)
-- Dùng API `sendTypingEvent(threadId, type)` có sẵn trong `vendor/zalo-client/dist/api/sendTypingEvent` để bật tín hiệu đang nhập của Zalo trước từng giai đoạn.
-- Bot gửi các thông điệp diễn biến theo từng pha; mỗi pha có tín hiệu đang nhập trước khi xuất hiện.
-- Tu luyện có 3 pha: nhập định → tụ khí → vận chu thiên → kết quả và thanh tiến trình ký tự.
-- Đột phá có 3 pha: dựng trận → nghịch chuyển linh lực → kim đan chấn động → kết quả.
-- Độ kiếp có 4 pha: mây kiếp → đệ nhất lôi → đệ ngũ lôi → đệ cửu lôi → kết quả thành tiên/thất bại.
-- Bắt đầu game có các pha dò căn cốt, khai mở linh khí và ghi danh Tiên Lục.
-- Hồ sơ có các pha kết nối mệnh đăng và đọc kinh mạch.
-- Pipeline của bot vẫn thả reaction xử lý và reaction kết quả như các lệnh khác.
+## Nhiệm vụ tông môn và linh thạch
+Nhiệm vụ reset theo ngày UTC+7:
+- Điểm danh tiên môn: 20 linh thạch tông môn.
+- Tu luyện 3 lần: 35 linh thạch tông môn.
+- Tu luyện 6 lần: 70 linh thạch tông môn.
 
-## Giới hạn Zalo cần nói rõ
-Zalo client hiện có typing-event và send-message; không có API sửa nội dung bong bóng tin đã gửi. Vì vậy hiệu ứng thực tế là typing indicator + chuỗi thông điệp chat nối tiếp, không phải chữ chạy trong cùng một tin, không phải HTML/CSS animation hoặc ảnh GIF. Nếu typing endpoint lỗi/không khả dụng, bot vẫn gửi các bước bằng văn bản.
+Thưởng được ghi vào số dư riêng `sectStones`, không trộn với linh thạch thường. Lệnh luyện nhanh chỉ tiêu `sectStones`, và lượt luyện nhanh không tự tăng tiến độ nhiệm vụ để tránh vòng lặp tự farm.
+
+## Hiệu ứng Zalo thật (không dùng ảnh)
+- Mỗi pha gọi API `sendTypingEvent(threadId, type)` để hiển thị trạng thái đang nhập của Zalo.
+- Sau đó gửi từng thông điệp diễn biến riêng; reaction xử lý chung của bot vẫn giữ nguyên.
+- Tu luyện có các pha nhập định → tụ khí → vận chu thiên.
+- Luyện nhanh có các pha kích hoạt Tụ Linh Trận → hiến tế linh thạch tông môn → tăng tốc linh khí.
+- Nhiệm vụ có các pha điểm danh/kiểm duyệt công tích/chuyển linh thạch.
+- Độ kiếp có tiểu kiếp, đại kiếp hoặc Cửu Trọng Thiên Kiếp tùy cấp cảnh giới.
+- Không render Canvas, không gửi ảnh/GIF/video trong luồng game.
+- Nếu typing endpoint lỗi/không có, bot vẫn gửi từng tin nhắn văn bản.
 
 ## Dữ liệu và tương thích
-- Tiến trình vẫn lưu trong `Users.data.tuTien`; những trường người dùng khác không bị thay đổi.
-- Dữ liệu V1/V2 được migrate sang version 3, giữ cảnh giới, tu vi, linh thạch và chỉ số; xóa dữ liệu pet/bí cảnh cũ trong namespace tuTien theo yêu cầu bỏ các hệ thống đó.
-- Không thêm dependency; không sửa lệnh cũ; không gọi API ngoài.
-- Chưa có live smoke test trên tài khoản Zalo production.
+- Tiến trình lưu trong `Users.data.tuTien`; các trường dữ liệu ngoài namespace game không bị thay đổi.
+- Migration giữ tên/avatar, cảnh giới, tu vi, linh thạch thường và chỉ số; trường pet/bí cảnh cũ bị loại khỏi game state.
+- Cooldown cũ `lastBreakthroughAt` được chuyển thành `lastTribulationAt`.
+- Không thêm dependency và không sửa các lệnh bot khác.
+- Unit tests bao phủ identity, tông môn cố định, nhiệm vụ, nhận thưởng, luyện nhanh, độ kiếp và typing phases.
+- Chưa thực hiện live smoke test trên tài khoản Zalo production.
