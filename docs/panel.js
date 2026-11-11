@@ -31,23 +31,25 @@ function saveConfig() {
   API = $("remoteUrl").value.trim().replace(/\/+$/, "");
   TOKEN = $("token").value.trim();
   localStorage.setItem(LS_URL, API);
-  localStorage.setItem(LS_TOKEN, TOKEN);
+  if (TOKEN) sessionStorage.setItem(LS_TOKEN, TOKEN);
+  else sessionStorage.removeItem(LS_TOKEN);
+  localStorage.removeItem(LS_TOKEN); // xóa token cũ từng được lưu bền vững trong localStorage
   toast("Đã lưu — đang kết nối...");
   refresh();
 }
 function loadConfig() {
   API = (localStorage.getItem(LS_URL) || defaultApi()).replace(/\/+$/, "");
-  TOKEN = localStorage.getItem(LS_TOKEN) || "";
+  TOKEN = sessionStorage.getItem(LS_TOKEN) || "";
+  localStorage.removeItem(LS_TOKEN);
   $("remoteUrl").value = API;
   $("token").value = TOKEN;
 }
 
 async function api(pathname, options = {}) {
   if (!API) throw new Error("Chưa cấu hình REMOTE PANEL URL");
-  const sep = pathname.includes("?") ? "&" : "?";
-  const res = await fetch(API + pathname + sep + "token=" + encodeURIComponent(TOKEN), {
+  const res = await fetch(API + pathname, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+    headers: { "Content-Type": "application/json", ...(TOKEN ? { Authorization: "Bearer " + TOKEN } : {}), ...(options.headers || {}) }
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Lỗi " + res.status);
@@ -497,16 +499,16 @@ async function showQr(name) {
 
     // Lấy ảnh QR (giữ nguyên token như trước)
     try {
-      const res = await fetch(`${API}/api/bots/${encodeURIComponent(name)}/qr?token=${encodeURIComponent(TOKEN)}&ts=${Date.now()}`);
+      const res = await fetch(`${API}/api/bots/${encodeURIComponent(name)}/qr?ts=${Date.now()}`, {
+        headers: TOKEN ? { Authorization: "Bearer " + TOKEN } : {}
+      });
       if (res.ok) {
         const blob = await res.blob();
         img.src = URL.createObjectURL(blob);
         img.style.display = "";
         img.alt = "Mã QR đăng nhập Zalo";
         msg.textContent = text;
-        if (hint && window.__JT_PANEL?.isMaster) {
-          hint.innerHTML = '<div style="margin-top:8px"><a href="/qr?bot=' + encodeURIComponent(name) + '" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline">Mở trang /qr riêng (máy chủ)</a></div>';
-        }
+        if (hint) hint.textContent = "Mã QR được tải qua phiên Panel đã xác thực."; 
       } else {
         img.style.display = "none";
         let body = {};
