@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const test = require("node:test");
+const { after, test } = require("node:test");
 
 const dbFile = path.join(os.tmpdir(), `johntran-thread-cache-${process.pid}.json`);
 process.env.JT_DB_DRIVER = "json";
@@ -12,6 +12,11 @@ global.config = { prefix: "/" };
 const Threads = require("../core/controller/controllerThreads");
 const { threadCache } = require("../core/cache");
 const db = require("../utils/db");
+
+// batchDb schedules its flush timer as unref(); keep this isolated test process
+// alive while awaiting queued persistence operations.
+const keepAlive = setInterval(() => {}, 1000);
+after(() => clearInterval(keepAlive));
 
 test("setData keeps the database record envelope in the LRU cache", async () => {
   const threadId = "thread-cache-set-" + process.pid;
