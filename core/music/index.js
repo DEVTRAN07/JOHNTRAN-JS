@@ -5,7 +5,6 @@ const { pooledAxios } = require("../http/pooledAxios");
 const db = require("../../utils/db");
 const { caches } = require("../cache");
 const { runInWorker } = require("../workerPool");
-const { enqueue } = require("../jobQueue");
 
 const providers = new Map();
 
