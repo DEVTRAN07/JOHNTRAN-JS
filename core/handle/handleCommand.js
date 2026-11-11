@@ -15,41 +15,8 @@ function readAdminGroups() {
   try { return JSON.parse(fs.readFileSync(ADMIN_GROUPS_FILE, "utf8")) || []; } catch { return []; }
 }
 
-const SPAM_WINDOW_MS = 10000;
-const SPAM_MAX_COMMANDS = 12;
-const spamTracker = new Map();
-
-function resolveCommand(commandName) {
-  const direct = global.client.commands.get(commandName);
-  if (direct) return direct;
-
-  for (const [, command] of global.client.commands) {
-    const aliases = command.config.aliases;
-    if (Array.isArray(aliases) && aliases.includes(commandName)) return command;
-  }
-  return null;
-}
-
-function checkSpam(userId) {
-  const now = Date.now();
-  let history = spamTracker.get(userId);
-  if (!history) {
-    history = [];
-    spamTracker.set(userId, history);
-  }
-  while (history.length > 0 && now - history[0] > SPAM_WINDOW_MS) history.shift();
-  history.push(now);
-  return history.length <= SPAM_MAX_COMMANDS;
-}
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [userId, history] of spamTracker.entries()) {
-    const filtered = history.filter((time) => now - time <= SPAM_WINDOW_MS);
-    if (filtered.length === 0) spamTracker.delete(userId);
-    else spamTracker.set(userId, filtered);
-  }
-}, SPAM_WINDOW_MS).unref();
+const { resolve: resolveCommand } = require("../runtime/commandRegistry");
+const { commandLimiter } = require("../runtime/rateLimiter");
 
 async function checkGroupPermissions({ api, threadId, type, UIDUsage, threadInfo }) {
   const isBotAdmin = global.users?.admin?.includes(UIDUsage);
@@ -103,7 +70,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   if (!commandName) return;
 
   const wrappedApi = wrapApi(api, threadId, type, commandName, event);
-  const command = resolveCommand(commandName);
+  const command = resolveCommand(global.client.commands, commandName);
   if (!command) {
     if (wrappedApi && threadId && type) {
       await wrappedApi.sendMessage({ msg: "⚠️ Lệnh không tồn tại!" }, threadId, type);
@@ -120,7 +87,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     return;
   }
 
-  if (!checkSpam(UIDUsage)) {
+  if (!commandLimiter.allow(UIDUsage)) {
     return wrappedApi.sendMessage({
       msg: "🚫 Bạn đang gửi lệnh quá nhanh. Vui lòng chậm lại!"
     }, threadId, type);
