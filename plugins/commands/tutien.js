@@ -118,7 +118,7 @@ function getMemberCount(Users) {
   catch { return 0; }
 }
 
-async function runTuTien({ args = [], event, api, Users }, effects) {
+async function runTuTien({ args = [], event, api, Users, mentions = [] }, effects) {
   // Route all actual bot replies through the live Zalo effect runner.
   const send = (_api, _event, message) => effects.result(message);
   const sendPhase = (_api, _event, message, delay = 520) => effects.respond(message, delay);
@@ -243,7 +243,7 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
       }
       const battle = player.arena?.battle;
       if (!battle || battle.status !== "active") {
-        const targetUid = String(event?.mentions?.[0]?.uid || event?.mentions?.[0]?.id || "");
+        const targetUid = String(mentions?.[0]?.uid || mentions?.[0]?.id || event?.mentions?.[0]?.uid || event?.mentions?.[0]?.id || "");
         if (!targetUid) return sendPhase(api, event, "🎯 Hãy tag một đạo hữu để thách đấu: /tutien pvp @uid");
         const targetRecord = await Users.getData(targetUid);
         const targetStored = targetRecord?.data && typeof targetRecord.data === "object" ? targetRecord.data : targetRecord || {};
