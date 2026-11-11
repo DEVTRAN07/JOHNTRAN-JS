@@ -3,8 +3,9 @@ const path = require("path");
 const logger = require("../../utils/logger");
 const { extractDependencies, installMissingDeps } = require("./pluginDeps");
 
-const Users = require("../controller/controllerUsers");
-const Threads = require("../controller/controllerThreads");
+const Users = require("../runtime/services/userService");
+const Threads = require("../runtime/services/threadService");
+
 const { invalidateEventRegistry } = require("../runtime/eventRegistry");
 
 async function loadEvents(dir = path.join(__dirname, "../..", "plugins", "events")) {
