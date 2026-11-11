@@ -5,6 +5,7 @@ const ui = require("./ui");
 const logger = require("../../utils/logger");
 const { renderCanvas } = require("../canvas/workerRender");
 const Threads = require("../controller/controllerThreads");
+const { enqueue } = require("../jobQueue");
 
 let nextPageCursor = null; // "zing|2"
 
@@ -63,23 +64,23 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
       // Use worker pool for CPU-intensive audio conversion
       const voiceUrl = await music.processAudioInWorker(filePath, threadId, type, api);
 
-      try {
-        const key = `np|${providerName}|${track.id}`;
-        const cardPath = await renderCached(key, () =>
-          renderCanvas("music-nowplaying", {
-            track,
-            sourceLabel: provider.label.toUpperCase()
-          })
-        );
-        if (cardPath) await api.sendMessage({ msg: "", attachments: cardPath }, threadId, type);
-        else {
-          const styled = ui.nowPlaying(track, provider.label.toUpperCase());
-          await api.sendMessage({ ...styled }, threadId, type);
-        }
-      } catch { /* ignore render errors */ }
-
+      // Audio is the primary result. Never wait for a decorative card.
       await api.sendVoice({ voiceUrl }, threadId, type);
       await reply.done();
+
+      setImmediate(() => {
+        enqueue("canvas", async () => {
+          const key = `np|${providerName}|${track.id}`;
+          const cardPath = await renderCached(key, () =>
+            renderCanvas("music-nowplaying", {
+              track,
+              sourceLabel: provider.label.toUpperCase()
+            })
+          );
+          if (cardPath) await api.sendMessage({ msg: "", attachments: cardPath }, threadId, type);
+          else await api.sendMessage({ ...ui.nowPlaying(track, provider.label.toUpperCase()) }, threadId, type);
+        }, { priority: -1 }).catch((error) => logger.log("[music] Now Playing nền lỗi: " + error.message, "warn"));
+      });
     } catch (error) {
       logger.log(`[music:${providerName}] ${error.message}`, "error");
       await reply.failed();
@@ -123,20 +124,7 @@ async function showResults(api, threadId, type, provider, query, tracks, page) {
   const safePage = Math.min(Math.max(page, 1), totalPages);
   const slice = tracks.slice((safePage - 1) * perPage, safePage * perPage);
 
-  try {
-    const key = `${provider.name}|${query}|${safePage}`;
-    const gridPath = await renderCached(key, () =>
-      renderCanvas("music-grid", {
-        query,
-        tracks: slice,
-        options: { page: safePage, totalPages, source: provider.label.toUpperCase() }
-      })
-    );
-    if (gridPath) return api.sendMessage({ msg: "", attachments: gridPath }, threadId, type);
-  } catch (error) {
-    console.error("[music] render grid lỗi:", error.message);
-  }
-
+  // Text list is the primary response; canvas is intentionally not on the critical path.
   const styled = ui.searchList({
     providerLabel: provider.label.toUpperCase(),
     query,
@@ -209,9 +197,12 @@ async function runMusic(providerName, { api, event, args, reply }) {
   }
 
   const query = options.queryArgs.join(" ");
+  await reply.working();
   let tracks;
   try {
-    tracks = await music.search(providerName, query);
+    tracks = await enqueue("music-search", () => music.search(providerName, query), {
+      key: `${providerName}|${query.toLowerCase()}|40`
+    });
   } catch (error) {
     return friendlyError(error, reply);
   }
