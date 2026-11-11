@@ -13,7 +13,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: npm install
+      - run: npm ci
+      - run: npm test
       - run: node scripts/test-commands.js
       - run: node scripts/test-all.js
 
