@@ -1,5 +1,6 @@
 "use strict";
 
+const { REALMS } = require("./tuTienEngine");
 const REALM_POWER = {
   "Phàm Nhân": 1, "Luyện Khí": 2, "Trúc Cơ": 3, "Kim Đan": 4,
   "Nguyên Anh": 5, "Hóa Thần": 6, "Luyện Hư": 7, "Hợp Thể": 8,
@@ -14,7 +15,8 @@ const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function power(player = {}) {
-  const realm = REALM_POWER[player.realm] || 1;
+  const realmName = player.realm || REALMS[Number(player.realmIndex) || 0]?.name || "Phàm Nhân";
+  const realm = REALM_POWER[realmName] || Math.max(1, (Number(player.realmIndex) || 0) + 1);
   const stats = player.stats || {};
   return Math.max(1, Math.floor(realm * 100 + (Number(player.attack) || Number(stats.attack) || 10) * 4 +
     (Number(player.defense) || Number(stats.defense) || 5) * 2 + Math.sqrt(Math.max(0, Number(player.cultivation) || 0))));
@@ -44,7 +46,7 @@ function buildFighter(uid, player) {
     uid: String(uid),
     name: String(player.displayName || "Đạo hữu").slice(0, 40),
     avatarUrl: String(player.avatarUrl || ""),
-    realm: String(player.realm || "Phàm Nhân"),
+    realm: String(player.realm || REALMS[Number(player.realmIndex) || 0]?.name || "Phàm Nhân"),
     power: power(player),
     attack: Math.max(1, Number(stats.attack) || Number(player.attack) || 10),
     defense: Math.max(0, Number(stats.defense) || Number(player.defense) || 5),
@@ -130,7 +132,7 @@ function leaderboard(players, metric = "rating", limit = 10) {
     const p = row.data.tuTien, a = ensureArena(p);
     return {
       uid: String(row.userId), name: String(p.displayName || "Đạo hữu"),
-      realm: String(p.realm || "Phàm Nhân"), avatarUrl: String(p.avatarUrl || ""),
+      realm: String(p.realm || REALMS[Number(p.realmIndex) || 0]?.name || "Phàm Nhân"), avatarUrl: String(p.avatarUrl || ""),
       rating: a.rating, wins: a.wins, losses: a.losses,
       power: power(p), seasonPoints: a.seasonPoints, bestStreak: a.bestStreak,
       score: key === "power" ? power(p) : a[key]
