@@ -30,7 +30,7 @@ function createZaloAdapter(messageModule) {
   });
 }
 
-const adapter = createZaloAdapter(require("../../message"));
-adapter.createZaloAdapter = createZaloAdapter;
-
-module.exports = adapter;
+module.exports = {
+  ...createZaloAdapter(require("../../message")),
+  createZaloAdapter
+};
