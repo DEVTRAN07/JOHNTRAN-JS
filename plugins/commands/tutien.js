@@ -107,7 +107,7 @@ async function getSectMasterName(api, Users) {
   try { const record = await Users.getData(id); if (record?.data?.tuTien?.displayName) return record.data.tuTien.displayName; }
   catch { /* use Zalo profile */ }
   const profile = await getZaloIdentity(api, { data: {} }, id);
-  return profile.displayName || "Tông Chủ";
+  return profile.displayName && profile.displayName !== "Đạo hữu" ? profile.displayName : "Tông Chủ (admin_bot đầu tiên)";
 }
 
 function getMemberCount(Users) {
