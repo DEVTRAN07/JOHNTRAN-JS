@@ -19,3 +19,11 @@ test("users are isolated and missing IDs rejected", () => {
   assert.equal(limiter.allow("a", 1000), true);
   assert.equal(limiter.allow("b", 1000), true);
 });
+
+test("key storage stays within configured capacity", () => {
+  const limiter = new SlidingWindowLimiter({ max: 1, maxKeys: 2 });
+  limiter.allow("a", 1000);
+  limiter.allow("b", 1000);
+  limiter.allow("c", 1000);
+  assert.equal(limiter.entries.size, 2);
+});
