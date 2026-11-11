@@ -306,7 +306,7 @@ class MediaCache {
         return null;
       }
       const buffer = fs.readFileSync(blobPath);
-      if (!buffer.length || (meta.sha256 && meta.sha256 !== sha256Hex(buffer))) {
+      if (!buffer.length || (meta.sha256 && meta.sha256 !== sha256Hex(buffer)) || this._makeKey(buffer, meta.metadata || {}) !== key) {
         this._removeLocal(type, key);
         return null;
       }
