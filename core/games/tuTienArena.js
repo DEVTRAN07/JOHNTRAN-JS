@@ -31,10 +31,15 @@ function ensureArena(player) {
   a.streak = Math.max(0, Number(a.streak) || 0);
   a.bestStreak = Math.max(a.streak, Number(a.bestStreak) || 0);
   const currentSeason = seasonId();
-  if (a.seasonId !== currentSeason) {
+  if (a.seasonId && a.seasonId !== currentSeason) {
+    if (a.joinedSeason === a.seasonId) {
+      a.previousSeason = { id: a.seasonId, points: a.seasonPoints, joined: true, claimed: Boolean(a.previousSeason?.id === a.seasonId && a.previousSeason?.claimed) };
+    }
     a.seasonId = currentSeason;
     a.seasonPoints = 0;
     a.joinedSeason = "";
+  } else if (!a.seasonId) {
+    a.seasonId = currentSeason;
   }
   a.seasonPoints = Math.max(0, Number(a.seasonPoints) || 0);
   return a;
@@ -146,12 +151,12 @@ function seasonId(date = new Date()) {
   const day = Math.floor((Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - start.getTime()) / 86400000);
   return `${year}-S${String(Math.floor(day / 7) + 1).padStart(2, "0")}`;
 }
-function contestStatus(players, now = new Date()) {
+function previousSeasonLeaderboard(players, limit = 50) {\n  return (players || []).filter((row) => row?.data?.tuTien?.arena?.previousSeason?.joined)\n    .map((row) => { const p = row.data.tuTien, a = ensureArena(p); return { uid: String(row.userId), name: String(p.displayName || "Đạo hữu"), points: Number(a.previousSeason?.points) || 0, season: a.previousSeason?.id || "", claimed: Boolean(a.previousSeason?.claimed) }; })\n    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "vi")).slice(0, limit);\n}\nfunction contestStatus(players, now = new Date()) {
   const id = seasonId(now);
   const rows = leaderboard(players, "seasonPoints", 50).filter((row) => row.seasonPoints > 0 && players.some((p) => String(p.userId) === row.uid && p.data.tuTien.arena?.joinedSeason === id));
   return { id, endsAt: new Date(now.getTime() + (7 - ((now.getUTCDay() + 1) % 7)) * 86400000), rows };
 }
 module.exports = {
   SKILLS, REALM_POWER, power, ensureArena, buildFighter, createChallenge,
-  startBattle, takeTurn, settleRating, leaderboard, seasonId, contestStatus
+  startBattle, takeTurn, settleRating, leaderboard, seasonId, contestStatus, previousSeasonLeaderboard
 };
