@@ -1,5 +1,6 @@
 const logger = require("../../utils/logger");
 const { wrapApi } = require("../message");
+const metrics = require("../metrics");
 const fs = require("fs");
 const path = require("path");
 
@@ -132,7 +133,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     threadData,
     userData,
     logger,
-    metrics: require("../metrics"),
+    metrics,
     Reactions
   });
 
