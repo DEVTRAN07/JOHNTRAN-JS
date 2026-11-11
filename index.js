@@ -33,7 +33,7 @@ const configSystem = require("./core/config");
         const { startPanel } = require("./panel/server");
 
         const manager = new BotManager({
-          bridgeToken: config?.panel?.bridge_token || config?.panel?.token || process.env.JT_PANEL__TOKEN || ""
+          bridgeToken: config?.panel?.bridge_token || process.env.JT_BRIDGE_TOKEN || ""
         });
         startPanel({ manager, config });
 
