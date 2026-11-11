@@ -4,8 +4,9 @@ const metrics = require("../metrics");
 const fs = require("fs");
 const path = require("path");
 
-const Users = require("../controller/controllerUsers");
-const Threads = require("../controller/controllerThreads");
+const Users = require("../runtime/services/userService");
+const Threads = require("../runtime/services/threadService");
+
 
 const { ThreadType, Reactions } = require("zalo-client");
 
