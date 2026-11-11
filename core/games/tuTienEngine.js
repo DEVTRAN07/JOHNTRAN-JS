@@ -117,6 +117,9 @@ function cultivate(playerInput, now = Date.now(), random = Math.random) {
 function breakthrough(playerInput, now = Date.now(), random = Math.random) {
   const player = normalizePlayer(playerInput, now);
   const required = requiredCultivation(player);
+  if (player.realmIndex === 9 && player.stageIndex === REALMS[9].stages.length - 1) {
+    return { ok: false, code: "TRIBULATION_REQUIRED", player };
+  }
   if (player.cultivation < required) return { ok: false, code: "NOT_READY", missing: required - player.cultivation, required, player };
   if (player.spiritStones < 20) return { ok: false, code: "NEED_STONES", player };
   const remaining = 60_000 - (now - player.lastBreakthroughAt);
