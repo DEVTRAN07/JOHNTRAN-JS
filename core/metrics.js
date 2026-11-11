@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { db } = require("../utils/db");
+const { db } = require("./runtime/adapters/database");
 
 const METRICS_TABLE = "Metrics";
 const AUDIT_FILE = path.join(__dirname, "..", "data", "audit.log");
