@@ -19,6 +19,10 @@ const results = [];
 const sent = [];
 const reactions = [];
 let cardCount = 0;
+// Keep Node alive while awaiting worker-pool timeouts and queued DB operations.
+// Several production timers are intentionally unref()'d; test completion must
+// not be mistaken for success if an awaited worker promise is still pending.
+const testKeepAlive = setInterval(() => {}, 1000);
 
 const api = {
   sendMessage: async (m, tid, ty) => {
@@ -186,8 +190,13 @@ async function runCmd(name, args = [], eventOverride = {}) {
     console.log("LỖI:");
     for (const f of failed) console.log(`  ✗ ${f.name}: ${f.detail}`);
   }
+  clearInterval(testKeepAlive);
   process.exit(failed.length ? 1 : 0);
-})().catch(e => { console.error("CRASH:", e); process.exit(1); });
+})().catch(e => {
+  clearInterval(testKeepAlive);
+  console.error("CRASH:", e);
+  process.exit(1);
+});
 
 function wrap(ev, name) {
   const m = require(path.join(ROOT, "core/message"));
