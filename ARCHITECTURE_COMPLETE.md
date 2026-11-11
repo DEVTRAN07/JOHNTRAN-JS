@@ -5,11 +5,11 @@
 ```mermaid
 flowchart LR
     subgraph Legend
-        A[External System]:::ext
-        B[Internal Service]:::int
-        C[Data Store]:::store
-        D[Process/Thread]:::proc
-        E[Configuration]:::cfg
+        A[Hệ Thống Ngoại]:::ext
+        B[Dịch Vụ Nội Bộ]:::int
+        C[Kho Dữ Liệu]:::store
+        D[Tiến Trình/Luồng]:::proc
+        E[Cấu Hình]:::cfg
     end
 
     classDef ext fill:#e8f4fd,stroke:#2196f3,stroke-width:2px;
@@ -23,14 +23,14 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph External["External Systems"]
+    subgraph External["Hệ Thống Ngoại"]
         Zalo["Zalo Platform
 (WebSocket)"]
         SoundCloud["SoundCloud API"]
         TikTokAPI["TikTok API
 (tikwm + fallback)"]
         MediaDL["Media Downloader
-(optional endpoint)"]
+(endpoint tùy chọn)"]
         Supabase["Supabase
 (PostgreSQL)"]
         UptimeRobot["UptimeRobot
@@ -43,14 +43,21 @@ flowchart TB
 
     subgraph BotRuntime["JOHNTRAN Bot Runtime (Node.js v20+)"]
         direction TB
-        
+
+        subgraph Entry["Entry Point (CommonJS)"]
+            Index["index.js
+(supervisor)"]
+            JohnTran["JohnTran.js
+(bot entry, spawn)"]
+        end
+
         subgraph Core["core/"]
             Config["config.yml + env
 (JT_*) → Immutable"]
             HTTP["HTTP Client
 (timeout, retry, privacy guard)"]
             Services["Services Config
-(endpoints from config)"]
+(endpoints từ config)"]
             AI["AI Module
 (Gemini TTS /noi)"]
             Music["Music Registry
@@ -85,6 +92,28 @@ flowchart TB
         subgraph Loader["core/loader/"]
             CmdLoader["Command Loader"]
             EventLoader["Event Loader"]
+            PluginDeps["pluginDeps.js
+(extractDependencies,
+installMissingDeps)"]
+        end
+
+        subgraph Utils["utils/" (tách thành 5 module)"]
+            UFile["file.js
+(saveBase64Image,
+getJsonData, tryUnlink)"]
+            UConfig["config.js
+(updateConfigArray,
+reloadConfig)"]
+            UMsgCache["messageCache.js
+(RAM + debounce disk)"]
+            UMedia["media.js
+(processVideo,
+processAudio, ...)"]
+            UQR["qr.js
+(decodeQR, generateQR,
+displayQR)"]
+            UIndex["index.js
+(re-export 35 dòng)"]
         end
 
         subgraph Controller["core/controller/"]
@@ -97,15 +126,15 @@ flowchart TB
         BotManager["Bot Manager
 (spawn/stop/restart/logs/QR)"]
         PanelServer["Panel API Server
-(zero-dep, no Express)"]
+(zero-dep, không Express)"]
     end
 
     subgraph Plugins["plugins/"]
-        Commands["commands/ (23 commands)
+        Commands["commands/ (23 lệnh)
 scl, lyric, noi, stats, menu,
 spam, spamsticker, card, tiktok,
 infofb, getavt, autodown, events..."]
-        Events["events/ (removed v3)
+        Events["events/ (đã bỏ v3)
 Pure command-based bot"]
     end
 
@@ -117,7 +146,7 @@ girl.json
 vdgirl.json"]
         BadWords["spam/badwords.txt"]
         BG["bg/theme.jpg"]
-        Fonts["fonts/ (8 families)"]
+        Fonts["fonts/ (8 family)"]
     end
 
     subgraph Data["data/"]
@@ -125,6 +154,13 @@ vdgirl.json"]
 (JSON atomic store)"]
         AuditLog["audit.log"]
         CacheDir["cache/"]
+    end
+
+    subgraph RuntimeArtifacts["Runtime Artifacts (bị gitignore)"]
+        CacheAssets["core/assets/cache/"]
+        Session["*.session"]
+        Tmp["*.tmp"]
+        Scratch["*.scratch"]
     end
 
     Zalo ---|WebSocket| BotRuntime
@@ -136,6 +172,8 @@ vdgirl.json"]
     GitHubPages ---|HTTPS| PanelServer
     Render ---|Docker| BotRuntime
 
+    Index -->|spawn| JohnTran
+
     classDef ext fill:#e8f4fd,stroke:#2196f3;
     classDef int fill:#e8f5e9,stroke:#4caf50;
     classDef store fill:#fff3e0,stroke:#ff9800;
@@ -143,40 +181,44 @@ vdgirl.json"]
     classDef cfg fill:#f3e5f5,stroke:#9c27b0;
 
     class Zalo,SoundCloud,TikTokAPI,MediaDL,Supabase,UptimeRobot,GitHubPages,Render ext
-    class Config,HTTP,Services,AI,Music,Message,Canvas,Cache,Storage,Metrics,HotReload,Health,Bootstrap,Resolve,AntiSpam,Permission,Cooldown,Execute,CmdLoader,EventLoader,Users,Threads,BotManager,PanelServer int
+    class Config,HTTP,Services,AI,Music,Message,Canvas,Cache,Storage,Metrics,HotReload,Health,Bootstrap,Resolve,AntiSpam,Permission,Cooldown,Execute,CmdLoader,EventLoader,PluginDeps,Users,Threads,BotManager,PanelServer,UFile,UConfig,UMsgCache,UMedia,UQR,UIndex int
     class Store,AuditLog,CacheDir,Supabase store
     class Commands,Events proc
     class Spam,MediaData,BadWords,BG,Fonts cfg
+    class CacheAssets,Session,Tmp,Scratch store
 ```
-
 
 ## 3. Current Internal Architecture
 
 ```mermaid
 flowchart TB
-    subgraph Entry["Entry Point"]
-        Main["JohnTran.js
-(main entry)"]
+    subgraph Entry["Entry Point (CommonJS)"]
+        Index["index.js
+(supervisor - khởi động panel hoặc
+spawn JohnTran.js)"]
+        JohnTran["JohnTran.js
+(bot entry - login, loader,
+listener, panelBridge)"]
     end
 
     subgraph Bootstrap["Bootstrap Sequence"]
         B1["Load config.yml"]
-        B2["Apply JT_* env overrides"]
+        B2["Áp dụng ghi đè JT_* env"]
         B3["Validate & Freeze Config
 (immutable)"]
-        B4["Restore account.json
-from JT_ACCOUNT_JSON"]
-        B5["Restore cookie.json
-from JT_COOKIE_JSON"]
-        B6["Initialize Storage
-(JSON or Supabase)"]
-        B7["Start Health Server
+        B4["Khôi phục account.json
+từ JT_ACCOUNT_JSON"]
+        B5["Khôi phục cookie.json
+từ JT_COOKIE_JSON"]
+        B6["Khởi tạo Storage
+(JSON hoặc Supabase)"]
+        B7["Khởi động Health Server
 (PORT env)"]
-        B8["Connect Zalo WebSocket"]
+        B8["Kết nối Zalo WebSocket"]
         B9["Load Plugins
 (commands + events)"]
-        B10["Start Hot Reload Watcher"]
-        B11["Start Metrics Collector"]
+        B10["Bắt Hot Reload Watcher"]
+        B11["Bắt Metrics Collector"]
     end
 
     subgraph Runtime["Runtime Core"]
@@ -227,6 +269,41 @@ from JT_COOKIE_JSON"]
 (get/set/all)"]
     end
 
+    subgraph Utils["Utils Layer (utils/)"]
+        U1["file.js - saveBase64Image,
+getJsonData, tryUnlink"]
+        U2["config.js - updateConfigArray,
+reloadConfig"]
+        U3["messageCache.js - RAM +
+debounce disk"]
+        U4["media.js - processVideo,
+processAudio, extractThumbnail,
+uploadFile"]
+        U5["qr.js - decodeQRFromBase64,
+generateQRCodeInTerminal,
+displayQRCodeInConsole"]
+        U6["index.js - re-export 5 module +
+convertTimestamp inline"]
+    end
+
+    subgraph CacheLayer["Cache Layer (core/cache/)"]
+        C1["lru.js - LRUCache class +
+createCache (tách ra)"]
+        C2["cache.js - import từ ./lru,
+re-export tất cả, giữ instances +
+cleanup"]
+    end
+
+    subgraph LoaderLayer["Loader Layer (core/loader/)"]
+        L1["pluginDeps.js - extractDependencies,
+installMissingDeps, SUSPICIOUS_DEP,
+DEP_PAIR (chia sẻ)"]
+        L2["loaderCommand.js - import
+từ ./pluginDeps"]
+        L3["loaderEvent.js - import
+từ ./pluginDeps"]
+    end
+
     subgraph PanelSystem["Panel System (panel/)"]
         PS1["Bot Manager
 (spawn/stop/restart)"]
@@ -241,12 +318,17 @@ from JT_COOKIE_JSON"]
 (crash-loop detection)"]
     end
 
-    Main --> B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> B7 --> B8 --> B9 --> B10 --> B11
+    Index -->|spawn JohnTran.js| JohnTran
+    JohnTran --> B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> B7 --> B8 --> B9 --> B10 --> B11
     B8 --> ZaloClient
     ZaloClient --> EventLoop
     EventLoop --> CP1 --> CP2 --> CP3 --> CP4 --> CP5 --> CP6 --> CP7
     CP5 --> S1 & S2 & S3 & S4 & S5 & S6 & S7
     CP5 --> DL1 & DL2
+    CP5 --> U1 & U2 & U3 & U4 & U5 & U6
+    S4 --> C1 & C2
+    L2 --> L1
+    L3 --> L1
     B9 --> Commands
     B7 --> PS2
     PS1 --> PS2 & PS3 & PS4 & PS5 & PS6 & PS7
@@ -258,13 +340,19 @@ from JT_COOKIE_JSON"]
     classDef svc fill:#f3e5f5,stroke:#7b1fa2;
     classDef data fill:#e0f2f1,stroke:#00695c;
     classDef panel fill:#f1f8e9,stroke:#558b2f;
+    classDef util fill:#e1f5fe,stroke:#0277bd;
+    classDef cache fill:#fff8e1,stroke:#f9a825;
+    classDef loader fill:#f3e5f5,stroke:#7b1fa2;
 
-    class Main entry
+    class Index,JohnTran entry
     class B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11 boot
     class ZaloClient,EventLoop rt
     class CP1,CP2,CP3,CP4,CP5,CP6,CP7 pipe
     class S1,S2,S3,S4,S5,S6,S7 svc
     class DL1,DL2 data
+    class U1,U2,U3,U4,U5,U6 util
+    class C1,C2 cache
+    class L1,L2,L3 loader
     class PS1,PS2,PS3,PS4,PS5,PS6,PS7 panel
 ```
 
@@ -287,47 +375,47 @@ sequenceDiagram
     participant React as Reaction Feedback
     participant Recall as Auto Recall
 
-    User->>Zalo: Sends message "/scl Son Tung MTP"
+    User->>Zalo: Gửi tin nhắn "/scl Sơn Tùng MTP"
     Zalo->>WS: WebSocket push (message event)
     WS->>Pipeline: Forward event
-    
-    Pipeline->>Resolve: Parse prefix + command + args
-    Resolve-->>Pipeline: Command: "scl", args: ["Son Tung MTP"]
-    
-    Pipeline->>AntiSpam: Check user/group rate limit
-    alt Spam detected
-        AntiSpam-->>Pipeline: Block + log
-        Pipeline->>React: reaction sad
+
+    Pipeline->>Resolve: Phân tích prefix + command + args
+    Resolve-->>Pipeline: Command: "scl", args: ["Sơn Tùng MTP"]
+
+    Pipeline->>AntiSpam: Kiểm tra giới hạn tốc độ user/group
+    alt Spam phát hiện
+        AntiSpam-->>Pipeline: Chặn + log
+        Pipeline->>React: reaction buồn
     else OK
         AntiSpam-->>Pipeline: Pass
-        Pipeline->>Perm: Check role (0/1/2)
-        alt Insufficient permission
-            Perm-->>Pipeline: Deny
-            Pipeline->>React: reaction sad
+        Pipeline->>Perm: Kiểm tra vai trò (0/1/2)
+        alt Quyền không đủ
+            Perm-->>Pipeline: Từ chối
+            Pipeline->>React: reaction buồn
         else OK
             Perm-->>Pipeline: Pass
-            Pipeline->>CD: Check command cooldown
-            alt On cooldown
-                CD-->>Pipeline: Skip
-                Pipeline->>React: reaction sad
+            Pipeline->>CD: Kiểm tra cooldown lệnh
+            alt Đang cooldown
+                CD-->>Pipeline: Bỏ qua
+                Pipeline->>React: reaction buồn
             else OK
                 CD-->>Pipeline: Pass
-                Pipeline->>Handler: Execute scl handler
-                Handler->>React: reaction thumbsup (start)
-                
-                Handler->>Services: Search SoundCloud
-                Services-->>Handler: Track list (20 results)
-                
-                Handler->>Canvas: Render music grid (4 cols)
-                Canvas-->>Handler: PNG buffer (lossless)
-                
-                Handler->>Storage: Cache results (LRU, 5 min TTL)
-                Handler->>Zalo: Send image + text (page 1/3)
-                
-                Handler->>React: reaction check (success)
-                
-                par Auto Recall (1 min)
-                    Recall->>Zalo: Undo message (bot own)
+                Pipeline->>Handler: Thực thi handler scl
+                Handler->>React: reaction thumbsup (bắt đầu)
+
+                Handler->>Services: Tìm kiếm SoundCloud
+                Services-->>Handler: Danh sách bài hát (20 kết quả)
+
+                Handler->>Canvas: Render lưới nhạc (4 cột)
+                Canvas-->>Handler: Buffer PNG (lossless)
+
+                Handler->>Storage: Cache kết quả (LRU, TTL 5 phút)
+                Handler->>Zalo: Gửi ảnh + văn bản (trang 1/3)
+
+                Handler->>React: reaction check (thành công)
+
+                par Auto Recall (1 phút)
+                    Recall->>Zalo: Undo tin nhắn (của bot)
                 end
             end
         end
@@ -338,16 +426,16 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    subgraph MainProcess["Main Process (Node.js)"]
+    subgraph MainProcess["Quy Trình Chính (Node.js)"]
         EventLoop["Event Loop
 (single-threaded)"]
         WorkerThreads["Worker Threads
-(if enabled)"]
+(nếu bật)"]
     end
 
-    subgraph PanelWorkers["Panel-Managed Child Processes"]
+    subgraph PanelWorkers["Quy Trình Con Quản Lý Bởi Panel"]
         direction TB
-        
+
         subgraph Bot1["Bot Instance 1 (PID: xxx)"]
             B1Main["Main Thread"]
             B1Handle["Command Handler"]
@@ -372,17 +460,17 @@ flowchart TB
         end
     end
 
-    subgraph SharedResources["Shared Resources (per bot instance)"]
+    subgraph SharedResources["Tài Nguyên Chia Sẻ (mỗi instance bot)"]
         SR1["LRU Cache
 (group, user, music)"]
         SR2["JSON Store
 (data/store_{pid}.json)"]
         SR3["Supabase Pool
-(if configured)"]
+(nếu cấu hình)"]
         SR4["Sticker Catalog
-(cached 30 min)"]
+(cache 30 phút)"]
         SR5["Font Registry
-(8 families)"]
+(8 family)"]
     end
 
     subgraph PanelManager["Bot Manager (panel/botManager.js)"]
@@ -394,13 +482,13 @@ flowchart TB
         PM4["Logs Stream
 (stdout/stderr)"]
         PM5["QR Code
-(display)"]
+(hiển thị)"]
         PM6["Health Check
 (/health ping)"]
         PM7["Watchdog
 (crash-loop > 3)"]
         PM8["Auto-Restart
-(on crash)"]
+(khi crash)"]
         PM9["Metrics Collect
 (cpu, mem, uptime)"]
     end
@@ -414,9 +502,9 @@ flowchart TB
     BotN --> SR1 & SR2 & SR3 & SR4 & SR5
 
     PanelManager --> PM1 & PM2 & PM3 & PM4 & PM5 & PM6 & PM7 & PM8 & PM9
-    PanelManager -.->|manages| Bot1
-    PanelManager -.->|manages| Bot2
-    PanelManager -.->|manages| BotN
+    PanelManager -.->|quản lý| Bot1
+    PanelManager -.->|quản lý| Bot2
+    PanelManager -.->|quản lý| BotN
 
     classDef main fill:#e3f2fd,stroke:#1976d2;
     classDef bot fill:#e8f5e9,stroke:#388e3c;
@@ -428,3 +516,179 @@ flowchart TB
     class SR1,SR2,SR3,SR4,SR5 shared
     class PM1,PM2,PM3,PM4,PM5,PM6,PM7,PM8,PM9,PanelManager mgr
 ```
+
+## 6. Refactoring Summary
+
+Dưới đây là tóm tắt các thay đổi refactoring đã thực hiện đối với mã nguồn JOHNTRAN-JS:
+
+### 6.1 package.json
+- `main`: `dist/index.js` → `index.js`
+- `start`: `node dist/index.js` → `node index.js`
+- `dev`: `ts-node src/index.ts` → `nodemon JohnTran.js`
+- `start:prod`: `NODE_ENV=production node dist/index.js` → `NODE_ENV=production node JohnTran.js`
+- Xóa script `build: tsc`
+- Xóa `typescript` và `ts-node` khỏi `devDependencies`
+- Entry point hiện là CommonJS: `index.js` (supervisor) → `JohnTran.js` (bot)
+
+### 6.2 .gitignore
+- Thêm các runtime artifacts vào danh sách bỏ qua: `core/assets/cache/`, `*.session`, `*.tmp`, `*.scratch`
+
+### 6.3 Xóa file rác
+- `core/music/index.js.bak`
+- `scripts/benchmark.py`
+- `write_bench.py`
+- `deploy/edge/*.py` (4 file)
+- `scripts/__dbg.js`
+- `scripts/_smoke_monitor.js`
+- `scripts/_fix-sticker.js`
+- `fix.js`
+
+### 6.4 core/loader/pluginDeps.js (mới)
+- Tạo module chia sẻ cho cài đặt dependency của plugin
+- Xuất: `extractDependencies`, `installMissingDeps`, `SUSPICIOUS_DEP`, `DEP_PAIR`
+
+### 6.5 core/loader/loaderCommand.js
+- Xóa code trùng lặp `extractDependencies`, `SUSPICIOUS_DEP`, `DEP_PAIR`
+- Nhập từ `./pluginDeps`
+
+### 6.6 core/loader/loaderEvent.js
+- Xóa code trùng lặp `extractDependencies`, `SUSPICIOUS_DEP`, `DEP_PAIR`
+- Nhập từ `./pluginDeps`
+
+### 6.7 core/cache/lru.js (mới)
+- Tách lớp `LRUCache` và hàm `createCache` ra module riêng
+
+### 6.8 core/cache.js
+- Nhập `{ LRUCache, createCache }` từ `./lru` và re-export tất cả
+- Giữ nguyên tất cả cache instances và hàm cleanup
+
+### 6.9 utils/ (chia utils/index.js 455 dòng thành 5 module + index re-export 35 dòng)
+- `utils/file.js` - `saveBase64Image`, `getJsonData`, `tryUnlink`
+- `utils/config.js` - `updateConfigArray`, `reloadConfig`
+- `utils/messageCache.js` - message cache (RAM + debounce disk)
+- `utils/media.js` - `processVideo`, `processAudio`, `extractThumbnail`, `uploadFile`, v.v.
+- `utils/qr.js` - `decodeQRFromBase64`, `generateQRCodeInTerminal`, `displayQRCodeInConsole`
+- `utils/index.js` - re-export từ 5 module trên + hàm `convertTimestamp` giữ nguyên inline
+
+## 7. Target File Structure
+
+```text
+JOHNTRAN-JS/
+├── index.js                      # Supervisor (entry point, CommonJS)
+│                                  # Chế độ panel: khởi động PanelServer + BotManager
+│                                  # Chế độ bot đơn: spawn JohnTran.js
+├── JohnTran.js                   # Bot entry (được spawn bởi index.js)
+│                                  # Login, loader, listener, panelBridge, stats
+├── package.json                  # main: index.js; start: node index.js
+│                                  # dev: nodemon JohnTran.js
+│                                  # start:prod: NODE_ENV=production node JohnTran.js
+│                                  # Không có build: tsc, không có typescript/ts-node
+├── .gitignore                    # + core/assets/cache/, *.session, *.tmp, *.scratch
+├── config.yml
+├── .env.example
+├── account.json
+├── cookie.json
+├── qr.png
+├── tsconfig.json                 # Giữ lại (không dùng cho build)
+├── nodemon.json
+├── Dockerfile
+├── Dockerfile.prod
+├── docker-compose.prod.yml
+├── render.yaml
+├── core/
+│   ├── bootstrap.js              # Khôi phục account/cookie/env
+│   ├── cache.js                  # Import từ ./cache/lru, re-export tất cả,
+│   │                               giữ instances + cleanup (threadCache, userCache, …)
+│   ├── cache/
+│   │   └── lru.js                # LRUCache class + createCache (đã tách ra)
+│   ├── config/                   # Cấu hình hệ thống
+│   ├── controller/
+│   │   ├── controllerUsers.js    # Users Controller (get/set/all)
+│   │   └── controllerThreads.js  # Threads Controller (get/set/all)
+│   ├── handle/                   # Command pipeline (resolve, anti-spam, permission, cooldown, execute)
+│   ├── health.js                 # Health Server (/health)
+│   ├── hotReload.js              # Hot Reload Watcher
+│   ├── listen.js                 # Zalo WebSocket listener
+│   ├── login.js                  # Đăng nhập Zalo
+│   ├── message.js                # Message Helper (reply, card, reaction)
+│   ├── metrics.js                # Metrics + Audit Log
+│   ├── monitoring.js             # Giám sát hệ thống
+│   ├── panelBridge.js            # Cầu nói panel (chat Zalo thu nhỏ, localhost)
+│   ├── stats.js                  # Thu thập thống kê bot
+│   ├── videoMeta.js              # Thông tin video
+│   ├── workerPool.js             # Quản lý worker pool
+│   ├── ai/                       # AI Module (Gemini TTS /noi)
+│   ├── canvas/                   # Canvas Renderer (theme, vip, menu, music)
+│   ├── commands/                 # Lệnh nội bộ core
+│   ├── http/                     # HTTP Client (retry, timeout, privacy guard)
+│   ├── lazyLoader.js             # Preload heavy modules nền
+│   ├── mediaCache.js             # Media cache
+│   ├── mediaDownloader.js        # Media Downloader (meta + endpoint)
+│   ├── mediaReply.js             # Trả lời media
+│   ├── mentions.js               # Xử lý mentions
+│   ├── music/                    # Music Registry (Track + SoundCloud + Lyrics)
+│   ├── pixelfx/                  # Hiệu ứng pixel
+│   ├── services.js               # Services Config
+│   ├── socialFetch.js            # Lấy dữ liệu mạng xã hội
+│   ├── socialInfo.js             # Thông tin mạng xã hội
+│   ├── stickerConvert.js         # Chuyển đổi sticker
+│   ├── stickerCreate.js          # Tạo sticker
+│   ├── stickerFactory.js         # Xưởng sticker
+│   ├── stickerFrames.js          # Khung sticker
+│   ├── stickerStore.js           # Sticker Store (effectId > 0)
+│   ├── storage/                  # Storage Abstraction (JSON local + Supabase)
+│   ├── styled.js                 # Định dạng estil
+│   ├── tiktok.js                 # TikTok API
+│   ├── workers/                  # Worker threads
+│   └── assets/
+│       └── cache/                # Runtime cache (bị gitignore)
+│   └── loader/
+│       ├── loaderCommand.js      # Command Loader (import từ ./pluginDeps)
+│       ├── loaderEvent.js        # Event Loader (import từ ./pluginDeps)
+│       └── pluginDeps.js         # extractDependencies, installMissingDeps,
+│                                  # SUSPICIOUS_DEP, DEP_PAIR (chia sẻ)
+├── core/assets/cache/            # Bị gitignore - runtime artifacts
+├── panel/
+│   ├── botManager.js             # Bot Manager (spawn/stop/restart/logs/QR/watchdog)
+│   └── server/                   # Panel API Server (zero-dep, không Express)
+├── plugins/
+│   ├── commands/                 # 23 lệnh (scl, lyric, noi, stats, menu, …)
+│   └── events/                   # Đã bỏ v3 (pure command-based bot)
+├── utils/
+│   ├── index.js                  # 35 dòng, re-export từ 5 module + convertTimestamp inline
+│   ├── file.js                   # saveBase64Image, getJsonData, tryUnlink
+│   ├── config.js                 # updateConfigArray, reloadConfig
+│   ├── messageCache.js           # Message cache (RAM + debounce disk)
+│   ├── media.js                  # processVideo, processAudio, extractThumbnail,
+│   │                               uploadFile, convertDurationToFiveDigits, convertMp3ToAac
+│   ├── qr.js                     # decodeQRFromBase64, generateQRCodeInTerminal,
+│   │                               displayQRCodeInConsole
+│   ├── logger.js                 # Ghi log hệ thống
+│   ├── db.js                     # Kết nối database
+│   └── batchDb.js                # Ghi batch database
+├── assets/
+│   ├── spam/*.txt                # (vi, en, zh, ja, ko, th, mix)
+│   ├── autosend.json
+│   ├── girl.json
+│   ├── vdgirl.json
+│   ├── bg/theme.jpg
+│   └── fonts/                    # 8 family
+├── data/
+│   ├── store.json                # JSON atomic store
+│   ├── audit.log
+│   └── cache/
+├── scripts/
+├── test/
+├── deploy/
+├── docs/
+├── reference-images/
+├── khung-stk/
+├── native/
+├── vendor/
+│   └── zalo-client/
+├── bots/
+├── .tmp/                         # Bị gitignore
+└── .tmpscratch/                  # Bị gitignore
+```
+
+Luồng khởi động: `npm start` → `index.js` (supervisor) → spawn `JohnTran.js` (bot entry). Trong chế độ panel, `index.js` khởi động `PanelServer` và `BotManager` thay vì spawn bot trực tiếp.
