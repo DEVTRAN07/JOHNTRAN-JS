@@ -161,7 +161,7 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
           player.avatarUrl = identity.avatarUrl || player.avatarUrl;
         }
         savePlayer(stored, player); await Users.setData(uid, stored);
-        await sendPhase(api, event, "🧿 Thiên Đạo đang mở lại mệnh đăng của đạo hữu...");
+        await effects.phase("🧿 Thiên Đạo đang mở lại mệnh đăng của đạo hữu...", { delayMs: 520 });
         return send(api, event, profileText(player));
       }
       const identity = await getZaloIdentity(api, event, uid);
@@ -268,7 +268,7 @@ ${result.claimed.map((m) => `✅ ${m.name}: +${m.reward}`).join("\n")}
 💎 Số dư: ${result.player.sectStones}
 Dùng /tutien luyennhanh để tăng tu vi nhanh.`);
       }
-      await sendPhase(api, event, "📜 Đang mở bảng công tích của DEVTRAN TIÊN TÔNG...");
+      await effects.phase("📜 Đang mở bảng công tích của DEVTRAN TIÊN TÔNG...", { delayMs: 520 });
       return send(api, event, formatMissions(player));
     }
 
@@ -312,7 +312,7 @@ Thiên Đạo chưa tuyệt đường sinh cơ. Hãy hồi phục rồi thử l�
     }
 
     if (["help", "bang", "menu"].includes(action)) {
-      await sendPhase(api, event, "📜 Thiên Đạo truyền xuống tu tiên bí lục...");
+      await effects.phase("📜 Thiên Đạo truyền xuống tu tiên bí lục...", { delayMs: 520 });
       return send(api, event, `☯ JOHNTRAN – TIÊN ĐẠO VÔ HẠN V4 ☯
 /tutien batdau   – Tạo nhân vật bằng tên + avatar Zalo
 /tutien profile  – Xem hồ sơ tu sĩ
