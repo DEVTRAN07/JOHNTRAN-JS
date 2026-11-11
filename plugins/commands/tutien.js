@@ -1,6 +1,7 @@
 "use strict";
 
 const engine = require("../../core/games/tuTienEngine");
+const { createTuTienEffects } = require("../../core/games/tuTienEffects");
 
 module.exports.config = {
   name: "tutien", aliases: ["tu-tien", "tiendao"], version: "4.0.0", role: 0,
@@ -115,7 +116,11 @@ function getMemberCount(Users) {
   catch { return 0; }
 }
 
-module.exports.run = async function ({ args = [], event, api, Users }) {
+async function runTuTien({ args = [], event, api, Users }, effects) {
+  // Route all actual bot replies through the live Zalo effect runner.
+  const send = (_api, _event, message) => effects.result(message);
+  const sendPhase = (_api, _event, message, delay = 520) => effects.respond(message, delay);
+  const runPhases = (_api, _event, phases) => effects.sequence(phases);
   const uid = String(event?.data?.uidFrom || "");
   if (!uid) return;
   const action = String(args[0] || "help").toLowerCase();
@@ -329,6 +334,27 @@ Không có lệnh đột phá riêng và không thể lập tông môn khác.`);
 
     return sendPhase(api, event, "❓ Đạo pháp không tồn tại. Dùng /tutien help để xem các lệnh hiện có.");
   });
+}
+
+module.exports.run = async function (context = {}) {
+  const effects = createTuTienEffects(context);
+  try {
+    return await runTuTien(context, effects);
+  } catch (error) {
+    await effects.fail();
+    throw error;
+  }
 };
 
-module.exports._test = { progressBar, withUserLock, typingIndicator, sendPhase, runPhases, profileText, formatMissions, getZaloIdentity, getSectMasterId };
+module.exports._test = {
+  progressBar,
+  withUserLock,
+  typingIndicator,
+  sendPhase,
+  runPhases,
+  profileText,
+  formatMissions,
+  getZaloIdentity,
+  getSectMasterId,
+  runTuTien
+};
