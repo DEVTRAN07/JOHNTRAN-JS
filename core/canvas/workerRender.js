@@ -22,8 +22,4 @@ async function renderCanvas(type, data, options = {}) {
   return filePath;
 }
 
-async function renderTuTienCard(data, options = {}) {
-  return renderCanvas("tuTien-card", data, { timeout: options.timeout || 45000, poolSize: options.poolSize });
-}
-
-module.exports = { renderCanvas, renderTuTienCard };
+module.exports = { renderCanvas };
