@@ -1,36 +1,31 @@
-# JOHNTRAN – Tiên Đạo Vô Hạn (V2)
+# JOHNTRAN – Tiên Đạo Vô Hạn (V3)
 
-## Mục tiêu
-Game nhập vai tu tiên chạy trực tiếp trong chat Zalo, dùng chung tài khoản Users hiện có. V2 bổ sung thẻ hình ảnh do Canvas worker nội bộ render, bí cảnh, linh thú và Cửu Trọng Thiên Kiếp. Không thêm dependency ngoài.
+## Hướng game
+V3 tập trung hoàn toàn vào hành trình tu luyện cá nhân, đột phá cảnh giới và Cửu Trọng Thiên Kiếp. Không có lập tông môn, linh thú hoặc bí cảnh.
 
 ## Lệnh
-- `/tutien batdau`: tạo nhân vật lần đầu.
-- `/tutien profile` hoặc `/tutien the`: render thẻ hồ sơ tu sĩ.
-- `/tutien tuluyen`: hấp thu linh khí, hồi chiêu 30 giây; gửi cảnh tu luyện kèm ảnh.
-- `/tutien dotpha`: đột phá cảnh giới thông thường, tiêu hao 20 linh thạch.
-- `/tutien bicanh`: thám hiểm bí cảnh (hồi chiêu 60 giây).
-- `/tutien linhthu`: xem danh sách linh thú.
-- `/tutien linhthu chon <số>`: chọn linh thú hộ đạo.
-- `/tutien linhthu choan`: cho linh thú ăn, tiêu hao 15 linh thạch và nhận EXP.
-- `/tutien dotkiem`: vượt Cửu Trọng Thiên Kiếp ở Độ Kiếp Cửu Trọng.
+- `/tutien batdau`: lập mệnh đăng, tạo nhân vật.
+- `/tutien profile`: xem mệnh bàn, cảnh giới, tu vi và chỉ số.
+- `/tutien tuluyen`: nhập định, tụ khí, vận chu thiên và nhận tu vi; hồi chiêu 30 giây.
+- `/tutien dotpha`: dựng trận, nghịch chuyển linh lực và thử đột phá; cần đủ tu vi, 20 linh thạch.
+- `/tutien dotkiem`: vượt Cửu Trọng Thiên Kiếp tại Độ Kiếp Cửu Trọng; cần đủ tu vi, 80 linh thạch.
+- `/tutien help`: xem hướng dẫn.
 
-## Cơ chế V2
-- Giữ nguyên tiến trình V1; normalize/migrate dữ liệu cũ sang version 2 và thêm inventory/pet/discovery.
-- Bí cảnh tạo các sự kiện: linh tuyền, yêu thú, linh thú hoang và rương cổ. Kết quả do engine xác định và được lưu vào Users trước khi gửi thẻ.
-- Linh thú: Vân Hồ, Lôi Điểu, Huyền Quy, Bạch Hổ và Chu Tước. Linh thú hộ đạo cộng chỉ số công/thủ; cho ăn để tăng cấp.
-- Độ Kiếp Cửu Trọng là hành động riêng, không cho dùng đột phá thường để vượt cấp. Thắng sẽ mở Chân Tiên; thất bại gây hao tổn nhưng không xóa nhân vật.
-- Canvas card được render bằng `core/workers/canvasWorker.js` thông qua `core/workerPool.js`. Ảnh gồm thẻ hồ sơ, cảnh tu luyện, đột phá, kết quả bí cảnh, linh thú và thiên kiếp.
-- Nếu worker/Canvas render lỗi, bot vẫn gửi nội dung văn bản thay thế.
+## Hiệu ứng chat thật (không dùng ảnh)
+- Dùng API `sendTypingEvent(threadId, type)` có sẵn trong `vendor/zalo-client/dist/api/sendTypingEvent` để bật tín hiệu đang nhập của Zalo trước từng giai đoạn.
+- Bot gửi các thông điệp diễn biến theo từng pha; mỗi pha có tín hiệu đang nhập trước khi xuất hiện.
+- Tu luyện có 3 pha: nhập định → tụ khí → vận chu thiên → kết quả và thanh tiến trình ký tự.
+- Đột phá có 3 pha: dựng trận → nghịch chuyển linh lực → kim đan chấn động → kết quả.
+- Độ kiếp có 4 pha: mây kiếp → đệ nhất lôi → đệ ngũ lôi → đệ cửu lôi → kết quả thành tiên/thất bại.
+- Bắt đầu game có các pha dò căn cốt, khai mở linh khí và ghi danh Tiên Lục.
+- Hồ sơ có các pha kết nối mệnh đăng và đọc kinh mạch.
+- Pipeline của bot vẫn thả reaction xử lý và reaction kết quả như các lệnh khác.
 
-## An toàn và hiệu năng
-- Tiến trình lưu trong namespace `Users.data.tuTien`, không ghi đè trường dữ liệu khác.
-- Khóa theo UID trong process để chống cập nhật đồng thời trong cùng tiến trình.
-- Không thêm API mạng cho game, không thêm package, không sửa các lệnh cũ.
-- Render ảnh chạy trong worker pool hiện có, không chặn event loop chính và không dùng lane sticker/music.
-- File ảnh tạm được lên lịch xóa sau khi gửi.
+## Giới hạn Zalo cần nói rõ
+Zalo client hiện có typing-event và send-message; không có API sửa nội dung bong bóng tin đã gửi. Vì vậy hiệu ứng thực tế là typing indicator + chuỗi thông điệp chat nối tiếp, không phải chữ chạy trong cùng một tin, không phải HTML/CSS animation hoặc ảnh GIF. Nếu typing endpoint lỗi/không khả dụng, bot vẫn gửi các bước bằng văn bản.
 
-## Kiểm thử và giới hạn
-- Unit tests cho tiến trình, cooldown, bí cảnh, linh thú, chuyển cấp, đột phá và độ kiếp.
-- Canvas worker có test xác nhận ảnh hồ sơ là PNG hợp lệ.
-- Chưa thể thực hiện live smoke test trên tài khoản Zalo ở môi trường GitHub connector; cần xác nhận thực tế API upload attachment/hiển thị ảnh khi deploy.
-- Hiệu ứng hiện tại là ảnh thẻ tĩnh + chuỗi tin nhắn/reaction. Không giả định Zalo hỗ trợ animation HTML/CSS trong khung chat.
+## Dữ liệu và tương thích
+- Tiến trình vẫn lưu trong `Users.data.tuTien`; những trường người dùng khác không bị thay đổi.
+- Dữ liệu V1/V2 được migrate sang version 3, giữ cảnh giới, tu vi, linh thạch và chỉ số; xóa dữ liệu pet/bí cảnh cũ trong namespace tuTien theo yêu cầu bỏ các hệ thống đó.
+- Không thêm dependency; không sửa lệnh cũ; không gọi API ngoài.
+- Chưa có live smoke test trên tài khoản Zalo production.
