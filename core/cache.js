@@ -1,4 +1,4 @@
-const { LRUCache, createCache } = require("./lru");
+const { LRUCache, createCache } = require("./cache/lru");
 
 const threadCache = createCache({ max: 1000, ttl: 5 * 60 * 1000 });
 const userCache = createCache({ max: 1000, ttl: 10 * 60 * 1000 });
