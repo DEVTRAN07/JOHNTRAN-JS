@@ -35,7 +35,7 @@ test("setData keeps the database record envelope in the LRU cache", async () => 
 
 test("createData initializes the same record shape as persisted rows", async () => {
   const threadId = "thread-cache-create-" + process.pid;
-  const created = Threads.createData(threadId, { anti_link: false, anti_spam: true });
+  const created = await Threads.createData(threadId, { anti_link: false, anti_spam: true });
   assert.equal(created.threadId, threadId);
   assert.equal(created.data.anti_spam, true);
 
