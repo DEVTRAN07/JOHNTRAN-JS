@@ -94,7 +94,8 @@ test("job queue can enforce a total in-flight cap", async () => {
 
 
 test("global worker ceiling is shared across independent lanes", async () => {
-  const gate = new Promise((resolve) => { globalReleaseQueueTest = resolve; });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
   let active = 0, peak = 0;
   const jobs = Array.from({ length: 8 }, (_, i) => enqueue(`global-lane-${i}`, async () => {
     active++;
@@ -104,7 +105,7 @@ test("global worker ceiling is shared across independent lanes", async () => {
   }, { concurrency: 4, maxPending: 2, maxInFlight: 6 }));
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.ok(peak <= require("../core/jobQueue").GLOBAL_CONCURRENCY);
-  globalReleaseQueueTest();
+  release();
   await Promise.all(jobs);
   assert.equal(stats().global.active, 0);
 });
