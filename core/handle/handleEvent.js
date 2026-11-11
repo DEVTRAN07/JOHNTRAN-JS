@@ -4,35 +4,8 @@ const { ThreadType } = require("zalo-client");
 
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
-
 const { dispatchEvent } = require("../runtime/eventRegistry");
-
-function buildContext(api, eventData, name, eventType) {
-  let threadType = eventData?.type;
-  // Group event: event.type is the event name, not a Zalo ThreadType.
-  if (eventType === "group_event" || !Number.isFinite(Number(threadType))) {
-    threadType = ThreadType.Group;
-  }
-  let wrapped = api;
-  try {
-    wrapped = wrapForEvent(api, eventData, name, threadType);
-  } catch {
-    wrapped = api;
-  }
-  return { api: wrapped, reply: wrapped?.__reply, threadType };
-}
-
-function buildReplyData(eventData) {
-  return {
-    content: eventData.data?.content,
-    msgType: eventData.data?.msgType,
-    propertyExt: eventData.data?.propertyExt,
-    uidFrom: eventData.data?.uidFrom,
-    msgId: eventData.data?.msgId,
-    cliMsgId: eventData.data?.cliMsgId,
-    ts: eventData.data?.ts
-  };
-}
+const { createEventContext } = require("../runtime/eventContext");
 
 function handleEvent(eventType, eventData, api, isSelf = false) {
   return dispatchEvent({
@@ -40,30 +13,35 @@ function handleEvent(eventType, eventData, api, isSelf = false) {
     commands: global.client?.commands,
     eventType,
     onEventModule(eventModule, name) {
-      const { api: wrapped, reply, threadType } = buildContext(api, eventData, name, eventType);
+      const context = createEventContext({
+        api, eventData, name, eventType, ThreadType, wrapForEvent
+      });
       return eventModule.run({
-        api: wrapped,
+        api: context.api,
         event: eventData,
         eventType,
         isSelf,
-        reply,
+        reply: context.reply,
         Users,
         Threads,
-        replyData: buildReplyData(eventData),
-        threadType
+        replyData: context.replyData,
+        threadType: context.threadType
       });
     },
     onCommandModule(commandModule, name) {
-      const { api: wrapped, reply } = buildContext(api, eventData, name);
+      const context = createEventContext({
+        api, eventData, name, eventType, ThreadType, wrapForEvent
+      });
       return commandModule.handleEvent({
-        api: wrapped,
+        api: context.api,
         event: eventData,
         eventType,
         isSelf,
-        reply,
+        reply: context.reply,
         Users,
         Threads,
-        replyData: buildReplyData(eventData)
+        replyData: context.replyData,
+        threadType: context.threadType
       });
     },
     onError(error, kind, name) {
