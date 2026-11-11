@@ -1,158 +1,163 @@
-// /tiktok — Thông tin + tải media TikTok
-// Tham khảo Kenne400k/filebotha-leak (modules/commands/tiktok.js): các chế độ
-// video / music / info. Nhưng API apivip.nguyenlienmanh.com của repo đã chết
-// nên phần info lấy qua curl_cffi (trang công khai) và video/music thử tikwm.
-//
-//   /tiktok <username>                    thẻ thông tin user
-//   /tiktok info <username>               (giống trên)
-//   /tiktok video <link>                  tải video
-//   /tiktok music <link>                  tải nhạc
+// /tiktok — Tải video/nhạc TikTok (hỗ trợ cả Douyin)
+//   /tiktok <link> → tải video + music, gửi lên Zalo
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
+const os = require("os");
+const crypto = require("crypto");
 const http = require("../../core/http");
-const { fetchSocial } = require("../../core/socialFetch");
+const { mediaCache } = require("../../core/mediaCache");
+const { getVideoInfo } = require("../../core/tiktok");
 
 module.exports.config = {
   name: "tiktok",
   aliases: ["tt", "tik"],
   version: "2.0.0",
   role: 0,
-  author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
-  description: "Thông tin và tải media TikTok",
+  author: "J^H^N T^R^A^N",
+  description: "Tải video/nhạc TikTok theo link",
   category: "Tiện ích",
-  usage: "tiktok <username> | tiktok video <link> | tiktok music <link>",
+  usage: "tiktok <link TikTok/Douyin>",
   cooldowns: 10,
   dependencies: {}
 };
 
-function shortNum(n) {
-  const v = Number(n) || 0;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-  return String(v);
+function isHttpUrl(value) {
+  return /^https?:\/\//i.test(String(value || ""));
 }
 
-// Chấp nhận: user | @user | link profile | link video
-function parseTarget(raw) {
-  return String(raw || "").trim()
-    .replace(/^@/, "")
-    .replace(/^https?:\/\/(www\.|m\.)?tiktok\.com\/@?/, "")
-    .replace(/^https?:\/\/vt\.tiktok\.com\/\w+\/?/, "")
-    .replace(/\/+$/, "")
-    .replace(/\/.*$/, "")
-    .trim();
+function urlCacheKey(url) {
+  return crypto.createHash("sha256").update(String(url)).digest("hex");
 }
 
-module.exports.run = async function ({ api, event, args, reply }) {
+async function cachedMedia(url, type) {
+  const key = urlCacheKey(url);
+  const cached = await mediaCache.get(key);
+  if (cached && cached.buffer) {
+    const cachedUrl = mediaCache.getUrl(key);
+    return { buffer: cached.buffer, url: cachedUrl, cached: true, key };
+  }
+  return { key, cached: false };
+}
+
+async function storeMedia(url, buffer, type, metadata) {
+  const result = await mediaCache.upload(buffer, type, Object.assign({ sourceUrl: url }, metadata || {}));
+  return { buffer, url: result.url, cached: result.cached, key: result.key };
+}
+
+module.exports.run = async function ({ api, event, args }) {
   const { threadId, type } = event;
-  const sub = (args[0] || "").toLowerCase();
-  const raw = args[1] || (sub === "info" ? "" : args[0]);
+  const url = (args[0] || "").trim();
 
-  // ===== VIDEO =====
-  if (sub === "video" || sub === "v" || sub === "vd") {
-    const link = raw;
-    if (!link || !/^https?:\/\//i.test(link)) {
-      return reply.error(`Cách dùng: ${global.config.prefix}tiktok video <link tiktok>`);
-    }
-    return downloadTikTok(api, threadId, type, link, "mp4", "🎬 TIKTOK VIDEO");
+  if (!url) {
+    return api.sendMessage({
+      plain: true,
+      msg: "⚠️ Vui lòng nhập link TikTok/Douyin.\nVD: /tiktok https://www.tiktok.com/@user/video/123"
+    }, threadId, type);
   }
 
-  // ===== MUSIC =====
-  if (sub === "music" || sub === "m" || sub === "audio" || sub === "a") {
-    const link = raw;
-    if (!link || !/^https?:\/\//i.test(link)) {
-      return reply.error(`Cách dùng: ${global.config.prefix}tiktok music <link tiktok>`);
-    }
-    return downloadTikTok(api, threadId, type, link, "mp3", "🎵 TIKTOK MUSIC");
+  if (!isHttpUrl(url)) {
+    return api.sendMessage({
+      plain: true,
+      msg: "❌ Link không hợp lệ. Vui lòng nhập link bắt đầu bằng http(s)://"
+    }, threadId, type);
   }
 
-  // ===== INFO (mặc định) =====
-  const username = sub === "info" || sub === "i" ? args[1] : args[0];
-  if (!username) {
-    return reply.error(
-      `Cách dùng:\n` +
-      `${global.config.prefix}tiktok <username> — thẻ thông tin\n` +
-      `${global.config.prefix}tiktok video <link> — tải video\n` +
-      `${global.config.prefix}tiktok music <link> — tải nhạc`
-    );
-  }
-
-  const target = parseTarget(username);
-  if (!target || target.length < 2) return reply.error(`Không đọc được username từ: ${username}`);
-
-  await api.sendMessage({ msg: "⏳ Đang lấy thông tin TikTok...", plain: true }, threadId, type);
-
-  const { data: info, error, code } = await fetchSocial("tiktok", target);
-  if (!info) return reply.error(error || `Không lấy được hồ sơ @${target}`);
-
-  // ---- avatar ----
-  let avatarBuffer = null;
-  if (info.avatar) {
-    try {
-      const { buffer } = await http.getBuffer(info.avatar, { timeout: 20000 });
-      avatarBuffer = buffer;
-    } catch { /* thiếu ảnh vẫn tạo thẻ */ }
-  }
-
-  let cardPath = null;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_tk_"));
   try {
-    const alias = info._matched_alias;
-    if (alias) {
-      // TikTok trả 209002 cho tên gốc → dùng biến thể bỏ dấu chấm/gạch dưới
-      await api.sendMessage({
-        msg: `ℹ️ Không tìm thấy @${target} — đang hiển thị kết quả gần đúng nhất: @${alias}`,
-        plain: true,
-        ttl: 60000
-      }, threadId, type);
-    }
-    const card = require("../../core/canvas/profileCard");
-    cardPath = await card.render({
-      name: String(info.nickname || info.username || target),
-      avatarBuffer,
-      rows: [
-        ["» Followers", shortNum(info.followers)],
-        ["» Lượt thích", shortNum(info.hearts)],
-        ["» Số video", shortNum(info.videos)],
-        ["» Đang follow", shortNum(info.following)],
-        ["» Xác minh", info.verified ? "Có" : "Không"],
-        ["» Username", `@${info.username || alias || target}`]
-      ],
-      link: info.bio ? String(info.bio).slice(0, 46) : `@${info.username || alias || target}`
-    });
-    await api.sendMessage({ msg: "", attachments: [cardPath], ttlKind: "card" }, threadId, type);
-  } catch (error) {
-    console.error("tiktok:", error.message);
-    return reply.error(`Tạo thẻ thất bại: ${error.message}`);
-  }
-};
+    await api.sendMessage({ msg: "⏳ Đang lấy thông tin TikTok...", plain: true }, threadId, type);
 
-// Tải video/nhạc TikTok qua API công khai (tikwm)
-async function downloadTikTok(api, threadId, type, link, ext, label) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_tt_"));
-  const filePath = path.join(tmpDir, `tt_${Date.now()}.${ext}`);
-  try {
-    await api.sendMessage({ msg: "⏳ Đang tải...", plain: true }, threadId, type);
-    // TikTok API công khai hay bị chặn — nếu không lấy được thì báo rõ
-    const { data: rdata } = await http.getJson(`https://www.tikwm.com/api/?${new URLSearchParams({ url: link, hd: 1 })}`, {
-      timeout: 60000,
-      headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" }
-    });
-    const data = rdata?.data;
-    const mediaUrl = ext === "mp3" ? (data?.music || data?.music_info?.play) : (data?.play || data?.hdplay);
-    if (!mediaUrl) {
+    const info = await getVideoInfo(url);
+    const videoUrl = info.videoUrl;
+    const musicUrl = info.music || "";
+    const thumbUrl = info.thumbnail || "";
+
+    // ---- VIDEO ----
+    let videoResult = null;
+    if (videoUrl) {
+      const videoCached = await cachedMedia(videoUrl, "video");
+      if (videoCached.cached) {
+        videoResult = { buffer: videoCached.buffer, url: videoCached.url, cached: true };
+      } else {
+        const tmpVideo = path.join(tmpDir, "video.mp4");
+        const { buffer } = await http.getBuffer(videoUrl, { timeout: 180000, retries: 1 });
+        if (!buffer || !buffer.length) throw new Error("Video tải về rỗng");
+        fs.writeFileSync(tmpVideo, buffer);
+        videoResult = await storeMedia(videoUrl, buffer, "video", {
+          title: info.title,
+          author: info.author,
+          duration: info.duration,
+        });
+      }
+    }
+
+    // ---- MUSIC ----
+    let musicResult = null;
+    if (musicUrl) {
+      const musicCached = await cachedMedia(musicUrl, "audio");
+      if (musicCached.cached) {
+        musicResult = { buffer: musicCached.buffer, url: musicCached.url, cached: true };
+      } else {
+        const { buffer } = await http.getBuffer(musicUrl, { timeout: 120000, retries: 1 });
+        if (buffer && buffer.length) {
+          musicResult = await storeMedia(musicUrl, buffer, "audio", {
+            title: info.title,
+            author: info.author,
+          });
+        }
+      }
+    }
+
+    // ---- THUMBNAIL ----
+    let thumbResult = null;
+    if (thumbUrl) {
+      const thumbCached = await cachedMedia(thumbUrl, "image");
+      if (thumbCached.cached) {
+        thumbResult = { buffer: thumbCached.buffer, url: thumbCached.url, cached: true };
+      } else {
+        const { buffer } = await http.getBuffer(thumbUrl, { timeout: 30000, retries: 1 });
+        if (buffer && buffer.length) {
+          thumbResult = await storeMedia(thumbUrl, buffer, "image", {
+            title: info.title,
+            isThumbnail: true,
+          });
+        }
+      }
+    }
+
+    if (!videoResult && !musicResult) {
       return api.sendMessage({
         plain: true,
-        msg: `${label}\n❌ Không lấy được link media (API TikTok đang chặn).\n💡 Thử lại sau hoặc dùng link khác.`
+        msg: "❌ Không tìm thấy video hoặc nhạc trong link này."
       }, threadId, type);
     }
-    const { buffer } = await http.getBuffer(mediaUrl, { timeout: 120000 });
-    fs.writeFileSync(filePath, buffer);
-    await api.sendMessage({ msg: `${label} — ${(buffer.length / 1048576).toFixed(1)}MB`, attachments: [filePath], ttlKind: "media" }, threadId, type);
+
+    // ---- GỬI KẾT QUẢ ----
+    const lines = ["🎬 " + String(info.title || "TikTok video").slice(0, 60)];
+    lines.push("👤 " + String(info.author || "Không rõ"));
+    if (videoResult) lines.push("🎥 Video " + (videoResult.cached ? "(cache)" : "(mới)"));
+    if (musicResult) lines.push("🎵 Music " + (musicResult.cached ? "(cache)" : "(mới)"));
+
+    if (videoResult) {
+      const payload = {
+        msg: lines.join("\n"),
+        attachments: [videoResult.url],
+      };
+      if (thumbResult) payload.thumbnailUrl = thumbResult.url;
+      if (musicResult) payload.audioUrl = musicResult.url;
+      await api.sendMessage(payload, threadId, type);
+    } else if (musicResult) {
+      await api.sendMessage({
+        msg: lines.join("\n"),
+        attachments: [musicResult.url],
+      }, threadId, type);
+    }
   } catch (error) {
-    console.error("tiktok download:", error.message);
-    return api.sendMessage({ plain: true, msg: `${label}\n❌ Tải thất bại: ${error.message}` }, threadId, type);
+    console.error("tiktok:", error.message);
+    return api.sendMessage({
+      plain: true,
+      msg: "❌ Tải TikTok thất bại: " + String(error.message || error).slice(0, 180)
+    }, threadId, type);
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* bỏ qua */ }
   }
-}
+};

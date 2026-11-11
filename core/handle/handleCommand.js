@@ -84,7 +84,7 @@ async function checkGroupPermissions({ api, threadId, type, UIDUsage, threadInfo
   return { isBotAdmin, isSupport, isGroupAdmin };
 }
 
-async function handleCommand(messageText, event = null, api = null, threadInfo = null, prefix = null) {
+async function handleCommand(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
   const config = global.config;
 
   if (!messageText || typeof messageText !== "string") return;
@@ -173,6 +173,8 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     cdMap.set(UIDUsage, Date.now());
   }
 
+  const userData = await Users.getData(UIDUsage).catch(() => null);
+
   try {
     const replyData = {
       content: event.data.content,
@@ -199,7 +201,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
 
     reactAuto(Reactions.LIKE);
     try {
-        await command.run({ args, event, api: wrappedApi, Users, Threads, replyData, reply, mentions: event.mentions || [] });
+        await command.run({ args, event, api: wrappedApi, Users, Threads, replyData, reply, mentions: event.mentions || [], threadData, userData });
         reactAuto(Reactions.OK);
     } catch (err) {
         logger.log(`Lỗi khi xử lý lệnh '${commandName}': ${err.message}`, "error");

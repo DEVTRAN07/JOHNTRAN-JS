@@ -1,0 +1,16 @@
+[package]
+name = "canvas-rs"
+version = "1.0.0"
+edition = "2021"
+description = "Canvas rendering napi-rs module using skia-safe"
+
+[lib]
+name = "canvas_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { workspace = true, features = ["derive"] }
+skia-safe = "0.9"
+
+[features]
+default = []

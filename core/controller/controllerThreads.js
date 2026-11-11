@@ -1,36 +1,49 @@
-const { getData, saveData, hasData, delData, allData } = require('../../utils/db');
-const logger = require('../../utils/logger');
+const { getData, saveData, hasData, delData, allData } = require("../../utils/db");
+const logger = require("../../utils/logger");
+const { threadCache } = require("../cache");
 
 module.exports = {
   getAll: () => {
-    return allData('Threads').map((row) => ({
+    return allData("Threads").map((row) => ({
       threadId: row.threadId,
       data: row.data || {}
     }));
   },
 
   getData: async (threadId) => {
-    const existing = hasData('Threads', 'threadId', threadId);
+    const key = String(threadId);
+    const cached = threadCache.get(key);
+    if (cached !== undefined) return cached;
+
+    const existing = hasData("Threads", "threadId", threadId);
     if (!existing) {
       module.exports.createData(threadId, { ban: false, admin_only: false, support_only: false, box_only: false, prefix: global.config.prefix });
-      logger.log("Đã tạo database cho nhóm: " + threadId, "info");
+      logger.log("Da tao database cho nhom: " + threadId, "info");
     }
-    return getData('Threads', 'threadId', threadId);
+    const data = getData("Threads", "threadId", threadId);
+    threadCache.set(key, data);
+    return data;
   },
 
   setData: (threadId, data) => {
-    saveData('Threads', 'threadId', threadId, data);
+    const key = String(threadId);
+    saveData("Threads", "threadId", threadId, data);
+    threadCache.set(key, data);
   },
 
   delData: (threadId) => {
-    if (hasData('Threads', 'threadId', threadId)) {
-      delData('Threads', 'threadId', threadId);
+    const key = String(threadId);
+    if (hasData("Threads", "threadId", threadId)) {
+      delData("Threads", "threadId", threadId);
     }
+    threadCache.invalidate(key);
   },
 
   createData: (threadId, defaultData = {}) => {
-    if (!hasData('Threads', 'threadId', threadId)) {
-      saveData('Threads', 'threadId', threadId, defaultData);
+    const key = String(threadId);
+    if (!hasData("Threads", "threadId", threadId)) {
+      saveData("Threads", "threadId", threadId, defaultData);
     }
+    threadCache.set(key, defaultData);
   }
 };

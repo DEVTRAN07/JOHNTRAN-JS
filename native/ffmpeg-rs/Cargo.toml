@@ -1,0 +1,16 @@
+[package]
+name = "ffmpeg-rs"
+version = "1.0.0"
+edition = "2021"
+description = "FFmpeg bindings napi-rs module using ffmpeg-next"
+
+[lib]
+name = "ffmpeg_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { workspace = true, features = ["derive"] }
+ffmpeg-next = "7"
+
+[features]
+default = []

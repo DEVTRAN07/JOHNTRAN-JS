@@ -1,18 +1,32 @@
 const assert = require("assert");
 const fs = require("fs");
 const http = require("../core/http");
+const { mediaCache } = require("../core/mediaCache");
 const command = require("../plugins/commands/girl");
 
 async function main() {
   const originalGetBuffer = http.getBuffer;
+  const originalGet = mediaCache.get;
+  const originalGetUrl = mediaCache.getUrl;
+  const originalWriteLocal = mediaCache._writeLocal;
+  const originalRequest = mediaCache.r2 ? mediaCache.r2.request : null;
   const messages = [];
-  let attachmentExistsWhenSent = false;
+  let downloadCalls = 0;
+  let writeLocalCalls = 0;
 
   http.getBuffer = async (url) => {
+    downloadCalls++;
     assert.ok(command.config.name === "girl");
     assert.ok(url.startsWith("https://"));
     return { buffer: Buffer.from("image"), contentType: "image/jpeg" };
   };
+  mediaCache.get = async () => null;
+  mediaCache._writeLocal = async (...args) => {
+    writeLocalCalls++;
+    return originalWriteLocal.apply(mediaCache, args);
+  };
+  mediaCache.getUrl = () => "https://cache.example/gai.jpg";
+  if (mediaCache.r2) mediaCache.r2.request = async () => ({});
 
   try {
     await command.run({
@@ -20,18 +34,21 @@ async function main() {
       api: {
         async sendMessage(message) {
           messages.push(message);
-          if (message.attachments) attachmentExistsWhenSent = fs.existsSync(message.attachments);
         }
       }
     });
   } finally {
     http.getBuffer = originalGetBuffer;
+    mediaCache.get = originalGet;
+    mediaCache.getUrl = originalGetUrl;
+    mediaCache._writeLocal = originalWriteLocal;
+    if (mediaCache.r2 && originalRequest) mediaCache.r2.request = originalRequest;
   }
 
   assert.strictEqual(messages.length, 1);
-  assert.ok(messages[0].attachments);
-  assert.strictEqual(attachmentExistsWhenSent, true);
-  assert.strictEqual(fs.existsSync(require("path").dirname(messages[0].attachments)), false);
+  assert.strictEqual(messages[0].attachments, "https://cache.example/gai.jpg");
+  assert.strictEqual(downloadCalls, 1);
+  assert.strictEqual(writeLocalCalls, 1);
   console.log("✓ girl tests passed");
 }
 

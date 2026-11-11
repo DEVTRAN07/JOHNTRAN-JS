@@ -2,13 +2,15 @@
 // Tham khảo: Kenne400k/filebotha-leak (modules/commands/card.js)
 const http = require("../../core/http");
 const { fetchProfile } = require("../../core/zaloProfile");
+const { mediaCache } = require("../../core/mediaCache");
+const crypto = require("crypto");
 
 module.exports.config = {
   name: "card",
   aliases: ["cardinfo", "userinfo", "info"],
-  version: "3.1.0",
+  version: "3.2.0",
   role: 0,
-  author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
+  author: "J^H^N T^R^A^N",
   description: "Thẻ hồ sơ người dùng (layout Kenne400k)",
   category: "Tiện ích",
   usage: "card (reply) | card <uid> | card box",
@@ -31,6 +33,23 @@ function dobText(dob, sdob) {
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
+function urlCacheKey(url) {
+  return crypto.createHash("sha256").update(String(url)).digest("hex");
+}
+
+async function getCachedAvatar(avatarUrl) {
+  const key = urlCacheKey(avatarUrl);
+  const cached = await mediaCache.get(key);
+  if (cached && cached.buffer) return cached.buffer;
+  return null;
+}
+
+async function cacheAvatar(avatarUrl, buffer) {
+  const key = urlCacheKey(avatarUrl);
+  const result = await mediaCache.upload(buffer, "image", { sourceUrl: avatarUrl });
+  return result.url;
+}
+
 module.exports.run = async function ({ api, event, args, reply }) {
   const card = require("../../core/canvas/profileCard"); // lazy — canvas+jimp ~1.6s
   const { threadId, type, data } = event;
@@ -49,14 +68,20 @@ module.exports.run = async function ({ api, event, args, reply }) {
   const { user } = await fetchProfile(api, uid);
   if (!user) return reply.error(`Không đọc được hồ sơ của ${uid}.`);
 
-  // ---- avatar ----
+  // ---- avatar (cache bằng mediaCache) ----
   let avatarBuffer = null;
   const avatar = String(user.avatar || "").trim();
   if (/^https?:\/\//i.test(avatar)) {
     try {
-      const { buffer, contentType } = await http.getBuffer(avatar, { timeout: 20000 });
-      if (buffer?.length && (!contentType || contentType.toLowerCase().startsWith("image/"))) {
-        avatarBuffer = buffer;
+      // 1) kiểm tra cache trước
+      avatarBuffer = await getCachedAvatar(avatar);
+      // 2) nếu chưa có cache → tải về và upload lên mediaCache
+      if (!avatarBuffer) {
+        const { buffer, contentType } = await http.getBuffer(avatar, { timeout: 20000 });
+        if (buffer?.length && (!contentType || contentType.toLowerCase().startsWith("image/"))) {
+          avatarBuffer = buffer;
+          await cacheAvatar(avatar, buffer).catch(() => {}); // không làm fail nếu upload cache lỗi
+        }
       }
     } catch { /* thiếu ảnh vẫn tạo thẻ */ }
   }

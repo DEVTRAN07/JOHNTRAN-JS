@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "johntran-bot"
+    static_configs:
+      - targets:
+          - "johntran-bot:8000"

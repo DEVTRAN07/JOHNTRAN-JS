@@ -2,8 +2,8 @@ const fs = require("fs");
 const music = require("./index");
 const models = require("./models");
 const ui = require("./ui");
-const cards = require("../canvas/music");
 const logger = require("../../utils/logger");
+const { renderCanvas } = require("../canvas/workerRender");
 const Threads = require("../controller/controllerThreads");
 
 let nextPageCursor = null; // "zing|2"
@@ -13,7 +13,6 @@ function send(api, threadId, type, msg) {
 }
 
 function usage(provider, reply) {
-  // Thẻ canvas VIP (render cache trong core/message → lần 2 là 0ms)
   return reply.card({
     theme: "music",
     title: `Nhạc • ${provider.label}`,
@@ -42,14 +41,13 @@ function friendlyError(error, reply) {
   return reply.error(`Lỗi khi xử lý nhạc: ${error.message || error}`);
 }
 
-const sendingLock = new Map(); // key -> in-flight sendTrack
+const sendingLock = new Map();
 
 async function sendTrack(reply, threadId, type, track, providerName, api, quality = null) {
   const lockKey = `${threadId}:${providerName}`;
   if (sendingLock.has(lockKey)) {
-    // Dang phat bai khong, khong phat them - tranh spam nhac lien tuc
     await reply.working();
-    return reply.error("Dang phat bai khac, vui long cho hoac dung `out`.");
+    return reply.error("Đang phát bài khác, vui lòng chờ hoặc dùng `out`");
   }
   const release = () => { sendingLock.delete(lockKey); };
   sendingLock.set(lockKey, true);
@@ -61,19 +59,24 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
     try {
       const streamUrl = await music.resolve(providerName, track);
       filePath = await music.downloadToFile(streamUrl, "mp3", { fallbackUrl: track.sourceUrl || track.permalink_url || track.permalinkUrl || "", quality });
-      const voiceUrl = await require("../../utils/index").processAudio(filePath, threadId, type);
+      
+      // Use worker pool for CPU-intensive audio conversion
+      const voiceUrl = await music.processAudioInWorker(filePath, threadId, type, api);
 
       try {
         const key = `np|${providerName}|${track.id}`;
         const cardPath = await renderCached(key, () =>
-          cards.renderNowPlaying(track, provider.label.toUpperCase())
+          renderCanvas("music-nowplaying", {
+            track,
+            sourceLabel: provider.label.toUpperCase()
+          })
         );
         if (cardPath) await api.sendMessage({ msg: "", attachments: cardPath }, threadId, type);
         else {
           const styled = ui.nowPlaying(track, provider.label.toUpperCase());
           await api.sendMessage({ ...styled }, threadId, type);
         }
-      } catch { /* hong thi thoi */ }
+      } catch { /* ignore render errors */ }
 
       await api.sendVoice({ voiceUrl }, threadId, type);
       await reply.done();
@@ -83,7 +86,7 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
       await friendlyError(error, reply);
     } finally {
       if (filePath && fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch { /* bo qua */ }
+        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
       }
     }
   } finally {
@@ -91,12 +94,9 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
   }
 }
 
-// ===== CACHE ẢNH CANVAS NHẠC =====
-// Canvas render 0.5-1.5s/lần. Ảnh cùng nội dung (cùng trang kết quả) giữ
-// lại 10 phút — lật next/prev quay lại hoặc tìm lại là gửi ngay từ đĩa.
 const CARD_TTL = 10 * 60 * 1000;
 const CARD_MAX = 40;
-const cardCache = new Map(); // key → { path, at }
+const cardCache = new Map();
 
 async function renderCached(key, renderFn) {
   const hit = cardCache.get(key);
@@ -109,7 +109,7 @@ async function renderCached(key, renderFn) {
   if (cardCache.size >= CARD_MAX) {
     const oldest = [...cardCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
     if (oldest) {
-      try { fs.unlinkSync(oldest[1].path); } catch { /* bỏ qua */ }
+      try { fs.unlinkSync(oldest[1].path); } catch { /* ignore */ }
       cardCache.delete(oldest[0]);
     }
   }
@@ -118,23 +118,25 @@ async function renderCached(key, renderFn) {
 }
 
 async function showResults(api, threadId, type, provider, query, tracks, page) {
-  const perPage = 7; // khớp renderer hàng ngang (7 dải/trang)
+  const perPage = 7;
   const totalPages = Math.max(1, Math.ceil(tracks.length / perPage));
   const safePage = Math.min(Math.max(page, 1), totalPages);
   const slice = tracks.slice((safePage - 1) * perPage, safePage * perPage);
 
-  // Canvas card (cache 10 phút) — hỏng thì rơi về text
   try {
     const key = `${provider.name}|${query}|${safePage}`;
     const gridPath = await renderCached(key, () =>
-      cards.renderSearchGrid(query, slice, { page: safePage, totalPages, source: provider.label.toUpperCase() })
+      renderCanvas("music-grid", {
+        query,
+        tracks: slice,
+        options: { page: safePage, totalPages, source: provider.label.toUpperCase() }
+      })
     );
     if (gridPath) return api.sendMessage({ msg: "", attachments: gridPath }, threadId, type);
   } catch (error) {
     console.error("[music] render grid lỗi:", error.message);
   }
 
-  // Fallback: text
   const styled = ui.searchList({
     providerLabel: provider.label.toUpperCase(),
     query,
@@ -165,7 +167,6 @@ async function runMusic(providerName, { api, event, args, reply }) {
   const key = music.pickKey(threadId, data.uidFrom);
   const options = parseOptions(args);
 
-  // Chọn bài theo số thứ tự
   if (/^\d{1,2}$/.test(args[0] || "")) {
     const pending = music.getPending(key);
     if (!pending || pending.providerName !== providerName) {
@@ -176,14 +177,10 @@ async function runMusic(providerName, { api, event, args, reply }) {
     if (!track) {
       return reply.error(`Số thứ tự không hợp lệ (1 - ${pending.tracks.length}).`);
     }
-    // Chọn được bài → xoá ngay lưới kết quả (đừng để nằm chiếm nhóm)
-    
-    // Chon xong -> xoá pending de khong chon lai lien tuc (tranh spam nhac)
     music.clearPending(key);
     return sendTrack(reply, threadId, type, track, providerName, api, options.quality);
   }
 
-  // Điều hướng kết quả: next / prev / out
   const nav = (args[0] || "").toLowerCase();
   if (["next", "prev", "previous", "back", "out", "exit", "close"].includes(nav)) {
     const pending = music.getPending(key);
@@ -191,10 +188,8 @@ async function runMusic(providerName, { api, event, args, reply }) {
       return reply.error(`Bạn chưa tìm nhạc trên ${provider.label}. Gõ ${global.config.prefix}${provider.name} <từ khóa> trước.`);
     }
 
-    // Thoát: xoá danh sách đang chọn
     if (["out", "exit", "close"].includes(nav)) {
       music.clearPending(key);
-      
       return reply.success(`Đã đóng danh sách nhạc "${pending.query || ""}". Gõ ${global.config.prefix}${provider.name} <từ khóa> để tìm lại.`);
     }
 
@@ -223,25 +218,22 @@ async function runMusic(providerName, { api, event, args, reply }) {
 
   music.setPending(key, providerName, tracks, query, 1);
 
-  // Tìm nhạc xong → xoá trạng thái menu đang mở (nếu có): từ giờ gõ số
-  // trần là chọn bài, không bị điều hướng menu chặn nữa.
   try {
     const threadData = (await Threads.getData(threadId)).data || {};
     if (threadData.menu_page) {
       delete threadData.menu_page;
       await Threads.setData(threadId, threadData);
     }
-  } catch { /* DB lỗi thì thôi, việc chính vẫn chạy */ }
+  } catch { /* ignore */ }
   if (options.quality) {
     const entry = music.getPending(key);
     if (entry) entry.quality = options.quality;
   }
 
-  // Resolve NỀN 3 bài đầu (0.5s/bài) — user chọn bài thường lấy bài 1-3,
-  // lúc đó link stream đã có sẵn trong cache → nghe gần như tức thì.
+  // Prefetch stream URLs for top 3 results in background
   setImmediate(() => {
     for (const track of tracks.slice(0, 3)) {
-      music.resolve(providerName, track).catch(() => { /* bài lỗi thì thôi */ });
+      music.resolve(providerName, track).catch(() => { /* ignore */ });
     }
   });
 
@@ -267,7 +259,6 @@ function createMusicCommand(providerName, meta = {}) {
   };
 }
 
-// Chọn bài bằng số trần (không cần prefix + tên lệnh)
 async function select(providerName, number, context) {
   return runMusic(providerName, { ...context, args: [String(number)] });
 }

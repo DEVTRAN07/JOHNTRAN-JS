@@ -2,7 +2,6 @@
 
 **ᴶᴼᴴᴺ ᵀᴿᴬᴺ** là một chatbot Zalo được phát triển bằng Node.js, dựa trên thư viện [Zalo-Client](https://github.com/DEVTRAN07/Zalo-Client)
 
-> Nhóm Zalo giao lưu, hỗ trợ: [https://zalo.me/g/xwxdtp685](https://zalo.me/g/xwxdtp685)
 
 > [!IMPORTANT]
 > 🚧 **ᴶᴼᴴᴺ ᵀᴿᴬᴺ** hiện đang trong quá trình phát triển.

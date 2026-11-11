@@ -2,6 +2,7 @@ const path = require("path");
 const logger = require("./logger");
 const { JsonStore } = require("../core/storage");
 const { SupabaseStore } = require("../core/storage/supabase");
+const { createBatchDb } = require("./batchDb");
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || "";
@@ -29,32 +30,14 @@ if (!forceJson && SUPABASE_URL && SUPABASE_KEY) {
   logger.log(`Database: JSON store (${path.basename(dbFile)})`, "info");
 }
 
-function getData(table, idField, id) {
-  return db.get(table, idField, id);
-}
-
-function saveData(table, idField, id, dataObj, extra = {}) {
-  return db.set(table, idField, id, dataObj, extra);
-}
-
-function hasData(table, idField, id) {
-  return db.has(table, idField, id);
-}
-
-function delData(table, idField, id) {
-  return db.delete(table, idField, id);
-}
-
-function allData(table) {
-  return db.all(table);
-}
+const batchDb = createBatchDb(db);
 
 module.exports = {
-  getData,
-  saveData,
-  hasData,
-  delData,
-  allData,
+  getData: batchDb.getData,
+  saveData: batchDb.saveData,
+  hasData: batchDb.hasData,
+  delData: batchDb.delData,
+  allData: batchDb.allData,
   db,
-  flush: () => db.flushSync ? db.flushSync() : true
+  flush: batchDb.flush
 };

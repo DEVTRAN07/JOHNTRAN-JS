@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { botPaths } = require("./botManager");
+const { installMonitoring, httpMetricsMiddleware, register } = require("../core/monitoring");
 let dbUtils, storeDb;
 try { dbUtils = require("../utils/db"); storeDb = dbUtils.db || dbUtils; } catch { dbUtils = null; storeDb = null; }
 
@@ -417,7 +418,16 @@ function startPanel({ manager, config }) {
   const host = config?.panel?.host || "0.0.0.0";
 
   const server = http.createServer(async (req, res) => {
+    const trackHttp = httpMetricsMiddleware();
+    await new Promise((resolve) => trackHttp(req, res, resolve));
     try {
+      // Prometheus /metrics endpoint (raw http server)
+      const metricsUrl = new URL(req.url, `http://${req.headers.host}`);
+      if (req.method == "GET" && metricsUrl.pathname == "/metrics") {
+        const body = await register.metrics();
+        res.writeHead(200, { "Content-Type": register.contentType });
+        return res.end(body);
+      }
       const url = new URL(req.url, `http://${req.headers.host}`);
       const pathname = url.pathname;
 
@@ -738,6 +748,8 @@ function startPanel({ manager, config }) {
       sendJson(res, 500, { error: error.message });
     }
   });
+
+  installMonitoring(server);
 
   server.listen(port, host, () => {
     console.log(`[panel] Panel quản lý đang chạy: http://${host === "0.0.0.0" ? "localhost" : host}:${port}/`);

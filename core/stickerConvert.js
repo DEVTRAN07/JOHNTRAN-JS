@@ -50,6 +50,16 @@ function magicExt(buf) {
 
 // Tải media từ URL. fetchImpl tuỳ biến (vd session Zalo) hoặc core/http.
 async function download(url, outDir, fetchImpl) {
+  // Cho phép url là đường dẫn file cục bộ đã được tải ở main thread
+  // (cần api session, ví dụ api.fetchZaloMedia) trước khi giao cho worker convert.
+  if (path.isAbsolute(url) && fs.existsSync(url)) {
+    const buf = fs.readFileSync(url);
+    if (!buf || buf.length < 64) throw new Error("File tải về quá nhỏ hoặc rỗng");
+    const ext = magicExt(buf) || ".bin";
+    const filePath = path.join(outDir, `src_${Date.now()}${ext}`);
+    fs.writeFileSync(filePath, buf);
+    return filePath;
+  }
   const fetchFn = fetchImpl || ((u) => http.getBuffer(u, { timeout: 60000 }));
   const { buffer } = await fetchFn(url);
   if (!buffer || buffer.length < 64) throw new Error("File tải về quá nhỏ hoặc rỗng");

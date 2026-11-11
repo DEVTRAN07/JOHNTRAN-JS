@@ -45,7 +45,7 @@ async function main() {
   assert.ok(requested[0].startsWith("https://lrclib.net/api/search?"));
   assert.deepStrictEqual(messages[0].rows[0].lines, ["First line", "Second line"]);
   assert.strictEqual(completed, true);
-  assert.strictEqual(music.getProvider("soundcloud"), music.getProvider("scl"));
+  assert.strictEqual(await music.getProvider("soundcloud"), await music.getProvider("scl"));
   console.log("✓ lyric tests passed");
 }
 

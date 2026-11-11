@@ -1,0 +1,107 @@
+# Render Multi-Region Deployment Configuration
+# Deploy to Render: https://render.com/docs/deploy-to-render-button
+# Usage: render deploy --config deploy/edge/render.yaml
+
+services:
+  # Primary region: Singapore (closest to Vietnam on Render)
+  - type: web
+    name: johntran-js-vn
+    region: singapore
+    plan: starter
+    numInstances: 2
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: '3000'
+      - key: REGION
+        value: vn
+      - key: PRIMARY_REGION
+        value: 'true'
+    healthCheckPath: /health
+    autoDeploy: true
+    dockerfilePath: deploy/edge/Dockerfile.edge
+    dockerContext: .
+    scaling:
+      minInstances: 2
+      maxInstances: 4
+      targetCPUPercent: 70
+      targetMemoryPercent: 80
+
+  # Secondary region: Singapore (Render only has Singapore in SEA)
+  - type: web
+    name: johntran-js-sg
+    region: singapore
+    plan: starter
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: '3000'
+      - key: REGION
+        value: sg
+    healthCheckPath: /health
+    autoDeploy: true
+    dockerfilePath: deploy/edge/Dockerfile.edge
+    dockerContext: .
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+      targetCPUPercent: 70
+      targetMemoryPercent: 80
+
+  # Tertiary region: Hong Kong (not available on Render, using Tokyo)
+  - type: web
+    name: johntran-js-hk
+    region: tokyo
+    plan: starter
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: '3000'
+      - key: REGION
+        value: hk
+    healthCheckPath: /health
+    autoDeploy: true
+    dockerfilePath: deploy/edge/Dockerfile.edge
+    dockerContext: .
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+      targetCPUPercent: 70
+      targetMemoryPercent: 80
+
+# Note: Render doesn't have native geo-routing or global load balancer.
+# Use Cloudflare Workers (geo-router.js) in front for geo-routing.
+
+# Custom domains (configure in Render dashboard)
+# johntran-js.example.com -> Cloudflare Worker -> Render services
+
+# Environment groups for shared config
+envGroups:
+  - name: production-common
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+
+# Build configuration
+buildCommand: |
+  echo "Building for Render..."
+  docker build -f deploy/edge/Dockerfile.edge -t johntran-js:latest .
+
+# Pre-deploy command
+preDeployCommand: |
+  echo "Pre-deploy checks..."
+  curl -f http://localhost:3000/health || exit 1
+
+# Render CLI commands:
+# render services list
+# render logs johntran-js-vn
+# render deploy johntran-js-vn
+# render scale johntran-js-vn --instances 3
+# render env get johntran-js-vn

@@ -98,7 +98,7 @@ function startListening(api) {
     const canRunCommand = !event.isSelf || allowSelfCommand;
 
     if (canRunCommand && typeof content === "string" && content.startsWith(prefix)) {
-      Promise.resolve(handleCommand(content, event, api, threadInfo, prefix)).catch((err) => {
+      Promise.resolve(handleCommand(content, event, api, threadInfo, prefix, threadData)).catch((err) => {
         logger.log(`Lỗi xử lý lệnh: ${err.message}`, "error");
       });
       return;

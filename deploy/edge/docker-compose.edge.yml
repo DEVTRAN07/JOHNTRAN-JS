@@ -1,0 +1,142 @@
+version: "3.8"
+
+services:
+  app-vn:
+    build:
+      context: ../..
+      dockerfile: deploy/edge/Dockerfile.edge
+    image: johntran-js:edge-vn
+    container_name: johntran-js-vn
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - REGION=vn
+      - PRIMARY_REGION=true
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - node.labels.region == vn
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks:
+      - edge-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  app-sg:
+    build:
+      context: ../..
+      dockerfile: deploy/edge/Dockerfile.edge
+    image: johntran-js:edge-sg
+    container_name: johntran-js-sg
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - REGION=sg
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.region == sg
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks:
+      - edge-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  app-hk:
+    build:
+      context: ../..
+      dockerfile: deploy/edge/Dockerfile.edge
+    image: johntran-js:edge-hk
+    container_name: johntran-js-hk
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - REGION=hk
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.region == hk
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks:
+      - edge-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  nginx:
+    image: nginx:alpine
+    container_name: johntran-js-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.edge.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app-vn
+      - app-sg
+      - app-hk
+    networks:
+      - edge-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.region == vn
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+networks:
+  edge-network:
+    driver: overlay
+    attachable: true
+
+volumes:
+  ssl:
+    external: true

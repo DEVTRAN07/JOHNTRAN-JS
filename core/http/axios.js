@@ -1,4 +1,4 @@
-const axios = require("axios");
+const { pooledAxios } = require("./pooledAxios");
 const logger = require("../../utils/logger");
 const { hostAllowed } = require("./index");
 
@@ -27,7 +27,7 @@ function installAxiosGuard() {
   if (installed) return;
   installed = true;
 
-  axios.interceptors.request.use(
+  pooledAxios.interceptors.request.use(
     (config) => {
       const url = config.url || "";
       if (/^https?:\/\//i.test(url) === false && config.baseURL) {
@@ -55,4 +55,4 @@ function installAxiosGuard() {
   );
 }
 
-module.exports = { installAxiosGuard };
+module.exports = { installAxiosGuard, pooledAxios };

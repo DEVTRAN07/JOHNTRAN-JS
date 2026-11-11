@@ -1,0 +1,18 @@
+[package]
+name = "sticker-rs"
+version = "1.0.0"
+edition = "2021"
+description = "WebP/GIF sticker encoding napi-rs module"
+
+[lib]
+name = "sticker_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { workspace = true, features = ["derive"] }
+image = "0.25"
+webp = "2"
+gif = "0.13"
+
+[features]
+default = []

@@ -2,6 +2,7 @@ const fs = require("fs");
 const logger = require("../../utils/logger");
 const { fetchProfile } = require("../../core/zaloProfile");
 const botVersion = require("../../package.json").version;
+const { renderCanvas } = require("../../core/canvas/workerRender");
 
 const PAGE_SIZE = 9; // 3 cột x 3 hàng
 const NAV_WORDS = ["next", "prev", "previous", "back", "out", "exit", "close"];
@@ -109,8 +110,7 @@ async function renderPage({ api, event, commands, page, totalPages, senderId }) 
     let gridPath = menuCache.get(cacheKey);
     if (!gridPath || !fs.existsSync(gridPath)) {
         try {
-            const menuCard = require("../../core/canvas/menu");
-            gridPath = await menuCard.renderMenuGrid({
+            gridPath = await renderCanvas("menu", {
                 requesterName: requester.name,
                 requesterAvatarUrl: requester.avatar,
                 botVersion,

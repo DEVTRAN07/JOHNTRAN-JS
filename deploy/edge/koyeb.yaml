@@ -1,0 +1,192 @@
+# Koyeb Multi-Region Deployment Configuration
+# Deploy to Koyeb: https://www.koyeb.com/docs/getting-started/install-and-configure-koyeb-cli
+# Usage: koyeb apply -f deploy/edge/koyeb.yaml
+
+definition:
+  name: johntran-js
+  regions:
+    # Primary region: Vietnam (Ho Chi Minh City)
+    - name: vn
+      location: hcm
+      instance_type: nano
+      instance_count: 2
+      env:
+        - name: NODE_ENV
+          value: production
+        - name: PORT
+          value: '3000'
+        - name: REGION
+          value: vn
+        - name: PRIMARY_REGION
+          value: 'true'
+      ports:
+        - port: 3000
+          protocol: http
+          expose: true
+      healthcheck:
+        path: /health
+        port: 3000
+        period: 30
+        timeout: 5
+        threshold: 3
+      scaling:
+        min_instances: 2
+        max_instances: 4
+        metric: cpu
+        target: 70
+      deployment:
+        strategy: rolling
+        max_surge: 1
+        max_unavailable: 0
+
+    # Secondary region: Singapore
+    - name: sg
+      location: sin
+      instance_type: nano
+      instance_count: 1
+      env:
+        - name: NODE_ENV
+          value: production
+        - name: PORT
+          value: '3000'
+        - name: REGION
+          value: sg
+      ports:
+        - port: 3000
+          protocol: http
+          expose: true
+      healthcheck:
+        path: /health
+        port: 3000
+        period: 30
+        timeout: 5
+        threshold: 3
+      scaling:
+        min_instances: 1
+        max_instances: 3
+        metric: cpu
+        target: 70
+      deployment:
+        strategy: rolling
+        max_surge: 1
+        max_unavailable: 0
+
+    # Tertiary region: Hong Kong
+    - name: hk
+      location: hkg
+      instance_type: nano
+      instance_count: 1
+      env:
+        - name: NODE_ENV
+          value: production
+        - name: PORT
+          value: '3000'
+        - name: REGION
+          value: hk
+      ports:
+        - port: 3000
+          protocol: http
+          expose: true
+      healthcheck:
+        path: /health
+        port: 3000
+        period: 30
+        timeout: 5
+        threshold: 3
+      scaling:
+        min_instances: 1
+        max_instances: 3
+        metric: cpu
+        target: 70
+      deployment:
+        strategy: rolling
+        max_surge: 1
+        max_unavailable: 0
+
+  # Global load balancer with geo-routing
+  global_load_balancer:
+    enabled: true
+    name: johntran-js-glob
+    routing:
+      type: geo
+      rules:
+        # Vietnam traffic -> VN region
+        - country: VN
+          region: vn
+          weight: 100
+        # Southeast Asia -> SG region
+        - country: SG
+          region: sg
+          weight: 100
+        - country: MY
+          region: sg
+          weight: 100
+        - country: TH
+          region: sg
+          weight: 100
+        - country: ID
+          region: sg
+          weight: 100
+        - country: PH
+          region: sg
+          weight: 100
+        - country: MM
+          region: sg
+          weight: 100
+        - country: LA
+          region: sg
+          weight: 100
+        - country: KH
+          region: sg
+          weight: 100
+        - country: BN
+          region: sg
+          weight: 100
+        - country: TL
+          region: sg
+          weight: 100
+        # Default -> HK region
+        - country: '*'
+          region: hk
+          weight: 100
+    healthcheck:
+      path: /health
+      interval: 30
+      timeout: 5
+      threshold: 3
+      regions:
+        - vn
+        - sg
+        - hk
+
+  # Custom domains
+  domains:
+    - name: johntran-js.example.com
+      regions:
+        - vn
+        - sg
+        - hk
+      tls:
+        enabled: true
+        provider: letsencrypt
+
+  # Build configuration
+  build:
+    dockerfile: deploy/edge/Dockerfile.edge
+    context: .
+    args:
+      - name: NODE_ENV
+        value: production
+
+  # Git integration (optional)
+  git:
+    repository: github.com/your-org/johntran-js
+    branch: main
+    build_on_push: true
+    deploy_on_build_success: true
+
+# CLI commands reference:
+# koyeb apply -f deploy/edge/koyeb.yaml
+# koyeb service logs johntran-js -r vn
+# koyeb service get johntran-js -r vn
+# koyeb service update johntran-js -r vn --instance-count 3

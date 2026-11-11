@@ -1,0 +1,18 @@
+[workspace]
+name = "john-tran-native"
+resolver = "2"
+members = [
+  "sticker-rs",
+  "canvas-rs",
+  "ffmpeg-rs",
+]
+
+[workspace.dependencies]
+napi = { version = "2", features = ["derive"] }
+napi-derive = { version = "2" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

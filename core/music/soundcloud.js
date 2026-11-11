@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const http = require("../http");
+const { pooledAxios } = require("../http/pooledAxios");
 const { createTrack } = require("./models");
 const db = require("../../utils/db");
 
@@ -44,7 +44,6 @@ function clearCachedClientId() {
 
 function scriptUrlsFromHtml(html) {
   const urls = [];
-  // SoundCloud asset layout changes over time (a-v2, assets, widget, v2...).
   const re = /<script[^>]+src=["']([^"']+)["']/gi;
   let match;
   while ((match = re.exec(html)) !== null) {
@@ -56,7 +55,6 @@ function scriptUrlsFromHtml(html) {
       urls.push("https://soundcloud.com" + src);
     }
   }
-  // Prioritize sndcdn app bundles first.
   return [...new Set(urls)].sort((a, b) => (b.includes("sndcdn") ? 1 : 0) - (a.includes("sndcdn") ? 1 : 0));
 }
 
@@ -106,10 +104,11 @@ async function discoverClientId() {
     try {
       let home;
       try {
-        home = await http.request(HOME_URL, {
+        const response = await pooledAxios.get(HOME_URL, {
           timeout: 20000,
           headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" }
         });
+        home = { status: response.status, body: Buffer.from(JSON.stringify(response.data)) };
       } catch (error) {
         const err = new Error("Khong ket noi duoc trang chu SoundCloud de lay client_id: " + (error && error.message ? error.message : error));
         err.notAvailable = true;
@@ -122,7 +121,6 @@ async function discoverClientId() {
         throw err;
       }
       const html = home && home.body ? home.body.toString("utf8") : "";
-      // Try extracting directly from HTML (SoundCloud sometimes embeds config/client_id).
       const fromHtml = extractClientId(html);
       if (fromHtml) {
         cachedClientId = fromHtml;
@@ -133,8 +131,8 @@ async function discoverClientId() {
       const scriptUrls = scriptUrlsFromHtml(html).slice(0, 25);
       for (const scriptUrl of scriptUrls) {
         try {
-          const script = await http.request(scriptUrl, { timeout: 20000 });
-          const js = script && script.body ? script.body.toString("utf8") : "";
+          const response = await pooledAxios.get(scriptUrl, { timeout: 20000 });
+          const js = response.data ? response.data.toString("utf8") : "";
           const clientId = extractClientId(js) || extractClientId(scriptUrl);
           if (clientId) {
             cachedClientId = clientId;
@@ -146,10 +144,9 @@ async function discoverClientId() {
           continue;
         }
       }
-      // Fallback: widget API script sometimes exposes client_id in fetched assets/params.
       try {
-        const widget = await http.request("https://w.soundcloud.com/player/api.js", { timeout: 15000 });
-        const wjs = widget && widget.body ? widget.body.toString("utf8") : "";
+        const response = await pooledAxios.get("https://w.soundcloud.com/player/api.js", { timeout: 15000 });
+        const wjs = response.data ? response.data.toString("utf8") : "";
         const wid = extractClientId(wjs);
         if (wid) {
           cachedClientId = wid;
@@ -173,29 +170,33 @@ async function apiGet(apiPath, params = {}, retry = true) {
   const clientId = await discoverClientId();
   const query = new URLSearchParams({ ...params, client_id: clientId });
   const url = API_BASE + apiPath + "?" + query.toString();
-  const { status, data } = await http.getJson(url, {
-    headers: { Accept: "application/json" }
-  });
-  // client_id expired/revoked: clear cache and rediscover once.
-  if ((status === 401 || status === 403) && retry) {
-    clearCachedClientId();
-    return apiGet(apiPath, params, false);
-  }
-  if (status >= 400) {
-    const msg = data && (data.errors && data.errors[0] && data.errors[0].error_message || data.message || data.error)
-      ? ((data.errors && data.errors[0] && data.errors[0].error_message) || data.message || data.error)
-      : ("SoundCloud API loi " + status);
-    const error = new Error(String(msg));
-    if (status === 401 || status === 403 || status === 429) error.notAvailable = true;
-    error.status = status;
+  try {
+    const response = await pooledAxios.get(url, { headers: { Accept: "application/json" } });
+    const status = response.status;
+    const data = response.data;
+    if ((status === 401 || status === 403) && retry) {
+      clearCachedClientId();
+      return apiGet(apiPath, params, false);
+    }
+    if (status >= 400) {
+      const msg = data && (data.errors && data.errors[0] && data.errors[0].error_message || data.message || data.error)
+        ? ((data.errors && data.errors[0] && data.errors[0].error_message) || data.message || data.error)
+        : ("SoundCloud API loi " + status);
+      const error = new Error(String(msg));
+      if (status === 401 || status === 403 || status === 429) error.notAvailable = true;
+      error.status = status;
+      throw error;
+    }
+    if (data && Array.isArray(data.errors) && data.errors.length) {
+      const error = new Error(String(data.errors[0].error_message || data.errors[0] || "Loi SoundCloud API"));
+      error.notAvailable = true;
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    if (error.notAvailable || error.status) throw error;
     throw error;
   }
-  if (data && Array.isArray(data.errors) && data.errors.length) {
-    const error = new Error(String(data.errors[0].error_message || data.errors[0] || "Loi SoundCloud API"));
-    error.notAvailable = true;
-    throw error;
-  }
-  return data;
 }
 
 function toTrack(item) {
@@ -241,20 +242,20 @@ function pickTranscoding(transcodings) {
 }
 
 async function resolveTranscodingUrl(transcoding, clientId) {
-  let stream;
   try {
-    stream = await http.getJson(transcoding.url + "?client_id=" + clientId);
+    const response = await pooledAxios.get(transcoding.url + "?client_id=" + clientId);
+    const stream = response.data;
+    if (!stream || !stream.data || !stream.data.url) {
+      const error = new Error("Khong lay duoc link stream tu SoundCloud");
+      error.notAvailable = true;
+      throw error;
+    }
+    return stream.data.url;
   } catch (err) {
     const error = new Error("Khong lay duoc link stream tu SoundCloud: " + (err && err.message ? err.message : err));
     error.notAvailable = true;
     throw error;
   }
-  if (!stream || !stream.data || !stream.data.url) {
-    const error = new Error("Khong lay duoc link stream tu SoundCloud");
-    error.notAvailable = true;
-    throw error;
-  }
-  return stream.data.url;
 }
 
 async function resolve(track) {
