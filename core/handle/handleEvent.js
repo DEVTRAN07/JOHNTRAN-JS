@@ -1,5 +1,5 @@
 const logger = require("../../utils/logger");
-const { wrapApi } = require("../message");
+const { wrapForEvent } = require("../runtime/adapters/zalo");
 const { ThreadType } = require("zalo-client");
 
 const Users = require("../runtime/services/userService");
@@ -15,7 +15,7 @@ function buildContext(api, eventData, name, eventType) {
   }
   let wrapped = api;
   try {
-    wrapped = wrapApi(api, eventData?.threadId, threadType, name, eventData);
+    wrapped = wrapForEvent(api, eventData, name, threadType);
   } catch {
     wrapped = api;
   }
