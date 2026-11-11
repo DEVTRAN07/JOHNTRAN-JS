@@ -6,9 +6,9 @@ const arena = require("../../core/games/tuTienArena");
 const { sendBattleMedia } = require("../../core/games/tuTienBattleMedia");
 
 module.exports.config = {
-  name: "tutien", aliases: ["tu-tien", "tiendao"], version: "4.0.0", role: 0,
+  name: "tutien", aliases: ["tu-tien", "tiendao"], version: "5.0.0", role: 0,
   author: "JOHNTRAN", description: "Tu tiên: DEVTRAN Tiên Tông và Cửu Trọng Thiên Kiếp",
-  category: "Game", usage: "tutien [batdau|profile|tuluyen|dotkiem|nhiemvu|luyennhanh|tongmon|help]",
+  category: "Game", usage: "tutien [batdau|profile|tuluyen|dotkiem|pvp|bxh|tranhdoat|nhiemvu|luyennhanh|tongmon|help]",
   cooldowns: 2, dependencies: {}
 };
 
