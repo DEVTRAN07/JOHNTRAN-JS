@@ -74,7 +74,7 @@ function normalizePlayer(input, now = Date.now()) {
   const player = { ...createPlayer(now), ...(input && typeof input === "object" ? input : {}) };
 
   // Remove retired V2 features and V3 breakthrough cooldown fields.
-  for (const key of ["pets", "activePetId", "lastExploreAt", "discoveries", "inventory", "lastBreakthroughAt"]) {
+  for (const key of ["pets", "activePetId", "lastExploreAt", "discoveries", "inventory"]) {
     delete player[key];
   }
 
@@ -90,7 +90,8 @@ function normalizePlayer(input, now = Date.now()) {
     "lastFastCultivateAt"
   ]) {
     const legacy = key === "lastTribulationAt" ? player.lastBreakthroughAt : undefined;
-    player[key] = Math.max(0, Number(player[key] ?? legacy) || 0);
+    const value = key === "lastTribulationAt" ? (player.lastTribulationAt || legacy || 0) : player[key];
+    player[key] = Math.max(0, Number(value) || 0);
   }
 
   const savedMissions = player.missions && typeof player.missions === "object" ? player.missions : {};
@@ -105,6 +106,7 @@ function normalizePlayer(input, now = Date.now()) {
       claimed: Array.isArray(savedMissions.claimed) ? [...new Set(savedMissions.claimed.map(String))] : []
     };
   }
+  delete player.lastBreakthroughAt;
   player.version = 4;
   return player;
 }
