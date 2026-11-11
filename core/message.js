@@ -249,14 +249,25 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     return cache.caches.groupInfo.remember(key, () => api.getGroupInfo(tid));
   });
 
-  defineWrapped(wrapped, "getUserInfo", async (uid) => {
-    const key = String(uid);
-    return cache.caches.userInfo.remember(key, () => api.getUserInfo(uid));
+  defineWrapped(wrapped, "getUserInfo", async (uid, avatarSize) => {
+    const userKey = String(uid);
+    // Keep the default-size cache key backwards compatible while separating
+    // larger profile images (e.g. AvatarSize.Large = 240).
+    const key = avatarSize == null ? userKey : `${userKey}:avatar:${avatarSize}`;
+    return cache.caches.userInfo.remember(key, () => api.getUserInfo(uid, avatarSize));
   });
 
   defineWrapped(wrapped, "invalidateCache", async (kind, key) => {
     if (kind === "group") cache.caches.groupInfo.delete(String(key));
-    if (kind === "user") cache.caches.userInfo.delete(String(key));
+    if (kind === "user") {
+      const userKey = String(key);
+      cache.caches.userInfo.delete(userKey);
+      for (const cachedKey of [...cache.caches.userInfo.store.keys()]) {
+        if (String(cachedKey).startsWith(userKey + ":avatar:")) {
+          cache.caches.userInfo.delete(cachedKey);
+        }
+      }
+    }
   });
 
   const reply = new Reply(wrapped, threadId, type, commandName, event);
