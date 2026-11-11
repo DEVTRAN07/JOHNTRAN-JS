@@ -94,12 +94,14 @@ JOHNTRAN-JS/
 - Thêm `core/runtime/eventRegistry.js`: index subscription theo event type, giữ thứ tự event plugin trước command `handleEvent`, cache và invalidate khi hot reload.
 - Tách gọi command, reaction trạng thái và cô lập lỗi sang `core/runtime/dispatcher.js`.
 - Handler cũ gọi middleware/dispatcher mới; giữ nguyên command contract và lớp tương thích.
-- Có unit tests riêng cho quyền, cooldown, event registry và dispatcher.
+- Thêm `core/runtime/services/userService.js` và `threadService.js` làm ranh giới nghiệp vụ; hiện ủy quyền cho controller cũ để giữ nguyên schema/cache.
+- Handler và loader dùng service facade mới, nhưng plugin vẫn nhận đúng API `Users`/`Threads` hiện có.
+- Có unit tests riêng cho quyền, cooldown, event registry, dispatcher và domain service facade.
 
 ### Các đợt tiếp theo
 1. Chuẩn hóa event context và router, nhưng giữ listener cũ làm adapter.
 2. Tách dispatcher khỏi transport handler, giữ nguyên command contract.
-3. Đưa nghiệp vụ kinh tế / tu tiên / cộng đồng vào domain services.
+3. Mở rộng domain services cho kinh tế / tu tiên / cộng đồng; chuyển logic ra khỏi controller theo từng nhóm, không đổi schema dữ liệu.
 4. Tách Zalo API và storage thành adapters.
 5. Chuyển media/render sang bounded queue và worker.
 6. Chỉ sau khi parity tests đạt mới di chuyển thư mục hoặc xóa compatibility facade.
