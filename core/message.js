@@ -249,14 +249,19 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     return cache.caches.groupInfo.remember(key, () => api.getGroupInfo(tid));
   });
 
-  defineWrapped(wrapped, "getUserInfo", async (uid) => {
-    const key = String(uid);
-    return cache.caches.userInfo.remember(key, () => api.getUserInfo(uid));
+  defineWrapped(wrapped, "getUserInfo", async (uid, avatarSize) => {
+    const userId = String(uid);
+    const size = Number(avatarSize) > 0 ? Math.floor(Number(avatarSize)) : 0;
+    const key = size ? `${userId}:avatar:${size}` : userId;
+    return cache.caches.userInfo.remember(key, () => api.getUserInfo(uid, size || undefined));
   });
 
   defineWrapped(wrapped, "invalidateCache", async (kind, key) => {
     if (kind === "group") cache.caches.groupInfo.delete(String(key));
-    if (kind === "user") cache.caches.userInfo.delete(String(key));
+    if (kind === "user") {
+      cache.caches.userInfo.delete(String(key));
+      cache.caches.userInfo.delete(`${String(key)}:avatar:240`);
+    }
   });
 
   const reply = new Reply(wrapped, threadId, type, commandName, event);
