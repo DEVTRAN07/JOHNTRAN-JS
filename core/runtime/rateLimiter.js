@@ -12,7 +12,13 @@ class SlidingWindowLimiter {
     const id = String(key);
     let entry = this.entries.get(id);
     if (!entry) {
-      if (this.entries.size >= this.maxKeys) this.prune(now, true);
+      if (this.entries.size >= this.maxKeys) {
+        this.prune(now, true);
+        if (this.entries.size >= this.maxKeys) {
+          const oldestKey = this.entries.keys().next().value;
+          if (oldestKey !== undefined) this.entries.delete(oldestKey);
+        }
+      }
       entry = { timestamps: [], cursor: 0, touchedAt: now };
       this.entries.set(id, entry);
     }
