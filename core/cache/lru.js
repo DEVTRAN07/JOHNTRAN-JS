@@ -6,6 +6,7 @@ class LRUCache {
     this.hits = 0;
     this.misses = 0;
     this.lastPruned = 0;
+    this.inFlight = new Map();
   }
 
   _isExpired(entry) {
