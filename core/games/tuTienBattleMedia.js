@@ -98,12 +98,12 @@ async function renderBattleMedia(battle, entry) {
   }, { priority: 2 });
 }
 
-async function sendBattleMedia(api, event, battle, entry) {
+async function sendBattleMedia(api, event, battle, entry, options = {}) {
   const media = await renderBattleMedia(battle, entry);
   try {
     const gif = await api.sendMessage({ msg: "⚔️ Hiệu ứng chiêu thức", attachments: media.gifPath }, event.threadId, event.type);
     let videoSent = false;
-    if (typeof api.uploadAttachment === "function" && typeof api.sendVideo === "function") {
+    if (options.includeVideo && typeof api.uploadAttachment === "function" && typeof api.sendVideo === "function") {
       const uploaded = await api.uploadAttachment(media.videoPath, event.threadId, event.type);
       const video = Array.isArray(uploaded) ? uploaded.find((x) => x.fileType === "video") : null;
       if (video?.fileUrl) {
