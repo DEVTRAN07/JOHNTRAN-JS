@@ -2,8 +2,9 @@ const logger = require("../../utils/logger");
 const { wrapApi } = require("../message");
 const { ThreadType } = require("zalo-client");
 
-const Users = require("../controller/controllerUsers");
-const Threads = require("../controller/controllerThreads");
+const Users = require("../runtime/services/userService");
+const Threads = require("../runtime/services/threadService");
+
 const { dispatchEvent } = require("../runtime/eventRegistry");
 
 function buildContext(api, eventData, name, eventType) {
