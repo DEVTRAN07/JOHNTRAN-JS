@@ -3,7 +3,8 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { createCanvas, loadImage } = require("canvas");
+const { createCanvas } = require("canvas");
+const { getAvatar } = require("./avatarCache");
 
 const WIDTH = 1000;
 const ROW_HEIGHT = 94;
@@ -21,21 +22,16 @@ function fitText(ctx, text, maxWidth) {
   return value.length < String(text || "").length ? value.slice(0, -1) + "…" : value;
 }
 
-async function avatarImage(url) {
-  if (!/^https?:\/\//i.test(String(url || ""))) return null;
-  try {
-    const { buffer } = await require("../http").getBuffer(url, { timeout: 5000, retries: 0 });
-    if (!buffer || buffer.length > 3 * 1024 * 1024) return null;
-    return await loadImage(buffer);
-  } catch { return null; }
-}
-
-async function drawAvatar(ctx, item, x, y, size) {
+function drawAvatar(ctx, item, x, y, size) {
   ctx.save();
   ctx.beginPath();
   ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
   ctx.clip();
-  const image = await avatarImage(item.avatar);
+
+  // Never await remote avatar downloads while rendering a ranking card.
+  // getAvatar returns a cached Canvas image synchronously and warms misses
+  // in the background; a placeholder keeps the card responsive on cold cache.
+  const image = getAvatar(item.avatar);
   if (image) {
     const scale = Math.max(size / image.width, size / image.height);
     const w = image.width * scale, h = image.height * scale;
@@ -48,6 +44,7 @@ async function drawAvatar(ctx, item, x, y, size) {
     ctx.textAlign = "center";
     ctx.fillText(String(item.name || "?").trim().charAt(0).toUpperCase(), x + size / 2, y + size / 2 + 10);
   }
+
   ctx.restore();
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 4;
@@ -91,7 +88,7 @@ async function renderTopChat({ title, subtitle, ranking }) {
     ctx.font = "bold 30px Arial";
     ctx.fillStyle = "#f5c451";
     ctx.fillText(medal, x, y + 34);
-    await drawAvatar(ctx, item, x - 38, y + 48, 76);
+    drawAvatar(ctx, item, x - 38, y + 48, 76);
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 20px Arial";
     ctx.fillText(fitText(ctx, item.name, 180), x, y + 151);
@@ -118,7 +115,7 @@ async function renderTopChat({ title, subtitle, ranking }) {
     ctx.font = "bold 27px Arial";
     ctx.fillText(String(i + 1) + ".", 68, y + 48);
 
-    await drawAvatar(ctx, item, 116, y + 12, 54);
+    drawAvatar(ctx, item, 116, y + 12, 54);
     ctx.textAlign = "left";
     ctx.fillStyle = "#28221e";
     ctx.font = "bold 23px Arial";
