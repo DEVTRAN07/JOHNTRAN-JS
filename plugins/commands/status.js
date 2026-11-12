@@ -5,7 +5,7 @@ async function currentGroup(api,event,Threads){
  const id=String(event?.threadId||"");
  let name=event?.type===1?"Tin nhắn riêng":"Nhóm hiện tại";
  let enabled=false;
- try{const row=await Threads.getData(id);enabled=row?.data?.bot_enabled!==false;}catch{enabled=true;}
+ try{const row=await Threads.getData(id);enabled=row?.data?.bot_enabled===true;}catch{enabled=false;}
  try{const info=await api.getGroupInfo(id);name=info?.gridInfoMap?.[id]?.name||name;}catch{}
  return {name,id,enabled};
 }
