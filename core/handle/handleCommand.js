@@ -11,7 +11,7 @@ const { getRequesterProfile } = require("../runtime/requesterProfile");
 const { renderCanvas } = require("../canvas/workerRender");
 
 
-const { ThreadType } = require("zalo-client");
+const { ThreadType, Reactions } = require("zalo-client");
 const { getFolderReaction } = require("../runtime/folderReaction");
 
 const ADMIN_GROUPS_FILE = path.join(__dirname, "..", "..", "data", "bot_admin_groups.json");
