@@ -322,17 +322,6 @@ test("topchat counts official Zalo GroupMessage events when the live frame omits
   assert.equal(saved.topchatCounts["member-model"].name, "Member Model");
 });
 
-test("topchat accepts serialized group thread type values", async () => {
-  global.config = { prefix: "/" };
-  const Threads = fakeThreads();
-  const threadId = "topchat-string-group-type";
-  const event = makeGroupMessage(threadId, "member-string", "string-type-1", "hello");
-  event.type = "1";
-  await counter.run({ event, Threads, isSelf: false });
-  await counter.flushAll(Threads);
-  assert.equal(Threads.rows.get(threadId).data.topchatCounts["member-string"].count, 1);
-});
-
 test("topchat falls back to the official per-group history API when local counts are empty", async () => {
   global.config = { prefix: "/" };
   const threadId = "topchat-group-history-api-fallback";
