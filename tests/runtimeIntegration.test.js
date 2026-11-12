@@ -1,31 +1,20 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const tuTien = require("../core/runtime/services/games/tuTienService");
-const pvp = require("../core/runtime/services/games/pvpService");
-const leaderboard = require("../core/runtime/services/games/leaderboardService");
+const dhbc = require("../core/runtime/services/games/dhbcService");
 const { dispatchEvent } = require("../core/runtime/eventRegistry");
 const { dispatchCommand } = require("../core/runtime/dispatcher");
 
-test("integrated game flow creates players, starts PvP, settles a turn and ranks players", () => {
-  const now = Date.now();
-  const a = tuTien.createPlayer(now, { displayName: "Đạo hữu A" });
-  const b = tuTien.createPlayer(now, { displayName: "Đạo hữu B" });
-  a.attack = b.attack = 25;
-  a.defense = b.defense = 10;
-  const challenge = pvp.createChallenge("u-a", "u-b", a, b, now);
-  assert.equal(challenge.ok, true);
-  const started = pvp.startBattle(challenge.challenge, now + 1);
+test("DHBC service starts a round, accepts a correct answer and advances", () => {
+  const threadId = `dhbc-test-${Date.now()}`;
+  const started = dhbc.start(threadId, "u-a", "Player A");
   assert.equal(started.ok, true);
-  const battle = started.battle;
-  const turn = pvp.takeTurn(battle, "u-a", "normal", 0.5);
-  assert.equal(turn.ok, true);
-  assert.equal(battle.log.length, 1);
-  const rows = leaderboard.leaderboard([
-    { userId: "u-a", data: { tuTien: { ...a, displayName: "Đạo hữu A", arena: { rating: 1100, wins: 2 } } } },
-    { userId: "u-b", data: { tuTien: { ...b, displayName: "Đạo hữu B", arena: { rating: 900, wins: 1 } } } }
-  ], "rating", 10);
-  assert.equal(rows[0].uid, "u-a");
+  assert.equal(started.session.players.size, 1);
+  const answer = started.session.question.answer;
+  const result = dhbc.answer(threadId, answer);
+  assert.equal(result.correct, true);
+  assert.equal(result.session.questionNumber, 2);
+  dhbc.stop(threadId);
 });
 
 test("legacy command and event plugin contracts remain callable through runtime dispatchers", async () => {
