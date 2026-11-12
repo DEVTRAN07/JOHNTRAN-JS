@@ -31,7 +31,14 @@ function canSee(command, userId) {
     (role === 2 && global.users?.admin?.includes(userId));
 }
 
-function canonicalCategory(value) {\n  const key = normalizeFolder(value);\n  if (key === "hethong") return "Hệ thống";\n  if (key === "tienich") return "Tiện ích";\n  return String(value || "Khác");\n}\n\nfunction collectFolders(commands, userId) {
+function canonicalCategory(value) {
+  const key = normalizeFolder(value);
+  if (key === "hethong") return "Hệ thống";
+  if (key === "tienich") return "Tiện ích";
+  return String(value || "Khác");
+}
+
+function collectFolders(commands, userId) {
   const groups = new Map();
   for (const command of commands.values()) {
     if (!canSee(command, userId)) continue;
