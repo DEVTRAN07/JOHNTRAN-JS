@@ -109,3 +109,38 @@ test("global worker ceiling is shared across independent lanes", async () => {
   await Promise.all(jobs);
   assert.equal(stats().global.active, 0);
 });
+
+
+test("job queue retries only when the retry policy allows it", async () => {
+  let attempts = 0;
+  const result = await enqueue("test-retry", async () => {
+    attempts++;
+    if (attempts === 1) throw new Error("temporary worker failure");
+    return "recovered";
+  }, {
+    retries: 1,
+    retryDelayMs: 1,
+    retryOn: error => /temporary/.test(error.message)
+  });
+
+  assert.equal(result, "recovered");
+  assert.equal(attempts, 2);
+  assert.equal(stats()["test-retry"].retried, 1);
+});
+
+test("job queue does not retry permanent errors", async () => {
+  let attempts = 0;
+  await assert.rejects(
+    enqueue("test-permanent-error", async () => {
+      attempts++;
+      throw new Error("invalid input");
+    }, {
+      retries: 3,
+      retryDelayMs: 1,
+      retryOn: error => /temporary/.test(error.message)
+    }),
+    /invalid input/
+  );
+  assert.equal(attempts, 1);
+  assert.equal(stats()["test-permanent-error"].failed, 1);
+});
