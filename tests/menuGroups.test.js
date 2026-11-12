@@ -33,7 +33,7 @@ test("menu shows only populated folders in the reference order", () => {
   assert.ok(!groups.some(group => group.slug === "test"));
 });
 
-test("menu folders use clear Vietnamese display names", () => {
+test("menu folders use clear English display names", () => {
   const commands = new Map([
     ["id", command("id", "Tiện ích")],
     ["scl", command("scl", "Nhạc")],
@@ -45,13 +45,13 @@ test("menu folders use clear Vietnamese display names", () => {
   ]);
   const groups = menu.collectMenuGroups(commands, "guest");
   const names = Object.fromEntries(groups.map(group => [group.slug, group.name]));
-  assert.equal(names.info, "Thông tin");
-  assert.equal(names.music, "Âm nhạc");
-  assert.equal(names.game, "Trò chơi");
-  assert.equal(names.anti, "Chống vi phạm");
-  assert.equal(names.admin, "Quản trị");
-  assert.equal(names.mybot, "Vận hành bot");
-  assert.equal(names.hidden, "Lệnh đặc biệt");
+  assert.equal(names.info, "Information");
+  assert.equal(names.music, "Music");
+  assert.equal(names.game, "Games");
+  assert.equal(names.anti, "Anti-Abuse");
+  assert.equal(names.admin, "Administration");
+  assert.equal(names.mybot, "Bot Operations");
+  assert.equal(names.hidden, "Special Commands");
   assert.ok(!groups.some(group => group.slug === "test"));
 });
 
