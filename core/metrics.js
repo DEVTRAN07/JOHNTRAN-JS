@@ -43,6 +43,11 @@ function createMetricsStore(backend, options = {}) {
   const now = typeof options.now === "function" ? options.now : Date.now;
   const cache = new Map();
   const dirtyDays = new Set();
+  const recentLatencies = [];
+  let latencyCount = 0;
+  let latencyTotalMs = 0;
+  let latencyMaxMs = 0;
+  let latencyLastMs = 0;
   let flushTimer = null;
 
   function trimCache() {
@@ -124,6 +129,33 @@ function createMetricsStore(backend, options = {}) {
     }
   }
 
+  function trackLatency(durationMs) {
+    const value = Number(durationMs);
+    if (!Number.isFinite(value) || value < 0) return;
+    latencyCount++;
+    latencyTotalMs += value;
+    latencyMaxMs = Math.max(latencyMaxMs, value);
+    latencyLastMs = value;
+    recentLatencies.push(value);
+    if (recentLatencies.length > 200) recentLatencies.shift();
+  }
+
+  function getLatencyStats() {
+    if (!recentLatencies.length) {
+      return { count: 0, avgMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0, lastMs: 0 };
+    }
+    const sorted = [...recentLatencies].sort((a, b) => a - b);
+    const percentile = (ratio) => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
+    return {
+      count: latencyCount,
+      avgMs: Number((latencyTotalMs / latencyCount).toFixed(2)),
+      p50Ms: Number(percentile(0.5).toFixed(2)),
+      p95Ms: Number(percentile(0.95).toFixed(2)),
+      maxMs: Number(latencyMaxMs.toFixed(2)),
+      lastMs: Number(latencyLastMs.toFixed(2))
+    };
+  }
+
   function topCommands(day = todayKey(now()), limit = 5) {
     const stats = getDayStats(day);
     return Object.entries(stats.byCommand)
@@ -139,7 +171,7 @@ function createMetricsStore(backend, options = {}) {
     return flush();
   }
 
-  return { track, getDayStats, topCommands, allDays, flush, dispose };
+  return { track, trackLatency, getLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
 }
 
 const metricsStore = createMetricsStore(db, {
