@@ -44,11 +44,14 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
 
   const wrappedApi = wrapForThread(api, threadId, type, commandName, event);
   const command = resolveCommand(global.client.commands, commandName);
-  if (!command) {
-    // Folder shortcuts (/tools, /music, /game...) render category image cards.
+  const folderMenuRuntime = require("../runtime/folderMenu");
+  const menuGroupShortcut = folderMenuRuntime.resolveMenuGroup(global.client.commands, UIDUsage, commandName);
+  // A bare category shortcut opens its card. Commands with the same name
+  // (for example /anti and /admin) still execute normally when arguments exist.
+  if (!command || (menuGroupShortcut && args.length === 0)) {
     try {
-      const folderMenu = require("../runtime/folderMenu");
-      const folder = folderMenu.resolveMenuGroup(global.client.commands, UIDUsage, commandName);
+      const folderMenu = folderMenuRuntime;
+      const folder = menuGroupShortcut;
       if (folder) {
         const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
         const version = require("../../package.json").version;
