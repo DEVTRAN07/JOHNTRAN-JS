@@ -15,8 +15,7 @@ function readConfig() {
 }
 function writeConfig() {
   fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(readConfig(), null, 2) + "
-");
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(readConfig(), null, 2) + "\n");
 }
 function isEnabled() { return readConfig().enabled !== false; }
 function setEnabled(value) {
