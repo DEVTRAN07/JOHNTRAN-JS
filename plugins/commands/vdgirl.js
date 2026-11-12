@@ -2,7 +2,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
-const http = require("../../core/http");
+const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
+const queuedMediaCache = require("../../core/runtime/queuedMediaCache");
+const { enqueue } = require("../../core/jobQueue");
 const { runInWorker } = require("../../core/workerPool");
 const { mediaCache } = require("../../core/mediaCache");
 
@@ -30,7 +32,7 @@ function isHttpUrl(value) {
 }
 
 async function getCachedVideo(key) {
-  const cached = await mediaCache.get(key);
+  const cached = await queuedMediaCache.get(key);
   if (!cached || !cached.buffer) return null;
   const cachedUrl = mediaCache.getUrl(key);
   if (isHttpUrl(cachedUrl)) return { url: cachedUrl, cleanup: null };
@@ -77,7 +79,7 @@ module.exports.run = async ({ args, event, api, Users }) => {
       }
 
       try {
-        const { buffer } = await http.getBuffer(link, {
+        const { buffer } = await queuedGetBuffer(link, {
           timeout: 60000,
           retries: 1,
           headers: {
@@ -96,7 +98,12 @@ module.exports.run = async ({ args, event, api, Users }) => {
     }
     if (lastError) throw lastError;
 
-    const workerResult = await runInWorker("videoWorker", { videoPath: filePath }, { timeout: 60000 });
+    const workerResult = await enqueue("video", () => runInWorker("videoWorker", { videoPath: filePath }, { timeout: 60000 }), {
+      label: "Đọc metadata và tạo thumbnail video",
+      retries: 1,
+      retryDelayMs: 500,
+      retryOn: error => /workerPool: timeout|worker .* exited|worker .* stopped/i.test(String(error?.message || error))
+    });
     const { metadata, thumbnailBuffer } = workerResult;
 
     // workerPool serializes via postMessage; thumbnailBuffer may arrive as a
@@ -110,13 +117,13 @@ module.exports.run = async ({ args, event, api, Users }) => {
 
     // Upload video and thumbnail to mediaCache
     const videoBuffer = fs.readFileSync(filePath);
-    const videoResult = await mediaCache.upload(videoBuffer, "video", {
+    const videoResult = await queuedMediaCache.upload(videoBuffer, "video", {
       sourceUrl: link,
       duration: metadata.duration,
       width: metadata.width,
       height: metadata.height,
     });
-    const thumbnailResult = await mediaCache.upload(thumbnailBuf, "image", {
+    const thumbnailResult = await queuedMediaCache.upload(thumbnailBuf, "image", {
       sourceUrl: link,
       isThumbnail: true,
     });
