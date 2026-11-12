@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const CONFIG_FILE = path.join(__dirname, "../../../../data/dhbc.json");
-const engine = require("../../../games/dhbcEngine");
+const engine = require("../../../games/dhbcEngine");\nconst questionBank = require("../../../games/dhbcBank");
 const sessions = new Map();
 let configCache;
 function readConfig() {
@@ -42,7 +42,7 @@ function start(threadId, uid, name) {
   const key = String(threadId);
   const current = sessions.get(key);
   if (current?.status === "active") return { ok: false, code: "RUNNING", session: current };
-  const session = engine.createSession(key, uid, name);
+  engine.setQuestionBank(questionBank.getAll());\n  const session = engine.createSession(key, uid, name);
   sessions.set(key, session);
   return { ok: true, session };
 }
@@ -77,4 +77,4 @@ function revealHint(threadId) {
   const session = get(threadId);
   return session ? engine.hint(session) : null;
 }
-module.exports = { get, start, join, leave, stop, answer, advance, revealHint, sessions, isEnabled, setEnabled, cleanupLegacyData };
+module.exports = { get, start, join, leave, stop, answer, advance, revealHint, sessions, isEnabled, setEnabled, cleanupLegacyData, questionBank };
