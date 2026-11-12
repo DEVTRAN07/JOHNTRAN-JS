@@ -199,37 +199,108 @@ Danh sách kết quả được nhớ 5 phút; trả lời bằng số thứ t�
 
 ---
 
-## 🏗️ Kiến trúc (ᴶᴼᴴᴺ ᵀᴿᴬᴺ v3)
+## 🏗️ Kiến trúc bot — JOHNTRAN V5
 
+> Sơ đồ dưới đây mô tả **kiến trúc xử lý logic V5** và các ranh giới module. Các thư mục cũ vẫn được giữ để tương thích; việc di chuyển toàn bộ mã nguồn sang cấu trúc đích được thực hiện từng bước, không giả định rằng mọi thư mục đích đã tồn tại.
+
+```mermaid
+flowchart TB
+    Z["Zalo Client / WebSocket"] --> GW["Gateway<br/>Nhận sự kiện · chuẩn hoá payload"]
+    GW --> CORE["Core Pipeline<br/>Parse · chống spam · quyền · cooldown"]
+    CORE --> RESP["Response Controller<br/>ACK · tiến trình · kết quả"]
+    CORE --> DISPATCH["Command Dispatcher<br/>Registry · alias · plugin"]
+    DISPATCH --> FAST["Fast Path<br/>Lệnh nhẹ, phản hồi trực tiếp"]
+    DISPATCH --> TASK["Task Manager<br/>Timeout · dedupe · cancellation"]
+    TASK --> Q["Queue Router<br/>Backpressure · priority"]
+    Q --> MQ["Music Lane"]
+    Q --> SQ["Sticker Lane"]
+    Q --> VQ["Media Lane"]
+    Q --> CQ["Canvas Lane"]
+    MQ --> MW["Music Engine / Workers"]
+    SQ --> SW["Sticker Engine / Workers"]
+    VQ --> VW["Media Engine / Workers"]
+    CQ --> CW["Canvas Engine / Workers"]
+    MW --> ZA["Zalo Adapter"]
+    SW --> ZA
+    VW --> ZA
+    CW --> ZA
+    CORE --> SVC["Shared Services"]
+    TASK --> SVC
+    MW --> SVC
+    SW --> SVC
+    VW --> SVC
+    CW --> SVC
+    SVC --> STORE["Storage / Repositories"]
+    SVC --> CACHE["Cache"]
+    SVC --> OBS["Metrics · Logs · Health"]
+    ZA --> Z
 ```
-core/
-├── config/        # nạp config.yml + override env JT_* → validate → đóng băng (immutable)
-├── http/          # HTTP client: timeout, retry/backoff, redirect, PRIVACY GUARD chặn host lạ
-├── services.js    # endpoint do admin cấu hình (trống = tính năng TẮT, không gửi data đi đâu)
-├── ai/            # tts (đọc giọng nói Google TTS cho /noi)
-├── music/         # registry nhạc: model Track + provider SoundCloud + lyric + cache chọn bài
-├── message.js     # reply helper (thẻ/card) + wrap api (reaction cho mọi lệnh)
-├── canvas/        # theme.js (nền/font/bo góc chung) + vip.js, menu.js, music.js
-├── cache.js       # LRU cache TTL cho group/user info + kết quả nhạc
-├── storage/       # JSON store atomic (local/dev) + Supabase adapter (deploy Koyeb)
-├── metrics.js     # thống kê ngày + audit log (data/audit.log)
-├── hotReload.js   # theo dõi plugin thay đổi → tự nạp lại
-├── health.js      # health server (PORT env) cho Render/Koyeb + UptimeRobot ping
-├── bootstrap.js   # khôi phục account/cookie/db từ env khi deploy cloud
-├── handle/        # pipeline lệnh: resolve → chống spam → phân quyền → cooldown → chạy
-├── loader/        # nạp plugin commands/events
-└── controller/    # tầng dữ liệu (Users/Threads)
-panel/
-├── botManager.js  # quản lý bot con: spawn/stop/restart/logs/QR/watchdog
-└── server.js      # panel API zero-dependency (không cần express)
-docs/             # panel UI tĩnh cho GitHub Pages
-plugins/
-├── commands/      # 23 lệnh (gồm scl, lyric, noi, stats, menu, spam, spamsticker)
-└── events/        # (đã bỏ — bot thuần lệnh, mọi hành vi qua lệnh /xxx)
-assets/
-├── spam/          # ngôn từ spam cho /spam (mỗi dòng .txt = 1 câu)
-└── autosend.json girl.json vdgirl.json   # dữ liệu ảnh cho autosend/girl/vdgirl
+
+### Luồng xử lý một tin nhắn
+
+1. **Gateway** nhận event từ Zalo và chuẩn hoá dữ liệu đúng một lần.
+2. **Core Pipeline** xác định lệnh, kiểm tra quyền, cooldown, chống spam và trạng thái lệnh.
+3. **Dispatcher** chọn fast path cho lệnh nhẹ hoặc chuyển tác vụ nặng sang Task Manager.
+4. **Queue Router** đưa tác vụ vào lane riêng (music, sticker, media, canvas), giới hạn concurrency và hàng đợi.
+5. **Engine/Worker** xử lý tác vụ; thao tác cần phiên đăng nhập Zalo đi qua Zalo Adapter.
+6. **Response Controller** gửi ACK/progress/kết quả; Metrics ghi nhận thời gian dispatch, queue, xử lý và gửi phản hồi.
+
+### Bản đồ module hiện có → trách nhiệm V5
+
+| Module hiện tại | Trách nhiệm trong kiến trúc V5 |
+|---|---|
+| `core/login.js`, `core/listen.js` | Gateway và vòng đời Zalo client |
+| `core/handle/*` | Core pipeline và command dispatch |
+| `core/loader/*`, `plugins/commands/*`, `plugins/events/*` | Plugin discovery, registry và command handlers |
+| `core/jobQueue.js`, `core/workerPool.js`, `core/workers/*` | Queue router và worker execution |
+| `core/music/*` | Music engine |
+| `core/stickerConvert.js`, `stickerCreate.js`, `stickerFactory.js`, `stickerFrames.js`, `stickerStore.js` | Sticker engine |
+| `core/mediaDownloader.js`, `mediaCache.js`, `mediaReply.js`, `videoMeta.js`, `tiktok.js` | Media engine |
+| `core/canvas/*` | Canvas renderer |
+| `core/storage/*`, `core/controller/*`, `utils/db.js` | Storage và repositories |
+| `core/cache.js`, `core/cache/*`, `core/http/*` | Cache và HTTP services |
+| `core/metrics.js`, `core/monitoring.js`, `core/health.js` | Observability và health |
+| `panel/*` | Quản trị bot/panel, tách khỏi luồng xử lý message |
+
+### Cấu trúc đích khi hoàn tất migration
+
+```text
+JOHNTRAN-JS/
+├── core/
+│   ├── gateway/          # Zalo client, listener, event normalization
+│   ├── handle/           # Core pipeline, validation, dispatcher
+│   ├── commands/         # Registry, aliases, command context
+│   ├── engines/
+│   │   ├── music/
+│   │   ├── sticker/
+│   │   ├── media/
+│   │   ├── canvas/
+│   │   ├── group/
+│   │   ├── user/
+│   │   └── ai/
+│   ├── processing/
+│   │   ├── queue/
+│   │   ├── workers/
+│   │   ├── taskManager.js
+│   │   └── scheduler.js
+│   ├── services/         # Zalo adapter, provider clients, storage
+│   ├── data/             # Controllers và repositories
+│   ├── infrastructure/  # Config, cache, logger, metrics, security
+│   └── utils/
+├── plugins/
+│   ├── commands/         # Giữ nguyên tên lệnh và contract cũ
+│   └── events/
+├── panel/
+├── assets/
+├── data/
+├── temp/
+├── scripts/
+└── test/
 ```
+
+**Nguyên tắc migration:** giữ nguyên tên lệnh, alias, quyền, config và plugin contract; không di chuyển/xoá hàng loạt file trong một lần. Mỗi module chỉ được chuyển sau khi có facade tương thích và regression tests. Các lane queue phải có giới hạn pending/concurrency, timeout và xử lý lỗi độc lập để tác vụ media chậm không chặn lệnh nhẹ.
+
+**Trạng thái:** queue/worker là lát cắt V5 đã có trong codebase; sơ đồ cấu trúc đích là kế hoạch migration. Không coi các thư mục trong “Cấu trúc đích” là đã được tạo đầy đủ.
 
 **Tính năng nổi bật v3:**
 - **Mọi ảnh MỘT KIỂU**: `core/canvas/theme.js` giữ nền (`assets/bg/theme.jpg` + gradient + glow), font, bo góc — menu, thẻ lệnh, nhạc (kết quả + đang phát), thẻ VIP đều dùng chung, muốn đổi chỉ sửa 1 file.
