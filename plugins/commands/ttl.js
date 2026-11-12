@@ -33,17 +33,6 @@ function parse(input) {
   return { mode: "local", ms, label: value };
 }
 
-function list(response) {
-  if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.convers)) return response.convers;
-  if (Array.isArray(response?.data?.convers)) return response.data.convers;
-  if (Array.isArray(response?.data)) return response.data;
-  return [];
-}
-function find(response, id, group) {
-  return list(response).find(x => String(x?.destId ?? x?.threadId ?? x?.id ?? "") === String(id) &&
-    (x?.isGroup === undefined || Boolean(Number(x.isGroup)) === group)) || null;
-}
 async function send(api, event, msg) { return api.sendMessage({ msg, recallAfterMs: 0 }, event.threadId, event.type); }
 
 module.exports.run = async function ({ args = [], event, api }) {
