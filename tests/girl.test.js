@@ -46,7 +46,8 @@ async function main() {
   }
 
   assert.strictEqual(messages.length, 1);
-  assert.strictEqual(messages[0].attachments, "https://cache.example/gai.jpg");
+  assert.deepStrictEqual(messages[0].attachments, ["https://cache.example/gai.jpg"]);
+  assert.strictEqual(messages[0].ttlKind, "media");
   assert.strictEqual(downloadCalls, 1);
   assert.strictEqual(writeLocalCalls, 1);
   console.log("✓ girl tests passed");
