@@ -48,7 +48,7 @@ async function renderMenuGrid({
     drawCategoryCard(ctx, x, y, cardW, cardH, item, i, S);
   });
 
-  drawBrandFooter(ctx, margin, H - footerH - S(4), W - margin * 2, footerH, {
+  await drawBrandFooter(ctx, margin, H - footerH - S(4), W - margin * 2, footerH, {
     requesterName, requesterAvatarUrl, botVersion, totalCommands, S
   });
 
@@ -209,7 +209,7 @@ function drawCategoryIcon(ctx, cx, cy, r, index, S) {
   ctx.restore();
 }
 
-function drawBrandFooter(ctx, x, y, w, h, opts) {
+async function drawBrandFooter(ctx, x, y, w, h, opts) {
   const { requesterName, requesterAvatarUrl, botVersion, S } = opts;
   rounded(ctx, x, y, w, h, S(28));
   const g = ctx.createLinearGradient(x,y,x+w,y+h);
@@ -230,16 +230,24 @@ function drawBrandFooter(ctx, x, y, w, h, opts) {
   drawVerified(ctx,x+S(242),y+h/2-S(2),S(8),S);
 
   // Avatar người gọi được giữ nhỏ ở phía phải, không thay logo thương hiệu.
-  if (requesterAvatarUrl) drawSmallAvatar(ctx, requesterAvatarUrl, x+w-S(188), y+(h-S(38))/2, S(38));
+  if (requesterAvatarUrl) await drawSmallAvatar(ctx, requesterAvatarUrl, x+w-S(188), y+(h-S(38))/2, S(38));
   drawLink(ctx,x+w-S(145),y+h/2,S);
   drawBotIcon(ctx,x+w-S(94),y+h/2,S);
   drawText(ctx,"v"+(botVersion||"1.0.0"),x+w-S(16),y+h/2+S(7),18,"#edf5ff",true,S,"right");
 }
 
-function drawSmallAvatar(ctx,url,x,y,size){
-  ctx.save();ctx.beginPath();ctx.arc(x+size/2,y+size/2,size/2,0,Math.PI*2);ctx.clip();
-  ctx.fillStyle="#253c65";ctx.fillRect(x,y,size,size);
-  try{const req=require("../http").getBuffer(url,{timeout:5000,retries:0});req.then(({buffer})=>loadImage(buffer).then(img=>{ctx.drawImage(img,x,y,size,size);})).catch(()=>{});}catch{}
+async function drawSmallAvatar(ctx,url,x,y,size){
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x+size/2,y+size/2,size/2,0,Math.PI*2);
+  ctx.clip();
+  ctx.fillStyle="#253c65";
+  ctx.fillRect(x,y,size,size);
+  try {
+    const { buffer } = await require("../http").getBuffer(url,{timeout:5000,retries:0});
+    const img = await loadImage(buffer);
+    ctx.drawImage(img,x,y,size,size);
+  } catch {}
   ctx.restore();
 }
 function drawMiniCrown(ctx,cx,cy,S){ctx.save();ctx.translate(cx,cy);ctx.fillStyle="#d99aff";ctx.strokeStyle="#f1c5ff";ctx.lineWidth=S(1.5);ctx.beginPath();ctx.moveTo(-S(15),S(6));ctx.lineTo(-S(16),-S(8));ctx.lineTo(-S(6),0);ctx.lineTo(0,-S(15));ctx.lineTo(S(7),0);ctx.lineTo(S(16),-S(8));ctx.lineTo(S(15),S(6));ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}
