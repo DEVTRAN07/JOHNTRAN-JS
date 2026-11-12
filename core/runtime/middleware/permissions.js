@@ -23,6 +23,10 @@ function evaluateGroupPermissions({
   isSupport = false,
   groupAdminState = TRIT.UNKNOWN
 } = {}) {
+  // Group-level restrictions must never leak into private conversations.
+  if (isGroup === false) {
+    return { denied: null, isBotAdmin, isSupport, isGroupAdmin: false };
+  }
   if (threadInfo?.admin_only && !isBotAdmin) {
     return { denied: "❌ Nhóm đã bật chế độ chỉ admin bot được dùng lệnh." };
   }
