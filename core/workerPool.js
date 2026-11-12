@@ -118,6 +118,7 @@ function pump(pool) {
           const error = new Error(
             `workerPool: timeout (${task.timeout}ms) for ${pool.scriptName}`
           );
+          pool.failed++;
           record.task = null;
           record.busy = false;
           retireWorker(pool, record, error);
@@ -130,6 +131,7 @@ function pump(pool) {
       try {
         record.worker.postMessage(task.data);
       } catch (error) {
+        pool.failed++;
         record.task = null;
         record.busy = false;
         retireWorker(pool, record, error);
