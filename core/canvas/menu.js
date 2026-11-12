@@ -342,6 +342,71 @@ function drawGroupIcon(ctx, slug, centerX, centerY, size, monochrome) {
   ctx.restore();
 }
 
+// Crisp, font-independent vector icons for the localized folder names.
+function drawMenuFolderIcon(ctx, slug, cx, cy, size) {
+  const s = size / 64;
+  ctx.save();
+  ctx.translate(cx - size / 2, cy - size / 2);
+  ctx.scale(s, s);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  const stroke = (color, width = 4) => { ctx.strokeStyle = color; ctx.lineWidth = width; };
+  const fill = (color) => { ctx.fillStyle = color; };
+
+  if (slug === "info") {
+    fill("#ffd34e"); ctx.beginPath(); ctx.arc(32, 32, 25, 0, Math.PI * 2); ctx.fill();
+    fill("#174e67"); ctx.beginPath(); ctx.arc(32, 18, 3.5, 0, Math.PI * 2); ctx.fill();
+    stroke("#174e67", 6); ctx.beginPath(); ctx.moveTo(32, 29); ctx.lineTo(32, 46); ctx.stroke();
+  } else if (slug === "public") {
+    fill("#35d4dc"); ctx.beginPath(); ctx.arc(32, 32, 27, 0, Math.PI * 2); ctx.fill();
+    stroke("#075b83", 2.8); ctx.beginPath(); ctx.ellipse(32, 32, 12, 27, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(32, 32, 26, 11, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(32, 32, 26, 20, 0, 0, Math.PI * 2); ctx.stroke();
+  } else if (slug === "music") {
+    fill("#ff718c"); ctx.beginPath(); ctx.moveTo(37, 9); ctx.lineTo(55, 5); ctx.lineTo(55, 39); ctx.lineTo(37, 43); ctx.closePath(); ctx.fill();
+    stroke("#ff718c", 5); ctx.beginPath(); ctx.moveTo(37, 12); ctx.lineTo(37, 47); ctx.stroke();
+    fill("#ff718c"); ctx.beginPath(); ctx.ellipse(22, 50, 10, 7, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(44, 44, 10, 7, -0.3, 0, Math.PI * 2); ctx.fill();
+  } else if (slug === "game") {
+    fill("#202b43"); rounded(ctx, 4, 17, 56, 34, 12); ctx.fill();
+    stroke("#eaf7ff", 4); ctx.beginPath(); ctx.moveTo(18, 25); ctx.lineTo(18, 41); ctx.moveTo(10, 33); ctx.lineTo(26, 33); ctx.stroke();
+    fill("#ffcf55"); ctx.beginPath(); ctx.arc(43, 29, 3.5, 0, Math.PI * 2); ctx.arc(51, 38, 3.5, 0, Math.PI * 2); ctx.fill();
+  } else if (slug === "tools") {
+    stroke("#54d6c4", 9); ctx.beginPath(); ctx.moveTo(17, 48); ctx.lineTo(43, 22); ctx.stroke();
+    stroke("#e8fbff", 6); ctx.beginPath(); ctx.moveTo(40, 13); ctx.lineTo(50, 23); ctx.lineTo(57, 16); ctx.lineTo(47, 6); ctx.stroke();
+    stroke("#ffca58", 7); ctx.beginPath(); ctx.arc(15, 50, 7, 0, Math.PI * 2); ctx.stroke();
+  } else if (slug === "anti") {
+    fill("#38c9d7"); ctx.beginPath(); ctx.moveTo(32, 5); ctx.lineTo(55, 14); ctx.lineTo(52, 39); ctx.quadraticCurveTo(48, 53, 32, 60); ctx.quadraticCurveTo(16, 53, 12, 39); ctx.lineTo(9, 14); ctx.closePath(); ctx.fill();
+    stroke("#eaffff", 5); ctx.beginPath(); ctx.moveTo(20, 32); ctx.lineTo(28, 40); ctx.lineTo(45, 22); ctx.stroke();
+  } else if (slug === "manager") {
+    fill("#53d7f0"); ctx.beginPath(); ctx.arc(23, 22, 10, 0, Math.PI * 2); ctx.arc(45, 24, 8, 0, Math.PI * 2); ctx.fill();
+    fill("#1689b7"); ctx.beginPath(); ctx.ellipse(23, 48, 17, 11, 0, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(46, 47, 13, 9, 0, Math.PI, Math.PI * 2); ctx.fill();
+  } else if (slug === "admin") {
+    fill("#ffd45e"); ctx.beginPath(); ctx.moveTo(7, 17); ctx.lineTo(22, 29); ctx.lineTo(31, 9); ctx.lineTo(42, 29); ctx.lineTo(57, 17); ctx.lineTo(52, 49); ctx.lineTo(12, 49); ctx.closePath(); ctx.fill();
+    fill("#fff2b5"); rounded(ctx, 12, 52, 40, 6, 3); ctx.fill();
+  } else if (slug === "mybot") {
+    fill("#ffca4e"); rounded(ctx, 10, 18, 44, 38, 10); ctx.fill();
+    stroke("#ffe7a1", 4); ctx.beginPath(); ctx.moveTo(32, 18); ctx.lineTo(32, 9); ctx.stroke();
+    fill("#ffca4e"); ctx.beginPath(); ctx.arc(32, 7, 4, 0, Math.PI * 2); ctx.fill();
+    fill("#174d69"); ctx.beginPath(); ctx.arc(23, 34, 4, 0, Math.PI * 2); ctx.arc(41, 34, 4, 0, Math.PI * 2); ctx.fill();
+    stroke("#174d69", 3); ctx.beginPath(); ctx.moveTo(23, 45); ctx.lineTo(41, 45); ctx.stroke();
+  } else if (slug === "hidden") {
+    fill("#aebbd1"); rounded(ctx, 10, 27, 44, 31, 7); ctx.fill();
+    stroke("#e9f1ff", 6); ctx.beginPath(); ctx.moveTo(19, 28); ctx.lineTo(19, 20); ctx.arc(32, 20, 13, Math.PI, 0); ctx.lineTo(45, 28); ctx.stroke();
+    fill("#42536e"); ctx.beginPath(); ctx.arc(32, 41, 4, 0, Math.PI * 2); ctx.fill();
+    fill("#42536e"); rounded(ctx, 30, 42, 4, 8, 2); ctx.fill();
+  } else if (slug === "test") {
+    fill("#a78bfa"); rounded(ctx, 9, 8, 46, 48, 8); ctx.fill();
+    stroke("#fff", 4); ctx.beginPath(); ctx.moveTo(22, 32); ctx.lineTo(29, 39); ctx.lineTo(44, 22); ctx.stroke();
+  } else {
+    fill("#35c6d6"); rounded(ctx, 7, 15, 50, 40, 7); ctx.fill();
+    fill("#dffcff"); rounded(ctx, 14, 27, 36, 4, 2); ctx.fill();
+    rounded(ctx, 14, 37, 27, 4, 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawClock(ctx, x, y, size, color) {
   ctx.save();
   ctx.strokeStyle = color;
@@ -439,7 +504,7 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
     const slug = String(item.slug || item.name || "").toLowerCase();
     const iconSize = S(38);
     const iconX = x + S(29);
-    drawGroupIcon(ctx, slug, iconX, y + cardH / 2, iconSize, false);
+    drawMenuFolderIcon(ctx, slug, iconX, y + cardH / 2, iconSize);
 
     const textX = x + S(57);
     const maxTextWidth = cardW - S(91);
@@ -507,7 +572,7 @@ async function renderFolderCard({
   const iconCenterX = padX + S(25);
   const iconCenterY = panelY + S(52);
   const slug = String(folderName || "").toLowerCase();
-  drawGroupIcon(ctx, slug, iconCenterX, iconCenterY, S(54), slug === "game");
+  drawMenuFolderIcon(ctx, slug, iconCenterX, iconCenterY, S(54));
 
   const titleX = padX + S(70);
   drawText(ctx, "Chi tiết chức năng: " + (folderName || "Danh mục"), titleX, panelY + S(61), 22, "#fff8fb", true);
