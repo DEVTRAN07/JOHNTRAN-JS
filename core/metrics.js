@@ -47,17 +47,10 @@ function createMetricsStore(backend, options = {}) {
 
   function trimCache() {
     while (cache.size > MAX_CACHED_DAYS) {
-      const oldest = cache.keys().next().value;
-      if (oldest === undefined) break;
-      if (dirtyDays.has(oldest)) {
-        // Never evict unpersisted counters.
-        const value = cache.get(oldest);
-        cache.delete(oldest);
-        cache.set(oldest, value);
-        if ([...dirtyDays].every((day) => !cache.has(day))) break;
-        continue;
-      }
-      cache.delete(oldest);
+      // Never evict unpersisted counters.
+      const oldestCleanDay = [...cache.keys()].find((day) => !dirtyDays.has(day));
+      if (oldestCleanDay === undefined) break;
+      cache.delete(oldestCleanDay);
     }
   }
 
