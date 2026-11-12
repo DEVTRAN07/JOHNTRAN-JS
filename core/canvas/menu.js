@@ -306,4 +306,68 @@ function drawText(ctx,str,x,y,size,color,bold,S,align="left",maxWidth){
 }
 function rounded(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 
-module.exports = { renderMenuGrid };
+
+async function renderFolderCard({
+  folderName, folderDescription, folderIcon, requesterName, requesterAvatarUrl,
+  botVersion, totalCommands
+}) {
+  theme.initFonts();
+  const S = theme.S;
+  const W = theme.WIDTH;
+  const H = S(330);
+  const { ctx, canvas } = theme.newCanvas(W, H);
+  await theme.paintBackground(ctx, W, H);
+
+  const pad = S(24);
+  const x = pad;
+  const y = S(22);
+  const w = W - pad * 2;
+  const h = H - S(44);
+  rounded(ctx, x, y, w, h, S(20));
+  const panel = ctx.createLinearGradient(x, y, x + w, y + h);
+  panel.addColorStop(0, "rgba(27,46,78,.97)");
+  panel.addColorStop(1, "rgba(12,27,55,.98)");
+  ctx.fillStyle = panel;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(86,174,255,.82)";
+  ctx.lineWidth = S(1.5);
+  ctx.stroke();
+
+  const groupIndex = ["Game","Tools","Music","Anti","Manager","Admin","Mybot","Hidden","Khác"]
+    .findIndex(name => name.toLowerCase() === String(folderName || "").toLowerCase());
+  const iconSize = S(58);
+  rounded(ctx, x + S(20), y + S(24), iconSize, iconSize, S(15));
+  const iconBg = ctx.createLinearGradient(x + S(20), y + S(24), x + S(20) + iconSize, y + S(24) + iconSize);
+  iconBg.addColorStop(0, "#168cff");
+  iconBg.addColorStop(1, "#684bde");
+  ctx.fillStyle = iconBg;
+  ctx.fill();
+  drawCategoryIcon(ctx, x + S(49), y + S(53), S(22), Math.max(0, groupIndex), S);
+
+  drawText(ctx, "CHI TIẾT CHỨC NĂNG", x + S(94), y + S(42), 13, "#79d2ff", true, S);
+  drawText(ctx, folderName || "Danh mục", x + S(94), y + S(76), 27, "#f5f9ff", true, S, "left", w - S(130));
+  drawText(ctx, folderDescription || "Các chức năng hỗ trợ", x + S(22), y + S(132), 21, "#e8f1ff", true, S, "left", w - S(44));
+
+  rounded(ctx, x + S(20), y + S(157), w - S(40), S(54), S(12));
+  ctx.fillStyle = "rgba(33,127,227,.18)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(110,190,255,.5)";
+  ctx.lineWidth = S(1);
+  ctx.stroke();
+  drawText(ctx, "ⓘ", x + S(34), y + S(191), 18, "#76caff", true, S);
+  drawText(ctx, `Gõ tên lệnh hoặc tag bot để thực thi chức năng ${folderName}`, x + S(60), y + S(191), 15, "#f1f6ff", true, S, "left", w - S(88));
+
+  const avatarSize = S(42);
+  const avatarX = x + S(20);
+  const avatarY = y + h - S(58);
+  await drawSmallAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize);
+  drawText(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(12), avatarY + S(27), 16, "#ffffff", true, S, "left", w * .48);
+  drawText(ctx, `${Number(totalCommands) || 0} lệnh khả dụng`, avatarX + avatarSize + S(12), avatarY + S(43), 11, "#b9cee9", false, S);
+  drawText(ctx, `v${botVersion || "1.0.0"}`, x + w - S(20), avatarY + S(29), 15, "#e7f3ff", true, S, "right");
+
+  const filePath = path.join(os.tmpdir(), "johntran_folder_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
+  fs.writeFileSync(filePath, canvas.toBuffer("image/png"));
+  return filePath;
+}
+
+module.exports = { renderMenuGrid, renderFolderCard };
