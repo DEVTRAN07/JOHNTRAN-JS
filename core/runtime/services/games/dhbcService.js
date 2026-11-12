@@ -16,7 +16,7 @@ function isEnabled() {
 function setEnabled(value) {
   enabledCache = Boolean(value);
   fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify({ enabled: enabledCache }, null, 2) + "\\n");
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify({ enabled: enabledCache }, null, 2) + "\n");
   return enabledCache;
 }
 function get(threadId) { return sessions.get(String(threadId)) || null; }
