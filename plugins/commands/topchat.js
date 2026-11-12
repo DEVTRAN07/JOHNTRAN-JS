@@ -42,21 +42,30 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
   );
 
   if (!ranking.length) {
+    const historyComplete = thread.topchatHistoryDate === today &&
+      thread.topchatHistoryComplete === true;
+    const message = historyComplete
+      ? "📊 Hôm nay nhóm chưa có tin nhắn phù hợp để xếp hạng."
+      : "📥 Bot đang đồng bộ lịch sử nhóm qua WebSocket và ghi nhận tin nhắn realtime. Hãy thử /topchat lại sau khi quá trình đồng bộ hoàn tất.";
     return reply?.info
-      ? reply.info(
-          "📊 Hôm nay nhóm chưa có dữ liệu để xếp hạng. Bot sẽ ghi nhận tin nhắn trong ngày và bổ sung lịch sử nhóm được Zalo gửi qua WebSocket."
-        )
-      : api.sendMessage({
-          msg: "📊 Hôm nay nhóm chưa có dữ liệu để xếp hạng. Bot sẽ ghi nhận tin nhắn trong ngày và bổ sung lịch sử nhóm được Zalo gửi qua WebSocket."
-        }, event.threadId, event.type);
+      ? reply.info(message)
+      : api.sendMessage({ msg: message }, event.threadId, event.type);
   }
+
+  const historyComplete = thread.topchatHistoryDate === today &&
+    thread.topchatHistoryComplete === true;
+  const historyLabel = historyComplete
+    ? "ĐÃ QUÉT LỊCH SỬ TỪ 00:00"
+    : thread.topchatHistoryDate === today && thread.topchatHistoryReason
+      ? "LỊCH SỬ CHƯA ĐẦY ĐỦ"
+      : "ĐANG ĐỒNG BỘ LỊCH SỬ";
 
   let imagePath;
   try {
     const { renderTopChat } = require("../../core/canvas/topchat");
     imagePath = await renderTopChat({
       title: "TOP CHAT HÔM NAY",
-      subtitle: `THỐNG KÊ CẢ NGÀY · ${today} · ${totalMessages} TIN NHẮN`,
+      subtitle: `${historyLabel} · ${today} · ${totalMessages} TIN NHẮN`,
       ranking,
       totalMembers: ranking.length
     });
