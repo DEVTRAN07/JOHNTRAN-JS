@@ -1,5 +1,5 @@
 const fs = require("fs");
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 const SUSPICIOUS_DEP = /(require\s*\(|process\b|global\b|Function\s*\(|eval\s*\(|setTimeout\s*\(|setInterval\s*\(|\.\s*call\s*\(|\.\s*apply\s*\(|->|=>)/i;
 const DEP_PAIR = /(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*(?:'([^']*)'|"([^"]*)")/g;
@@ -33,14 +33,30 @@ function extractDependencies(filePath, logger) {
   }
 }
 
+function isSafePackageSpec(pkgName, version) {
+  const name = String(pkgName || "").trim();
+  const tag = String(version || "latest").trim();
+  const validName = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i.test(name);
+  const validVersion = /^[a-z0-9.+*^~<>=|_-]+$/i.test(tag);
+  return validName && validVersion;
+}
+
 function installMissingDeps(deps, cwd, logger) {
   let shouldRestart = false;
   const errors = [];
   for (const [pkgName, version] of Object.entries(deps)) {
+    if (!isSafePackageSpec(pkgName, version)) {
+      const error = `Package spec không hợp lệ: ${String(pkgName).slice(0, 80)}`;
+      logger.log(error, "error");
+      errors.push(error);
+      continue;
+    }
     try { require.resolve(pkgName); } catch {
-      logger.log(`Đang cài package: ${pkgName}@${version || "latest"}`, "info");
+      const spec = `${pkgName}@${version || "latest"}`;
+      logger.log(`Đang cài package: ${spec}`, "info");
       try {
-        execSync(`npm install ${pkgName}@${version || "latest"}`, { stdio: "inherit", cwd });
+        // No shell interpolation and do not mutate the bot's package manifest.
+        execFileSync("npm", ["install", "--no-save", "--package-lock=false", spec], { stdio: "inherit", cwd });
         logger.log(`Đã cài xong ${pkgName}`, "info");
         shouldRestart = true;
       } catch (err) {
@@ -52,4 +68,4 @@ function installMissingDeps(deps, cwd, logger) {
   return { shouldRestart, errors };
 }
 
-module.exports = { SUSPICIOUS_DEP, DEP_PAIR, extractDependencies, installMissingDeps };
+module.exports = { SUSPICIOUS_DEP, DEP_PAIR, extractDependencies, installMissingDeps, isSafePackageSpec };
