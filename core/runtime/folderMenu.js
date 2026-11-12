@@ -190,7 +190,7 @@ const MENU_COMMAND_GROUPS = Object.freeze({
   anti: new Set(["anti", "autokick"]),
   manager: new Set(["adduser", "delmsg"]),
   admin: new Set(["adc", "admin", "reloadconfig", "restart", "spam", "spamsticker"]),
-  mybot: new Set(["cmd", "command", "events", "jobs", "stats", "upt"]),
+  mybot: new Set(["cmd", "command", "events", "jobs", "stats", "status", "mybot"]),
   hidden: new Set(["girl", "hon", "noi", "vdgirl"])
 });
 
@@ -219,7 +219,7 @@ function menuGroupForCommand(command) {
   }
   if (category === "hethong") {
     const name = String(config.name || "").toLowerCase();
-    if (["cmd", "events", "jobs", "stats", "upt"].includes(name)) return "mybot";
+    if (["cmd", "events", "jobs", "stats", "status", "mybot"].includes(name)) return "mybot";
     return "admin";
   }
   if (config.test === true || ["test", "thunghiem", "kiemthu", "testing"].includes(category)) return "test";
