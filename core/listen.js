@@ -4,6 +4,7 @@ const { wrapForThread } = require("./runtime/adapters/zalo");
 const logger = require("../utils/logger");
 const { updateMessageCache, getMessageCache } = require("../utils/index");
 const { ThreadType } = require("zalo-client");
+const { createCipherReadyGate } = require("./topchat/historyBootstrap");
 
 const Threads = require("./controller/controllerThreads");
 const panelBridge = require("./panelBridge");
@@ -422,20 +423,30 @@ function startListening(api) {
     reconnectTimer = setTimeout(() => connectListener("tự kết nối lại"), delay);
   };
 
+  // Zalo emits "connected" as soon as the socket opens, before its cipher_key
+  // frame arrives. History responses are encrypted, so requesting them here can
+  // race the key handshake and make the initial Topchat backfill silently fail.
+  const historyBootstrapGate = createCipherReadyGate(() => {
+    logger.log("WebSocket đã cấp cipher key; bắt đầu đồng bộ lịch sử nhóm cho Topchat", "info");
+    try {
+      listener.requestOldMessages(ThreadType.User);
+    } catch (error) {
+      logger.log(`Không yêu cầu được tin nhắn riêng cũ: ${error.message}`, "warn");
+    }
+    try {
+      startTopchatHistorySync();
+    } catch (error) {
+      logger.log(`Không thể bắt đầu đồng bộ lịch sử Topchat: ${error.message}`, "warn");
+    }
+  });
+
   // Backoff chỉ reset khi kết nối THẬT (start() thành công chỉ là tạo ws object)
   listener.on("connected", () => {
     reconnectAttempt = 0;
     connectFailStreak = 0;
     lastFrameAt = Date.now();
     connectingSince = 0;
-
-    // Lấy lại tin nhắn miss trong lúc socket rớt
-    try {
-      listener.requestOldMessages(ThreadType.User);
-      startTopchatHistorySync();
-    } catch (error) {
-      logger.log(`Không lấy được tin cũ: ${error.message}`, "warn");
-    }
+    historyBootstrapGate.connected();
   });
 
   listener.on("disconnected", (code, reason) => {
@@ -464,7 +475,7 @@ function startListening(api) {
   // Đánh dấu freshness cho watchdog (dùng cho cả message và cipher_key)
   const markAlive = () => { lastFrameAt = Date.now(); };
   listener.on("message", markAlive);
-  listener.on("cipher_key", markAlive);
+  listener.on("cipher_key", () => {\n    markAlive();\n    historyBootstrapGate.cipherReady();\n  });
 
   // Watchdog: chỉ dựa vào trạng thái socket THẬT — không coi "im lặng vài phút"
   // là chết (nhóm không ai nhắn thì bot vẫn sống, ép reconnect chỉ làm mất tin)
