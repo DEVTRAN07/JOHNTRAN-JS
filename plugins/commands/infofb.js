@@ -2,7 +2,7 @@
 //   /infofb <username | uid | link>
 // Dữ liệu lấy qua curl_cffi (trang công khai) — Node.js thuần bị Cloudflare
 // chặn nên không lấy được. Không cần FB token.
-const http = require("../../core/http");
+const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
 const { fetchSocial } = require("../../core/socialFetch");
 
 module.exports.config = {
@@ -62,7 +62,7 @@ module.exports.run = async function ({ api, event, args, reply }) {
   let avatarBuffer = null;
   if (info.avatar) {
     try {
-      const { buffer } = await http.getBuffer(info.avatar, { timeout: 20000 });
+      const { buffer } = await queuedGetBuffer(info.avatar, { timeout: 20000, retries: 1 });
       avatarBuffer = buffer;
     } catch { /* thiếu ảnh vẫn tạo thẻ */ }
   }
