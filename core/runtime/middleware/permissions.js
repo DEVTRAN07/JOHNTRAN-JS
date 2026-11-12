@@ -44,8 +44,11 @@ function evaluateGroupPermissions({
 
 function resolveGroupAdminState(groupInfo, UIDUsage) {
   if (!groupInfo) return TRIT.UNKNOWN;
-  const isAdmin = groupInfo.creatorId == UIDUsage ||
-    (Array.isArray(groupInfo.adminIds) && groupInfo.adminIds.includes(UIDUsage));
+  const hasUserId = UIDUsage !== undefined && UIDUsage !== null && UIDUsage !== "";
+  const isAdmin = hasUserId && (
+    groupInfo.creatorId == UIDUsage ||
+    (Array.isArray(groupInfo.adminIds) && groupInfo.adminIds.includes(UIDUsage))
+  );
   return fromBoolean(isAdmin);
 }
 
