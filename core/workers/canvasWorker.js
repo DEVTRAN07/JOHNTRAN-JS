@@ -16,11 +16,12 @@ async function renderToPath(type, data) {
     throw new Error("Canvas worker cannot load application config: " + configError.message);
   }
 
-  if (type === "menu" || type === "menu-folder") {
-    // Worker caches are isolated from the main thread. Load the avatar here
-    // before drawAvatar() runs, otherwise it always paints the initials.
+  const requesterAvatarUrl = String(data?.requesterAvatarUrl || "").trim();
+  if ((type === "menu" || type === "menu-folder") && /^https?:\/\//i.test(requesterAvatarUrl)) {
+    // Worker caches are isolated from the main thread. Only load the helper
+    // when a real URL exists; empty profile data must keep the menu fast path.
     const { prepareRequesterAvatar } = require("../canvas/prepareRequesterAvatar");
-    await prepareRequesterAvatar(data || {});
+    await prepareRequesterAvatar({ requesterAvatarUrl });
   }
 
   switch (type) {

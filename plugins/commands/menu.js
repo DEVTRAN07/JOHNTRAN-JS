@@ -28,7 +28,7 @@ module.exports.run = async function ({ api, event }) {
 
   let imagePath;
   try {
-    const profile = await getRequesterProfile(api, event, { waitMs: 250, skipAvatarWarm: true });
+    const profile = await getRequesterProfile(api, event, { waitMs: 90, skipAvatarWarm: true });
     const groups = folders.collectMenuGroups(commands, senderId);
 
     // Thứ tự ưu tiên hiển thị menu (từ quan trọng/popular đến ít)
