@@ -141,7 +141,9 @@ async function recordHistoryMessages(messages, Threads) {
   const today = vietnamDateKey();
   const grouped = new Map();
   for (const message of messages) {
-    if (!isCountableMessage(message, today, String(global.config?.prefix || "/"))) continue;
+    // Resolve the actual prefix after loading that group's thread record;
+    // don't accidentally classify another group's custom prefix as a command.
+    if (!isCountableMessage(message, today, "")) continue;
     const threadId = String(message.threadId || message.data?.idTo || "");
     if (!threadId) continue;
     if (!grouped.has(threadId)) grouped.set(threadId, []);
