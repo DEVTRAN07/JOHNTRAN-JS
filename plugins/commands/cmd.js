@@ -1,164 +1,36 @@
-const path = require("path");
-const fs = require("fs");
-const loaderCommand = require("../../core/loader/loaderCommand");
-
-module.exports.config = {
-    name: "command",
-    aliases: ["cmd"],
-    version: "1.2.0",
-    role: 2,
-    author: "NLam182",
-    description: "Quản lý và kiểm soát các plugin lệnh của bot.",
-    category: "Hệ thống",
-    usage: ".cmd <load|unload|loadall|unloadall|list|info> [tên lệnh]",
-    cooldowns: 2
-};
-
-async function loadModule(api, event, moduleName) {
-    const { threadId, type } = event;
-    if (!/^[a-zA-Z0-9_-]+$/.test(moduleName)) {
-        return api.sendMessage(`Tên module không hợp lệ: '${moduleName}'.`, threadId, type);
-    }
-    const commandPath = path.resolve(__dirname, `${moduleName}.js`);
-    const baseDir = path.resolve(__dirname);
-    if (commandPath !== baseDir && !commandPath.startsWith(baseDir + path.sep)) {
-        return api.sendMessage(`Đường dẫn module không hợp lệ (vượt ngoài thư mục lệnh): '${moduleName}'.`, threadId, type);
-    }
-    if (!fs.existsSync(commandPath)) {
-        return api.sendMessage(`Không tìm thấy plugin '${moduleName}'.`, threadId, type);
-    }
-
-    delete require.cache[require.resolve(commandPath)];
-    const load = await loaderCommand(moduleName);
-
-    if (load.status === false) {
-        return api.sendMessage(`❌ Lỗi khi tải lệnh '${moduleName}': ${load.error}`, threadId, type);
-    }
-
-    if (load.restart) {
-        await api.sendMessage(`🔄 Đã cài đặt thêm package. Tiến hành khởi động lại bot để áp dụng thay đổi.`, threadId, type);
-        return process.exit(2);
-    }
-
-    return api.sendMessage(`✅ Đã tải lệnh '${moduleName}' thành công.`, threadId, type);
-
-}
-
-async function unloadModule(api, event, moduleName) {
-    const { threadId, type } = event;
-    if (!global.client.commands.has(moduleName)) {
-        return api.sendMessage(`Lệnh '${moduleName}' chưa được tải.`, threadId, type);
-    }
-    if (!/^[a-zA-Z0-9_-]+$/.test(moduleName)) {
-        return api.sendMessage(`Tên module không hợp lệ: '${moduleName}'.`, threadId, type);
-    }
-    global.client.commands.delete(moduleName);
-    const commandPath = path.resolve(__dirname, `${moduleName}.js`);
-    const baseDir = path.resolve(__dirname);
-    if (commandPath !== baseDir && !commandPath.startsWith(baseDir + path.sep)) {
-        return api.sendMessage(`Đường dẫn module không hợp lệ (vượt ngoài thư mục lệnh): '${moduleName}'.`, threadId, type);
-    }
-    delete require.cache[require.resolve(commandPath)];
-    return api.sendMessage(`✅ Đã gỡ thành công lệnh '${moduleName}'.`, threadId, type);
-}
-
-module.exports.run = async function({ api, event, args }) {
-    const { threadId, type } = event;
-
-    if (!global.users.admin.includes(event?.data?.uidFrom)) {
-        return api.sendMessage("Bạn không có quyền sử dụng lệnh này.", threadId, type);
-    }
-
-    const action = args[0]?.toLowerCase();
-    const moduleName = args[1];
-
-    switch (action) {
-        case "load":
-            if (!moduleName) return api.sendMessage("Vui lòng nhập tên lệnh cần tải.", threadId, type);
-            if (!/^[a-zA-Z0-9_-]+$/.test(moduleName)) {
-                return api.sendMessage("Tên module không hợp lệ. Chỉ cho phép chữ cái, số, gạch dưới và gạch ngang.", threadId, type);
-            }
-            await loadModule(api, event, moduleName);
-            break;
-
-        case "unload":
-            if (!moduleName) return api.sendMessage("Vui lòng nhập tên lệnh cần gỡ.", threadId, type);
-            if (!/^[a-zA-Z0-9_-]+$/.test(moduleName)) {
-                return api.sendMessage("Tên module không hợp lệ. Chỉ cho phép chữ cái, số, gạch dưới và gạch ngang.", threadId, type);
-            }
-            await unloadModule(api, event, moduleName);
-            break;
-
-        case "loadall":
-            try {
-                await api.sendMessage("🔄 Bắt đầu tải lại tất cả lệnh...", threadId, type);
-                Object.keys(require.cache).forEach(key => {
-                    if (key.startsWith(__dirname)) delete require.cache[key];
-                });
-                global.client.commands.clear();
-                const loaderCommand = require("../../core/loader/loaderCommand");
-                await loaderCommand();
-                await api.sendMessage(`✅ Đã tải lại thành công ${global.client.commands.size} lệnh.`, threadId, type);
-            } catch (error) {
-                console.error("Lỗi khi loadall:", error);
-                await api.sendMessage(`❌ Lỗi khi tải lại lệnh:\n${error.message}`, threadId, type);
-            }
-            break;
-
-        case "unloadall":
-            try {
-                const files = fs.readdirSync(__dirname).filter(f => f.endsWith(".js") && f !== "cmd.js");
-                let count = 0;
-                for (const file of files) {
-                    const name = file.replace(".js", "");
-                    if (global.client.commands.has(name)) {
-                        global.client.commands.delete(name);
-                        delete require.cache[require.resolve(path.join(__dirname, file))];
-                        count++;
-                    }
-                }
-                await api.sendMessage(`✅ Đã gỡ ${count} lệnh thành công.`, threadId, type);
-            } catch (error) {
-                console.error("Lỗi khi gỡ:", error);
-                await api.sendMessage(`❌ Lỗi khi gỡ lệnh:\n${error.message}`, threadId, type);
-            }
-            break;
-
-        case "list": {
-            const list = Array.from(global.client.commands.keys());
-            api.sendMessage(`📦 Hiện có ${list.length} lệnh đang hoạt động:\n${list.join(", ")}`, threadId, type);
-            break;
-        }
-
-        case "info":
-            if (!moduleName) return api.sendMessage("Vui lòng nhập tên lệnh cần xem thông tin.", threadId, type);
-            const cmd = global.client.commands.get(moduleName);
-            if (!cmd) return api.sendMessage(`Lệnh '${moduleName}' chưa được tải hoặc không tồn tại.`, threadId, type);
-            const config = cmd.config;
-            const roleText = config.role === 0 ? "Người dùng" : config.role === 1 ? "Support" : "Admin";
-            const depsText = config.dependencies ? Object.keys(config.dependencies).join(", ") : "Không có";
-
-            const msg = `🔎 Thông tin lệnh: ${config.name}\n\n` +
-                        `- Mô tả: ${config.description}\n` +
-                        `- Tác giả: ${config.author}\n` +
-                        `- Phiên bản: ${config.version}\n` +
-                        `- Quyền hạn: ${roleText}\n` +
-                        `- Cách dùng: ${config.usage}\n` +
-                        `- Dependencies: ${depsText}`;
-            api.sendMessage(msg, threadId, type);
-            break;
-
-        default:
-            api.sendMessage(
-                "📚 Quản lý module bot\n\n" +
-                "cmd load <lệnh> - Tải một lệnh\n" +
-                "cmd unload <lệnh> - Gỡ một lệnh\n" +
-                "cmd loadall - Tải lại tất cả lệnh\n" +
-                "cmd unloadall - Gỡ tất cả lệnh\n" +
-                "cmd list - Liệt kê các lệnh\n" +
-                "cmd info <lệnh> - Xem thông tin lệnh",
-                threadId, type
-            );
-            break;
-    }
+"use strict";
+const path=require("path"),fs=require("fs");
+const loaderCommand=require("../../core/loader/loaderCommand");
+const folderMenu=require("../../core/runtime/folderMenu");
+const {invalidate}=require("../../core/runtime/commandRegistry");
+module.exports.config={name:"command",aliases:["cmd"],version:"2.0.0",role:2,author:"JOHNTRAN",description:"Quản lý lệnh theo cấu trúc menu mới",category:"MyBot",usage:"cmd <list|folders|info|load|unload|reload>",cooldowns:2};
+function send(api,event,msg){return api.sendMessage({msg},event.threadId,event.type);}
+function findCommand(name){const key=String(name||"").toLowerCase();for(const [id,mod] of global.client.commands){if(id===key||mod?.config?.name===key||(mod?.config?.aliases||[]).includes(key))return {id,mod};}return null;}
+module.exports.run=async function({api,event,args}){
+ const action=String(args[0]||"help").toLowerCase(),name=String(args[1]||"").toLowerCase();
+ if(!global.users?.admin?.includes(String(event?.data?.uidFrom||"")))return send(api,event,"Bạn không có quyền quản lý lệnh.");
+ const prefix=global.config?.prefix||"/";
+ if(action==="list"){
+  const groups=folderMenu.collectMenuGroups(global.client.commands,event.data.uidFrom);
+  const lines=groups.map(g=>"📂 "+g.name+" · "+g.count+" lệnh · "+prefix+g.slug);
+  return send(api,event,"JOHNTRAN · COMMAND CENTER\n"+lines.join("\n")+"\n\nTổng: "+groups.reduce((n,g)=>n+g.count,0)+" lệnh");
+ }
+ if(action==="folders")return send(api,event,folderMenu.renderAllCommands(folderMenu.collectAllCommands(global.client.commands,event.data.uidFrom),prefix,global.config?.name_bot||"JOHNTRAN",require("../../package.json").version));
+ if(action==="info"){
+  if(!name)return send(api,event,"Dùng: /cmd info <tên lệnh>");
+  const found=findCommand(name);if(!found)return send(api,event,"Không tìm thấy lệnh: "+name);
+  const c=found.mod.config;return send(api,event,"THÔNG TIN LỆNH\nTên: "+c.name+"\nNhóm menu: "+folderMenu.menuGroupForCommand(found.mod)+"\nMô tả: "+(c.description||"") +"\nQuyền: "+c.role+"\nCú pháp: "+prefix+(c.usage||c.name)+"\nPhiên bản: "+(c.version||""));
+ }
+ if(action==="load"||action==="reload"){
+  if(!name||!/^[a-z0-9_-]+$/i.test(name))return send(api,event,"Dùng: /cmd load <tên file lệnh>");
+  const p=path.join(__dirname,name+".js");if(!fs.existsSync(p))return send(api,event,"Không tìm thấy plugins/commands/"+name+".js");
+  const result=await loaderCommand(name);invalidate(global.client.commands);
+  return send(api,event,result.status===false?"Tải thất bại: "+result.error:"Đã "+(action==="reload"?"nạp lại":"tải")+" lệnh "+name+".");
+ }
+ if(action==="unload"){
+  const found=findCommand(name);if(!found)return send(api,event,"Lệnh chưa được tải: "+name);
+  global.client.commands.delete(found.id);delete require.cache[require.resolve(path.join(__dirname,found.id+".js"))];invalidate(global.client.commands);
+  return send(api,event,"Đã gỡ lệnh "+found.id+".");
+ }
+ return send(api,event,"JOHNTRAN · COMMAND CENTER\n/cmd list — Danh sách thư mục menu mới\n/cmd folders — Toàn bộ lệnh\n/cmd info <lệnh> — Chi tiết lệnh\n/cmd load <file> — Tải lệnh\n/cmd reload <file> — Nạp lại lệnh\n/cmd unload <lệnh> — Gỡ lệnh");
 };
