@@ -61,8 +61,8 @@ async function saveWin(Users, uid) {
   return profile;
 }
 async function leaderboard(Users, monthOnly = false) {
-  const month = new Date().toISOString().slice(0, 7);
-  const monthOf = (value) => { const date = new Date(Number(value)); return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 7) : ""; };
+  const month = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 7);
+  const monthOf = (value) => { const date = new Date(Number(value)); return Number.isFinite(date.getTime()) ? new Date(date.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 7) : ""; };
   const rows = Users.getAll().map((row) => {
     const profile = row?.data?.dhbc || {};
     const history = Array.isArray(profile.history) ? profile.history : [];
