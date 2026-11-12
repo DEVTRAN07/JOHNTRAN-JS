@@ -48,9 +48,9 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     // Folder shortcuts (/tools, /music, /game...) render category image cards.
     try {
       const folderMenu = require("../runtime/folderMenu");
-      const folder = folderMenu.resolveFolder(global.client.commands, UIDUsage, commandName);
+      const folder = folderMenu.resolveMenuGroup(global.client.commands, UIDUsage, commandName);
       if (folder) {
-        const items = folderMenu.collectFolderCommands(global.client.commands, UIDUsage, folder);
+        const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
         const version = require("../../package.json").version;
         const { renderFolderCard } = require("../canvas/menu");
         const profile = await getRequesterProfile(api, event);
@@ -82,7 +82,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
             "",
             `* ${hint} *`
           ].join("\n");
-          const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 2 }] : [];
+          const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
           return await wrappedApi.sendMessage({
             msg: caption,
             mentions,
