@@ -32,7 +32,6 @@ async function dispatchCommand({
     metrics?.track?.("command", { command: commandName });
 
     const reply = api.__reply;
-    reply?.scheduleAcknowledgement?.();
     let autoReacted = false;
     const reactAuto = (icon) => {
       if (reply.reacted && !autoReacted) return;
