@@ -395,10 +395,15 @@ test("topchat observes and counts the authenticated account as a group member", 
   global.config = { prefix: "/" };
   const Threads = fakeThreads();
   const threadId = "topchat-self-event-diagnostics";
-  const selfEvent = {
-    ...makeGroupMessage(threadId, "bot-self", "self-diag-1", "/topchat"),
-    isSelf: true
-  };
+  const { GroupMessage } = require("zalo-client");
+  const selfEvent = new GroupMessage("bot-self", {
+    idTo: threadId,
+    uidFrom: "0",
+    dName: "Chủ tài khoản",
+    cliMsgId: "self-diag-1",
+    content: "tin nhắn thường do chủ tài khoản gửi",
+    msgType: "webchat"
+  });
 
   const runtime = counter.observeIncomingEvent(selfEvent);
   assert.equal(runtime.events, 1);
