@@ -10,7 +10,7 @@ const EVENTS = [
   { key: "welcome", label: "👋 Chào thành viên mới", field: "event_welcome" },
   { key: "bye", label: "🚪 Tạm biệt thành viên rời nhóm", field: "event_bye" },
   { key: "rank", label: "🏆 Level/EXP theo tin nhắn", field: "event_rank" },
-  { key: "react", label: "😍 Thả icon/emoji cho tin thành viên", field: "event_react" },
+  { key: "react", label: "🔤 Trả lời YES/NO vào tin thành viên", field: "event_react" },
   { key: "guard", label: "🚨 Cảnh cáo link lạ & từ cấm", field: "event_guard" }
 ];
 
@@ -20,7 +20,7 @@ module.exports.config = {
   version: "1.0.0",
   role: 2,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
-  description: "Bật/tắt sự kiện tự động của bot (welcome, rank, guard, bye)",
+  description: "Bật/tắt sự kiện tự động của bot (welcome, rank, guard, bye, yes/no)",
   category: "Hệ thống",
   usage: "events [tên] on|off | events guard allow <host>",
   cooldowns: 3,
