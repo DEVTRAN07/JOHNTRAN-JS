@@ -50,6 +50,7 @@ function scheduleRecall(api, response, threadId, type) {
 const CARD_TTL = 5 * 60 * 1000;
 const CARD_MAX = 60;
 const cardCache = new Map(); // hash → { path, at, cached }
+const cardFlights = new Map(); // hash → Promise<path|null>
 
 function hashSpec(spec, ttl) {
   return crypto.createHash("md5").update(JSON.stringify({ ttl, ...(spec || {}) })).digest("hex");
@@ -60,25 +61,39 @@ async function renderCachedCard(spec, ttl) {
 
   const hit = cardCache.get(hash);
   if (hit && Date.now() - hit.at < CARD_TTL && fs.existsSync(hit.path)) {
-    hit.at = Date.now(); // LRU: dùng lại thì kéo dài tuổi
+    hit.at = Date.now();
     return hit.path;
   }
 
-  const { renderVipCard } = require("./canvas/vip"); // lazy — canvas nặng, chỉ cần khi gọi reply.card
-  const filePath = await renderVipCard({ ttl, ...(spec || {}) });
-  if (!filePath) return null;
+  // Coalesce identical concurrent renders. A burst of the same card should
+  // consume one canvas render, not one render per incoming command.
+  const active = cardFlights.get(hash);
+  if (active) return active;
 
-  if (cardCache.size >= CARD_MAX) {
-    // xoá thẻ cũ nhất khỏi cache (và xoá file tạm của nó)
-    const oldestKey = [...cardCache.entries()].sort((a, b) => a[1].at - b[1].at)[0]?.[0];
-    if (oldestKey) {
-      const old = cardCache.get(oldestKey);
-      try { if (old?.path) fs.unlinkSync(old.path); } catch { /* bỏ qua */ }
-      cardCache.delete(oldestKey);
+  const flight = (async () => {
+    const { renderVipCard } = require("./canvas/vip");
+    const filePath = await renderVipCard({ ttl, ...(spec || {}) });
+    if (!filePath) return null;
+
+    if (cardCache.size >= CARD_MAX) {
+      const oldestKey = [...cardCache.entries()].sort((a, b) => a[1].at - b[1].at)[0]?.[0];
+      if (oldestKey) {
+        const old = cardCache.get(oldestKey);
+        try { if (old?.path) fs.unlinkSync(old.path); } catch { /* bỏ qua */ }
+        cardCache.delete(oldestKey);
+      }
     }
+
+    cardCache.set(hash, { path: filePath, at: Date.now(), cached: true });
+    return filePath;
+  })();
+
+  cardFlights.set(hash, flight);
+  try {
+    return await flight;
+  } finally {
+    if (cardFlights.get(hash) === flight) cardFlights.delete(hash);
   }
-  cardCache.set(hash, { path: filePath, at: Date.now(), cached: true });
-  return filePath;
 }
 
 class Reply {
@@ -89,6 +104,51 @@ class Reply {
     this.commandName = commandName || "bot";
     this.event = event;
     this.reacted = false; // đã thả reaction cho tin này → handleCommand không thả lại
+    this._responseStarted = false;
+    this._commandCompleted = false;
+    this._ackSent = false;
+    this._ackTimer = null;
+  }
+
+  // Schedule one lightweight text acknowledgement only when a command has
+  // not produced its own first message within the configured grace period.
+  // Fast commands keep their original single-message output.
+  scheduleAcknowledgement(options = {}) {
+    if (this._responseStarted || this._commandCompleted || this._ackSent || this._ackTimer) return false;
+    const delayValue = typeof options === "number" ? options : Number(options.delayMs);
+    const delayMs = Number.isFinite(delayValue) && delayValue >= 0 ? delayValue : 350;
+    const message = typeof options === "object" && options.message
+      ? String(options.message)
+      : `⏳ Đang xử lý lệnh /${this.commandName}...`;
+
+    this._ackTimer = setTimeout(() => {
+      this._ackTimer = null;
+      if (this._responseStarted || this._commandCompleted || this._ackSent) return;
+      this._ackSent = true;
+      Promise.resolve(this.api.sendMessage(
+        { msg: message },
+        this.threadId,
+        this.type
+      )).catch(() => {});
+    }, delayMs);
+    this._ackTimer.unref?.();
+    return true;
+  }
+
+  markResponseStarted() {
+    this._responseStarted = true;
+    this.cancelAcknowledgement();
+  }
+
+  cancelAcknowledgement() {
+    if (!this._ackTimer) return;
+    clearTimeout(this._ackTimer);
+    this._ackTimer = null;
+  }
+
+  finishCommand() {
+    this._commandCompleted = true;
+    this.cancelAcknowledgement();
   }
 
   // ===== MẶC ĐỊNH: TEXT CÓ STYLE — phản hồi tức thì (0ms, 1 API call) =====
@@ -194,8 +254,11 @@ function defineWrapped(wrapped, name, fn) {
 function wrapApi(api, threadId, type, commandName, event = null) {
   if (!api) return api;
   const wrapped = Object.create(api);
+  let reply = null;
+  const markResponseStarted = () => reply?.markResponseStarted?.();
 
   defineWrapped(wrapped, "sendMessage", async (message, tid, ty) => {
+    markResponseStarted();
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
     const content = typeof message === "string" ? { msg: message } : { ...message };
@@ -206,6 +269,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   });
 
   defineWrapped(wrapped, "sendVoice", async (payload, tid, ty) => {
+    markResponseStarted();
     const content = typeof payload === "string" ? { voiceUrl: payload } : { ...payload };
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
@@ -215,6 +279,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   });
 
   defineWrapped(wrapped, "sendVideo", async (payload, tid, ty) => {
+    markResponseStarted();
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
     const response = await api.sendVideo({ ...payload }, targetThreadId, targetType);
@@ -225,6 +290,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   for (const method of ["sendSticker", "sendCard"]) {
     if (typeof api[method] !== "function") continue;
     defineWrapped(wrapped, method, async (payload, tid, ty) => {
+      markResponseStarted();
       const targetThreadId = threadId || tid;
       const targetType = type || ty;
       const response = await api[method](payload, targetThreadId, targetType);
@@ -235,6 +301,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
 
   if (typeof api.sendCustomStickerUrl === "function") {
     defineWrapped(wrapped, "sendCustomStickerUrl", async (payload) => {
+      markResponseStarted();
       const targetThreadId = payload?.threadId || threadId;
       const targetType = payload?.threadType ?? type;
       const response = await api.sendCustomStickerUrl(payload);
@@ -264,7 +331,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     }
   });
 
-  const reply = new Reply(wrapped, threadId, type, commandName, event);
+  reply = new Reply(wrapped, threadId, type, commandName, event);
   Object.defineProperty(wrapped, "__reply", { value: reply, enumerable: false });
   return wrapped;
 }
