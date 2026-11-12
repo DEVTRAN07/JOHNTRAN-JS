@@ -23,6 +23,19 @@ function fresh(entry) {
   return Boolean(entry && entry.expiresAt > Date.now());
 }
 
+function getCachedProfile() {
+  // Return stale data too: refreshing a name/avatar is not a reason to delay a command.
+  return profileCache?.data || null;
+}
+
+function getCachedGroupInfo(gid) {
+  return cache.caches.groupInfo.get(String(gid)) || null;
+}
+
+function warmGroupInfo(api, gid) {
+  return loadGroupInfo(api, String(gid));
+}
+
 async function getProfile(api) {
   if (fresh(profileCache)) return profileCache.data;
   if (profileFlight) return profileFlight;
@@ -183,6 +196,9 @@ module.exports = {
   getFriends,
   getGroups,
   getProfile,
+  getCachedProfile,
+  getCachedGroupInfo,
+  warmGroupInfo,
   PROFILE_CACHE_TTL,
   FRIENDS_CACHE_TTL,
   GROUPS_CACHE_TTL,
