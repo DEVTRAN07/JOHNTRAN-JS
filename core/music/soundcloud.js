@@ -20,7 +20,8 @@ function readCachedClientId() {
   try {
     const raw = fs.readFileSync(CLIENT_ID_CACHE, "utf8").trim();
     const [clientId, timestamp] = raw.split("|");
-    if (clientId && timestamp && Date.now() - Number(timestamp) < CLIENT_ID_TTL) return clientId;
+    if (isValidClientId(clientId) && timestamp && Number.isFinite(Number(timestamp)) &&
+        Date.now() - Number(timestamp) < CLIENT_ID_TTL) return clientId;
   } catch { /* bo qua */ }
   return null;
 }
@@ -42,46 +43,58 @@ function clearCachedClientId() {
   try { db.saveData("BotStats", "name", CLIENT_ID_KEY, { value: "" }); } catch { /* bo qua */ }
 }
 
+function isValidClientId(value) {
+  return /^[A-Za-z0-9]{32}$/.test(String(value || "").trim());
+}
+
 function scriptUrlsFromHtml(html) {
   const urls = [];
-  const re = /<script\\b[^>]*?\\b(?:src|data-src)\\s*=\\s*(["'])(.*?)\\1/gi;
+  const re = /<script\b[^>]*?\b(?:src|data-src)\s*=\s*(["'])(.*?)\1/gi;
   let match;
   while ((match = re.exec(String(html || ""))) !== null) {
     const src = String(match[2] || "").trim();
-    if (!src || !/\\.js(?:[?#]|$)/i.test(src)) continue;
+    if (!src || !/\.m?js(?:[?#]|$)/i.test(src)) continue;
     try {
-      const url = new URL(src, HOME_URL).toString();
-      const host = new URL(url).hostname;
+      const url = new URL(src, HOME_URL);
+      const host = url.hostname.toLowerCase();
       if (host === "soundcloud.com" || host.endsWith(".soundcloud.com") ||
           host === "sndcdn.com" || host.endsWith(".sndcdn.com")) {
-        urls.push(url);
+        urls.push(url.toString());
       }
     } catch { /* bỏ URL script không hợp lệ */ }
   }
   return [...new Set(urls)].sort((a, b) => {
-    const score = (url) => /sndcdn\\.com/i.test(url) ? 2 : /soundcloud\\.com/i.test(url) ? 1 : 0;
+    const score = (url) => /sndcdn\.com/i.test(url) ? 2 : /soundcloud\.com/i.test(url) ? 1 : 0;
     return score(b) - score(a);
   });
 }
 
 function extractClientId(source) {
-  const text = String(source || "").replace(/\\\\u0026/g, "&").replace(/\\\\x3d/gi, "=");
+  const text = String(source || "")
+    .replace(/\\u0026/gi, "&")
+    .replace(/\\x3d/gi, "=")
+    .replace(/&amp;/gi, "&");
   const patterns = [
     /[?&]client_id=([A-Za-z0-9]{32})/i,
-    /(?:client_id|clientId)\\s*[=:]\\s*["']?([A-Za-z0-9]{32})/i,
-    /["'](?:client_id|clientId)["']\\s*:\\s*["']([A-Za-z0-9]{32})["']/i,
+    /(?:client_id|clientId)\s*[=:]\s*["']?([A-Za-z0-9]{32})/i,
+    /["'](?:client_id|clientId)["']\s*:\s*["']([A-Za-z0-9]{32})["']/i,
     /client_id%3[dD]([A-Za-z0-9]{32})/i
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match?.[1]) return match[1];
+    if (match?.[1] && isValidClientId(match[1])) return match[1];
   }
   return null;
 }
 
 async function discoverClientId() {
-  const configured = global.config?.music?.soundcloud_client_id;
-  if (configured) return configured;
+  const configured = String(
+    global.config?.music?.soundcloud_client_id ||
+    process.env.SOUNDCLOUD_CLIENT_ID ||
+    process.env.JT_MUSIC__SOUNDCLOUD_CLIENT_ID ||
+    ""
+  ).trim();
+  if (isValidClientId(configured)) return configured;
   if (cachedClientId) return cachedClientId;
 
   const cached = readCachedClientId();
@@ -93,7 +106,7 @@ async function discoverClientId() {
   try {
     const row = db.getData("BotStats", "name", CLIENT_ID_KEY);
     const stored = row?.data?.value;
-    if (stored) {
+    if (isValidClientId(stored)) {
       cachedClientId = stored;
       return stored;
     }
@@ -217,7 +230,12 @@ async function apiGet(apiPath, params = {}, retry = true) {
     }
     return data;
   } catch (error) {
-    if (error.notAvailable || error.status) throw error;
+    const status = Number(error?.response?.status || error?.status || 0);
+    if (retry && (status === 401 || status === 403)) {
+      clearCachedClientId();
+      return apiGet(apiPath, params, false);
+    }
+    if (error.notAvailable || error.status || error.response) throw error;
     throw error;
   }
 }
@@ -266,7 +284,9 @@ function pickTranscoding(transcodings) {
 
 async function resolveTranscodingUrl(transcoding, clientId) {
   try {
-    const response = await pooledAxios.get(transcoding.url + "?client_id=" + clientId);
+    const streamUrl = new URL(transcoding.url);
+    streamUrl.searchParams.set("client_id", clientId);
+    const response = await pooledAxios.get(streamUrl.toString(), { timeout: 25000 });
     const stream = response.data;
     if (!stream || !stream.data || !stream.data.url) {
       const error = new Error("Khong lay duoc link stream tu SoundCloud");
@@ -311,4 +331,10 @@ async function resolve(track) {
   }
 }
 
-module.exports = { name: "scl", label: SOURCE, search, resolve };
+module.exports = {
+  name: "scl",
+  label: SOURCE,
+  search,
+  resolve,
+  _test: { isValidClientId, scriptUrlsFromHtml, extractClientId }
+};
