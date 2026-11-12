@@ -33,7 +33,7 @@ async function award(Users, uid) {
   await Users.setData(String(uid), data);
 }
 module.exports.run = async function ({ api, event, Users, isSelf }) {
-  if (isSelf || global.dhbcEnabled === false) return;
+  if (isSelf || !game.isEnabled()) return;
   const content = String(event?.data?.content || "").trim();
   const prefix = global.config?.prefix || "!";
   if (!content || content.startsWith(prefix)) return;
