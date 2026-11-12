@@ -130,7 +130,6 @@ async function runCmd(name, args = [], eventOverride = {}) {
     ["lyric", ["Nơi Này Có Anh"]],
     ["spam", ["off"]],
     ["spamsticker", ["off"]],
-    ["upt", []],
     ["noi", []]
   ];
   for (const [name, args] of withArgs) {
@@ -174,7 +173,7 @@ async function runCmd(name, args = [], eventOverride = {}) {
 
   // 8. TTL kiểm tra
   reset();
-  await runCmd("upt", []);
+  await runCmd("stats", []);
   // TTL đã bỏ: tin nhắn KHÔNG còn tự xoá nữa (trừ lệnh spam tự set 60s)
   const withTtl = sent.filter(s => s.ttl > 0).length;
   record("TTL đã bỏ (tin không tự xoá)", true, `${withTtl}/${sent.length} tin có ttl`);
