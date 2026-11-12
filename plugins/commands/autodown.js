@@ -202,16 +202,17 @@ function detectPlatform(url) {
 }
 
 function getHttp() { return require("../../core/http"); }
+function getQueuedHttp() { return require("../../core/runtime/queuedHttp"); }
 
 async function fetchText(url, options = {}) {
-  const http = getHttp();
+  const http = getQueuedHttp();
   const res = await http.request(url, Object.assign({ timeout: 30000, retries: 1 }, options));
   if (res.status >= 400) throw new Error(`HTTP ${res.status}`);
   return res.text();
 }
 
 async function fetchJson(url, options = {}) {
-  const http = getHttp();
+  const http = getQueuedHttp();
   const res = await http.getJson(url, Object.assign({ timeout: 30000, retries: 1 }, options));
   if (res.status >= 400 || !res.data) throw new Error(`HTTP ${res.status || "?"}`);
   return res.data;
@@ -410,7 +411,7 @@ async function downloadAndSend({ api, threadId, type, info }) {
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_autodown_"));
   try {
-    const http = getHttp();
+    const http = getQueuedHttp();
     const { buffer, contentType } = await http.getBuffer(mediaUrl, {
       timeout: 180000,
       retries: 1,
