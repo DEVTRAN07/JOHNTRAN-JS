@@ -205,18 +205,21 @@ function startListening(api) {
     state.pending = false;
     clearTopchatHistoryTimers(state);
 
-    try {
-      const counter = require("../plugins/events/topchatCounter");
-      await counter.markHistoryCoverage(
-        [...state.groups],
-        Threads,
-        state.dateKey,
-        complete,
-        state.pageCount,
-        reason
-      );
-    } catch (error) {
-      logger.log(`Không lưu được trạng thái lịch sử Topchat: ${error.message}`, "warn");
+    // Never let a backfill started yesterday reset or mark today's counters.
+    if (state.dateKey === vietnamDateKey()) {
+      try {
+        const counter = require("../plugins/events/topchatCounter");
+        await counter.markHistoryCoverage(
+          [...state.groups],
+          Threads,
+          state.dateKey,
+          complete,
+          state.pageCount,
+          reason
+        );
+      } catch (error) {
+        logger.log(`Không lưu được trạng thái lịch sử Topchat: ${error.message}`, "warn");
+      }
     }
 
     logger.log(
@@ -425,6 +428,9 @@ function startListening(api) {
 
   listener.on("closed", (code) => {
     reconnectSince = Date.now();
+    if (topchatHistorySync?.active) {
+      void finishTopchatHistorySync(false, "connection-closed");
+    }
     connectFailStreak += 1;
     if (connectFailStreak >= CONNECT_FAIL_LIMIT) {
       logger.log(`Listener rớt ${connectFailStreak} lần liên tiếp không kết nối lại được — khởi động lại tiến trình để đăng nhập lại`, "error");
