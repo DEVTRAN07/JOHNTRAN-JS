@@ -27,7 +27,12 @@ let QUESTIONS = Object.freeze([
   { id: "trong-dong", clues: ["TRỐNG", "ĐỒNG"], symbols: ["🥁", "🪙"], answer: "trống đồng", hint: "Biểu tượng văn hóa Đông Sơn" }
 ]);
 
-function setQuestionBank(items) {\n  if (!Array.isArray(items) || !items.length) return false;\n  QUESTIONS = Object.freeze(items.map((item) => Object.freeze({ ...item, clues: [...item.clues], symbols: [...item.symbols] })));\n  return true;\n}\nfunction normalizeAnswer(value) {
+function setQuestionBank(items) {
+  if (!Array.isArray(items) || !items.length) return false;
+  QUESTIONS = Object.freeze(items.map((item) => Object.freeze({ ...item, clues: [...item.clues], symbols: [...item.symbols] })));
+  return true;
+}
+function normalizeAnswer(value) {
   return String(value || "").toLowerCase().normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d")
     .replace(/[^a-z0-9]/g, "");
