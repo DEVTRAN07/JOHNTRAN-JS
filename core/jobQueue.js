@@ -185,6 +185,11 @@ function stats() {
       label: job.label,
       runningForMs: job.startedAt ? Math.max(0, Date.now() - job.startedAt) : 0,
       retries: job.retries
+    })),
+    pendingJobs: lane.pending.slice(0, 8).map(job => ({
+      label: job.label,
+      waitingForMs: Math.max(0, Date.now() - job.queuedAt),
+      priority: job.priority
     }))
   }]));
   // Preserve the existing stats()[laneName] shape and add global pressure.
