@@ -2,6 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const converter = require("../core/stickerConvert");
 const stickerCommand = require("../plugins/commands/stk");
 
@@ -20,15 +23,23 @@ function gifWithFrames(frameCount) {
   return Buffer.concat(parts);
 }
 
-test("ffmpeg resolution ignores a stale Render path and falls back to the packaged binary", () => {
-  assert.equal(
-    converter.resolveFfmpegBinary({ envPath: "/missing/ffmpeg", staticPath: "/usr/bin/ffmpeg" }),
-    "/usr/bin/ffmpeg"
-  );
-  assert.equal(
-    converter.resolveFfmpegBinary({ envPath: "/missing/ffmpeg", staticPath: "/missing/static-ffmpeg" }),
-    "ffmpeg"
-  );
+test("ffmpeg resolution ignores a stale Render path and uses a valid packaged binary", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-ffmpeg-resolve-"));
+  const staticBinary = path.join(dir, "ffmpeg");
+  try {
+    fs.writeFileSync(staticBinary, "#!/bin/sh\nexit 0\n");
+    fs.chmodSync(staticBinary, 0o755);
+    assert.equal(
+      converter.resolveFfmpegBinary({ envPath: "/missing/ffmpeg", staticPath: staticBinary }),
+      staticBinary
+    );
+    assert.equal(
+      converter.resolveFfmpegBinary({ envPath: "/missing/ffmpeg", staticPath: "/missing/static-ffmpeg" }),
+      "ffmpeg"
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("GIF animation detection parses frame blocks instead of scanning compressed bytes", () => {
