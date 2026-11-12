@@ -18,7 +18,7 @@ const FOLDER_META = Object.freeze({
   "Nhạc": { icon: "🎵", slug: "nhac", hint: "Âm nhạc trực tuyến" },
   "Giải trí": { icon: "🎮", slug: "giaitri", hint: "Giải trí và thư giãn" },
   "Hành động": { icon: "✨", slug: "hanhdong", hint: "Tương tác thành viên" },
-  "Game": { icon: "🎮", slug: "game", hint: "Trò chơi và tu tiên" },
+  "Game": { icon: "🎮", slug: "game", hint: "Mini-games and fun" },
   "AI": { icon: "🤖", slug: "ai", hint: "Trí tuệ nhân tạo" },
   "Khác": { icon: "📦", slug: "khac", hint: "Các tiện ích khác" }
 });
