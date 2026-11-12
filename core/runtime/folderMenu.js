@@ -167,17 +167,17 @@ function renderAllCommands(groups, prefix, botName, version) {
  * shortcuts such as /game, /tools and /admin show the exact same commands.
  */
 const MENU_GROUPS = Object.freeze([
-  { name: "Thông tin", slug: "info", icon: "💡", description: "Thông tin tài khoản & hướng dẫn" },
-  { name: "Tiện ích", slug: "public", icon: "🌐", description: "Tiện ích dùng chung cho mọi người" },
-  { name: "Âm nhạc", slug: "music", icon: "🎵", description: "Tìm kiếm và nghe nhạc" },
-  { name: "Trò chơi", slug: "game", icon: "🎮", description: "Game và hoạt động giải trí" },
-  { name: "Công cụ", slug: "tools", icon: "🧰", description: "Công cụ tự động và xử lý tác vụ" },
-  { name: "Chống vi phạm", slug: "anti", icon: "🛡️", description: "Bảo vệ nhóm và chống spam" },
-  { name: "Quản lý nhóm", slug: "manager", icon: "👥", description: "Quản lý thành viên và tin nhắn" },
-  { name: "Quản trị", slug: "admin", icon: "👑", description: "Lệnh dành cho quản trị viên" },
-  { name: "Vận hành bot", slug: "mybot", icon: "🤖", description: "Theo dõi và điều khiển hoạt động bot" },
-  { name: "Lệnh đặc biệt", slug: "hidden", icon: "🔒", description: "Các lệnh đặc biệt, không hiển thị công khai" },
-  { name: "Thử nghiệm", slug: "test", icon: "🧪", description: "Các lệnh đang thử nghiệm" }
+  { name: "Information", slug: "info", icon: "💡", description: "Thông tin tài khoản & hướng dẫn" },
+  { name: "Utilities", slug: "public", icon: "🌐", description: "Tiện ích dùng chung cho mọi người" },
+  { name: "Music", slug: "music", icon: "🎵", description: "Tìm kiếm và nghe nhạc" },
+  { name: "Games", slug: "game", icon: "🎮", description: "Game và hoạt động giải trí" },
+  { name: "Tools", slug: "tools", icon: "🧰", description: "Công cụ tự động và xử lý tác vụ" },
+  { name: "Anti-Abuse", slug: "anti", icon: "🛡️", description: "Bảo vệ nhóm và chống spam" },
+  { name: "Group Management", slug: "manager", icon: "👥", description: "Quản lý thành viên và tin nhắn" },
+  { name: "Administration", slug: "admin", icon: "👑", description: "Lệnh dành cho quản trị viên" },
+  { name: "Bot Operations", slug: "mybot", icon: "🤖", description: "Theo dõi và điều khiển hoạt động bot" },
+  { name: "Special Commands", slug: "hidden", icon: "🔒", description: "Các lệnh đặc biệt, không hiển thị công khai" },
+  { name: "Testing", slug: "test", icon: "🧪", description: "Các lệnh đang thử nghiệm" }
 ]);
 
 const MENU_COMMAND_GROUPS = Object.freeze({
