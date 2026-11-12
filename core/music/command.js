@@ -201,7 +201,12 @@ async function runMusic(providerName, { api, event, args, reply }) {
   let tracks;
   try {
     tracks = await enqueue("music-search", () => music.search(providerName, query), {
-      key: `${providerName}|${query.toLowerCase()}|40`
+      key: `${providerName}|${query.toLowerCase()}|40`,
+      label: `Tìm nhạc: ${query.slice(0, 36)}`,
+      retries: 1,
+      retryDelayMs: 450,
+      retryOn: error => !error?.privacyBlocked && !error?.needCredentials &&
+        !error?.noResults && !error?.notAvailable
     });
   } catch (error) {
     return friendlyError(error, reply);
