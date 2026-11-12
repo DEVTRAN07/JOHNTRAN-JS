@@ -1,111 +1,190 @@
-// Thu thập thống kê bot: hồ sơ (avatar, SĐT), bạn bè, nhóm đang ở.
-// Bot con lưu vào store mỗi 30s; panel API đọc từ store để hiển thị.
+"use strict";
+
+// Panel stats are low-frequency data. Cache remote account/list calls and
+// coalesce concurrent refreshes so slow Zalo APIs never stack up every tick.
 const cache = require("./cache");
 const logger = require("../utils/logger");
-const { ThreadType } = require("zalo-client");
 
-const FRIENDS_CACHE_TTL = 300000; // 5 phút
+const PROFILE_CACHE_TTL = 300000;
+const FRIENDS_CACHE_TTL = 300000;
 const GROUPS_CACHE_TTL = 300000;
-const MAX_LIST = 50; // số bạn/nhóm tối đa gửi lên panel
+const MAX_LIST = 50;
+const GROUP_INFO_CONCURRENCY = 4;
 
+let profileCache = null;
 let friendsCache = null;
 let groupsCache = null;
+let profileFlight = null;
+let friendsFlight = null;
+let groupsFlight = null;
+let collectFlight = null;
+
+function fresh(entry) {
+  return Boolean(entry && entry.expiresAt > Date.now());
+}
 
 async function getProfile(api) {
+  if (fresh(profileCache)) return profileCache.data;
+  if (profileFlight) return profileFlight;
+
+  profileFlight = (async () => {
+    try {
+      const [uid, info] = await Promise.all([
+        api.getOwnId(),
+        api.fetchAccountInfo()
+      ]);
+      const profile = info?.profile || {};
+      const data = {
+        uid: String(uid || profile.userId || ""),
+        displayName: profile.displayName || profile.zaloName || "",
+        avatar: profile.avatar || "",
+        phoneNumber: profile.phoneNumber || "",
+        status: profile.status || "",
+        gender: profile.gender
+      };
+      profileCache = { expiresAt: Date.now() + PROFILE_CACHE_TTL, data };
+      return data;
+    } catch (error) {
+      logger.log(`[stats] Không lấy được hồ sơ: ${error.message}`, "warn");
+      return profileCache?.data || null;
+    }
+  })();
+
   try {
-    const uid = await api.getOwnId();
-    const info = await api.fetchAccountInfo();
-    const profile = info?.profile || {};
-    return {
-      uid: String(uid || profile.userId || ""),
-      displayName: profile.displayName || profile.zaloName || "",
-      avatar: profile.avatar || "",
-      phoneNumber: profile.phoneNumber || "",
-      status: profile.status || "",
-      gender: profile.gender
-    };
-  } catch (error) {
-    logger.log(`[stats] Không lấy được hồ sơ: ${error.message}`, "warn");
-    return null;
+    return await profileFlight;
+  } finally {
+    profileFlight = null;
   }
 }
 
 async function getFriends(api) {
-  if (friendsCache && friendsCache.expiresAt > Date.now()) return friendsCache.data;
-  try {
-    const friends = (await api.getAllFriends(500)) || [];
-    friendsCache = {
-      expiresAt: Date.now() + FRIENDS_CACHE_TTL,
-      data: {
+  if (fresh(friendsCache)) return friendsCache.data;
+  if (friendsFlight) return friendsFlight;
+
+  friendsFlight = (async () => {
+    try {
+      const friends = (await api.getAllFriends(500)) || [];
+      const data = {
         total: friends.length,
-        list: friends.slice(0, MAX_LIST).map((f) => ({
-          uid: String(f.userId || ""),
-          displayName: f.displayName || "",
-          avatar: f.avatar || ""
+        list: friends.slice(0, MAX_LIST).map((friend) => ({
+          uid: String(friend.userId || ""),
+          displayName: friend.displayName || "",
+          avatar: friend.avatar || ""
         }))
-      }
-    };
-    return friendsCache.data;
-  } catch (error) {
-    logger.log(`[stats] Không lấy được danh sách bạn bè: ${error.message}`, "warn");
-    return { total: 0, list: [] };
+      };
+      friendsCache = { expiresAt: Date.now() + FRIENDS_CACHE_TTL, data };
+      return data;
+    } catch (error) {
+      logger.log(`[stats] Không lấy được danh sách bạn bè: ${error.message}`, "warn");
+      return friendsCache?.data || { total: 0, list: [] };
+    }
+  })();
+
+  try {
+    return await friendsFlight;
+  } finally {
+    friendsFlight = null;
+  }
+}
+
+async function loadGroupInfo(api, gid) {
+  try {
+    return await cache.caches.groupInfo.remember(gid, () => api.getGroupInfo(gid));
+  } catch {
+    return null;
   }
 }
 
 async function getGroups(api) {
-  if (groupsCache && groupsCache.expiresAt > Date.now()) return groupsCache.data;
-  try {
-    const { gridVerMap } = (await api.getAllGroups()) || {};
-    const ids = Object.keys(gridVerMap || {});
-    const list = [];
-    for (const gid of ids.slice(0, MAX_LIST)) {
-      try {
-        // dùng cache sẵn có của api wrapper (5 phút) để không gọi lại Zalo
-        const info = await cache.caches.groupInfo.remember(gid, () => api.getGroupInfo(gid));
-        const g = info?.gridInfoMap?.[gid];
-        if (g) {
+  if (fresh(groupsCache)) return groupsCache.data;
+  if (groupsFlight) return groupsFlight;
+
+  groupsFlight = (async () => {
+    try {
+      const { gridVerMap } = (await api.getAllGroups()) || {};
+      const ids = Object.keys(gridVerMap || {});
+      const selectedIds = ids.slice(0, MAX_LIST);
+      const list = [];
+
+      // Fetch a small bounded batch in parallel. This avoids up to 50
+      // sequential network round trips while remaining gentle on Zalo APIs.
+      for (let offset = 0; offset < selectedIds.length; offset += GROUP_INFO_CONCURRENCY) {
+        const batch = selectedIds.slice(offset, offset + GROUP_INFO_CONCURRENCY);
+        const results = await Promise.all(batch.map(gid => loadGroupInfo(api, gid)));
+        for (let i = 0; i < results.length; i++) {
+          const gid = batch[i];
+          const group = results[i]?.gridInfoMap?.[gid];
+          if (!group) continue;
           list.push({
             gid: String(gid),
-            name: g.name || "",
-            totalMember: g.totalMember || 0,
-            avatar: g.avt || ""
+            name: group.name || "",
+            totalMember: group.totalMember || 0,
+            avatar: group.avt || ""
           });
         }
-      } catch { /* bỏ qua nhóm lỗi */ }
+      }
+
+      const data = { total: ids.length, list };
+      groupsCache = { expiresAt: Date.now() + GROUPS_CACHE_TTL, data };
+      return data;
+    } catch (error) {
+      logger.log(`[stats] Không lấy được danh sách nhóm: ${error.message}`, "warn");
+      return groupsCache?.data || { total: 0, list: [] };
     }
-    groupsCache = {
-      expiresAt: Date.now() + GROUPS_CACHE_TTL,
-      data: { total: ids.length, list }
-    };
-    return groupsCache.data;
-  } catch (error) {
-    logger.log(`[stats] Không lấy được danh sách nhóm: ${error.message}`, "warn");
-    return { total: 0, list: [] };
+  })();
+
+  try {
+    return await groupsFlight;
+  } finally {
+    groupsFlight = null;
   }
 }
 
 async function collectStats(api) {
-  const profile = await getProfile(api);
-  const friends = await getFriends(api);
-  const groups = await getGroups(api);
+  if (collectFlight) return collectFlight;
 
-  return {
-    collectedAt: Date.now(),
-    profile,
-    friends,
-    groups,
-    process: {
-      uptimeMs: process.uptime() * 1000,
-      memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
-      node: process.version,
-      pid: process.pid
-    }
-  };
+  collectFlight = (async () => {
+    const [profile, friends, groups] = await Promise.all([
+      getProfile(api),
+      getFriends(api),
+      getGroups(api)
+    ]);
+
+    return {
+      collectedAt: Date.now(),
+      profile,
+      friends,
+      groups,
+      process: {
+        uptimeMs: process.uptime() * 1000,
+        memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        node: process.version,
+        pid: process.pid
+      }
+    };
+  })();
+
+  try {
+    return await collectFlight;
+  } finally {
+    collectFlight = null;
+  }
 }
 
 function invalidate() {
+  profileCache = null;
   friendsCache = null;
   groupsCache = null;
 }
 
-module.exports = { collectStats, invalidate, getFriends, getGroups, getProfile };
+module.exports = {
+  collectStats,
+  invalidate,
+  getFriends,
+  getGroups,
+  getProfile,
+  PROFILE_CACHE_TTL,
+  FRIENDS_CACHE_TTL,
+  GROUPS_CACHE_TTL,
+  GROUP_INFO_CONCURRENCY
+};
