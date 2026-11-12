@@ -1,7 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
-const ffmpegPath = require("ffmpeg-static");
+const ffmpegStaticPath = require("ffmpeg-static");
+const { resolveFfmpegPath } = require("./ffmpegPath");
 const http = require("../http");
 const { pooledAxios } = require("../http/pooledAxios");
 const db = require("../../utils/db");
@@ -128,8 +129,9 @@ function redactStreamDiagnostics(value) {
 
 function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
   return new Promise((resolve, reject) => {
+    const ffmpegPath = resolveFfmpegPath({ staticPath: ffmpegStaticPath });
     if (!ffmpegPath) {
-      return reject(new Error("Không tìm thấy FFmpeg để xử lý luồng AAC/HLS."));
+      return reject(new Error("Không tìm thấy FFmpeg. Hãy cài FFmpeg hệ thống hoặc đặt biến môi trường FFMPEG_PATH."));
     }
 
     const bitrate = Number(quality) === 320 ? 320 : 160;
@@ -159,7 +161,7 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
         const code = error.code ? `code=${error.code}` : "";
         const signal = error.signal ? `signal=${error.signal}` : "";
         const detail = diagnostic || [code, signal, error.errno, error.syscall].filter(Boolean).join(", ") || "FFmpeg không trả stderr";
-        return reject(new Error("FFmpeg AAC/HLS thất bại: " + detail));
+        return reject(new Error(`FFmpeg AAC/HLS thất bại (${path.basename(ffmpegPath)}): ` + detail));
       }
 
       try {
