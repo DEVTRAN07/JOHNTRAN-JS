@@ -53,7 +53,7 @@ function checkGroupPermissions({
     groupInfoRequest = api.getGroupInfo(threadId);
   } catch (error) {
     logger.log?.("Không thể lấy thông tin nhóm từ API: " + error.message, "warn");
-    return evaluateGroupPermissions({ threadInfo, isBotAdmin, isSupport });
+    return evaluateGroupPermissions({ isGroup, threadInfo, isBotAdmin, isSupport });
   }
 
   const applyGroupInfo = (info) => {
@@ -70,7 +70,7 @@ function checkGroupPermissions({
       .then(applyGroupInfo)
       .catch((error) => {
         logger.log?.("Không thể lấy thông tin nhóm từ API: " + error.message, "warn");
-        return evaluateGroupPermissions({ threadInfo, isBotAdmin, isSupport });
+        return evaluateGroupPermissions({ isGroup, threadInfo, isBotAdmin, isSupport });
       });
   }
 
