@@ -454,6 +454,7 @@ function startListening(api) {
   });
 
   listener.on("closed", (code) => {
+    historyBootstrapGate.disconnected();
     reconnectSince = Date.now();
     if (topchatHistorySync?.active) {
       void finishTopchatHistorySync(false, "connection-closed");
@@ -475,7 +476,10 @@ function startListening(api) {
   // Đánh dấu freshness cho watchdog (dùng cho cả message và cipher_key)
   const markAlive = () => { lastFrameAt = Date.now(); };
   listener.on("message", markAlive);
-  listener.on("cipher_key", () => {\n    markAlive();\n    historyBootstrapGate.cipherReady();\n  });
+  listener.on("cipher_key", () => {
+    markAlive();
+    historyBootstrapGate.cipherReady();
+  });
 
   // Watchdog: chỉ dựa vào trạng thái socket THẬT — không coi "im lặng vài phút"
   // là chết (nhóm không ai nhắn thì bot vẫn sống, ép reconnect chỉ làm mất tin)
