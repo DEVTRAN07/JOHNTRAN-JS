@@ -508,7 +508,7 @@ function startPanel({ manager, config }) {
           const questions = bank.add(body);
           return sendJson(res, 201, { success: true, total: questions.length, question: questions[questions.length - 1] });
         }
-        const questionMatch = pathname.match(/^\\/api\\/dhbc\\/questions\\/([a-z0-9-]+)$/);
+        const questionMatch = pathname.match(/^\/api\/dhbc\/questions\/([a-z0-9-]+)$/);
         if (questionMatch && req.method === "PATCH") {
           const body = await readBody(req);
           const questions = bank.update(questionMatch[1], body);
