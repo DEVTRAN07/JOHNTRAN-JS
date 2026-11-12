@@ -58,6 +58,7 @@ async function recordMessage({ event, Threads }) {
   if (thread.topchatDate !== today) {
     thread.topchatDate = today;
     thread.topchatCounts = {};
+    thread.topchatSeenMessageIds = [];
   }
 
   const counts = thread.topchatCounts && typeof thread.topchatCounts === "object"
@@ -69,6 +70,12 @@ async function recordMessage({ event, Threads }) {
   counts[uid] = member;
 
   thread.topchatCounts = counts;
+  const messageId = String(data.cliMsgId || data.msgId || "");
+  if (messageId) {
+    const ids = Array.isArray(thread.topchatSeenMessageIds) ? thread.topchatSeenMessageIds : [];
+    if (!ids.includes(messageId)) ids.push(messageId);
+    thread.topchatSeenMessageIds = ids.slice(-500);
+  }
   await Threads.setData(threadId, thread);
 }
 
