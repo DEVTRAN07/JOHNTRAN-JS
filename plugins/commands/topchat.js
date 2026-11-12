@@ -9,6 +9,10 @@ const {
 } = require("../../core/topchat/stats");
 
 const HISTORY_LIMIT = 200;
+const HISTORY_CACHE_TTL_MS = 30000;
+const HISTORY_RESPONSE_BUDGET_MS = 650;
+const historyCache = new Map();
+const historyFlights = new Map();
 
 module.exports.config = {
   name: "topchat",
@@ -47,6 +51,42 @@ async function readHistoryCounts(api, threadId, dateKey, prefix, seenIds) {
   return aggregateMessages(messages, dateKey, prefix, "", seenIds);
 }
 
+function getCachedHistoryCounts(api, threadId, dateKey, prefix, seenIds) {
+  const key = `${threadId}:${dateKey}:${prefix}`;
+  const cached = historyCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return Promise.resolve({ counts: cached.counts, source: "cache" });
+  }
+  if (historyFlights.has(key)) return historyFlights.get(key);
+
+  const task = readHistoryCounts(api, threadId, dateKey, prefix, seenIds)
+    .then((counts) => {
+      historyCache.set(key, { counts, expiresAt: Date.now() + HISTORY_CACHE_TTL_MS });
+      return { counts, source: "live" };
+    })
+    .finally(() => {
+      if (historyFlights.get(key) === task) historyFlights.delete(key);
+    });
+  historyFlights.set(key, task);
+  return task;
+}
+
+async function readHistoryWithinBudget(api, threadId, dateKey, prefix, seenIds, budgetMs = HISTORY_RESPONSE_BUDGET_MS) {
+  let timer;
+  const timeout = new Promise(resolve => {
+    timer = setTimeout(() => resolve(null), Math.max(0, budgetMs));
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([
+      getCachedHistoryCounts(api, threadId, dateKey, prefix, seenIds),
+      timeout
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 module.exports.run = async function ({ api, event, Threads, reply }) {
   if (event?.type !== ThreadType.Group) {
     return reply?.warn
@@ -55,36 +95,52 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
   }
 
   const threadId = String(event.threadId);
-  const record = await Threads.getData(threadId);
+  const record = Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
   const thread = record?.data || {};
   const today = vietnamDateKey();
   const prefix = String(thread.prefix || global.config?.prefix || "/");
-  const counts = thread.topchatDate === today && thread.topchatCounts
-    ? { ...thread.topchatCounts }
-    : {};
+  const hasRealtimeCounts = thread.topchatDate === today && thread.topchatCounts &&
+    typeof thread.topchatCounts === "object";
+  const counts = hasRealtimeCounts ? { ...thread.topchatCounts } : {};
 
   let historyRead = false;
+  let historyPending = false;
   let historyError = null;
-  try {
-    const historyCounts = await readHistoryCounts(
-      api,
-      threadId,
-      today,
-      prefix,
-      thread.topchatDate === today ? thread.topchatSeenMessageIds || [] : []
-    );
-    mergeCounts(counts, historyCounts);
-    historyRead = true;
-  } catch (error) {
-    historyError = error;
-    console.warn("[TOPCHAT] Không đọc được lịch sử nhóm:", error?.message || error);
+
+  // Realtime counters are the immediate source of truth. Use a short bounded
+  // history lookup only to enrich a cold cache with earlier messages today.
+  if (!hasRealtimeCounts || Object.keys(counts).length < 10) {
+    try {
+      const historyResult = await readHistoryWithinBudget(
+        api,
+        threadId,
+        today,
+        prefix,
+        thread.topchatDate === today ? thread.topchatSeenMessageIds || [] : []
+      );
+      if (historyResult) {
+        mergeCounts(counts, historyResult.counts);
+        historyRead = true;
+      } else {
+        historyPending = true;
+      }
+    } catch (error) {
+      historyError = error;
+      console.warn("[TOPCHAT] Không đọc được lịch sử nhóm:", error?.message || error);
+    }
+  } else {
+    // Large realtime datasets are already available locally; do not spend
+    // time querying a remote endpoint for a result that is ready.
+    historyRead = false;
   }
 
   const ranking = buildRanking(counts, 10);
   if (!ranking.length) {
-    const message = historyRead
-      ? "📊 Hôm nay nhóm chưa có tin nhắn để xếp hạng. Bot sẽ tiếp tục ghi nhận tin nhắn mới."
-      : "⚠️ Chưa đọc được lịch sử nhóm và chưa có dữ liệu realtime. Hãy kiểm tra kết nối Zalo rồi thử lại.";
+    const message = historyPending
+      ? "⏳ Đang nạp lịch sử chat của nhóm. Hãy dùng /topchat lại sau ít giây."
+      : historyRead
+        ? "📊 Hôm nay nhóm chưa có tin nhắn để xếp hạng. Bot sẽ tiếp tục ghi nhận tin nhắn mới."
+        : "⚠️ Chưa có dữ liệu realtime để xếp hạng. Hãy nhắn tin trong nhóm rồi thử lại.";
     return reply?.info
       ? reply.info(message)
       : api.sendMessage({ msg: message }, event.threadId, event.type);
@@ -103,7 +159,11 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
   } catch (error) {
     console.error("[TOPCHAT]", error?.stack || error);
     const lines = ranking.map((item, index) => `${index + 1}. ${item.name} — ${item.count} tin`);
-    const suffix = historyError ? "\n⚠️ Lịch sử Zalo tạm thời không khả dụng; số liệu lấy từ realtime." : "";
+    const suffix = historyError
+      ? "\n⚠️ Lịch sử Zalo tạm thời không khả dụng; số liệu lấy từ realtime."
+      : historyPending
+        ? "\nℹ️ Đang cập nhật thêm lịch sử nhóm; bảng hiện tại lấy từ số liệu realtime."
+        : "";
     return api.sendMessage({
       msg: `📊 TOP CHAT HÔM NAY\n${lines.join("\n")}${suffix}`
     }, event.threadId, event.type);
@@ -115,4 +175,14 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
   }
 };
 
-module.exports._test = { mergeCounts, readHistoryCounts, HISTORY_LIMIT };
+module.exports._test = {
+  mergeCounts,
+  readHistoryCounts,
+  getCachedHistoryCounts,
+  readHistoryWithinBudget,
+  historyCache,
+  historyFlights,
+  HISTORY_LIMIT,
+  HISTORY_CACHE_TTL_MS,
+  HISTORY_RESPONSE_BUDGET_MS
+};
