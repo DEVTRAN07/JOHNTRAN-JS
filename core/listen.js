@@ -1,5 +1,6 @@
 const handleCommand = require("./handle/handleCommand");
 const handleEvent = require("./handle/handleEvent");
+const { wrapForThread } = require("./runtime/adapters/zalo");
 const logger = require("../utils/logger");
 const { updateMessageCache, getMessageCache } = require("../utils/index");
 const { ThreadType } = require("zalo-client");
@@ -123,7 +124,7 @@ function startListening(api) {
       const music = require("./music");
       const pending = music.getPending(music.pickKey(event.threadId, data.uidFrom));
       if (pending) {
-        const wrapped = require("./message").wrapApi(api, event.threadId, event.type, pending.providerName, event);
+        const wrapped = wrapForThread(api, event.threadId, event.type, pending.providerName, event);
         logger.log(`[listen] nhóm ${event.threadId} chọn nhạc "${nav}"`, "info");
         Promise.resolve()
           .then(() => require("./music/command").runMusic(pending.providerName, {
@@ -135,7 +136,7 @@ function startListening(api) {
 
       // 2) MENU đang mở trong nhóm này
       if (threadInfo?.menu_page) {
-        const wrapped = require("./message").wrapApi(api, event.threadId, event.type, "menu", event);
+        const wrapped = wrapForThread(api, event.threadId, event.type, "menu", event);
         logger.log(`[listen] nhóm ${event.threadId} điều hướng menu "${nav}"`, "info");
         Promise.resolve()
           .then(() => global.client.commands.get("menu").run({
