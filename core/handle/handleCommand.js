@@ -75,7 +75,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
             ? `💡 Xem chi tiết cách dùng, hãy gõ trực tiếp: ${exampleNames.join(", ")}...`
             : `💡 Gõ ${prefix}menu để xem các danh mục khác.`;
           const caption = [
-            `@\u200b${mentionName}`,
+            `@${mentionName}`,
             heading,
             "",
             ...commandLines,
