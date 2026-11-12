@@ -1,16 +1,22 @@
 services:
   - type: web
-    name: john-tran-bot
+    name: JOHNTRAN-JS
     env: node
     plan: starter
-    buildCommand: npm ci
+    buildCommand: npm ci --omit=dev
     startCommand: node index.js
     envVars:
       - key: NODE_VERSION
         value: "22.22.1"
       - key: FFMPEG_PATH
         value: /usr/bin/ffmpeg
+      - key: JT_ACCOUNT_FILE
+        value: /opt/render/project/data/account.json
+      - key: JT_DB_FILE
+        value: /opt/render/project/data/store.json
+      - key: JT_QRCODE_PATH
+        value: /opt/render/project/data/qr.png
     disk:
       name: bot-data
-      mountPath: /opt/render/project/src
+      mountPath: /opt/render/project/data
       sizeGB: 1
