@@ -162,3 +162,46 @@ test("topchat ignores daily counters left over from a previous date", () => {
 test("topchat stores more than 500 message IDs to deduplicate full-day history", () => {
   assert.equal(counter._test.MAX_STORED_IDS, 10000);
 });
+
+
+test("topchat marks whether the WebSocket backfill reached the start of the day", async () => {
+  global.config = { prefix: "/" };
+  const Threads = fakeThreads({
+    "topchat-coverage-regression": {
+      topchatDate: vietnamDateKey(),
+      topchatCounts: { u1: { name: "One", count: 14, avatar: "" } },
+      topchatSeenMessageIds: ["id-1"]
+    }
+  });
+
+  await counter.markHistoryCoverage(
+    ["topchat-coverage-regression"],
+    Threads,
+    vietnamDateKey(),
+    true,
+    3,
+    "day-boundary-reached"
+  );
+
+  const saved = Threads.rows.get("topchat-coverage-regression").data;
+  assert.equal(saved.topchatCounts.u1.count, 14);
+  assert.deepEqual(saved.topchatSeenMessageIds, ["id-1"]);
+  assert.equal(saved.topchatHistoryDate, vietnamDateKey());
+  assert.equal(saved.topchatHistoryComplete, true);
+  assert.equal(saved.topchatHistoryPages, 3);
+});
+
+test("topchat history respects each group's custom prefix", async () => {
+  const threadId = "topchat-custom-prefix-regression";
+  const Threads = fakeThreads({
+    [threadId]: { prefix: "!" }
+  });
+
+  await counter.recordHistoryMessages([
+    makeGroupMessage(threadId, "u1", "custom-1", "/not-a-command"),
+    makeGroupMessage(threadId, "u1", "custom-2", "!menu")
+  ], Threads);
+
+  const saved = Threads.rows.get(threadId).data;
+  assert.equal(saved.topchatCounts.u1.count, 1);
+});
