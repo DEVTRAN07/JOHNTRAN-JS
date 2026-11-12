@@ -38,8 +38,7 @@ const { consumeCooldown } = require("../runtime/middleware/cooldown");
 const { dispatchCommand } = require("../runtime/dispatcher");
 
 
-async function handleCommand(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
-  const pipelineStartedAt = performance.now();
+async function runCommandPipeline(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
   const config = global.config;
 
   if (!messageText || typeof messageText !== "string") return;
@@ -206,10 +205,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   const cachedUserData = Users.getCachedData?.(UIDUsage) ?? null;
   const userData = cachedUserData || await Users.getData(UIDUsage).catch(() => null);
 
-  // Measure the full command, including its handler and external API waits.
-  // This makes /stats latency meaningful instead of timing only the pre-dispatch path.
-  try {
-    await dispatchCommand({
+  await dispatchCommand({
     command,
     commandName,
     args,
@@ -221,12 +217,24 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     userData,
     logger,
     metrics,
-      Reactions
-    });
-  } finally {
-    metrics.trackLatency?.(performance.now() - pipelineStartedAt);
-  }
+    Reactions
+  });
+}
 
+async function handleCommand(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
+  const startedAt = performance.now();
+  const isCommandMessage = typeof messageText === "string" &&
+    typeof prefix === "string" && prefix.length > 0 &&
+    messageText.startsWith(prefix);
+
+  try {
+    return await runCommandPipeline(messageText, event, api, threadInfo, prefix, threadData);
+  } finally {
+    // Include the complete lifecycle, even when permission/cooldown checks or
+    // unknown/disabled command paths return before dispatchCommand().
+    if (isCommandMessage) metrics.trackLatency?.(performance.now() - startedAt);
+  }
 }
 
 module.exports = handleCommand;
+module.exports._runCommandPipeline = runCommandPipeline;
