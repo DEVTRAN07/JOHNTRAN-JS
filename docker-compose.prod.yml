@@ -2,7 +2,7 @@ services:
   johntran-bot:
     build:
       context: .
-      dockerfile: Dockerfile.prod
+      dockerfile: Dockerfile
     container_name: johntran-bot
     env_file:
       - .env.production
