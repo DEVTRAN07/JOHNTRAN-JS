@@ -271,8 +271,8 @@ async function search(query, limit) {
   return tracks;
 }
 
-function pickTranscoding(transcodings) {
-  const list = Array.isArray(transcodings) ? transcodings : [];
+function getTranscodingCandidates(transcodings) {
+  const list = Array.isArray(transcodings) ? transcodings.filter(Boolean) : [];
   const isHls = (item) => item?.format?.protocol === "hls";
   const isAacHls = (item) => isHls(item) && /aac|m4a/i.test([
     item?.url,
@@ -280,17 +280,25 @@ function pickTranscoding(transcodings) {
     item?.format?.mime_type
   ].filter(Boolean).join(" "));
 
-  // SoundCloud đã chuyển chuẩn stream sang AAC/HLS; chỉ dùng progressive
-  // như fallback cho các track/API cũ còn cung cấp định dạng này.
-  const hlsAac = list.find(isAacHls);
-  if (hlsAac) return { item: hlsAac, protocol: "hls" };
+  const qualityRank = (item) => {
+    const value = [item?.url, item?.preset, item?.format?.mime_type].filter(Boolean).join(" ");
+    const match = value.match(/(?:aac|m4a)[_-]?(256|160|96)|(?:^|[^0-9])(256|160|96)(?:k|kbps)?/i);
+    const quality = Number(match?.[1] || match?.[2] || 0);
+    return quality || 0;
+  };
 
-  const hlsAny = list.find(isHls);
-  if (hlsAny) return { item: hlsAny, protocol: "hls" };
+  const aac = list.filter(isAacHls).sort((left, right) => qualityRank(right) - qualityRank(left));
+  const otherHls = list.filter((item) => isHls(item) && !isAacHls(item));
+  const progressive = list.filter((item) => item?.format?.protocol === "progressive");
+  return [
+    ...aac.map((item) => ({ item, protocol: "hls" })),
+    ...otherHls.map((item) => ({ item, protocol: "hls" })),
+    ...progressive.map((item) => ({ item, protocol: "progressive" }))
+  ];
+}
 
-  const progressive = list.find((item) => item?.format?.protocol === "progressive");
-  if (progressive) return { item: progressive, protocol: "progressive" };
-  return null;
+function pickTranscoding(transcodings) {
+  return getTranscodingCandidates(transcodings)[0] || null;
 }
 
 function getResponseHeader(headers, name) {
@@ -389,30 +397,40 @@ async function resolve(track) {
   const clientId = await discoverClientId();
   const data = await apiGet("/tracks/" + encodeURIComponent(track.id));
   const transcodings = data && data.media && data.media.transcodings ? data.media.transcodings : [];
-  const picked = pickTranscoding(transcodings);
-  if (!picked) {
-    const error = new Error("Bai hat nay khong co ban tai xuong (co the la Go+ hoac bi gioi han vung/ban quyen)");
+  const candidates = getTranscodingCandidates(transcodings);
+  if (!candidates.length) {
+    const error = new Error("Bài hát này không có luồng phát được (có thể bị giới hạn bản quyền hoặc khu vực).");
     error.notAvailable = true;
     throw error;
   }
-  try {
-    const url = await resolveTranscodingUrl(picked.item, clientId);
-    if (picked.protocol === "hls") return { url, protocol: "hls" };
-    return url;
-  } catch (err) {
-    if (picked.protocol === "progressive") {
-      const hlsAac = transcodings.find((item) => item && item.format && item.format.protocol === "hls" && /aac/i.test(item.format.mime_type || item.preset || ""));
-      const hlsAny = transcodings.find((item) => item && item.format && item.format.protocol === "hls");
-      const hls = hlsAac || hlsAny;
-      if (hls) {
-        try {
-          const url = await resolveTranscodingUrl(hls, clientId);
-          return { url, protocol: "hls" };
-        } catch { }
+
+  const resolvedHls = [];
+  const resolveErrors = [];
+  for (const candidate of candidates) {
+    try {
+      const url = await resolveTranscodingUrl(candidate.item, clientId);
+      if (candidate.protocol === "hls") {
+        resolvedHls.push(url);
+        // Cần giữ thêm URL chất lượng thấp hơn để thử khi playlist 160k lỗi.
+        continue;
       }
+      if (!resolvedHls.length) return url;
+    } catch (error) {
+      resolveErrors.push(error?.message || String(error));
     }
-    throw err;
   }
+
+  if (resolvedHls.length) {
+    return {
+      url: resolvedHls[0],
+      protocol: "hls",
+      fallbackUrls: [...new Set(resolvedHls.slice(1))]
+    };
+  }
+
+  const error = new Error(resolveErrors[0] || "SoundCloud không cung cấp URL stream hợp lệ.");
+  error.notAvailable = true;
+  throw error;
 }
 
 module.exports = {
@@ -420,5 +438,5 @@ module.exports = {
   label: SOURCE,
   search,
   resolve,
-  _test: { isValidClientId, scriptUrlsFromHtml, extractClientId, pickTranscoding, extractResolvedStreamUrl }
+  _test: { isValidClientId, scriptUrlsFromHtml, extractClientId, getTranscodingCandidates, pickTranscoding, extractResolvedStreamUrl }
 };
