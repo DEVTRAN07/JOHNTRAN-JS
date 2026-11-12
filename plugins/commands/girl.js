@@ -2,7 +2,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const http = require("../../core/http");
+const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
+const queuedMediaCache = require("../../core/runtime/queuedMediaCache");
+const { enqueue } = require("../../core/jobQueue");
 const { mediaCache } = require("../../core/mediaCache");
 
 const girlImages = require('../../assets/girl.json');
@@ -30,7 +32,7 @@ function isHttpUrl(value) {
 
 async function getCachedAttachment(url) {
   const key = urlCacheKey(url);
-  const cached = await mediaCache.get(key);
+  const cached = await queuedMediaCache.get(key);
   if (!cached || !cached.buffer) return null;
   const cachedUrl = mediaCache.getUrl(key);
   if (isHttpUrl(cachedUrl)) return { attachment: cachedUrl, cleanup: null };
@@ -53,13 +55,13 @@ async function cacheDownloadedImage(url, buffer, contentType) {
 
   if (mediaCache.r2) {
     try {
-      await mediaCache.r2.request({
+      await enqueue("media", () => mediaCache.r2.request({
         method: 'PUT',
         key: type + '/' + key,
         body: buffer,
         contentType: contentType || 'image/jpeg',
         metadata: { sourceUrl: url, type, expiresAt, size: String(buffer.length), createdAt: String(Date.now()) }
-      });
+      }), { label: "Upload cache ảnh" });
       mediaCache._stats.r2Uploads = (mediaCache._stats.r2Uploads || 0) + 1;
     } catch (err) {
       // bỏ qua lỗi upload R2, cache local vẫn dùng được
@@ -91,7 +93,7 @@ module.exports.run = async ({ args, event, api, Users }) => {
       attachment = cached.attachment;
       cleanup = cached.cleanup;
     } else {
-      const { buffer, contentType } = await http.getBuffer(link, {
+      const { buffer, contentType } = await queuedGetBuffer(link, {
         timeout: 30000,
         retries: 1,
         headers: {
