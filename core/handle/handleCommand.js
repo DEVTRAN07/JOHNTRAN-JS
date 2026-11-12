@@ -74,7 +74,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
         const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
         // Các thư mục luôn có thẻ riêng; nhóm rỗng vẫn hiển thị đúng bố cục và báo chưa có lệnh trong caption.
         const version = require("../../package.json").version;
-        const profile = await getRequesterProfile(api, event, { waitMs: 160, avatarWaitMs: 160 });
+        const profile = await getRequesterProfile(api, event, { waitMs: 90, avatarWaitMs: 110 });
         const imagePath = await renderFolderCard({
           folderName: folder.name,
           folderDescription: folder.description,
