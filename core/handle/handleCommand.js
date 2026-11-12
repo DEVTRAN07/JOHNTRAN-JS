@@ -44,21 +44,41 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   const wrappedApi = wrapForThread(api, threadId, type, commandName, event);
   const command = resolveCommand(global.client.commands, commandName);
   if (!command) {
-    // Folder shortcuts (e.g. /tools, /music, /game) render the same
-    // category detail as /menu <folder>, without a network/profile lookup.
+    // Folder shortcuts (/tools, /music, /game...) render category image cards.
     try {
       const folderMenu = require("../runtime/folderMenu");
       const folder = folderMenu.resolveFolder(global.client.commands, UIDUsage, commandName);
       if (folder) {
         const items = folderMenu.collectFolderCommands(global.client.commands, UIDUsage, folder);
         const version = require("../../package.json").version;
-        const botName = global.config?.name_bot || "JOHNTRAN";
-        return wrappedApi.sendMessage({
-          msg: folderMenu.renderFolder(folder, items, prefix, botName, version)
-        }, threadId, type);
+        const { renderMenuGrid } = require("../canvas/menu");
+        const imagePath = await renderMenuGrid({
+          requesterName: String(event?.data?.dName || event?.data?.senderName || "Người dùng").slice(0, 32),
+          requesterAvatarUrl: "",
+          botVersion: version,
+          prefix,
+          page: 1,
+          totalPages: 1,
+          commands: items.map(item => ({
+            name: item.name,
+            usage: item.usage,
+            category: folder.name
+          })),
+          totalCommands: items.length
+        });
+        try {
+          return await wrappedApi.sendMessage({
+            msg: `Chi tiết chức năng: ${folder.name} · ${folder.description}`,
+            attachments: [imagePath],
+            ttlKind: "card"
+          }, threadId, type);
+        } finally {
+          const timer = setTimeout(() => { try { fs.rmSync(imagePath, { force: true }); } catch {} }, 60000);
+          timer.unref?.();
+        }
       }
     } catch (error) {
-      logger.log("Không thể dựng danh mục lệnh: " + error.message, "warn");
+      logger.log("Không thể dựng Card danh mục lệnh: " + error.message, "warn");
     }
     if (wrappedApi && threadId && type) {
       await wrappedApi.sendMessage({ msg: "⚠️ Lệnh không tồn tại!" }, threadId, type);
