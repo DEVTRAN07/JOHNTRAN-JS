@@ -185,7 +185,7 @@ async function downloadToFile(streamUrl, extension, options = {}) {
       label: "Tải audio stream"
     });
     if (status < 200 || status >= 300 || !buffer?.length ||
-        (contentType && !/^(audio\\/|application\\/octet-stream)/i.test(contentType))) {
+        (contentType && !/^(audio\/|application\/octet-stream)/i.test(contentType))) {
       throw new Error(`SoundCloud trả dữ liệu audio không hợp lệ (HTTP ${status || "không rõ"}, Content-Type: ${contentType || "không rõ"}).`);
     }
     fs.writeFileSync(filePath, buffer);
