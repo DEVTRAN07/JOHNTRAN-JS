@@ -17,14 +17,24 @@ function registerCommand(filePath, { silent = true } = {}) {
   try {
     delete require.cache[require.resolve(filePath)];
     const plugin = require(filePath);
-    if (!plugin?.config?.name) throw new Error("plugin thiếu config.name");
+    if (
+      !plugin?.config ||
+      typeof plugin.config.name !== "string" ||
+      typeof plugin.config.cooldowns !== "number" ||
+      !Number.isFinite(plugin.config.cooldowns) ||
+      plugin.config.cooldowns < 0 ||
+      typeof plugin.run !== "function"
+    ) {
+      throw new Error("command không hợp lệ (cần config.name, config.cooldowns và run())");
+    }
+
     const name = plugin.config.name.toLowerCase();
     global.client.commands.set(name, plugin);
     invalidateCommandRegistry(global.client.commands);
-    if (!silent) logger.log(`[hot-reload] Đã nạp lệnh '${name}'`, "info");
+    if (!silent) logger.log("[hot-reload] Đã nạp lệnh '" + name + "'", "info");
     return name;
   } catch (error) {
-    logger.log(`[hot-reload] Lỗi nạp '${fileName}': ${error.message}`, "error");
+    logger.log("[hot-reload] Lỗi nạp '" + fileName + "': " + error.message, "error");
     return null;
   }
 }
@@ -38,10 +48,10 @@ function registerEvent(filePath, { silent = true } = {}) {
     const name = plugin.config.name.toLowerCase();
     global.client.events.set(name, plugin);
     invalidateEventRegistry(global.client.events);
-    if (!silent) logger.log(`[hot-reload] Đã nạp event '${name}'`, "info");
+    if (!silent) logger.log("[hot-reload] Đã nạp event '" + name + "'", "info");
     return name;
   } catch (error) {
-    logger.log(`[hot-reload] Lỗi nạp '${fileName}': ${error.message}`, "error");
+    logger.log("[hot-reload] Lỗi nạp '" + fileName + "': " + error.message, "error");
     return null;
   }
 }
@@ -50,7 +60,7 @@ function handleChange(dir, type) {
   return (eventType, fileName) => {
     if (!fileName || !fileName.endsWith(".js")) return;
     const filePath = path.join(dir, fileName);
-    const pendingKey = `${type}:${fileName}`;
+    const pendingKey = type + ":" + fileName;
     if (pending.has(pendingKey)) return;
     pending.set(pendingKey, setTimeout(() => {
       pending.delete(pendingKey);
@@ -70,7 +80,7 @@ function handleChange(dir, type) {
             global.client.events.delete(name);
             invalidateEventRegistry(global.client.events);
           }
-          logger.log(`[hot-reload] Đã gỡ '${name}' (file ${fileName} không còn tồn tại)`, "info");
+          logger.log("[hot-reload] Đã gỡ '" + name + "' (file " + fileName + " không còn tồn tại)", "info");
         }
         delete require.cache[resolved];
       }
@@ -92,7 +102,7 @@ function start() {
     if (eventWatcher) eventWatcher.close();
     commandWatcher = null;
     eventWatcher = null;
-    logger.log(`[hot-reload] Không thể bật: ${error.message}`, "error");
+    logger.log("[hot-reload] Không thể bật: " + error.message, "error");
   }
   return commandWatcher || eventWatcher;
 }
@@ -125,4 +135,4 @@ function reloadAll() {
   return count;
 }
 
-module.exports = { start, stop };
+module.exports = { start, stop, registerCommand };
