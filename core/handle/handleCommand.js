@@ -6,6 +6,7 @@ const path = require("path");
 
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
+const { getRequesterProfile } = require("../runtime/requesterProfile");
 
 
 const { ThreadType, Reactions } = require("zalo-client");
@@ -52,9 +53,10 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
         const items = folderMenu.collectFolderCommands(global.client.commands, UIDUsage, folder);
         const version = require("../../package.json").version;
         const { renderMenuGrid } = require("../canvas/menu");
+        const profile = await getRequesterProfile(api, event);
         const imagePath = await renderMenuGrid({
-          requesterName: String(event?.data?.dName || event?.data?.senderName || "Người dùng").slice(0, 32),
-          requesterAvatarUrl: "",
+          requesterName: profile.requesterName,
+          requesterAvatarUrl: profile.requesterAvatarUrl,
           botVersion: version,
           prefix,
           page: 1,
@@ -67,7 +69,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
           totalCommands: items.length
         });
         try {
-          const mentionName = String(event?.data?.dName || event?.data?.senderName || "Người dùng").slice(0, 32);
+          const mentionName = profile.requesterName;
           const mentionUid = event?.data?.uidFrom;
           const caption = `@\u200b${mentionName}\n🛠️ Danh sách lệnh ${folder.name}\n👉 Gõ tên lệnh hoặc tag bot để thực thi chức năng ${folder.name}.`;
           const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
