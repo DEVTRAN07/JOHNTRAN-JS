@@ -89,6 +89,48 @@ test("topchat history cache applies the latest seen IDs to cached raw messages",
   assert.equal(second.counts.u1.count, 1);
 });
 
+test("topchat sends a cached realtime ranking without waiting for Zalo history", async () => {
+  const { performance } = require("node:perf_hooks");
+  const command = require("../plugins/commands/topchat");
+  const date = require("../core/topchat/stats").vietnamDateKey();
+  const threadId = "topchat-fast-command-regression";
+  const sent = [];
+  const api = {
+    getGroupChatHistory() {
+      return new Promise(() => {});
+    },
+    async sendMessage(payload) {
+      sent.push(payload);
+      return { ok: true };
+    }
+  };
+  const Threads = {
+    getCachedData() {
+      return {
+        threadId,
+        data: {
+          prefix: "/",
+          topchatDate: date,
+          topchatSeenMessageIds: [],
+          topchatCounts: {
+            "fast-u1": { name: "One", count: 12, avatar: "" },
+            "fast-u2": { name: "Two", count: 8, avatar: "" }
+          }
+        }
+      };
+    }
+  };
+  const event = { threadId, type: ThreadType.Group, data: { uidFrom: "requester" } };
+
+  const started = performance.now();
+  await command.run({ api, event, Threads, reply: {} });
+  const elapsed = performance.now() - started;
+
+  assert.equal(sent.length, 1);
+  assert.ok(Array.isArray(sent[0].attachments));
+  assert.ok(elapsed < 1000, `topchat took ${elapsed.toFixed(1)}ms`);
+});
+
 test("topchat history timeout returns control to the command without waiting for Zalo", async () => {
   const { historyCache, historyFlights, readHistoryWithinBudget } = topchat._test;
   historyCache.clear();
