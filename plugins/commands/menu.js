@@ -43,7 +43,16 @@ module.exports.run = async function ({ api, event }) {
       commands: cards,
       totalCommands: cards.reduce((sum, card) => sum + Number.parseInt(card.usage, 10) || sum, 0)
     });
-    return await api.sendMessage({ msg: "Danh sách tính năng · Gõ /tên_danh_mục để xem chi tiết", attachments: [imagePath], ttlKind: "card" }, event.threadId, event.type);
+    const mentionName = String(event?.data?.dName || event?.data?.senderName || "Người dùng").slice(0, 32);
+    const mentionUid = event?.data?.uidFrom;
+    const caption = `@\u200b${mentionName}\n🤖 Chào bạn!\n👉 Hôm nay có gì hay không? Hãy chọn tính năng bạn muốn nhé! 📍`;
+    const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
+    return await api.sendMessage({
+      msg: caption,
+      mentions,
+      attachments: [imagePath],
+      ttlKind: "card"
+    }, event.threadId, event.type);
   } catch (error) {
     console.error("[MENU_IMAGE]", error?.stack || error);
     return api.sendMessage({ msg: "⚠️ Không thể tạo menu dạng Card. Vui lòng thử lại." }, event.threadId, event.type);
