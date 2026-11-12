@@ -8,7 +8,7 @@ const TTS_OFF_MESSAGE = "Tính năng đọc giọng nói đang tắt. Admin bậ
 
 module.exports.config = {
   name: "noi",
-  aliases: ["voice", "tts", "doc"],
+  aliases: ["tts", "doc"],
   version: "2.0.0",
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
@@ -32,14 +32,14 @@ module.exports.run = async ({ args, event, api, reply }) => {
       theme: "ai",
       title: "Đọc giọng nói",
       subtitle: "Bot sẽ đọc văn bản bạn gửi",
-      rows: [{ icon: "robot", label: "Cách dùng", lines: [`${global.config.prefix}noi <văn bản> — tối đa 900 ký tự`, `${global.config.prefix}noi (reply tin nhắn) — đọc tin được reply`] }],
+      rows: [{ icon: "robot", label: "Cách dùng", lines: [global.config.prefix + "noi <văn bản> — tối đa 900 ký tự", global.config.prefix + "noi (reply tin nhắn) — đọc tin được reply"] }],
       footer: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ • AI"
     });
   }
 
   await reply.working();
   const tempDir = path.join(__dirname, "temp");
-  const filePath = path.join(tempDir, `tts_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.mp3`);
+  const filePath = path.join(tempDir, "tts_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".mp3");
 
   try {
     fs.mkdirSync(tempDir, { recursive: true });
@@ -54,7 +54,7 @@ module.exports.run = async ({ args, event, api, reply }) => {
     if (error.privacyBlocked) {
       return reply.error("Bot bị chặn gọi dịch vụ đọc giọng nói bởi chính sách bảo mật.");
     }
-    return reply.error(`Lỗi đọc giọng nói: ${error.message}`);
+    return reply.error("Lỗi đọc giọng nói: " + error.message);
   } finally {
     if (fs.existsSync(filePath)) {
       try { fs.unlinkSync(filePath); } catch { /* bỏ qua */ }
