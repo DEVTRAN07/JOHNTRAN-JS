@@ -43,6 +43,7 @@ function metricsPayload() {
     ...healthPayload(),
     today: safe(() => metrics?.getDayStats(), null),
     topCommands: safe(() => metrics?.topCommands(), []),
+    pipelineLatency: safe(() => metrics?.getLatencyStats?.(), null),
     cache: allStats()
   };
 }
