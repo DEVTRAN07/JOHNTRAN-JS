@@ -117,7 +117,16 @@ async function flushGroupUnlocked(threadId, Threads) {
 
 async function flushGroup(threadId, Threads) {
   if (!threadId || !Threads) return 0;
-  return enqueueGroupWrite(String(threadId), () => flushGroupUnlocked(String(threadId), Threads));
+  const key = String(threadId);
+  try {
+    return await enqueueGroupWrite(key, () => flushGroupUnlocked(key, Threads));
+  } catch (error) {
+    // Keep the batch in memory and retry on the next debounce window if the
+    // storage backend is temporarily unavailable.
+    const pending = pendingGroups.get(key);
+    if (pending) scheduleFlush(key, Threads, pending);
+    throw error;
+  }
 }
 
 async function flushAll(Threads) {
@@ -204,7 +213,13 @@ async function markHistoryCoverage(threadIds, Threads, dateKey, complete, pageCo
   const uniqueIds = [...new Set((threadIds || []).map(String).filter(Boolean))];
   for (const threadId of uniqueIds) {
     await enqueueGroupWrite(threadId, async () => {
-      await flushGroupUnlocked(threadId, Threads);
+      try {
+        await flushGroupUnlocked(threadId, Threads);
+      } catch (error) {
+        const pending = pendingGroups.get(threadId);
+        if (pending) scheduleFlush(threadId, Threads, pending);
+        throw error;
+      }
       const record = Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
       const thread = { ...(record?.data || {}) };
       resetDailyFields(thread, dateKey);

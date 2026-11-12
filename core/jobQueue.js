@@ -109,8 +109,9 @@ function deferRetry(lane, job, error) {
   job.retryTimer = setTimeout(() => {
     job.retryTimer = null;
     if (!lane.retrying.has(job.id)) return;
+    // The job remains pending when it moves from delayed retry to the
+    // runnable queue. globalPending is decremented only when drain() starts it.
     lane.retrying.delete(job.id);
-    globalPending = Math.max(0, globalPending - 1);
     job.queuedAt = Date.now();
     insertByPriority(lane, job);
     drainAll();
