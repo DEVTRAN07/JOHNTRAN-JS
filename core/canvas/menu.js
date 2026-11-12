@@ -255,4 +255,82 @@ async function drawAvatar(ctx, avatarUrl, x, y, size) {
   ctx.restore();
 }
 
-module.exports = { renderMenuGrid };
+
+async function renderFolderCard({
+  folderName, folderDescription, folderIcon, requesterName, requesterAvatarUrl,
+  botVersion, totalCommands
+}) {
+  theme.initFonts();
+  const S = theme.S;
+  const W = theme.WIDTH;
+  const H = S(330);
+  const { ctx, canvas } = theme.newCanvas(W, H);
+  await theme.paintBackground(ctx, W, H);
+
+  const pad = S(26);
+  const panelX = pad;
+  const panelY = S(24);
+  const panelW = W - pad * 2;
+  const panelH = H - S(48);
+  theme.panel(ctx, panelX, panelY, panelW, panelH, S(22));
+
+  const iconSize = S(54);
+  const iconX = panelX + S(22);
+  const iconY = panelY + S(24);
+  const gradient = ctx.createLinearGradient(iconX, iconY, iconX + iconSize, iconY + iconSize);
+  gradient.addColorStop(0, "#21c6b7");
+  gradient.addColorStop(1, "#397cf6");
+  theme.roundRect(ctx, iconX, iconY, iconSize, iconSize, S(14));
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  theme.text(ctx, folderIcon || "✦", iconX + iconSize / 2, iconY + S(36), {
+    size: 27, family: "JT-Bold", color: "#ffffff", align: "center"
+  });
+
+  theme.text(ctx, "CHI TIẾT CHỨC NĂNG", iconX + iconSize + S(18), panelY + S(43), {
+    size: 13, family: "JT-Bold", color: "#72d9ff"
+  });
+  theme.text(ctx, folderName || "Danh mục", iconX + iconSize + S(18), panelY + S(75), {
+    size: 28, family: "JT-Round-Bold", color: "#ffffff",
+    maxWidth: panelW - iconSize - S(70)
+  });
+
+  theme.text(ctx, folderDescription || "Các chức năng hỗ trợ", panelX + S(24), panelY + S(128), {
+    size: 22, family: "JT-Round-Bold", color: "#f4f7ff",
+    maxWidth: panelW - S(48)
+  });
+
+  const infoY = panelY + S(158);
+  theme.roundRect(ctx, panelX + S(22), infoY, panelW - S(44), S(54), S(12));
+  ctx.fillStyle = "rgba(76, 145, 230, .13)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(111, 190, 255, .5)";
+  ctx.lineWidth = Math.max(1, S(1));
+  ctx.stroke();
+  theme.text(ctx, "i", panelX + S(42), infoY + S(34), {
+    size: 19, family: "JT-Bold", color: "#75c7ff"
+  });
+  theme.text(ctx, "Gõ tên lệnh bên dưới hoặc tag bot để sử dụng", panelX + S(62), infoY + S(33), {
+    size: 15, family: "JT-Bold", color: "#edf4ff",
+    maxWidth: panelW - S(104)
+  });
+
+  const avatarSize = S(42);
+  const avatarX = panelX + S(22);
+  const avatarY = panelY + panelH - S(66);
+  await drawAvatar(ctx, requesterAvatarUrl, avatarX, avatarY, avatarSize);
+  theme.text(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(12), avatarY + S(26), {
+    size: 16, family: "JT-Round-Bold", color: "#ffffff",
+    maxWidth: panelW * 0.48
+  });
+  theme.text(ctx, `${totalCommands || 0} lệnh khả dụng`, avatarX + avatarSize + S(12), avatarY + S(43), {
+    size: 11, family: "JT", color: "#aebbd1"
+  });
+  theme.text(ctx, `JOHNTRAN-JS  ·  v${botVersion || "1.0.0"}`, panelX + panelW - S(22), avatarY + S(30), {
+    size: 12, family: "JT-Bold", color: "#c8d5e8", align: "right"
+  });
+
+  return theme.save(canvas, "folder");
+}
+
+module.exports = { renderMenuGrid, renderFolderCard };
