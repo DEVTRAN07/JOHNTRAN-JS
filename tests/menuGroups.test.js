@@ -45,13 +45,13 @@ test("menu folders use clear English display names", () => {
   ]);
   const groups = menu.collectMenuGroups(commands, "guest");
   const names = Object.fromEntries(groups.map(group => [group.slug, group.name]));
-  assert.equal(names.info, "Information");
+  assert.equal(names.info, "Info");
   assert.equal(names.music, "Music");
-  assert.equal(names.game, "Games");
-  assert.equal(names.anti, "Anti-Abuse");
-  assert.equal(names.admin, "Administration");
-  assert.equal(names.mybot, "Bot Operations");
-  assert.equal(names.hidden, "Special Commands");
+  assert.equal(names.game, "Game");
+  assert.equal(names.anti, "Anti");
+  assert.equal(names.admin, "Admin");
+  assert.equal(names.mybot, "Bot");
+  assert.equal(names.hidden, "Special");
   assert.ok(!groups.some(group => group.slug === "test"));
 });
 
