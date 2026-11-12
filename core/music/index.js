@@ -104,8 +104,7 @@ function assertSoundCloudStreamUrl(rawUrl) {
     throw new Error("URL stream SoundCloud không hợp lệ.");
   }
   const host = parsed.hostname.toLowerCase();
-  const allowed = host === "soundcloud.com" || host.endsWith(".soundcloud.com") ||
-    host === "sndcdn.com" || host.endsWith(".sndcdn.com") ||
+  const allowed = host === "sndcdn.com" || host.endsWith(".sndcdn.com") ||
     host === "soundcloud.cloud" || host.endsWith(".soundcloud.cloud");
   if (parsed.protocol !== "https:" || !allowed) {
     throw new Error("SoundCloud trả về host stream không được hỗ trợ.");
@@ -124,7 +123,7 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
       "-hide_banner", "-loglevel", "error", "-y",
       "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
       "-user_agent", "Mozilla/5.0",
-      "-headers", "Referer: https://soundcloud.com/\\r\\n",
+      "-headers", "Referer: https://soundcloud.com/\r\n",
       "-i", streamUrl,
       "-vn", "-c:a", "libmp3lame", "-b:a", `${bitrate}k`,
       "-f", "mp3", filePath
@@ -137,11 +136,11 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
       if (error) {
         try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* ignore */ }
         const detail = String(stderr || error.message || "FFmpeg thất bại")
-          .split(/\\r?\\n/)
+          .split(/\r?\n/)
           .filter(Boolean)
           .slice(-3)
           .join(" ")
-          .replace(/https?:\\/\\/[^\\s"'<>]+/g, "[stream URL]");
+          .replace(/https?:\/\/[^\s"'<>]+/g, "[stream URL]");
         return reject(new Error("Không tải được âm thanh SoundCloud AAC/HLS: " + detail));
       }
 
@@ -159,7 +158,7 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
 }
 
 async function downloadToFile(streamUrl, extension, options = {}) {
-  const { fallbackUrl = "", quality = null } = options;
+  const { quality = null } = options;
   const tempDir = path.join(__dirname, "..", "..", "plugins", "commands", "temp");
   fs.mkdirSync(tempDir, { recursive: true });
   const filePath = path.join(tempDir, `music_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`);
@@ -181,12 +180,13 @@ async function downloadToFile(streamUrl, extension, options = {}) {
 
   const directUrl = assertSoundCloudStreamUrl(streamUrl);
   const attemptDownload = async (url) => {
-    const { buffer, status } = await enqueue("music-audio", () => http.getBuffer(url, { timeout: 60000, retries: 1 }), {
+    const { buffer, status, contentType } = await enqueue("music-audio", () => http.getBuffer(url, { timeout: 60000, retries: 1 }), {
       key: `audio-download|${url}`,
       label: "Tải audio stream"
     });
-    if (status < 200 || status >= 300 || !buffer?.length) {
-      throw new Error(`SoundCloud trả HTTP ${status || "không rõ"} khi tải audio.`);
+    if (status < 200 || status >= 300 || !buffer?.length ||
+        (contentType && !/^(audio\\/|application\\/octet-stream)/i.test(contentType))) {
+      throw new Error(`SoundCloud trả dữ liệu audio không hợp lệ (HTTP ${status || "không rõ"}, Content-Type: ${contentType || "không rõ"}).`);
     }
     fs.writeFileSync(filePath, buffer);
     return filePath;
@@ -194,17 +194,9 @@ async function downloadToFile(streamUrl, extension, options = {}) {
 
   try {
     return await attemptDownload(directUrl);
-  } catch (primaryErr) {
-    if (!fallbackUrl) throw primaryErr;
-    try {
-      const fallback = assertSoundCloudStreamUrl(fallbackUrl);
-      return await attemptDownload(fallback);
-    } catch (fallbackErr) {
-      const combined = new Error(`Primary: ${primaryErr.message}; Fallback: ${fallbackErr.message}`);
-      combined.primaryErr = primaryErr;
-      combined.fallbackErr = fallbackErr;
-      throw combined;
-    }
+  } catch (error) {
+    try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* ignore */ }
+    throw error;
   }
 }
 
