@@ -76,3 +76,11 @@ test("box-only lookup failure preserves the existing deny behavior", async () =>
 
   assert.equal(result.denied, "❌ Nhóm đã bật chế độ chỉ trưởng nhóm hoặc phó nhóm được dùng lệnh.");
 });
+
+test("private chat does not inherit group-only restrictions", () => {
+  const result = checkGroupPermissions({
+    isGroup: false,
+    threadInfo: { admin_only: true, support_only: true, box_only: true }
+  });
+  assert.equal(result.denied, null);
+});
