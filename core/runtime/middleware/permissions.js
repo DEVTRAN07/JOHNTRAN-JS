@@ -1,7 +1,11 @@
 "use strict";
 
+const { TRIT, fromBoolean, isTrue } = require("../trit");
+
 /**
  * Permission checks used by the command pipeline.
+ * Group-admin verification is a genuine three-state decision:
+ * unknown (-1), not admin (0), admin (1).
  * The common path returns synchronously. A Promise is created only when
  * box_only requires a live Zalo group-admin lookup.
  */
@@ -17,9 +21,9 @@ function evaluateGroupPermissions({
   threadInfo,
   isBotAdmin = false,
   isSupport = false,
-  isGroupAdmin = false
+  groupAdminState = TRIT.UNKNOWN
 } = {}) {
-  if (!isGroup) return { denied: null, isBotAdmin, isSupport, isGroupAdmin };
+  if (!isGroup) return { denied: null, isBotAdmin, isSupport, isGroupAdmin: false };
 
   if (threadInfo?.admin_only && !isBotAdmin) {
     return { denied: "❌ Nhóm đã bật chế độ chỉ admin bot được dùng lệnh." };
@@ -27,10 +31,22 @@ function evaluateGroupPermissions({
   if (threadInfo?.support_only && !isSupport && !isBotAdmin) {
     return { denied: "❌ Nhóm đã bật chế độ chỉ support bot hoặc admin bot được dùng lệnh." };
   }
-  if (threadInfo?.box_only && !isGroupAdmin && !isBotAdmin) {
+  if (threadInfo?.box_only && !isTrue(groupAdminState) && !isBotAdmin) {
     return { denied: "❌ Nhóm đã bật chế độ chỉ trưởng nhóm hoặc phó nhóm được dùng lệnh." };
   }
-  return { denied: null, isBotAdmin, isSupport, isGroupAdmin };
+  return {
+    denied: null,
+    isBotAdmin,
+    isSupport,
+    isGroupAdmin: isTrue(groupAdminState)
+  };
+}
+
+function resolveGroupAdminState(groupInfo, UIDUsage) {
+  if (!groupInfo) return TRIT.UNKNOWN;
+  const isAdmin = groupInfo.creatorId == UIDUsage ||
+    (Array.isArray(groupInfo.adminIds) && groupInfo.adminIds.includes(UIDUsage));
+  return fromBoolean(isAdmin);
 }
 
 function checkGroupPermissions({
@@ -53,16 +69,20 @@ function checkGroupPermissions({
     groupInfoRequest = api.getGroupInfo(threadId);
   } catch (error) {
     logger.log?.("Không thể lấy thông tin nhóm từ API: " + error.message, "warn");
-    return evaluateGroupPermissions({ isGroup, threadInfo, isBotAdmin, isSupport });
+    return evaluateGroupPermissions({
+      isGroup, threadInfo, isBotAdmin, isSupport, groupAdminState: TRIT.UNKNOWN
+    });
   }
 
   const applyGroupInfo = (info) => {
     const groupInfo = info?.gridInfoMap?.[threadId];
-    const isGroupAdmin = Boolean(groupInfo && (
-      groupInfo.creatorId == UIDUsage ||
-      (Array.isArray(groupInfo.adminIds) && groupInfo.adminIds.includes(UIDUsage))
-    ));
-    return evaluateGroupPermissions({ isGroup, threadInfo, isBotAdmin, isSupport, isGroupAdmin });
+    return evaluateGroupPermissions({
+      isGroup,
+      threadInfo,
+      isBotAdmin,
+      isSupport,
+      groupAdminState: resolveGroupAdminState(groupInfo, UIDUsage)
+    });
   };
 
   if (groupInfoRequest && typeof groupInfoRequest.then === "function") {
@@ -70,11 +90,18 @@ function checkGroupPermissions({
       .then(applyGroupInfo)
       .catch((error) => {
         logger.log?.("Không thể lấy thông tin nhóm từ API: " + error.message, "warn");
-        return evaluateGroupPermissions({ isGroup, threadInfo, isBotAdmin, isSupport });
+        return evaluateGroupPermissions({
+          isGroup, threadInfo, isBotAdmin, isSupport, groupAdminState: TRIT.UNKNOWN
+        });
       });
   }
 
   return applyGroupInfo(groupInfoRequest);
 }
 
-module.exports = { checkCommandRole, checkGroupPermissions, evaluateGroupPermissions };
+module.exports = {
+  checkCommandRole,
+  checkGroupPermissions,
+  evaluateGroupPermissions,
+  resolveGroupAdminState
+};
