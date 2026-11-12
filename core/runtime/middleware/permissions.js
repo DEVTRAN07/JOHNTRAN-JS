@@ -13,11 +13,14 @@ function checkCommandRole({ role = 0, isBotAdmin = false, isSupport = false } = 
 }
 
 function evaluateGroupPermissions({
+  isGroup,
   threadInfo,
   isBotAdmin = false,
   isSupport = false,
   isGroupAdmin = false
 } = {}) {
+  if (!isGroup) return { denied: null, isBotAdmin, isSupport, isGroupAdmin };
+
   if (threadInfo?.admin_only && !isBotAdmin) {
     return { denied: "❌ Nhóm đã bật chế độ chỉ admin bot được dùng lệnh." };
   }
@@ -42,7 +45,7 @@ function checkGroupPermissions({
 } = {}) {
   // Most commands take this fast path: no API request and no Promise.
   if (!isGroup || !threadInfo?.box_only || isBotAdmin) {
-    return evaluateGroupPermissions({ threadInfo, isBotAdmin, isSupport });
+    return evaluateGroupPermissions({ isGroup, threadInfo, isBotAdmin, isSupport });
   }
 
   let groupInfoRequest;
@@ -59,7 +62,7 @@ function checkGroupPermissions({
       groupInfo.creatorId == UIDUsage ||
       (Array.isArray(groupInfo.adminIds) && groupInfo.adminIds.includes(UIDUsage))
     ));
-    return evaluateGroupPermissions({ threadInfo, isBotAdmin, isSupport, isGroupAdmin });
+    return evaluateGroupPermissions({ isGroup, threadInfo, isBotAdmin, isSupport, isGroupAdmin });
   };
 
   if (groupInfoRequest && typeof groupInfoRequest.then === "function") {
