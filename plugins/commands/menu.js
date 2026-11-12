@@ -22,7 +22,7 @@ module.exports.run = async function ({ api, event }) {
   const senderId = event?.data?.uidFrom;
   const commands = global.client?.commands;
   if (!(commands instanceof Map)) {
-    return api.sendMessage({ msg: "📂 Danh mục đang được khởi tạo, vui lòng thử lại." }, event.threadId, event.type);
+    return api.sendMessage({ msg: "📂 Danh mục đang được khởi tạo, vui lòng thử lại.\n💡 Gõ next / prev để chuyển trang." }, event.threadId, event.type);
   }
 
   let imagePath;
