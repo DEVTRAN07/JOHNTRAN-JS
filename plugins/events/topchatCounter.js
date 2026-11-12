@@ -100,4 +100,4 @@ module.exports.run = async function ({ event, Threads, isSelf }) {
   }
 };
 
-module.exports._test = { rememberMessage };
+module.exports._test = { rememberMessage, recordMessage, writeQueues, seenMessages };
