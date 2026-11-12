@@ -574,3 +574,20 @@ npm install
 Phát hành theo giấy phép **MIT License**
 
 ---
+
+
+## 🖥️ JOHNTRAN TUI — Terminal Control Center
+
+TUI là giao diện quản lý bot ngay trong Terminal, dùng chung `BotManager` và dữ liệu bot với Web Panel. Không cần cài thêm thư viện giao diện.
+
+```bash
+npm install
+npm run tui
+```
+
+- **Dashboard:** tổng số bot, trạng thái, PID và uptime.
+- **Bot Manager:** tạo bot, chạy/dừng, khởi động lại, bật/tắt auto-restart và xoá bot (có xác nhận).
+- **Live Logs:** theo dõi log gần nhất của bot được chọn.
+- **System Monitor:** CPU, RAM, disk, network, Node.js và uptime.
+
+Điều khiển bằng phím mũi tên hoặc `j/k`, `Enter`, `N` tạo bot, `Q` thoát. TUI cần Terminal tương tác; không chạy TUI trong tiến trình Render web service. Web Panel vẫn hoạt động độc lập như trước.
