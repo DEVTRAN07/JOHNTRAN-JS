@@ -1,17 +1,17 @@
-// ===== AUTO REACTION — chỉ dùng YES / NO =====
-// YES = 👍 (LIKE), NO = biểu tượng Không (NO).
+// ===== AUTO YES / NO — gửi chữ bằng cách reply trực tiếp tin nhắn =====
+// Không dùng reaction emoji. Bot trả lời trích dẫn "YES" hoặc "NO".
 // Bật/tắt theo từng nhóm: /events react on|off
 
-const { Reactions, ThreadType } = require("zalo-client");
+const { ThreadType } = require("zalo-client");
 
 const COOLDOWN_MS = 10000;
 const MAX_COOLDOWN_ENTRIES = 5000;
 const cooldowns = new Map();
 
-const NEGATIVE_PATTERN = /\b(không|ko|kh|khum|chưa|chẳng|đừng|thôi|sai|không đúng|không được|no|nope|never|disagree|رفض)\b/i;
+const NEGATIVE_PATTERN = /(?:^|[^\\p{L}])(không|ko|kh|khum|chưa|chẳng|đừng|thôi|sai|no|nope|never|disagree)(?=$|[^\\p{L}])/iu;
 
-function pickReaction(content) {
-  return NEGATIVE_PATTERN.test(content) ? Reactions.NO : Reactions.LIKE;
+function pickAnswer(content) {
+  return NEGATIVE_PATTERN.test(content) ? "NO" : "YES";
 }
 
 function pruneCooldowns(now) {
@@ -25,9 +25,9 @@ function pruneCooldowns(now) {
 module.exports.config = {
   name: "react",
   event_type: ["message"],
-  version: "3.0.0",
+  version: "4.0.0",
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
-  description: "Reaction tự động chỉ với YES / NO",
+  description: "Tự động reply chữ YES / NO vào tin nhắn thành viên",
   category: "Sự kiện",
   usage: "events react on|off",
   cooldowns: 0
@@ -47,27 +47,35 @@ module.exports.run = async function ({ api, event, Threads, isSelf }) {
   if (!thread.event_react) return;
 
   const uid = String(data.uidFrom || "");
-  const msgId = data?.msgId;
-  const cliMsgId = data?.cliMsgId;
-  if (!uid || !msgId || !cliMsgId || typeof api?.addReaction !== "function") return;
+  if (!uid || !data.msgId || !data.cliMsgId || typeof api?.sendMessage !== "function") return;
 
   const now = Date.now();
   const key = String(threadId) + ":" + uid;
   const last = cooldowns.get(key) || 0;
   if (now - last < COOLDOWN_MS) return;
 
-  const reaction = pickReaction(content);
-  if (!reaction) return;
+  // Zalo yêu cầu đầy đủ metadata của tin gốc để gửi quote.
+  const quote = {
+    content: data.content,
+    msgType: data.msgType,
+    propertyExt: data.propertyExt,
+    uidFrom: data.uidFrom,
+    msgId: data.msgId,
+    cliMsgId: data.cliMsgId,
+    ts: data.ts,
+    ttl: data.ttl
+  };
+  if (!quote.msgType || quote.ts === undefined) return;
 
   cooldowns.set(key, now);
   pruneCooldowns(now);
 
   try {
-    await api.addReaction(reaction, {
-      data: { msgId, cliMsgId },
+    await api.sendMessage(
+      { msg: pickAnswer(content), quote },
       threadId,
-      type: ThreadType.Group
-    });
+      ThreadType.Group
+    );
   } catch {
     if (cooldowns.get(key) === now) cooldowns.delete(key);
   }
