@@ -5,9 +5,39 @@ const styledText = require("./styled");
 const fs = require("fs");
 const crypto = require("crypto");
 
-const DEFAULT_AUTO_RECALL_MS = 60 * 1000;
+const DEFAULT_AUTO_RECALL_MS = readRecallDelay(process.env.JT_AUTO_RECALL_MS, 60 * 1000);
+const MAX_RECALL_DELAY_MS = 2_147_483_647;
 
-function scheduleRecall(api, response, threadId, type) {
+function readRecallDelay(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? Math.min(Math.floor(parsed), MAX_RECALL_DELAY_MS)
+    : fallback;
+}
+
+// Legacy ttl is interpreted locally as a recall delay and never sent to Zalo.
+function extractRecallOptions(input) {
+  const source = input && typeof input === "object" ? input : {};
+  const hasRecallAfter = Object.prototype.hasOwnProperty.call(source, "recallAfterMs")
+    && source.recallAfterMs !== undefined;
+  const hasLegacyTtl = Object.prototype.hasOwnProperty.call(source, "ttl")
+    && source.ttl !== undefined;
+  const requestedDelay = hasRecallAfter
+    ? source.recallAfterMs
+    : hasLegacyTtl ? source.ttl : DEFAULT_AUTO_RECALL_MS;
+  const delayMs = readRecallDelay(requestedDelay, DEFAULT_AUTO_RECALL_MS);
+  const payload = typeof input === "string" ? input : { ...source };
+
+  if (payload && typeof payload === "object") {
+    delete payload.ttl;
+    delete payload.recallAfterMs;
+  }
+  return { payload, delayMs };
+}
+
+function scheduleRecall(api, response, threadId, type, delayMs = DEFAULT_AUTO_RECALL_MS) {
+  if (!(delayMs > 0)) return;
   const messages = [];
   if (response?.message) messages.push(response.message);
   if (Array.isArray(response?.attachment)) messages.push(...response.attachment);
@@ -34,11 +64,11 @@ function scheduleRecall(api, response, threadId, type) {
     const timer = setTimeout(async () => {
       try {
         await api.undo({ msgId, cliMsgId }, threadId, type);
-        logger.log("Đã gửi yêu cầu thu hồi tin bot sau 1 phút.", "info");
+        logger.log("Đã thu hồi tin bot sau " + Math.round(delayMs / 1000) + " giây.", "info");
       } catch (error) {
-        logger.log(`Không thể thu hồi tin bot sau 1 phút: ${error?.message || error}`, "warn");
+        logger.log("Không thể thu hồi tin bot sau " + Math.round(delayMs / 1000) + " giây: " + (error?.message || error), "warn");
       }
-    }, DEFAULT_AUTO_RECALL_MS);
+    }, delayMs);
     timer.unref?.();
   }
 }
@@ -52,12 +82,12 @@ const CARD_MAX = 60;
 const cardCache = new Map(); // hash → { path, at, cached }
 const cardFlights = new Map(); // hash → Promise<path|null>
 
-function hashSpec(spec, ttl) {
-  return crypto.createHash("md5").update(JSON.stringify({ ttl, ...(spec || {}) })).digest("hex");
+function hashSpec(spec) {
+  return crypto.createHash("md5").update(JSON.stringify(spec || {})).digest("hex");
 }
 
-async function renderCachedCard(spec, ttl) {
-  const hash = hashSpec(spec, ttl);
+async function renderCachedCard(spec) {
+  const hash = hashSpec(spec);
 
   const hit = cardCache.get(hash);
   if (hit && Date.now() - hit.at < CARD_TTL && fs.existsSync(hit.path)) {
@@ -72,7 +102,7 @@ async function renderCachedCard(spec, ttl) {
 
   const flight = (async () => {
     const { renderVipCard } = require("./canvas/vip");
-    const filePath = await renderVipCard({ ttl, ...(spec || {}) });
+    const filePath = await renderVipCard({ ...(spec || {}) });
     if (!filePath) return null;
 
     if (cardCache.size >= CARD_MAX) {
@@ -139,55 +169,87 @@ class Reply {
   // chủ ý gọi reply.card().
   async text(msg, options = {}) {
     if (options.plain) {
-      return this.api.sendMessage({ msg, styles: options.styles, ttl: options.ttl }, this.threadId, this.type);
+      return this.api.sendMessage({
+        msg,
+        styles: options.styles,
+        recallAfterMs: options.recallAfterMs ?? options.ttl
+      }, this.threadId, this.type);
     }
     const styled = styledText.plain(msg);
-    return this.api.sendMessage({ ...styled, ttl: options.ttl }, this.threadId, this.type);
+    return this.api.sendMessage({
+      ...styled,
+      recallAfterMs: options.recallAfterMs ?? options.ttl
+    }, this.threadId, this.type);
   }
 
   async error(msg, options = {}) {
     const styled = styledText.frame(msg, { kind: "error", title: options.title });
-    return this.api.sendMessage({ ...styled, ttl: options.ttl }, this.threadId, this.type);
+    return this.api.sendMessage({
+      ...styled,
+      recallAfterMs: options.recallAfterMs ?? options.ttl
+    }, this.threadId, this.type);
   }
 
   async success(msg, options = {}) {
     const styled = styledText.frame(msg, { kind: "success", title: options.title });
-    return this.api.sendMessage({ ...styled, ttl: options.ttl }, this.threadId, this.type);
+    return this.api.sendMessage({
+      ...styled,
+      recallAfterMs: options.recallAfterMs ?? options.ttl
+    }, this.threadId, this.type);
   }
 
   // Thẻ thông tin / hướng dẫn
   async info(msg, options = {}) {
     const styled = styledText.frame(msg, { kind: "info", title: options.title });
-    return this.api.sendMessage({ ...styled, ttl: options.ttl }, this.threadId, this.type);
+    return this.api.sendMessage({
+      ...styled,
+      recallAfterMs: options.recallAfterMs ?? options.ttl
+    }, this.threadId, this.type);
   }
 
   async warn(msg, options = {}) {
     const styled = styledText.frame(msg, { kind: "warn", title: options.title });
-    return this.api.sendMessage({ ...styled, ttl: options.ttl }, this.threadId, this.type);
+    return this.api.sendMessage({
+      ...styled,
+      recallAfterMs: options.recallAfterMs ?? options.ttl
+    }, this.threadId, this.type);
   }
 
   // ===== Ảnh THẺ (opt-in): chỉ dùng khi thật sự muốn ảnh đẹp =====
   async card(spec = {}) {
-    const ttl = spec.ttl;
-    const filePath = await renderCachedCard(spec, ttl);
+    const recallAfterMs = spec.recallAfterMs ?? spec.ttl;
+    const { payload: visualSpec } = extractRecallOptions(spec);
+    const filePath = await renderCachedCard(visualSpec);
     if (!filePath) {
       // render hỏng → gửi text thuần, không mất phản hồi
       const plainMsg = spec.subtitle || spec.title || String(spec.msg || "");
-      return this.api.sendMessage({ msg: plainMsg, ttl }, this.threadId, this.type);
+      return this.api.sendMessage({ msg: plainMsg, recallAfterMs }, this.threadId, this.type);
     }
-    return this.api.sendMessage({ msg: "", attachments: filePath, ttl }, this.threadId, this.type);
+    return this.api.sendMessage({
+      msg: "",
+      attachments: filePath,
+      recallAfterMs
+    }, this.threadId, this.type);
   }
 
-  async media({ msg, attachments, ttl }) {
-    return this.api.sendMessage({ msg, attachments, ttl }, this.threadId, this.type);
+  async media({ msg, attachments, ttl, recallAfterMs }) {
+    return this.api.sendMessage({
+      msg,
+      attachments,
+      recallAfterMs: recallAfterMs ?? ttl
+    }, this.threadId, this.type);
   }
 
-  async voice({ voiceUrl, msg, ttl }) {
-    if (msg) await this.text(msg, { plain: true });
-    return this.api.sendVoice({ voiceUrl, ttl }, this.threadId, this.type);
+  async voice({ voiceUrl, msg, ttl, recallAfterMs }) {
+    const delay = recallAfterMs ?? ttl;
+    if (msg) await this.text(msg, { plain: true, recallAfterMs: delay });
+    return this.api.sendVoice({
+      voiceUrl,
+      recallAfterMs: delay
+    }, this.threadId, this.type);
   }
 
-  async video({ videoUrl, thumbnailUrl, msg, duration, width, height, ttl }) {
+  async video({ videoUrl, thumbnailUrl, msg, duration, width, height, ttl, recallAfterMs }) {
     return this.api.sendVideo({
       videoUrl,
       thumbnailUrl,
@@ -195,7 +257,7 @@ class Reply {
       width,
       height,
       msg,
-      ttl
+      recallAfterMs: recallAfterMs ?? ttl
     }, this.threadId, this.type);
   }
 
@@ -242,30 +304,33 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   defineWrapped(wrapped, "sendMessage", async (message, tid, ty) => {
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
-    const content = typeof message === "string" ? { msg: message } : { ...message };
+    const extracted = extractRecallOptions(message);
+    const content = typeof extracted.payload === "string" ? { msg: extracted.payload } : extracted.payload;
     if (content.plain) delete content.plain;
     const response = await api.sendMessage(content, targetThreadId, targetType);
     markResponseStarted();
-    scheduleRecall(api, response, targetThreadId, targetType);
+    scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
   });
 
   defineWrapped(wrapped, "sendVoice", async (payload, tid, ty) => {
-    const content = typeof payload === "string" ? { voiceUrl: payload } : { ...payload };
+    const extracted = extractRecallOptions(payload);
+    const content = typeof extracted.payload === "string" ? { voiceUrl: extracted.payload } : extracted.payload;
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
     const response = await api.sendVoice(content, targetThreadId, targetType);
     markResponseStarted();
-    scheduleRecall(api, response, targetThreadId, targetType);
+    scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
   });
 
   defineWrapped(wrapped, "sendVideo", async (payload, tid, ty) => {
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
-    const response = await api.sendVideo({ ...payload }, targetThreadId, targetType);
+    const extracted = extractRecallOptions(payload);
+    const response = await api.sendVideo(extracted.payload, targetThreadId, targetType);
     markResponseStarted();
-    scheduleRecall(api, response, targetThreadId, targetType);
+    scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
   });
 
@@ -274,9 +339,10 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     defineWrapped(wrapped, method, async (payload, tid, ty) => {
       const targetThreadId = threadId || tid;
       const targetType = type || ty;
-      const response = await api[method](payload, targetThreadId, targetType);
+      const extracted = extractRecallOptions(payload);
+      const response = await api[method](extracted.payload, targetThreadId, targetType);
       markResponseStarted();
-      scheduleRecall(api, response, targetThreadId, targetType);
+      scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
       return response;
     });
   }
@@ -285,9 +351,10 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     defineWrapped(wrapped, "sendCustomStickerUrl", async (payload) => {
       const targetThreadId = payload?.threadId || threadId;
       const targetType = payload?.threadType ?? type;
-      const response = await api.sendCustomStickerUrl(payload);
+      const extracted = extractRecallOptions(payload);
+      const response = await api.sendCustomStickerUrl(extracted.payload);
       markResponseStarted();
-      scheduleRecall(api, response, targetThreadId, targetType);
+      scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
       return response;
     });
   }
@@ -318,4 +385,4 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   return wrapped;
 }
 
-module.exports = { Reply, wrapApi, DEFAULT_AUTO_RECALL_MS };
+module.exports = { Reply, wrapApi, DEFAULT_AUTO_RECALL_MS, extractRecallOptions };

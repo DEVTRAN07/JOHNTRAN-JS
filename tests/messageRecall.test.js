@@ -107,3 +107,102 @@ test("bot messages are scheduled for recall after one minute", async () => {
     global.setTimeout = originalSetTimeout;
   }
 });
+
+
+test("legacy ttl becomes a local recall delay and is removed from the Zalo payload", async () => {
+  const originalSetTimeout = global.setTimeout;
+  const scheduled = [];
+  const sent = [];
+  const undone = [];
+  global.setTimeout = (callback, delay) => {
+    scheduled.push({ callback, delay });
+    return { unref() {} };
+  };
+
+  try {
+    const api = {
+      async sendMessage(payload) {
+        sent.push(payload);
+        return { message: { msgId: 21, cliMsgId: "legacy-ttl-id" }, attachment: [] };
+      },
+      async undo(payload, threadId, type) {
+        undone.push({ payload, threadId, type });
+      }
+    };
+    const wrapped = wrapApi(api, "thread-ttl", 1, "test");
+
+    await wrapped.sendMessage({ msg: "expires locally", ttl: 2500 });
+
+    assert.deepEqual(sent, [{ msg: "expires locally" }]);
+    assert.equal(scheduled.length, 1);
+    assert.equal(scheduled[0].delay, 2500);
+    await scheduled[0].callback();
+    assert.deepEqual(undone, [{
+      payload: { msgId: 21, cliMsgId: "legacy-ttl-id" },
+      threadId: "thread-ttl",
+      type: 1
+    }]);
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+});
+
+test("recallAfterMs is the new option for voice and is not forwarded to Zalo", async () => {
+  const originalSetTimeout = global.setTimeout;
+  const scheduled = [];
+  const sent = [];
+  global.setTimeout = (callback, delay) => {
+    scheduled.push({ callback, delay });
+    return { unref() {} };
+  };
+
+  try {
+    const api = {
+      async sendVoice(payload) {
+        sent.push(payload);
+        return { message: { msgId: 22, cliMsgId: "voice-recall-id" }, attachment: [] };
+      },
+      async undo() {}
+    };
+    const wrapped = wrapApi(api, "thread-voice", 1, "test");
+
+    await wrapped.sendVoice({
+      voiceUrl: "https://example.test/voice.m4a",
+      recallAfterMs: 4000
+    });
+
+    assert.deepEqual(sent, [{ voiceUrl: "https://example.test/voice.m4a" }]);
+    assert.equal(scheduled.length, 1);
+    assert.equal(scheduled[0].delay, 4000);
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+});
+
+test("zero recall delay disables local recall without sending a TTL field", async () => {
+  const originalSetTimeout = global.setTimeout;
+  let scheduledCount = 0;
+  let sentPayload;
+  global.setTimeout = (callback, delay) => {
+    scheduledCount++;
+    return { unref() {} };
+  };
+
+  try {
+    const api = {
+      async sendMessage(payload) {
+        sentPayload = payload;
+        return { message: { msgId: 23, cliMsgId: "no-recall-id" }, attachment: [] };
+      },
+      async undo() {}
+    };
+    const wrapped = wrapApi(api, "thread-no-recall", 1, "test");
+
+    await wrapped.sendMessage({ msg: "keep this", recallAfterMs: 0 });
+
+    assert.deepEqual(sentPayload, { msg: "keep this" });
+    assert.equal(scheduledCount, 0);
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+});
