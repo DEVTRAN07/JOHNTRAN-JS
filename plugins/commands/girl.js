@@ -1,18 +1,19 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const crypto = require("crypto");
 const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
-const queuedMediaCache = require("../../core/runtime/queuedMediaCache");
-const { enqueue } = require("../../core/jobQueue");
-const { mediaCache } = require("../../core/mediaCache");
 
 const girlImages = require("../../assets/girl.json");
+const IMAGE_CACHE_TTL = 60 * 60 * 1000;
+const IMAGE_CACHE_MAX_ENTRIES = 12;
+const IMAGE_CACHE_MAX_BYTES = 24 * 1024 * 1024;
+const imageCache = new Map();
+let imageCacheBytes = 0;
 
 module.exports.config = {
   name: "girl",
   aliases: ["gai"],
-  version: "1.0.4",
+  version: "1.0.5",
   role: 0,
   author: "ShinTHL09",
   description: "Xem ảnh ngẫu nhiên",
@@ -22,69 +23,55 @@ module.exports.config = {
   dependencies: {}
 };
 
-function urlCacheKey(url) {
-  return crypto.createHash("sha256").update(String(url)).digest("hex");
-}
-
 function imageExtension(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 16) return null;
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "jpg";
   if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
   if (buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") return "webp";
-  if (buffer.toString("ascii", 0, 3) === "GIF") return "gif";
   return null;
 }
 
-async function cacheDownloadedImage(url, buffer, contentType) {
-  const key = urlCacheKey(url);
-  const type = "image";
-  const ttl = (mediaCache.ttls && mediaCache.ttls[type]) || mediaCache.defaultTtl || 86400000;
-  const expiresAt = Date.now() + ttl;
-
-  if (typeof mediaCache._writeLocal === "function") {
-    await mediaCache._writeLocal(type, key, buffer, { sourceUrl: url }, ttl, contentType || "image/jpeg", expiresAt);
+function getCachedImage(url) {
+  const entry = imageCache.get(url);
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > IMAGE_CACHE_TTL) {
+    imageCache.delete(url);
+    imageCacheBytes -= entry.buffer.length;
+    return null;
   }
+  // LRU: đưa ảnh vừa dùng lên cuối Map.
+  imageCache.delete(url);
+  imageCache.set(url, entry);
+  return entry;
+}
 
-  if (mediaCache.r2) {
-    try {
-      await enqueue("media", () => mediaCache.r2.request({
-        method: "PUT",
-        key: type + "/" + key,
-        body: buffer,
-        contentType: contentType || "image/jpeg",
-        metadata: {
-          sourceUrl: url,
-          type,
-          expiresAt,
-          size: String(buffer.length),
-          createdAt: String(Date.now())
-        }
-      }), { label: "Upload cache ảnh" });
-      mediaCache._stats.r2Uploads = (mediaCache._stats.r2Uploads || 0) + 1;
-    } catch (error) {
-      // Cache local vẫn dùng được khi R2 tạm thời lỗi.
-    }
+function cacheImage(url, buffer, extension) {
+  if (buffer.length > 4 * 1024 * 1024) return;
+  const previous = imageCache.get(url);
+  if (previous) imageCacheBytes -= previous.buffer.length;
+  imageCache.delete(url);
+  imageCache.set(url, { buffer, extension, createdAt: Date.now() });
+  imageCacheBytes += buffer.length;
+
+  while (imageCache.size > IMAGE_CACHE_MAX_ENTRIES || imageCacheBytes > IMAGE_CACHE_MAX_BYTES) {
+    const oldestKey = imageCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = imageCache.get(oldestKey);
+    imageCache.delete(oldestKey);
+    imageCacheBytes -= oldest.buffer.length;
   }
-
-  mediaCache._stats.uploads++;
-  mediaCache._stats.bytes += buffer.length;
-  if (typeof mediaCache._refreshLocalFileCount === "function") mediaCache._refreshLocalFileCount();
 }
 
 async function getImageFromSource(url) {
-  const key = urlCacheKey(url);
-  const cached = await queuedMediaCache.get(key);
-  if (cached?.buffer) {
-    const ext = imageExtension(cached.buffer);
-    if (ext) return { buffer: cached.buffer, extension: ext, cached: true };
-  }
+  const cached = getCachedImage(url);
+  if (cached) return { buffer: cached.buffer, extension: cached.extension, cached: true };
 
   const response = await queuedGetBuffer(url, {
     timeout: 30000,
     retries: 2,
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-      "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+      "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
     }
   });
 
@@ -92,13 +79,13 @@ async function getImageFromSource(url) {
     throw new Error("Nguồn ảnh trả HTTP " + response.status);
   }
 
-  const ext = imageExtension(response.buffer);
-  if (!ext || ext === "gif") {
+  const extension = imageExtension(response.buffer);
+  if (!extension) {
     throw new Error("Nguồn không trả về ảnh JPEG, PNG hoặc WebP hợp lệ");
   }
 
-  await cacheDownloadedImage(url, response.buffer, response.contentType);
-  return { buffer: response.buffer, extension: ext, cached: false };
+  cacheImage(url, response.buffer, extension);
+  return { buffer: response.buffer, extension, cached: false };
 }
 
 module.exports.run = async ({ event, api }) => {
@@ -110,7 +97,7 @@ module.exports.run = async ({ event, api }) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_girl_"));
   try {
     const start = Math.floor(Math.random() * girlImages.length);
-    const attempts = Math.min(5, girlImages.length);
+    const attempts = Math.min(8, girlImages.length);
     let selected = null;
     let lastError = null;
 
@@ -130,7 +117,7 @@ module.exports.run = async ({ event, api }) => {
     }
 
     // SDK Zalo uploadAttachment đọc file local và phân loại ảnh theo phần mở rộng.
-    // Không đưa URL CDN vào attachments: SDK sẽ hiểu URL là đường dẫn file và gửi lỗi.
+    // URL CDN không phải đường dẫn file local nên không được truyền trực tiếp vào attachments.
     const filePath = path.join(tempDir, "gai." + selected.extension);
     fs.writeFileSync(filePath, selected.buffer);
 
@@ -150,4 +137,8 @@ module.exports.run = async ({ event, api }) => {
   }
 };
 
-module.exports._test = { imageExtension, getImageFromSource };
+module.exports._test = {
+  imageExtension,
+  getImageFromSource,
+  imageCache
+};
