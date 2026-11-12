@@ -182,8 +182,26 @@ function startListening(api) {
   // Tin lịch sử được cache nhưng không thực thi lại lệnh cũ.
   let reconnectSince = Date.now();
 
-  listener.on("old_messages", (messages) => {
+  listener.on("old_messages", (messages, messageType) => {
     if (!Array.isArray(messages)) return;
+
+    // REST /api/group/history is no longer reliable. Zalo's WebSocket sends
+    // historical group messages via requestOldMessages(ThreadType.Group).
+    // Fold today's messages into the same persisted daily counter as realtime.
+    if (messageType === ThreadType.Group) {
+      const topchatCounter = require("../plugins/events/topchatCounter");
+      void topchatCounter.recordHistoryMessages(messages, Threads)
+        .then((result) => {
+          if (result.messages > 0) {
+            logger.log(
+              `Topchat đã bổ sung ${result.messages} tin nhắn hôm nay từ lịch sử WebSocket (${result.groups} nhóm)`,
+              "info"
+            );
+          }
+        })
+        .catch((error) => logger.log(`Không thể đồng bộ lịch sử Topchat: ${error.message}`, "warn"));
+    }
+
     for (const message of messages) {
       const cliMsgId = message?.data?.cliMsgId;
       if (cliMsgId && (processedIds.has(cliMsgId) || getMessageCache()[cliMsgId])) continue; // đã xử lý rồi
