@@ -192,3 +192,12 @@ test("requester avatar parser handles nested Zalo avatar records and uid arrays"
   );
 });
 
+
+test("requester avatar parser unwraps nested avatar objects", () => {
+  const { pickAvatar, pickAvatarByUid } = require("../core/runtime/requesterProfile");
+  const avatar = "https://example.test/avatar-object.jpg";
+  assert.equal(pickAvatar({ avatar: { url: avatar } }), avatar);
+  assert.equal(pickAvatarByUid({
+    data: { user: { uid: "avatar-object-user", profilePicture: { href: avatar } } }
+  }, "avatar-object-user"), avatar);
+});

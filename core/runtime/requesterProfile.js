@@ -10,15 +10,35 @@ const AVATAR_SIZE = 240;
 const profiles = new Map();
 const pending = new Map();
 
-function pickAvatar(value) {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) return pickAvatar(value[0]);
+function pickAvatar(value, depth = 0) {
+  if (!value || depth > 5) return "";
+  if (typeof value === "string") return /^https?:\/\//i.test(value.trim()) ? value.trim() : "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const avatar = pickAvatar(item, depth + 1);
+      if (avatar) return avatar;
+    }
+    return "";
+  }
   if (typeof value !== "object") return "";
-  return value.url || value.href || value.avatar || value.avatarUrl || value.avatar_url ||
-    value.photoUrl || value.photo_url || value.profilePicture || value.profile_picture ||
-    value.hdAvatar || value.hd_avatar || value.largeAvatar || value.large_avatar ||
-    value.fullAvatar || value.full_avatar || value.avatarURL || value.imageUrl || "";
+
+  const fields = [
+    "url", "href", "avatar", "avatarUrl", "avatar_url", "photoUrl",
+    "photo_url", "profilePicture", "profile_picture", "hdAvatar",
+    "hd_avatar", "largeAvatar", "large_avatar", "fullAvatar",
+    "full_avatar", "avatarURL", "imageUrl", "image_url", "src"
+  ];
+  for (const key of fields) {
+    const candidate = value[key];
+    if (typeof candidate === "string" && /^https?:\/\//i.test(candidate.trim())) {
+      return candidate.trim();
+    }
+    if (candidate && typeof candidate === "object") {
+      const nested = pickAvatar(candidate, depth + 1);
+      if (nested) return nested;
+    }
+  }
+  return "";
 }
 
 function pickName(value, fallback) {
