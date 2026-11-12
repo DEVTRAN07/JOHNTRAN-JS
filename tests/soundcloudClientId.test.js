@@ -1,6 +1,6 @@
 const assert = require("assert");
 const soundcloud = require("../core/music/soundcloud");
-const { isValidClientId, extractClientId, scriptUrlsFromHtml, pickTranscoding, extractResolvedStreamUrl } = soundcloud._test;
+const { isValidClientId, extractClientId, scriptUrlsFromHtml, getTranscodingCandidates, pickTranscoding, extractResolvedStreamUrl } = soundcloud._test;
 
 function main() {
   const id = "0123456789abcdef0123456789abcdef";
@@ -43,6 +43,13 @@ function main() {
   ]);
   assert.strictEqual(picked.protocol, "hls");
   assert.strictEqual(picked.item.preset, "aac_160");
+  const candidates = getTranscodingCandidates([
+    { url: "https://api-v2.soundcloud.com/hls_96", preset: "aac_96", format: { protocol: "hls", mime_type: "audio/aac" } },
+    { url: "https://api-v2.soundcloud.com/hls_160", preset: "aac_160", format: { protocol: "hls", mime_type: "audio/aac" } }
+  ]);
+  assert.strictEqual(candidates.length, 2, "both AAC qualities should be retained as fallbacks");
+  assert.strictEqual(candidates[0].item.preset, "aac_160");
+  assert.strictEqual(candidates[1].item.preset, "aac_96");
 
   console.log("✓ SoundCloud client_id parser tests passed");
 }
