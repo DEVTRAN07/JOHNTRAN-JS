@@ -11,7 +11,6 @@ const { enqueue } = require("../../core/jobQueue");
 
 module.exports.config = {
   name: "stk",
-  aliases: ["sticker", "stkvd", "stkvideo"],
   version: "7.0.2",
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
