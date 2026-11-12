@@ -46,8 +46,10 @@ async function main() {
   assert.strictEqual(requested.length, 1);
   assert.ok(requested[0].startsWith("https://lrclib.net/api/search?"));
   assert.ok(messages[0].includes("♫ test song"));
-  assert.ok(messages[0].includes("First line"));
-  assert.ok(messages[0].includes("Second line"));
+  const fullText = messages.join("\\n");
+  assert.ok(messages.length > 1, "long lyrics should be split into multiple text messages");
+  assert.ok(fullText.includes("Lyric line 001 with full text"));
+  assert.ok(fullText.includes("Lyric line 150 with full text"), "last lyric line must not be truncated");
   assert.strictEqual(cardCalls, 0, "lyrics must not be sent as an image card");
   assert.strictEqual(completed, true);
   assert.strictEqual(await music.getProvider("soundcloud"), await music.getProvider("scl"));
