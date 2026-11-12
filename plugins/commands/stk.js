@@ -137,10 +137,7 @@ module.exports.run = async function ({ api, event, args }) {
     try {
       stickerFile = await enqueue("sticker", () => runInWorker("stickerWorker", {
         url: srcPath,
-        forceStatic: false,
-        threadId,
-        type,
-        apiToken: global.config?.token
+        forceStatic: false
       }, { timeout: 300000 }), {
         key: url,
         label: "Tạo sticker không khung",
