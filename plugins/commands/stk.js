@@ -155,7 +155,13 @@ module.exports.run = async function ({ api, event, args }) {
         threadId,
         type,
         apiToken: global.config?.token
-      }, { timeout: 300000 }), { key: `${url}|${selection.frameId}` });
+      }, { timeout: 300000 }), {
+        key: `${url}|${selection.frameId}`,
+        label: `Tạo sticker khung ${selection.frameId}`,
+        retries: 1,
+        retryDelayMs: 500,
+        retryOn: error => /workerPool: timeout|worker .* exited|worker .* stopped/i.test(String(error?.message || error))
+      });
     } catch (error) {
       const detail = errDetail(error);
       console.error("[stk] worker failed:", detail || error);
