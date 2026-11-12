@@ -23,8 +23,6 @@ function evaluateGroupPermissions({
   isSupport = false,
   groupAdminState = TRIT.UNKNOWN
 } = {}) {
-  if (!isGroup) return { denied: null, isBotAdmin, isSupport, isGroupAdmin: false };
-
   if (threadInfo?.admin_only && !isBotAdmin) {
     return { denied: "❌ Nhóm đã bật chế độ chỉ admin bot được dùng lệnh." };
   }
