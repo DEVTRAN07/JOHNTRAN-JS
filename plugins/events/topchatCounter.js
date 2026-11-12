@@ -1,7 +1,7 @@
 "use strict";
 
 const { ThreadType } = require("zalo-client");
-const { vietnamDateKey, messageText, avatarUrl } = require("../../core/topchat/stats");
+const { vietnamDateKey, messageText, messageTimestamp, avatarUrl } = require("../../core/topchat/stats");
 
 // Serialize writes per group so two messages arriving close together do not
 // overwrite each other's counter update in the JSON/Supabase mirror.
@@ -55,11 +55,17 @@ async function recordMessage({ event, Threads }) {
   if (prefix && content.startsWith(prefix)) return;
 
   const today = vietnamDateKey();
+  const timestamp = messageTimestamp(data.ts ?? data.timestamp);
+  if (timestamp && vietnamDateKey(timestamp) !== today) return;
   if (thread.topchatDate !== today) {
     thread.topchatDate = today;
     thread.topchatCounts = {};
     thread.topchatSeenMessageIds = [];
   }
+
+  const messageId = String(data.cliMsgId || data.msgId || "");
+  const ids = Array.isArray(thread.topchatSeenMessageIds) ? thread.topchatSeenMessageIds : [];
+  if (messageId && ids.includes(messageId)) return;
 
   const counts = thread.topchatCounts && typeof thread.topchatCounts === "object"
     ? thread.topchatCounts : {};
@@ -70,10 +76,8 @@ async function recordMessage({ event, Threads }) {
   counts[uid] = member;
 
   thread.topchatCounts = counts;
-  const messageId = String(data.cliMsgId || data.msgId || "");
   if (messageId) {
-    const ids = Array.isArray(thread.topchatSeenMessageIds) ? thread.topchatSeenMessageIds : [];
-    if (!ids.includes(messageId)) ids.push(messageId);
+    ids.push(messageId);
     thread.topchatSeenMessageIds = ids.slice(-500);
   }
   await Threads.setData(threadId, thread);
