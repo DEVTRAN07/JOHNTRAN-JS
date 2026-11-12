@@ -50,10 +50,12 @@ function createMetricsStore(backend, options = {}) {
   let latencyLastMs = 0;
   let flushTimer = null;
 
-  function trimCache() {
+  function trimCache(protectedDay) {
     while (cache.size > MAX_CACHED_DAYS) {
-      // Never evict unpersisted counters.
-      const oldestCleanDay = [...cache.keys()].find((day) => !dirtyDays.has(day));
+      // Never evict unpersisted counters or the record currently being updated.
+      const oldestCleanDay = [...cache.keys()].find(
+        (day) => day !== protectedDay && !dirtyDays.has(day)
+      );
       if (oldestCleanDay === undefined) break;
       cache.delete(oldestCleanDay);
     }
@@ -64,9 +66,10 @@ function createMetricsStore(backend, options = {}) {
 
     const record = backend.get(METRICS_TABLE, "day", day);
     const stats = record?.data || createEmptyStats(day);
+    stats.day = stats.day || day;
     if (!stats.byCommand || typeof stats.byCommand !== "object") stats.byCommand = {};
     cache.set(day, stats);
-    trimCache();
+    trimCache(day);
     return stats;
   }
 
