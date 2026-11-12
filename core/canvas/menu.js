@@ -82,6 +82,14 @@ function drawOuterPanel(ctx, x, y, w, h, radius, colors, borderColor) {
   ctx.stroke();
 }
 
+function presenceBadgePosition(x, y, size, radius) {
+  const outerRadius = radius + theme.S(1.2);
+  const inward = Math.max(0, size / 2 - outerRadius * 0.55);
+  const diagonal = inward * Math.SQRT1_2;
+  const offset = size / 2 + diagonal;
+  return { cx: x + offset, cy: y + offset };
+}
+
 function drawAvatar(ctx, url, name, x, y, size, withStatus) {
   ctx.save();
   ctx.beginPath();
@@ -109,9 +117,7 @@ function drawAvatar(ctx, url, name, x, y, size, withStatus) {
 
   if (withStatus) {
     const radius = theme.S(6.5);
-    const inset = radius * 0.9;
-    const cx = x + size - inset;
-    const cy = y + size - inset;
+    const { cx, cy } = presenceBadgePosition(x, y, size, radius);
 
     // Put the presence badge on the same 45-degree anchor of every avatar
     // and draw its shadow separately so it cannot shift the green center.
@@ -472,9 +478,17 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   const time = new Intl.DateTimeFormat("vi-VN", {
     hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh"
   }).format(new Date());
-  // Align the clock's visual center with the time text, not the title's top edge.
-  drawClock(ctx, W - margin - S(57), S(51), S(14), palette.accent);
-  drawText(ctx, time, W - margin, S(58), 19, palette.accent, true, "right");
+  // Measure the rendered time first so the clock always keeps a clean gap.
+  ctx.save();
+  ctx.font = theme.font(19, "JT-Round-Bold");
+  const timeWidth = ctx.measureText(time).width;
+  ctx.restore();
+  const timeRight = W - margin;
+  const timeLeft = timeRight - timeWidth;
+  const clockSize = S(14);
+  const clockGap = S(11);
+  drawClock(ctx, timeLeft - clockGap - clockSize / 2, S(51), clockSize, palette.accent);
+  drawText(ctx, time, timeRight, S(58), 19, palette.accent, true, "right");
 
   const groups = Array.isArray(commands) ? commands : [];
   const columns = 3;
@@ -638,4 +652,4 @@ async function renderFolderCard({
   return filePath;
 }
 
-module.exports = { renderMenuGrid, renderFolderCard };
+module.exports = { renderMenuGrid, renderFolderCard, _test: { presenceBadgePosition } };

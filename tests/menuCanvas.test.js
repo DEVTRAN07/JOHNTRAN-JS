@@ -51,9 +51,23 @@ test("menu does not treat /menu <command> as a command-info shortcut", async () 
   }
 });
 
-test("menu render accepts requester avatar and keeps the clock within the header", async () => {
+test("menu clock measures the time label and leaves a fixed visual gap", () => {
   const source = fs.readFileSync(require.resolve("../core/canvas/menu"), "utf8");
-  assert.match(source, /drawClock\(ctx, W - margin - S\(57\), S\(51\), S\(14\)/);
-  assert.match(source, /const inset = radius \* 0\.9/);
-  assert.match(source, /shadowOffsetY = theme\.S\(1\)/);
+  assert.match(source, /const timeWidth = ctx\.measureText\(time\)\.width/);
+  assert.match(source, /timeLeft - clockGap - clockSize \/ 2/);
+});
+
+test("presence badge stays attached to avatars of different sizes", () => {
+  const { presenceBadgePosition } = require("../core/canvas/menu")._test;
+  for (const size of [theme.S(40), theme.S(76)]) {
+    const radius = theme.S(6.5);
+    const point = presenceBadgePosition(10, 20, size, radius);
+    const centerX = 10 + size / 2;
+    const centerY = 20 + size / 2;
+    const distance = Math.hypot(point.cx - centerX, point.cy - centerY);
+    const outerRadius = radius + theme.S(1.2);
+    assert.equal(point.cx, point.cy - 10);
+    assert.ok(distance < size / 2, "badge center should overlap the avatar circle");
+    assert.ok(distance + outerRadius > size / 2, "badge ring should cross the avatar edge");
+  }
 });
