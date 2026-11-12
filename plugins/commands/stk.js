@@ -6,7 +6,6 @@ const { runInWorker } = require("../../core/workerPool");
 const { pickMediaUrl, cleanMediaUrl } = require("../../core/stickerCreate");
 const { buildStickerUrl } = require("../../core/stickerFactory");
 const { parseQuote } = require("../../core/mediaReply");
-const { mediaCache } = require("../../core/mediaCache");
 const { enqueue } = require("../../core/jobQueue");
 
 module.exports.config = {
@@ -21,6 +20,8 @@ module.exports.config = {
   dependencies: {}
 };
 
+module.exports._test = { isValidMediaUrl, sourceExtension, pickSourceFetcher, uploadStickerToZalo };
+
 const GUIDE =
   "CÁCH DÙNG STK\n"
   + "• Reply ảnh, GIF hoặc video rồi gõ /stk\n"
@@ -32,6 +33,15 @@ const ZALO_HOST_RE = /(^|\.)(zdn\.vn|dlfl\.vn|zadn\.vn|zaloapp\.com|zalo\.me|zal
 
 function isValidMediaUrl(url) {
   return /^https?:\/\/\S+$/i.test(String(url || ""));
+}
+
+function sourceExtension(url) {
+  try {
+    const ext = path.extname(new URL(url).pathname).toLowerCase();
+    return /^\.(png|jpe?g|gif|webp|mp4|webm|mov|m4v)$/.test(ext) ? ext : ".bin";
+  } catch {
+    return ".bin";
+  }
 }
 
 function errDetail(error) {
@@ -60,6 +70,9 @@ async function safeSend(api, payload, threadId, type) {
 }
 
 async function uploadStickerToZalo(api, stickerFile, threadId, type) {
+  if (!Buffer.isBuffer(stickerFile?.buffer) || stickerFile.buffer.length < 64) {
+    throw new Error("Worker không trả về dữ liệu sticker hợp lệ");
+  }
   fs.mkdirSync(CACHE_DIR, { recursive: true });
   const ext = stickerFile.format === "gif" ? "gif" : "webp";
   const filePath = path.join(CACHE_DIR, `stk_send_${Date.now()}.${ext}`);
@@ -83,15 +96,15 @@ module.exports.run = async function ({ api, event, args }) {
   const threadId = event?.threadId;
   const type = event?.type;
   const data = event?.data || {};
+  let srcPath = null;
 
   try {
     const commandArgs = Array.isArray(args) ? args : [];
     const urlArg = commandArgs.find((arg) => isValidMediaUrl(arg));
-    if (!urlArg && !data?.quote) {
+    const media = parseQuote(event);
+    if (!urlArg && !media) {
       return safeSend(api, { plain: true, msg: GUIDE }, threadId, type);
     }
-
-    const media = parseQuote(event);
     const url = urlArg ? cleanMediaUrl(urlArg) : cleanMediaUrl(pickMediaUrl(media));
     if (!url) {
       return safeSend(api, { plain: true, msg: "❌ Tin reply không có ảnh/video/GIF để tạo sticker.", ttl: 60000 }, threadId, type);
@@ -103,13 +116,12 @@ module.exports.run = async function ({ api, event, args }) {
 
     // Main thread tải media (host Zalo cần api.session qua api.fetchZaloMedia);
     // worker chỉ nhận file cục bộ và làm ffmpeg convert, không chạm API Zalo.
-    let srcPath;
     try {
       fs.mkdirSync(CACHE_DIR, { recursive: true });
       const fetcher = pickSourceFetcher(api, url) || ((u) => http.getBuffer(u, { timeout: 60000 }));
       const { buffer } = await fetcher(url);
       if (!buffer || buffer.length < 64) throw new Error("File tải về quá nhỏ hoặc rỗng");
-      const srcExt = path.extname(url) || ".bin";
+      const srcExt = sourceExtension(url);
       srcPath = path.join(CACHE_DIR, `stk_src_${Date.now()}${srcExt}`);
       fs.writeFileSync(srcPath, buffer);
     } catch (error) {
@@ -141,12 +153,14 @@ module.exports.run = async function ({ api, event, args }) {
       console.error("[stk] worker failed:", detail || error);
       if (error?.stack) console.error(error.stack);
       try { fs.unlinkSync(srcPath); } catch { /* bỏ qua */ }
+      srcPath = null;
       const msg = error?.userMessage || ("❌ Tạo sticker thất bại: " + (detail || "lỗi không xác định"));
       return safeSend(api, { plain: true, msg, ttl: 60000 }, threadId, type);
     }
 
     // Worker đã đọc xong nguồn; giải phóng file ngay trước bước upload.
     try { fs.unlinkSync(srcPath); } catch { /* already removed */ }
+    srcPath = null;
     let stickerUrl;
     try {
       stickerUrl = await uploadStickerToZalo(api, stickerFile, threadId, type);
@@ -159,7 +173,8 @@ module.exports.run = async function ({ api, event, args }) {
       return safeSend(api, { plain: true, msg, ttl: 60000 }, threadId, type);
     }
 
-    const replyMsgId = event?.data?.quote?.msgId || null;
+    const quote = data.quote || data.dQuote || event?.quote;
+    const replyMsgId = quote?.msgId || null;
     try {
       await api.sendCustomStickerUrl({
         staticImgUrl: stickerUrl,
@@ -178,6 +193,9 @@ module.exports.run = async function ({ api, event, args }) {
       return safeSend(api, { plain: true, msg: "❌ Gửi sticker thất bại: " + (detail || "lỗi không xác định"), ttl: 60000 }, threadId, type);
     }
   } catch (error) {
+    if (srcPath) {
+      try { fs.unlinkSync(srcPath); } catch { /* best effort cleanup */ }
+    }
     const detail = errDetail(error);
     console.error("[stk] unexpected:", detail || error);
     if (error?.stack) console.error(error.stack);
