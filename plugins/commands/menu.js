@@ -6,13 +6,13 @@ const folders = require("../../core/runtime/folderMenu");
 
 module.exports.config = {
   name: "menu",
-  aliases: ["help", "folder", "folders"],
-  version: "5.2.0",
+  aliases: [],
+  version: "5.3.0",
   role: 0,
   author: "JOHNTRAN",
   description: "Danh mục thư mục và toàn bộ lệnh dạng thẻ ảnh",
   category: "Tiện ích",
-  usage: "[tên thư mục|tổng]",
+  usage: "[tên danh mục|tổng]",
   cooldowns: 0,
   dependencies: {}
 };
