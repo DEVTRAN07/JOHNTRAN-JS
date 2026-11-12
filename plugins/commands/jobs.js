@@ -18,10 +18,21 @@ module.exports.config = {
 };
 
 function formatLane(name, lane) {
-  return [
+  const lines = [
     `• ${name}: ${lane.active} chạy / ${lane.pending} chờ (tối đa ${lane.concurrency})`,
     `  Hoàn tất ${lane.completed} · lỗi ${lane.failed} · retry ${lane.retried} · từ chối ${lane.rejected}`
-  ].join("\n");
+  ];
+
+  for (const job of lane.runningJobs || []) {
+    lines.push(`  ↳ Đang chạy: ${job.label} · ${(job.runningForMs / 1000).toFixed(1)}s`);
+  }
+  for (const job of lane.pendingJobs || []) {
+    lines.push(`  ↳ Đang chờ: ${job.label} · ${(job.waitingForMs / 1000).toFixed(1)}s`);
+  }
+  if (lane.oldestPendingMs > 0) {
+    lines.push(`  ⏱️ Tác vụ chờ lâu nhất: ${(lane.oldestPendingMs / 1000).toFixed(1)}s`);
+  }
+  return lines.join("\n");
 }
 
 module.exports.run = async function ({ api, event }) {
