@@ -1,9 +1,6 @@
 "use strict";
 
-const ThreadType = require("zalo-client").ThreadType;
 const threadRecall = require("../../core/threadRecall");
-const DAY_MS = 86400000;
-const MAX_DAYS = 30;
 
 module.exports.config = {
   name: "ttl",
@@ -11,9 +8,9 @@ module.exports.config = {
   version: "1.1.0",
   role: 2,
   author: "JOHNTRAN",
-  description: "Cấu hình tự thu hồi tin nhắn bot hoặc tự xóa nguyên bản Zalo.",
+  description: "Cấu hình tự thu hồi tin nhắn do bot gửi.",
   category: "Quản trị",
-  usage: "ttl [30s|1d-30d|off]",
+  usage: "ttl [30s|5m|1h|off|default]",
   cooldowns: 3,
   dependencies: {}
 };
@@ -21,19 +18,19 @@ module.exports.config = {
 function parse(input) {
   const value = String(input ?? "").trim().toLowerCase();
   if (["off", "tat", "tắt", "0"].includes(value)) return { mode: "off" };
-  const seconds = value.match(/^(\d+)(?:s|sec|secs|giay|giây)$/);
-  if (seconds) {
-    const n = Number(seconds[1]);
-    if (n < 5 || n > 86400) return { error: "Thời gian thu hồi bot phải từ 5 giây đến 24 giờ." };
-    return { mode: "local", ms: n * 1000, label: n + " giây" };
+  if (["default", "macdinh", "mặc định"].includes(value)) return { mode: "default" };
+  const match = value.match(/^(\\d+)(s|sec|secs|giay|giây|m|min|mins|phut|phút|h|hr|hrs|gio|giờ|d|day|days|ngay|ngày)$/);
+  if (!match) return { error: "Cú pháp: /ttl 30s, /ttl 5m, /ttl 1h, /ttl off hoặc /ttl default." };
+  const amount = Number(match[1]);
+  const unit = match[2];
+  const multiplier = /^(s|sec|secs|giay|giây)$/.test(unit) ? 1000
+    : /^(m|min|mins|phut|phút)$/.test(unit) ? 60000
+    : /^(h|hr|hrs|gio|giờ)$/.test(unit) ? 3600000 : 86400000;
+  const ms = amount * multiplier;
+  if (!Number.isSafeInteger(ms) || ms < 5000 || ms > 30 * 86400000) {
+    return { error: "Thời gian tự thu hồi tin nhắn bot phải từ 5 giây đến 30 ngày." };
   }
-  const days = value.match(/^(\d{1,2})(?:d|day|days|ngay|ngày)?$/);
-  if (days) {
-    const n = Number(days[1]);
-    if (n < 1 || n > MAX_DAYS) return { error: "Tự xóa Zalo hỗ trợ lựa chọn từ 1 đến 30 ngày." };
-    return { mode: "native", ms: n * DAY_MS, days: n };
-  }
-  return { error: "Cú pháp: /ttl 30s (tin bot), /ttl 5d (toàn cuộc trò chuyện), /ttl off." };
+  return { mode: "local", ms, label: value };
 }
 
 function list(response) {
@@ -51,43 +48,26 @@ async function send(api, event, msg) { return api.sendMessage({ msg, recallAfter
 
 module.exports.run = async function ({ args = [], event, api }) {
   if (!event?.threadId) return;
-  const group = event.type === ThreadType.Group || String(event.type).toLowerCase() === "group";
   if (!args[0]) {
     const local = threadRecall.get(event.threadId);
-    let native = "không xác định";
-    try {
-      const current = find(await api.getAutoDeleteChat(), event.threadId, group);
-      native = Number(current?.ttl) > 0 ? (Number(current.ttl) / DAY_MS) + " ngày" : "tắt";
-    } catch {}
-    return send(api, event, "⏱️ CẤU HÌNH TỰ XÓA\nTin nhắn bot: " + (local / 1000) + " giây\nTự xóa Zalo toàn chat: " + native +
-      "\n\n/ttl 30s — thu hồi tin nhắn bot sau 30 giây\n/ttl 5d — tự xóa nguyên bản Zalo\n/ttl off — đưa thu hồi bot về mặc định");
+    const status = local > 0 ? "sau " + (local / 1000) + " giây" : "đang tắt";
+    return send(api, event, "⏱️ TỰ THU HỒI TIN NHẮN BOT\\nTrạng thái: " + status +
+      "\\n\\n/ttl 30s — thu hồi tin bot sau 30 giây\\n/ttl 5m — sau 5 phút\\n/ttl 1h — sau 1 giờ\\n/ttl off — tắt tự thu hồi\\n/ttl default — trở về mặc định 60 giây\\n\\nTin nhắn thành viên không bị xóa.");
   }
 
   const parsed = parse(args[0]);
   if (parsed.error) return send(api, event, "❌ " + parsed.error);
-  if (parsed.mode === "local") {
-    threadRecall.set(event.threadId, parsed.ms);
-    return send(api, event, "✅ Đã đặt tự thu hồi tin nhắn bot sau " + parsed.label +
-      " trong cuộc trò chuyện này. Tin nhắn thành viên không bị ảnh hưởng.");
-  }
   if (parsed.mode === "off") {
-    threadRecall.set(event.threadId, threadRecall.DEFAULT_MS);
-    return send(api, event, "✅ Đã đưa thời gian thu hồi tin nhắn bot về mặc định 60 giây. Cài đặt tự xóa nguyên bản Zalo không thay đổi.");
+    threadRecall.set(event.threadId, 0);
+    return send(api, event, "✅ Đã tắt tự thu hồi tin nhắn bot trong cuộc trò chuyện này. Tin nhắn thành viên không bị ảnh hưởng.");
   }
-
-  if (typeof api?.updateAutoDeleteChat !== "function" || typeof api?.getAutoDeleteChat !== "function") {
-    return send(api, event, "❌ API tự xóa nguyên bản Zalo không khả dụng.");
+  if (parsed.mode === "default") {
+    threadRecall.set(event.threadId, null);
+    return send(api, event, "✅ Đã đặt tự thu hồi tin nhắn bot về mặc định 60 giây.");
   }
-  try {
-    await api.updateAutoDeleteChat(parsed.ms, event.threadId, group ? ThreadType.Group : ThreadType.User);
-    const current = find(await api.getAutoDeleteChat(), event.threadId, group);
-    if (!current || Number(current.ttl) !== parsed.ms) {
-      return send(api, event, "⚠️ Zalo chưa xác nhận đã áp dụng mốc " + parsed.days + " ngày.");
-    }
-    return send(api, event, "✅ Đã xác minh Zalo tự xóa sau " + parsed.days + " ngày cho toàn bộ cuộc trò chuyện.");
-  } catch (error) {
-    return send(api, event, "❌ Zalo từ chối thiết lập tự xóa: " + (error?.message || error));
-  }
+  threadRecall.set(event.threadId, parsed.ms);
+  return send(api, event, "✅ Đã đặt tự thu hồi tin nhắn bot sau " + parsed.label +
+    " trong cuộc trò chuyện này. Chỉ tin nhắn do bot gửi mới bị thu hồi.");
 };
 
-module.exports._test = { parse, find, list, DAY_MS };
+module.exports._test = { parse };
