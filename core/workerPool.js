@@ -3,6 +3,7 @@ const path = require("path");
 
 const WORKERS_DIR = path.join(__dirname, "workers");
 const DEFAULT_POOL_SIZE = 4;
+const DEFAULT_MAX_PENDING = Math.max(1, Number(process.env.JT_WORKER_MAX_PENDING) || 32);
 const pools = new Map();
 let shuttingDown = false;
 
@@ -26,6 +27,7 @@ function createWorker(pool, scriptName) {
       const error = new Error(result.error || `worker ${pool.scriptName} failed`);
       if (result.stack) error.stack = result.stack;
       settle(task, error);
+      pool.failed++;
     } else {
       let data = result == null || result.data === undefined ? result : result.data;
       if (data && typeof data === "object" && data.buffer &&
@@ -33,13 +35,15 @@ function createWorker(pool, scriptName) {
         data.buffer = Buffer.from(data.buffer);
       }
       settle(task, null, data);
+      pool.completed++;
     }
     pump(pool);
   });
 
-  worker.on("error", (error) => retireWorker(pool, record, error));
+  worker.on("error", (error) => { pool.failed++; retireWorker(pool, record, error); });
   worker.on("exit", (code) => {
     if (!record.dead) {
+      pool.failed++;
       retireWorker(pool, record, new Error(
         `worker ${pool.scriptName} exited before responding (code ${code})`
       ));
@@ -76,7 +80,7 @@ function retireWorker(pool, record, error) {
 function getOrCreatePool(scriptName, size) {
   let pool = pools.get(scriptName);
   if (!pool) {
-    pool = { scriptName, size, workers: [], pending: [], pumping: false };
+    pool = { scriptName, size, maxPending: DEFAULT_MAX_PENDING, workers: [], pending: [], pumping: false, completed: 0, failed: 0, rejected: 0 };
     pools.set(scriptName, pool);
   } else {
     pool.size = Math.max(pool.size, size);
@@ -143,6 +147,12 @@ function runInWorker(scriptName, data, options = {}) {
   if (shuttingDown) return Promise.reject(new Error("workerPool: shutting down"));
   const size = Math.max(1, Number(options.size) || DEFAULT_POOL_SIZE);
   const pool = getOrCreatePool(scriptName, size);
+  const maxPending = Math.max(1, Number(options.maxPending) || pool.maxPending);
+  pool.maxPending = Math.min(pool.maxPending, maxPending);
+  if (pool.pending.length >= pool.maxPending) {
+    pool.rejected++;
+    return Promise.reject(new Error(`Hàng đợi worker ${scriptName} đang quá tải. Vui lòng thử lại sau.`));
+  }
 
   return new Promise((resolve, reject) => {
     pool.pending.push({
@@ -183,4 +193,16 @@ function poolSize(scriptName) {
   return pool ? pool.workers.filter((record) => !record.dead).length : 0;
 }
 
-module.exports = { runInWorker, shutdown, poolSize };
+function stats() {
+  return Object.fromEntries([...pools.entries()].map(([name, pool]) => [name, {
+    workers: pool.workers.filter(record => !record.dead).length,
+    busy: pool.workers.filter(record => !record.dead && record.busy).length,
+    pending: pool.pending.length,
+    maxPending: pool.maxPending,
+    completed: pool.completed,
+    failed: pool.failed,
+    rejected: pool.rejected
+  }]));
+}
+
+module.exports = { runInWorker, shutdown, poolSize, stats, DEFAULT_MAX_PENDING };
