@@ -10,7 +10,7 @@ test("one trit has exactly unknown, false and true values", () => {
   assert.equal(isTrit(0), true);
   assert.equal(isTrit(1), true);
   assert.equal(isTrit(2), false);
-  assert.equal(fromBoolean(false), -1 + 1);
+  assert.equal(fromBoolean(false), TRIT.FALSE);
   assert.equal(fromBoolean(true), 1);
   assert.equal(isTrue(-1), false);
   assert.equal(isTrue(0), false);
