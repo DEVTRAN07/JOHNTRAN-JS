@@ -48,3 +48,12 @@ test("aggregateMessages counts text and media, skips commands, self and other da
   assert.equal(counts.u5, undefined);
   assert.equal(buildRanking(counts)[0].uid, "u1");
 });
+
+test("aggregateMessages excludes message IDs already counted by realtime", () => {
+  const messages = [
+    { data: { uidFrom: "u1", cliMsgId: "seen-1", dName: "An", content: "đã đếm", ts: "1794441600000", msgType: "text" } },
+    { data: { uidFrom: "u1", cliMsgId: "new-1", dName: "An", content: "chưa đếm", ts: "1794441601000", msgType: "text" } }
+  ];
+  const counts = aggregateMessages(messages, "2026-11-12", "/", "", ["seen-1"]);
+  assert.equal(counts.u1.count, 1);
+});
