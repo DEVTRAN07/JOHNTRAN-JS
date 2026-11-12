@@ -158,8 +158,96 @@ function renderAllCommands(groups, prefix, botName, version) {
   ].join("\n");
 }
 
+
+
+/*
+ * User-facing /menu sections.
+ * These are virtual folders built from the real command metadata, not aliases
+ * of broad internal categories. Keeping the classifier here makes /menu and
+ * shortcuts such as /game, /tools and /admin show the exact same commands.
+ */
+const MENU_GROUPS = Object.freeze([
+  { name: "Game", slug: "game", icon: "🎮", description: "Giải trí & Game" },
+  { name: "Tools", slug: "tools", icon: "🧰", description: "Công cụ hỗ trợ" },
+  { name: "Music", slug: "music", icon: "🎵", description: "Nghe nhạc trực tuyến" },
+  { name: "Anti", slug: "anti", icon: "🛡️", description: "Bảo vệ nhóm" },
+  { name: "Manager", slug: "manager", icon: "⚙️", description: "Quản lý nhóm" },
+  { name: "Admin", slug: "admin", icon: "👑", description: "Quản trị hệ thống" },
+  { name: "Mybot", slug: "mybot", icon: "🤖", description: "Quản lý bot" },
+  { name: "Hidden", slug: "hidden", icon: "🔒", description: "Lệnh ẩn & đặc biệt" },
+  { name: "Khác", slug: "khac", icon: "⭐", description: "Thêm tính năng" }
+]);
+
+const MENU_COMMAND_GROUPS = Object.freeze({
+  music: new Set(["scl", "lyric"]),
+  anti: new Set(["anti", "autokick"]),
+  manager: new Set(["adduser", "delmsg"]),
+  admin: new Set(["admin", "adc", "reloadconfig", "restart"]),
+  mybot: new Set(["cmd", "command", "events", "stats", "upt"]),
+  hidden: new Set(["spam", "spamsticker"])
+});
+
+function menuGroupForCommand(command) {
+  const config = command?.config || {};
+  const name = String(config.name || "").toLowerCase();
+  if (!name || name === "menu") return null;
+
+  for (const [slug, names] of Object.entries(MENU_COMMAND_GROUPS)) {
+    if (names.has(name)) return slug;
+  }
+
+  const category = normalizeFolder(config.category);
+  if (category === "game") return "game";
+  if (category === "tienich") return "tools";
+  if (category === "nhac" || category === "music") return "music";
+  if (category === "nhom") return "manager";
+  if (category === "hethong") return Number(config.role || 0) >= 2 ? "admin" : "mybot";
+  if (["giaitri", "hanhdong", "ai", "khac"].includes(category)) return "khac";
+  return "khac";
+}
+
+function collectMenuGroups(commands, userId) {
+  const buckets = new Map(MENU_GROUPS.map(group => [group.slug, []]));
+  for (const command of commands.values()) {
+    if (!canSee(command, userId)) continue;
+    const slug = menuGroupForCommand(command);
+    if (!slug || !buckets.has(slug)) continue;
+    const config = command.config || {};
+    const name = String(config.name || "").toLowerCase();
+    buckets.get(slug).push({
+      name,
+      usage: config.usage || name,
+      description: config.description || "Chưa có mô tả",
+      role: Number(config.role || 0)
+    });
+  }
+
+  return MENU_GROUPS.map(group => {
+    const items = buckets.get(group.slug).sort((a, b) => a.name.localeCompare(b.name, "vi"));
+    return { ...group, count: items.length, commands: items };
+  });
+}
+
+function resolveMenuGroup(commands, userId, value) {
+  const key = normalizeFolder(value);
+  if (!key || ALL_FOLDER_KEYS.has(key)) return null;
+  const group = MENU_GROUPS.find(item =>
+    normalizeFolder(item.name) === key || normalizeFolder(item.slug) === key
+  );
+  if (!group) return null;
+  const collected = collectMenuGroups(commands, userId);
+  return collected.find(item => item.slug === group.slug) || null;
+}
+
+function collectMenuGroupCommands(commands, userId, group) {
+  if (!group) return [];
+  const current = resolveMenuGroup(commands, userId, group.slug);
+  return current?.commands || [];
+}
+
 module.exports = {
   collectFolders, resolveFolder, collectFolderCommands, collectAllCommands,
   canonicalCategory, renderFolders, renderFolder, renderAllCommands,
-  normalizeFolder, ALL_FOLDER_KEYS
+  normalizeFolder, ALL_FOLDER_KEYS,
+  MENU_GROUPS, menuGroupForCommand, collectMenuGroups, resolveMenuGroup, collectMenuGroupCommands
 };
