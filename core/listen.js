@@ -8,6 +8,13 @@ const { ThreadType } = require("zalo-client");
 const Threads = require("./controller/controllerThreads");
 const panelBridge = require("./panelBridge");
 const { getRequesterProfile } = require("./runtime/requesterProfile");
+const { vietnamDateKey } = require("./topchat/stats");
+const {
+  HISTORY_PAGE_DELAY_MS,
+  HISTORY_REQUEST_TIMEOUT_MS,
+  maxHistoryPages,
+  inspectGroupHistoryPage
+} = require("./topchat/wsBackfill");
 
 const RECONNECT_BASE_DELAY = 5000;
 const RECONNECT_MAX_DELAY = 60000;
@@ -181,6 +188,145 @@ function startListening(api) {
   // ===== Backfill: tin nhắn gửi lúc socket rớt =====
   // Tin lịch sử được cache nhưng không thực thi lại lệnh cũ.
   let reconnectSince = Date.now();
+  let topchatHistorySync = null;
+
+  function clearTopchatHistoryTimers(state) {
+    if (!state) return;
+    if (state.requestTimer) clearTimeout(state.requestTimer);
+    if (state.nextPageTimer) clearTimeout(state.nextPageTimer);
+    state.requestTimer = null;
+    state.nextPageTimer = null;
+  }
+
+  async function finishTopchatHistorySync(complete, reason) {
+    const state = topchatHistorySync;
+    if (!state || !state.active) return;
+    state.active = false;
+    state.pending = false;
+    clearTopchatHistoryTimers(state);
+
+    try {
+      const counter = require("../plugins/events/topchatCounter");
+      await counter.markHistoryCoverage(
+        [...state.groups],
+        Threads,
+        state.dateKey,
+        complete,
+        state.pageCount,
+        reason
+      );
+    } catch (error) {
+      logger.log(`Không lưu được trạng thái lịch sử Topchat: ${error.message}`, "warn");
+    }
+
+    logger.log(
+      complete
+        ? `Topchat đã quét lịch sử nhóm tới đầu ngày ${state.dateKey} (${state.pageCount} trang)`
+        : `Topchat dừng đồng bộ lịch sử chưa đủ ngày (${state.pageCount} trang, ${reason})`,
+      complete ? "info" : "warn"
+    );
+  }
+
+  function requestTopchatHistoryPage(lastMsgId = null) {
+    const state = topchatHistorySync;
+    if (!state || !state.active || state.pending) return;
+
+    const cursorKey = lastMsgId == null ? "__first__" : String(lastMsgId);
+    if (state.cursors.has(cursorKey)) {
+      void finishTopchatHistorySync(false, "cursor-duplicate");
+      return;
+    }
+    if (state.pageCount >= state.maxPages) {
+      void finishTopchatHistorySync(false, "page-limit");
+      return;
+    }
+
+    state.cursors.add(cursorKey);
+    state.pending = true;
+    state.pageCount++;
+    try {
+      listener.requestOldMessages(ThreadType.Group, lastMsgId);
+    } catch (error) {
+      state.pending = false;
+      void finishTopchatHistorySync(false, "request-error");
+      logger.log(`Không yêu cầu được trang lịch sử Topchat: ${error.message}`, "warn");
+      return;
+    }
+
+    state.requestTimer = setTimeout(() => {
+      if (topchatHistorySync === state && state.active && state.pending) {
+        void finishTopchatHistorySync(false, "response-timeout");
+      }
+    }, HISTORY_REQUEST_TIMEOUT_MS);
+    state.requestTimer.unref?.();
+  }
+
+  function startTopchatHistorySync() {
+    if (topchatHistorySync) clearTopchatHistoryTimers(topchatHistorySync);
+    topchatHistorySync = {
+      active: true,
+      pending: false,
+      dateKey: vietnamDateKey(),
+      maxPages: maxHistoryPages(),
+      pageCount: 0,
+      cursors: new Set(),
+      groups: new Set(),
+      requestTimer: null,
+      nextPageTimer: null
+    };
+    requestTopchatHistoryPage(null);
+  }
+
+  async function ingestTopchatHistoryPage(messages) {
+    const state = topchatHistorySync;
+    const counter = require("../plugins/events/topchatCounter");
+
+    if (state?.active) {
+      for (const message of messages) {
+        if (message?.type === ThreadType.Group && message.threadId) {
+          state.groups.add(String(message.threadId));
+        }
+      }
+    }
+
+    const result = await counter.recordHistoryMessages(messages, Threads);
+    if (result.messages > 0) {
+      logger.log(
+        `Topchat đã bổ sung ${result.messages} tin nhắn hôm nay từ lịch sử WebSocket (${result.groups} nhóm)`,
+        "info"
+      );
+    }
+
+    // Only the response to the outstanding group-history request advances the
+    // cursor. A batch may contain up to 50 messages; ask for the preceding
+    // page using the oldest msgId until we cross today's 00:00 (Vietnam time).
+    if (!state || !state.active || !state.pending) return;
+    state.pending = false;
+    if (state.requestTimer) clearTimeout(state.requestTimer);
+    state.requestTimer = null;
+
+    const page = inspectGroupHistoryPage(
+      messages,
+      state.dateKey,
+      state.pageCount,
+      state.maxPages
+    );
+    if (!page.continue) {
+      const complete = [
+        "day-boundary-reached",
+        "history-exhausted",
+        "empty-page"
+      ].includes(page.reason);
+      await finishTopchatHistorySync(complete, page.reason);
+      return;
+    }
+
+    state.nextPageTimer = setTimeout(() => {
+      state.nextPageTimer = null;
+      requestTopchatHistoryPage(page.cursor);
+    }, HISTORY_PAGE_DELAY_MS);
+    state.nextPageTimer.unref?.();
+  }
 
   listener.on("old_messages", (messages, messageType) => {
     if (!Array.isArray(messages)) return;
@@ -189,16 +335,7 @@ function startListening(api) {
     // historical group messages via requestOldMessages(ThreadType.Group).
     // Fold today's messages into the same persisted daily counter as realtime.
     if (messageType === ThreadType.Group) {
-      const topchatCounter = require("../plugins/events/topchatCounter");
-      void topchatCounter.recordHistoryMessages(messages, Threads)
-        .then((result) => {
-          if (result.messages > 0) {
-            logger.log(
-              `Topchat đã bổ sung ${result.messages} tin nhắn hôm nay từ lịch sử WebSocket (${result.groups} nhóm)`,
-              "info"
-            );
-          }
-        })
+      void ingestTopchatHistoryPage(messages)
         .catch((error) => logger.log(`Không thể đồng bộ lịch sử Topchat: ${error.message}`, "warn"));
     }
 
@@ -276,7 +413,7 @@ function startListening(api) {
     // Lấy lại tin nhắn miss trong lúc socket rớt
     try {
       listener.requestOldMessages(ThreadType.User);
-      listener.requestOldMessages(ThreadType.Group);
+      startTopchatHistorySync();
     } catch (error) {
       logger.log(`Không lấy được tin cũ: ${error.message}`, "warn");
     }
