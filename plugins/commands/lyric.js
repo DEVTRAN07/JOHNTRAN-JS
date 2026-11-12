@@ -2,7 +2,6 @@ const music = require("../../core/music");
 const models = require("../../core/music/models");
 const http = require("../../core/http");
 
-const MAX_LYRIC_MESSAGE_CHARS = 1800;
 const LRCLIB_API = "https://lrclib.net/api/search";
 
 module.exports.config = {
@@ -113,61 +112,25 @@ async function findLyrics(track) {
   throw new Error('Không tìm thấy lời bài hát "' + title + '" trên LRCLIB.');
 }
 
-function splitLyricText(lines, maxChars = MAX_LYRIC_MESSAGE_CHARS) {
-  const chunks = [];
-  let current = "";
-
-  for (const rawLine of lines) {
-    let line = String(rawLine ?? "");
-    while (line.length > maxChars) {
-      const part = line.slice(0, maxChars);
-      line = line.slice(maxChars);
-      if (current) {
-        chunks.push(current);
-        current = "";
-      }
-      chunks.push(part);
-    }
-
-    const candidate = current ? current + "\n" + line : line;
-    if (candidate.length > maxChars && current) {
-      chunks.push(current);
-      current = line;
-    } else {
-      current = candidate;
-    }
-  }
-
-  if (current || chunks.length === 0) chunks.push(current);
-  return chunks;
-}
-
 async function showLyric(reply, track, existingLines = null) {
   try {
     const lines = existingLines || await findLyrics(track);
     const artist = String(track?.artist || "").trim();
     const title = String(track?.title || "Lời bài hát");
-    const header = [
+    const message = [
       "♫ " + title,
       artist && artist !== "Không rõ" ? "🎤 " + artist : null,
       "━━━━━━━━━━━━━━━━",
-      ""
-    ].filter((line) => line !== null);
-    const lyricChunks = splitLyricText(lines);
-    const sent = [];
+      "",
+      ...lines.map((line) => String(line ?? "")),
+      "",
+      models.BRAND
+    ].filter((line) => line !== null).join("\n");
 
-    for (let index = 0; index < lyricChunks.length; index++) {
-      const chunkHeader = index === 0
-        ? header
-        : ["♫ " + title + " (tiếp)", "━━━━━━━━━━━━━━━━", ""];
-      const footer = index === lyricChunks.length - 1 ? ["", models.BRAND] : [];
-      const message = [...chunkHeader, lyricChunks[index], ...footer].join("\n");
-      sent.push(message);
-      await reply.text(message, { plain: true });
-    }
-
+    // Gửi toàn bộ lời trong một bong bóng tin nhắn duy nhất.
+    await reply.text(message, { plain: true });
     await reply.done();
-    return sent;
+    return message;
   } catch (error) {
     await reply.failed();
     return reply.error(error.message);
