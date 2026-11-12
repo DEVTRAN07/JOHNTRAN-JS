@@ -6,17 +6,11 @@ const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
 const http = require("./http");
-const stickerFrames = require("./stickerFrames");
 
 const TARGET_W = 480;
 const MAX_SECONDS = 8;
 const FPS = 15;
 const SIZE_LIMIT = 512 * 1024; // 512KB: Zalo upload nhanh và ổn định hơn
-const FRAME_PATH = path.join(__dirname, "..", "khung-stk", "hoa-anh-dao.png");
-// Ảnh lớn hơn, viền mảnh hơn: chủ thể chiếm ~69% diện tích sticker.
-const STICKER_DIAMETER = 400;
-const STICKER_OFFSET = (TARGET_W - STICKER_DIAMETER) / 2;
-const ROUND_R = 28; // bán kính bo góc (px) cho sticker 480x480
 
 const ffmpegBin = "ffmpeg";
 const ffprobeBin = "ffprobe";
@@ -122,26 +116,19 @@ function isAnimatedBuffer(buf) {
   return false;
 }
 
-async function convertFramed(inputPath, outPath, duration, isStill, options = {}) {
-  const framePath = options.framePath || FRAME_PATH;
-  if (!fs.existsSync(framePath)) {
-    throw new Error(`Không tìm thấy khung sticker: ${framePath}`);
-  }
-
+async function convertClean(inputPath, outPath, duration, isStill, options = {}) {
   const fps = options.fps || FPS;
   const quality = options.quality ?? 65;
   const outputSize = options.outputSize || TARGET_W;
   const useWebp = await hasLibwebp();
-  const outFile = useWebp ? outPath : outPath.replace(/\.webp$/, ".gif");
+  const outFile = useWebp ? outPath : outPath.replace(/\\.webp$/, ".gif");
   const graph = [
-    // Keep decorative artwork outside the circular sticker area.
-    `[1:v]scale=${TARGET_W}:${TARGET_W}:flags=lanczos,format=rgba,tpad=stop_mode=clone:stop_duration=${duration},fps=${fps},setpts=PTS-STARTPTS,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*if(gt(hypot(X-${TARGET_W / 2 - 0.5},Y-${TARGET_W / 2 - 0.5}),${STICKER_DIAMETER / 2}),1,0)'[frame]`,
-    `[0:v]fps=${fps},scale=${STICKER_DIAMETER}:${STICKER_DIAMETER}:force_original_aspect_ratio=increase:flags=lanczos,crop=${STICKER_DIAMETER}:${STICKER_DIAMETER},format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*if(lte(hypot(X-${STICKER_DIAMETER / 2 - 0.5},Y-${STICKER_DIAMETER / 2 - 0.5}),${STICKER_DIAMETER / 2}),1,0)'[circle]`,
-    `[frame][circle]overlay=${STICKER_OFFSET}:${STICKER_OFFSET}:shortest=1,scale=${outputSize}:${outputSize}:flags=lanczos,format=rgba[framed]`
+    // Full-bleed square crop: không khung, không viền, không họa tiết phủ lên ảnh.
+    `[0:v]fps=${fps},scale=${TARGET_W}:${TARGET_W}:force_original_aspect_ratio=increase:flags=lanczos,crop=${TARGET_W}:${TARGET_W},scale=${outputSize}:${outputSize}:flags=lanczos,format=rgba[clean]`
   ];
   if (!useWebp) {
     graph.push(
-      "[framed]split[animation][palette_source]",
+      "[clean]split[animation][palette_source]",
       "[palette_source]palettegen=stats_mode=diff[palette]",
       "[animation][palette]paletteuse=dither=sierra2_4a[sticker]"
     );
@@ -149,8 +136,8 @@ async function convertFramed(inputPath, outPath, duration, isStill, options = {}
 
   const args = ["-y"];
   if (isStill) args.push("-loop", "1");
-  args.push("-i", inputPath, "-i", framePath, "-t", String(duration));
-  args.push("-filter_complex", graph.join(";"), "-map", useWebp ? "[framed]" : "[sticker]", "-an");
+  args.push("-i", inputPath, "-t", String(duration));
+  args.push("-filter_complex", graph.join(";"), "-map", useWebp ? "[clean]" : "[sticker]", "-an");
   if (useWebp) {
     args.push("-vcodec", "libwebp", "-loop", "0", "-q:v", String(quality), "-preset", "default");
   } else {
@@ -160,19 +147,17 @@ async function convertFramed(inputPath, outPath, duration, isStill, options = {}
 
   const result = await run(ffmpegBin, args, 90000);
   if (!result.ok) {
-    throw new Error("ffmpeg ghép khung sticker thất bại: " + result.stderr.slice(-300));
+    throw new Error("ffmpeg chuyển sticker thất bại: " + result.stderr.slice(-300));
   }
   return { path: outFile, format: useWebp ? "webp" : "gif" };
 }
 
-// Video/GIF/ảnh tĩnh → sticker có khung (webp nếu được, không thì gif)
 async function convert(inputPath, outPath) {
-  return convertFramed(inputPath, outPath, MAX_SECONDS, false);
+  return convertClean(inputPath, outPath, MAX_SECONDS, false);
 }
 
-// Ảnh TĨNH → webp loop 2.5 giây (bot gốc vẫn gửi dạng động cho mọi sticker)
 async function convertStatic(inputPath, outPath) {
-  return convertFramed(inputPath, outPath, 2.5, true);
+  return convertClean(inputPath, outPath, 2.5, true);
 }
 
 /**
@@ -181,16 +166,12 @@ async function convertStatic(inputPath, outPath) {
  * @param {string} outDir  thư mục tạm
  * @param {boolean} forceStatic  true = coi là ảnh tĩnh (loop 2.5s)
  */
-async function makeStickerFile(url, outDir, forceStatic = false, fetchImpl, options = {}) {
+async function makeStickerFile(url, outDir, forceStatic = false, fetchImpl) {
   fs.mkdirSync(outDir, { recursive: true });
   const inputPath = await download(url, outDir, fetchImpl);
-  const frameId = options.frameId == null ? 1 : Number(options.frameId);
-  let framePath;
   try {
-    framePath = stickerFrames.resolveFramePath(frameId);
     const buf = fs.readFileSync(inputPath);
-    const animated = isAnimatedBuffer(buf) || [".mp4", ".webm"].includes(path.extname(inputPath));
-
+    const animated = isAnimatedBuffer(buf) || /\\.(mp4|webm)$/i.test(inputPath);
     const out = path.join(outDir, `stk_${Date.now()}.webp`);
     const isStatic = !animated || forceStatic;
     const duration = isStatic ? 2.5 : MAX_SECONDS;
@@ -202,10 +183,7 @@ async function makeStickerFile(url, outDir, forceStatic = false, fetchImpl, opti
     ];
 
     for (const profile of profiles) {
-      const result = await convertFramed(inputPath, out, duration, isStatic, {
-        ...profile,
-        framePath
-      });
+      const result = await convertClean(inputPath, out, duration, isStatic, profile);
       const size = fs.statSync(result.path).size;
       if (size <= SIZE_LIMIT) {
         const dims = imageSize(fs.readFileSync(result.path));
