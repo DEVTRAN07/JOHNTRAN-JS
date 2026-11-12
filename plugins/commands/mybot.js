@@ -7,6 +7,10 @@ module.exports.run=async function({api,event,args,Threads,reply}){
  const action=String(args[0]||"help").toLowerCase(),group=event?.type===ThreadType.Group;
  if(action==="on"||action==="off"){
   if(!group)return send(api,event,reply,"Lệnh bật/tắt chỉ dùng trong nhóm.");
+  const uid=String(event?.data?.uidFrom||"");
+  let allowed=Boolean(global.users?.admin?.includes(uid));
+  try{const info=await api.getGroupInfo(String(event.threadId));const g=info?.gridInfoMap?.[String(event.threadId)]||{};const admins=(g.adminIds||g.admins||[]).map(x=>String(x.uid||x));allowed=allowed||String(g.creatorId||"")===uid||admins.includes(uid);}catch{}
+  if(!allowed)return send(api,event,reply,"Chỉ quản trị viên nhóm hoặc admin bot mới được bật/tắt bot.");
   const r=await Threads.getData(String(event.threadId)),d={...(r?.data||{}),bot_enabled:action==="on",bot_enabled_at:action==="on"?Date.now():null};
   await Threads.setData(String(event.threadId),d);
   return send(api,event,reply,action==="on"?"Đã bật bot trong nhóm này. Nhóm sẽ xuất hiện trong /status.":"Đã tắt bot trong nhóm này.");
