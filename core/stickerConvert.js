@@ -202,13 +202,15 @@ async function convertClean(inputPath, outPath, duration, isStill, options = {})
     );
   }
 
-  const args = ["-y"];
-  if (isStill) args.push("-loop", "1");
-  args.push("-i", inputPath, "-t", String(duration));
+  const args = ["-y", "-i", inputPath];
+  if (isStill) args.push("-frames:v", "1");
+  else args.push("-t", String(duration));
   args.push("-filter_complex", graph.join(";"), "-map", useWebp ? "[clean]" : "[sticker]", "-an");
   if (useWebp) {
-    args.push("-vcodec", "libwebp", "-loop", "0", "-q:v", String(quality), "-preset", "default");
-  } else {
+    args.push("-vcodec", "libwebp");
+    if (!isStill) args.push("-loop", "0");
+    args.push("-q:v", String(quality), "-preset", "default");
+  } else if (!isStill) {
     args.push("-loop", "0");
   }
   args.push(outFile);
