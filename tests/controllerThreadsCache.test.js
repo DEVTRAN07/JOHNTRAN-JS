@@ -13,8 +13,8 @@ const Threads = require("../core/controller/controllerThreads");
 const { threadCache } = require("../core/cache");
 const db = require("../utils/db");
 
-// batchDb schedules its flush timer as unref(); keep this isolated test process
-// alive while awaiting queued persistence operations.
+// JsonStore schedules its disk flush timer as unref(); keep this isolated test
+// process alive while awaiting persistence operations.
 const keepAlive = setInterval(() => {}, 1000);
 after(() => clearInterval(keepAlive));
 
