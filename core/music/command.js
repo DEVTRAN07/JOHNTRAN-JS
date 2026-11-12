@@ -124,7 +124,8 @@ async function showResults(api, threadId, type, provider, query, tracks, page) {
   const safePage = Math.min(Math.max(page, 1), totalPages);
   const slice = tracks.slice((safePage - 1) * perPage, safePage * perPage);
 
-  // Text list is the primary response; canvas is intentionally not on the critical path.
+  // Gửi card ảnh như giao diện nhạc ban đầu. Canvas chạy trong worker riêng;
+  // nếu renderer gặp lỗi thì vẫn có danh sách chữ để người dùng chọn bài.
   const styled = ui.searchList({
     providerLabel: provider.label.toUpperCase(),
     query,
@@ -132,7 +133,32 @@ async function showResults(api, threadId, type, provider, query, tracks, page) {
     page: safePage,
     totalPages
   });
-  return api.sendMessage({ ...styled }, threadId, type);
+  const cacheKey = `search|${provider.name}|${query}|${safePage}`;
+
+  try {
+    const cardPath = await enqueue("canvas", () => renderCached(cacheKey, () =>
+      renderCanvas("music-grid", {
+        query,
+        tracks: slice,
+        options: {
+          page: safePage,
+          totalPages,
+          source: provider.label.toUpperCase()
+        }
+      })
+    ), {
+      key: `music-grid|${provider.name}|${query}|${safePage}`,
+      label: `Vẽ card nhạc: ${query.slice(0, 32)}`
+    });
+
+    if (!cardPath || !fs.existsSync(cardPath)) {
+      throw new Error("Không tạo được ảnh card kết quả nhạc.");
+    }
+    return await api.sendMessage({ msg: "", attachments: cardPath }, threadId, type);
+  } catch (error) {
+    logger.log(`[music] Render card tìm kiếm lỗi: ${error.message || error}`, "warn");
+    return api.sendMessage({ ...styled }, threadId, type);
+  }
 }
 
 function parseOptions(args) {
@@ -160,10 +186,13 @@ async function runMusic(providerName, { api, event, args, reply }) {
     if (!pending || pending.providerName !== providerName) {
       return reply.error(`Bạn chưa tìm kiếm trên ${provider.label} gần đây. Hãy dùng ${global.config.prefix}${provider.name} <từ khóa> trước.`);
     }
-    const index = parseInt(args[0], 10) - 1;
+    const pageSize = 7;
+    const pageOffset = (Math.max(1, Number(pending.page) || 1) - 1) * pageSize;
+    const pageTracks = pending.tracks.slice(pageOffset, pageOffset + pageSize);
+    const index = pageOffset + parseInt(args[0], 10) - 1;
     const track = pending.tracks[index];
     if (!track) {
-      return reply.error(`Số thứ tự không hợp lệ (1 - ${pending.tracks.length}).`);
+      return reply.error(`Số thứ tự không hợp lệ (1 - ${pageTracks.length}) ở trang ${pending.page || 1}.`);
     }
     music.clearPending(key);
     return sendTrack(reply, threadId, type, track, providerName, api, options.quality);
