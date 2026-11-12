@@ -322,26 +322,37 @@ test("topchat counts official Zalo GroupMessage events when the live frame omits
   assert.equal(saved.topchatCounts["member-model"].name, "Member Model");
 });
 
-test("topchat falls back to the official per-group history API when local counts are empty", async () => {
-  global.config = { prefix: "/" };
-  const threadId = "topchat-group-history-api-fallback";
+test("topchat does not call the unsupported REST history endpoint when local counters are empty", async () => {
+  const threadId = "topchat-no-rest-history-fallback";
   const Threads = fakeThreads({ [threadId]: { prefix: "/" } });
-  const message = makeGroupMessage(threadId, "api-member", "api-history-1", "lấy từ lịch sử nhóm");
+  let historyApiCalls = 0;
+  let infoMessage = "";
   const api = {
-    async getGroupChatHistory(requestedThreadId, count) {
-      assert.equal(requestedThreadId, threadId);
-      assert.equal(count, 50);
-      return { groupMsgs: [message] };
+    async getGroupChatHistory() {
+      historyApiCalls++;
+      const error = new Error("Request failed with status code 404");
+      error.response = { status: 404 };
+      throw error;
+    },
+    async sendMessage() {
+      throw new Error("Topchat without ranking should use reply.info");
+    }
+  };
+  const reply = {
+    async info(message) {
+      infoMessage = message;
+      return { ok: true };
     }
   };
 
-  const result = await topchat._test.backfillCurrentGroupHistory(api, threadId, Threads);
-  assert.equal(result.available, true);
-  assert.equal(result.received, 1);
-  assert.equal(result.added, 1);
+  await topchat.run({
+    api,
+    event: { threadId, type: ThreadType.Group, data: { uidFrom: "requester" } },
+    Threads,
+    reply
+  });
 
-  const saved = Threads.rows.get(threadId).data;
-  assert.equal(saved.topchatCounts["api-member"].count, 1);
-  assert.equal(saved.topchatHistoryComplete, false);
-  assert.equal(saved.topchatHistoryReason, "group-api-fallback");
+  assert.equal(historyApiCalls, 0, "unsupported REST endpoint must not be requested");
+  assert.match(infoMessage, /realtime/i);
+  assert.doesNotMatch(infoMessage, /404|Request failed/i);
 });

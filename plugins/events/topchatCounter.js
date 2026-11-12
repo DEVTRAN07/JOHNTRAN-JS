@@ -1,6 +1,5 @@
 "use strict";
 
-const { ThreadType } = require("zalo-client");
 const { vietnamDateKey, isGroupMessage, messageText, messageTimestamp, avatarUrl } = require("../../core/topchat/stats");
 
 const writeQueues = new Map();
