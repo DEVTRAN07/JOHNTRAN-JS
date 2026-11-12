@@ -52,6 +52,7 @@ class SupabaseStore {
     // Keep only the latest failed mutation per table/id, not every retry copy.
     this.retryQueue = new Map();
     this.writeVersions = new Map();
+    this.writeChains = new Map();
     this.writeSequence = 0;
     this.retryFlush = null;
     this.syncing = null;
@@ -181,6 +182,25 @@ class SupabaseStore {
     throw new Error(`Supabase write operation không hợp lệ: ${op}`);
   }
 
+  enqueueWrite(key, run) {
+    // Serialize writes to the same row. Otherwise a slow old upsert could
+    // finish after a newer delete and resurrect stale data in Supabase.
+    const previous = this.writeChains.get(key) || Promise.resolve();
+    const task = previous.catch(() => {}).then(run);
+    const tracked = task.then(
+      (value) => {
+        if (this.writeChains.get(key) === tracked) this.writeChains.delete(key);
+        return value;
+      },
+      (error) => {
+        if (this.writeChains.get(key) === tracked) this.writeChains.delete(key);
+        throw error;
+      }
+    );
+    this.writeChains.set(key, tracked);
+    return tracked;
+  }
+
   push(dbTable, op, payload) {
     const id = String(payload?.id ?? "");
     if (!id) {
@@ -194,9 +214,9 @@ class SupabaseStore {
     // A newer mutation supersedes an older failed retry for this record.
     this.retryQueue.delete(key);
 
-    this.executeWrite(dbTable, op, payload).then(() => {
+    this.enqueueWrite(key, () => this.executeWrite(dbTable, op, payload)).then(() => {
       if (this.writeVersions.get(key) === version) this.writeVersions.delete(key);
-    }).catch((error) => {
+    }, (error) => {
       // Ignore stale failures that completed after a newer mutation.
       if (this.writeVersions.get(key) !== version) return;
 
@@ -222,7 +242,7 @@ class SupabaseStore {
               this.retryQueue.get(key)?.version !== job.version) return;
 
           try {
-            await this.executeWrite(job.dbTable, job.op, job.payload);
+            await this.enqueueWrite(key, () => this.executeWrite(job.dbTable, job.op, job.payload));
             if (this.writeVersions.get(key) === job.version &&
                 this.retryQueue.get(key)?.version === job.version) {
               this.retryQueue.delete(key);
