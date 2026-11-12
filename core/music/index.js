@@ -5,6 +5,7 @@ const { pooledAxios } = require("../http/pooledAxios");
 const db = require("../../utils/db");
 const { caches } = require("../cache");
 const { runInWorker } = require("../workerPool");
+const { enqueue } = require("../jobQueue");
 
 const providers = new Map();
 
@@ -67,7 +68,10 @@ async function resolve(providerName, track, options = {}) {
 
   if (resolveInFlight.has(cacheKey)) return resolveInFlight.get(cacheKey);
   const provider = getProvider(providerName);
-  const task = Promise.resolve().then(() => provider.resolve(track, options)).then((url) => {
+  const task = enqueue("music-resolve", () => provider.resolve(track, options), {
+    key: cacheKey,
+    label: `Resolve nhạc: ${String(track?.title || track?.id || "bài hát").slice(0, 32)}`
+  }).then((url) => {
     if (url) resolveCache.set(cacheKey, { url }, RESOLVE_TTL);
     return url;
   }).finally(() => resolveInFlight.delete(cacheKey));
@@ -99,7 +103,10 @@ async function downloadToFile(streamUrl, extension, options = {}) {
   const filePath = path.join(tempDir, `music_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`);
 
   const attemptDownload = async (url) => {
-    const { buffer } = await http.getBuffer(url, { timeout: 60000, retries: 1 });
+    const { buffer } = await enqueue("music-audio", () => http.getBuffer(url, { timeout: 60000, retries: 1 }), {
+      key: `audio-download|${url}`,
+      label: "Tải audio stream"
+    });
     fs.writeFileSync(filePath, buffer);
     return filePath;
   };
@@ -120,9 +127,12 @@ async function downloadToFile(streamUrl, extension, options = {}) {
 }
 
 async function processAudioInWorker(audioPath, threadId, type, api = null) {
-  const result = await runInWorker("audioWorker", { audioPath, threadId, type, api }, {
+  const result = await enqueue("music-audio", () => runInWorker("audioWorker", { audioPath, threadId, type, api }, {
     timeout: 120000,
     size: 2
+  }), {
+    key: `audio-process|${audioPath}`,
+    label: "Chuyển mã audio"
   });
   return result;
 }
