@@ -180,7 +180,7 @@ function startListening(api) {
     // so their coverage status is finalized even if that group is absent from
     // the last history page returned by Zalo.
     if (topchatHistorySync?.active && isGroupMessage(event) && (event?.threadId || event?.data?.idTo)) {
-      topchatHistorySync.groups.add(String(event.threadId));
+      topchatHistorySync.groups.add(String(event.threadId || event.data.idTo));
     }
     const cliMsgId = event?.data?.cliMsgId;
     if (cliMsgId && processedIds.has(cliMsgId)) return; // trùng lặp (server gửi lại / backfill)
@@ -303,8 +303,8 @@ function startListening(api) {
 
     if (state?.active) {
       for (const message of messages) {
-        if (message?.type === ThreadType.Group && message.threadId) {
-          state.groups.add(String(message.threadId));
+        if (isGroupMessage(message) && (message.threadId || message.data?.idTo)) {
+          state.groups.add(String(message.threadId || message.data.idTo));
         }
       }
     }
@@ -332,11 +332,7 @@ function startListening(api) {
       state.maxPages
     );
     if (!page.continue) {
-      const complete = [
-        "day-boundary-reached",
-        "history-exhausted",
-        "empty-page"
-      ].includes(page.reason);
+      const complete = require("./topchat/wsBackfill").isHistoryCoverageComplete(page.reason);
       await finishTopchatHistorySync(complete, page.reason);
       return;
     }

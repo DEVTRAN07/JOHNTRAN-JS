@@ -6,10 +6,13 @@ const { vietnamDateKey, buildRanking } = require("../../core/topchat/stats");
 const topchatCounter = require("../events/topchatCounter");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 
+const GROUP_HISTORY_FALLBACK_COOLDOWN_MS = 15000;
+const groupHistoryFallbackAt = new Map();
+
 module.exports.config = {
   name: "topchat",
   aliases: ["topmsg"],
-  version: "1.2.0",
+  version: "1.3.0",
   role: 0,
   author: "JOHNTRAN",
   description: "Tìm thành viên gửi nhiều tin nhắn nhất trong ngày của nhóm",
@@ -19,9 +22,16 @@ module.exports.config = {
   dependencies: { canvas: "" }
 };
 
-const GROUP_HISTORY_FALLBACK_COOLDOWN_MS = 15000;
-const groupHistoryFallbackAt = new Map();
+function readDailyCounts(thread) {
+  const today = vietnamDateKey();
+  if (thread?.topchatDate !== today) return { today, counts: {} };
+  const counts = thread.topchatCounts && typeof thread.topchatCounts === "object"
+    ? thread.topchatCounts : {};
+  return { today, counts };
+}
 
+// The SDK endpoint is scoped to the current group. Use it if the local daily
+// counter is empty; its latest page is partial, never full-day coverage.
 async function backfillCurrentGroupHistory(api, threadId, Threads) {
   const key = String(threadId || "");
   if (!key || typeof api?.getGroupChatHistory !== "function") {
@@ -43,8 +53,6 @@ async function backfillCurrentGroupHistory(api, threadId, Threads) {
       : [];
   const imported = await topchatCounter.recordHistoryMessages(messages, Threads);
 
-  // This endpoint returns only the latest page, not a guaranteed full-day
-  // archive. Mark it as partial so the bot never claims complete coverage.
   await topchatCounter.markHistoryCoverage(
     [key], Threads, vietnamDateKey(), false, 0, "group-api-fallback"
   );
@@ -58,14 +66,6 @@ async function backfillCurrentGroupHistory(api, threadId, Threads) {
   };
 }
 
-function readDailyCounts(thread) {
-  const today = vietnamDateKey();
-  if (thread?.topchatDate !== today) return { today, counts: {} };
-  const counts = thread.topchatCounts && typeof thread.topchatCounts === "object"
-    ? thread.topchatCounts : {};
-  return { today, counts };
-}
-
 module.exports.run = async function ({ api, event, Threads, reply }) {
   if (event?.type !== ThreadType.Group) {
     return reply?.warn
@@ -75,9 +75,26 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
 
   const threadId = String(event.threadId);
   await topchatCounter.flushGroup(threadId, Threads);
-  const record = Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
-  const thread = record?.data || {};
-  const { today, counts } = readDailyCounts(thread);
+
+  let record = Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
+  let thread = record?.data || {};
+  let { today, counts } = readDailyCounts(thread);
+  let historyFallback = null;
+
+  if (!Object.keys(counts).length) {
+    try {
+      historyFallback = await backfillCurrentGroupHistory(api, threadId, Threads);
+      if (historyFallback.available && !historyFallback.skipped) {
+        record = Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
+        thread = record?.data || {};
+        ({ today, counts } = readDailyCounts(thread));
+      }
+    } catch (error) {
+      historyFallback = { available: true, error: String(error?.message || error) };
+      console.error("[TOPCHAT] current-group history fallback failed:", error?.stack || error);
+    }
+  }
+
   const ranking = buildRanking(counts, 10);
   const totalMessages = Object.values(counts).reduce(
     (total, member) => total + Math.max(0, Number(member?.count) || 0), 0
@@ -91,13 +108,14 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
     const historyComplete = thread.topchatHistoryDate === today &&
       thread.topchatHistoryComplete === true &&
       !invalidCoverageReasons.has(String(thread.topchatHistoryReason || ""));
+
     let message;
     if (historyFallback?.error) {
       message = "⚠️ Không đọc được lịch sử nhóm từ Zalo: " +
         String(historyFallback.error).slice(0, 180) +
-        "\\nBot vẫn tiếp tục ghi nhận tin nhắn mới qua realtime.";
+        "\nBot vẫn tiếp tục ghi nhận tin nhắn mới qua realtime.";
     } else if (historyFallback?.available && !historyFallback.skipped && historyFallback.received === 0) {
-      message = "⚠️ Zalo không trả tin nhắn từ API lịch sử nhóm. Bot đang chờ dữ liệu realtime; hãy nhắn thử một tin trong nhóm rồi chạy lại /topchat.";
+      message = "⚠️ Zalo không trả tin nhắn từ API lịch sử nhóm. Bot đang chờ dữ liệu realtime; hãy gửi thử một tin nhắn trong nhóm rồi chạy lại /topchat.";
     } else if (historyComplete) {
       message = "📊 Đã quét đủ lịch sử nhưng hôm nay chưa có tin nhắn phù hợp để xếp hạng.";
     } else {
@@ -139,4 +157,9 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
   }
 };
 
-module.exports._test = { readDailyCounts, backfillCurrentGroupHistory, groupHistoryFallbackAt, GROUP_HISTORY_FALLBACK_COOLDOWN_MS };
+module.exports._test = {
+  readDailyCounts,
+  backfillCurrentGroupHistory,
+  groupHistoryFallbackAt,
+  GROUP_HISTORY_FALLBACK_COOLDOWN_MS
+};

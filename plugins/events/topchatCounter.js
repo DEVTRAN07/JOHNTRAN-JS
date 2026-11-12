@@ -44,12 +44,14 @@ function enqueueGroupWrite(threadId, operation) {
   });
 }
 
-function isCountableMessage(message, dateKey, prefix) {
-  if (!message || message.isSelf || message.type !== ThreadType.Group) return false;
+function isCountableMessage(message, dateKey, prefix, receivedAt = 0) {
+  if (!message || message.isSelf || !isGroupMessage(message)) return false;
   const data = message.data || {};
   const uid = String(data.uidFrom || data.senderId || "");
   if (!uid || uid === "0") return false;
-  const timestamp = messageTimestamp(data.ts ?? data.timestamp);
+  // A live WebSocket frame is known to have arrived now even when its payload
+  // omits ts. Historical messages never use this receive-time fallback.
+  const timestamp = messageTimestamp(data.ts ?? data.timestamp) || receivedAt;
   if (!timestamp || vietnamDateKey(timestamp) !== dateKey) return false;
   const content = messageText(data.content);
   if (prefix && content.startsWith(prefix)) return false;
@@ -160,8 +162,9 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
     if (source === "history") pending.history = true;
 
     let added = 0;
+    const receivedAt = source === "live" ? Date.now() : 0;
     for (const message of messages) {
-      if (!isCountableMessage(message, dateKey, prefix)) continue;
+      if (!isCountableMessage(message, dateKey, prefix, receivedAt)) continue;
       const data = message.data || {};
       const uid = String(data.uidFrom || data.senderId || "");
       const messageId = String(data.cliMsgId || data.msgId || "");
@@ -186,8 +189,8 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
 }
 
 async function recordMessage({ event, Threads }) {
-  const threadId = String(event?.threadId || "");
-  if (!threadId || event?.type !== ThreadType.Group || event?.isSelf) return 0;
+  const threadId = String(event?.threadId || event?.data?.idTo || "");
+  if (!threadId || !isGroupMessage(event) || event?.isSelf) return 0;
   return applyMessagesToGroup(threadId, [event], Threads, vietnamDateKey(), "live");
 }
 

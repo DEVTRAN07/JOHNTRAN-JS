@@ -101,6 +101,7 @@ function buildRanking(counts, limit = 10) {
 
 module.exports = {
   vietnamDateKey,
+  isGroupMessage,
   messageData,
   messageText,
   messageTimestamp,

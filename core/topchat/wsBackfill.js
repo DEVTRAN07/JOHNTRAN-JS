@@ -100,5 +100,6 @@ module.exports = {
   DEFAULT_MAX_PAGES,
   maxHistoryPages,
   vietnamDayStartMs,
-  inspectGroupHistoryPage
+  inspectGroupHistoryPage,
+  isHistoryCoverageComplete
 };

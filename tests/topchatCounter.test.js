@@ -297,3 +297,62 @@ test("topchat normalizes serialized group ThreadType values", async () => {
   await counter.flushAll(Threads);
   assert.equal(Threads.rows.get(threadId).data.topchatCounts["member-string-type"].count, 1);
 });
+
+
+test("topchat counts official Zalo GroupMessage events when the live frame omits ts", async () => {
+  global.config = { prefix: "/" };
+  const { GroupMessage } = require("zalo-client");
+  const Threads = fakeThreads();
+  const threadId = "topchat-zalo-model-without-ts";
+  const event = new GroupMessage("bot-self", {
+    idTo: threadId,
+    uidFrom: "member-model",
+    dName: "Member Model",
+    cliMsgId: "model-live-1",
+    content: "tin nhắn mới",
+    msgType: "text"
+  });
+
+  assert.equal(event.type, ThreadType.Group);
+  await counter.run({ event, Threads, isSelf: false });
+  await counter.flushAll(Threads);
+
+  const saved = Threads.rows.get(threadId).data;
+  assert.equal(saved.topchatCounts["member-model"].count, 1);
+  assert.equal(saved.topchatCounts["member-model"].name, "Member Model");
+});
+
+test("topchat accepts serialized group thread type values", async () => {
+  global.config = { prefix: "/" };
+  const Threads = fakeThreads();
+  const threadId = "topchat-string-group-type";
+  const event = makeGroupMessage(threadId, "member-string", "string-type-1", "hello");
+  event.type = "1";
+  await counter.run({ event, Threads, isSelf: false });
+  await counter.flushAll(Threads);
+  assert.equal(Threads.rows.get(threadId).data.topchatCounts["member-string"].count, 1);
+});
+
+test("topchat falls back to the official per-group history API when local counts are empty", async () => {
+  global.config = { prefix: "/" };
+  const threadId = "topchat-group-history-api-fallback";
+  const Threads = fakeThreads({ [threadId]: { prefix: "/" } });
+  const message = makeGroupMessage(threadId, "api-member", "api-history-1", "lấy từ lịch sử nhóm");
+  const api = {
+    async getGroupChatHistory(requestedThreadId, count) {
+      assert.equal(requestedThreadId, threadId);
+      assert.equal(count, 50);
+      return { groupMsgs: [message] };
+    }
+  };
+
+  const result = await topchat._test.backfillCurrentGroupHistory(api, threadId, Threads);
+  assert.equal(result.available, true);
+  assert.equal(result.received, 1);
+  assert.equal(result.added, 1);
+
+  const saved = Threads.rows.get(threadId).data;
+  assert.equal(saved.topchatCounts["api-member"].count, 1);
+  assert.equal(saved.topchatHistoryComplete, false);
+  assert.equal(saved.topchatHistoryReason, "group-api-fallback");
+});

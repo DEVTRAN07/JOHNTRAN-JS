@@ -92,3 +92,15 @@ test("an empty WebSocket history response is not proof of complete daily coverag
   assert.equal(isHistoryCoverageComplete("history-exhausted"), true);
   assert.equal(isHistoryCoverageComplete("day-boundary-reached"), true);
 });
+
+
+test("an empty WebSocket response is not proof of complete daily history", () => {
+  const { isHistoryCoverageComplete } = require("../core/topchat/wsBackfill");
+  const result = inspectGroupHistoryPage([], "2026-11-12", 1, 120);
+  assert.equal(result.reason, "empty-page");
+  assert.equal(isHistoryCoverageComplete(result.reason), false);
+  assert.equal(isHistoryCoverageComplete("missing-timestamps"), false);
+  assert.equal(isHistoryCoverageComplete("response-timeout"), false);
+  assert.equal(isHistoryCoverageComplete("history-exhausted"), true);
+  assert.equal(isHistoryCoverageComplete("day-boundary-reached"), true);
+});
