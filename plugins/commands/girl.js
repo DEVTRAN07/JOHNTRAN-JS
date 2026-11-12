@@ -120,7 +120,9 @@ module.exports.run = async ({ args, event, api, Users }) => {
       }
     }
 
-    await api.sendMessage({ msg: "📷 Ảnh gái ngẫu nhiên", attachments: attachment }, threadId, type);
+    // Zalo SDK expects attachments as an array of local paths/URLs.
+    // Passing a bare string can be interpreted as a generic file instead of image media.
+    await api.sendMessage({ msg: "📷 Ảnh gái ngẫu nhiên", attachments: [attachment], ttlKind: "media" }, threadId, type);
   } catch (error) {
     console.error("Đã xảy ra lỗi khi tải ảnh gái:", error.message);
     return api.sendMessage("❌ Không thể tải ảnh gái lúc này. Vui lòng thử lại sau.", threadId, type);
