@@ -172,7 +172,15 @@ async function loadGroupHistory(threadId, limit) {
     if (!list.length) return current;
     const live = current.filter((m) => m.ts > list[list.length - 1].ts);
     touchThread(threadId, [...list, ...live].slice(-MAX_PER_THREAD));
+    // The ring buffer is capped per thread; keep its history freshness map
+    // capped too, otherwise opening many one-off group chats leaks Map entries.
+    historyAt.delete(threadId);
     historyAt.set(threadId, Date.now());
+    while (historyAt.size > MAX_THREADS) {
+      const oldestThreadId = historyAt.keys().next().value;
+      if (oldestThreadId === undefined) break;
+      historyAt.delete(oldestThreadId);
+    }
     return getMessages(threadId, limit);
   } catch (error) {
     logger.log(`[bridge] lịch sử nhóm ${threadId} lỗi: ${error.message}`, "warn");
