@@ -7,6 +7,7 @@ const { ThreadType } = require("zalo-client");
 
 const Threads = require("./controller/controllerThreads");
 const panelBridge = require("./panelBridge");
+const { getRequesterProfile } = require("./runtime/requesterProfile");
 
 const RECONNECT_BASE_DELAY = 5000;
 const RECONNECT_MAX_DELAY = 60000;
@@ -62,6 +63,12 @@ function startListening(api) {
     try {
       panelBridge.recordIncoming(event);
     } catch { /* bỏ qua */ }
+
+    // Prefetch the sender profile in the background. The lookup is single-flight
+    // and TTL-cached, so repeated messages do not trigger repeated Zalo requests.
+    if (!event.isSelf && event?.data?.uidFrom) {
+      void getRequesterProfile(api, event).catch(() => {});
+    }
 
     // Active groups are normally already cached. Use the synchronous cache
     // hit so a hot message can enter command parsing without an avoidable
