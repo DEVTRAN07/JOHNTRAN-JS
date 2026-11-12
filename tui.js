@@ -6,7 +6,6 @@ const readline = require("readline");
 const os = require("os");
 const { BotManager } = require("./panel/botManager");
 const { collectDeviceMetrics } = require("./core/runtime/deviceMetrics");
-const configSystem = require("./core/config");
 
 const MENU = [
   ["dashboard", "Tổng quan"],
