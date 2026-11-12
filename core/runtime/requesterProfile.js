@@ -1,7 +1,12 @@
 "use strict";
 
+const { pickUser } = require("../zaloProfile");
+const avatarCache = require("../canvas/avatarCache");
+
 const PROFILE_TTL_MS = 5 * 60 * 1000;
+const PROFILE_RETRY_TTL_MS = 15 * 1000;
 const MAX_PROFILES = 1000;
+const AVATAR_SIZE = 240;
 const profiles = new Map();
 const pending = new Map();
 
@@ -29,27 +34,57 @@ function touch(uid, entry) {
   }
 }
 
+function warmAvatar(url) {
+  if (!url) return;
+  // Fetch and decode the image outside the command's critical path. The next
+  // card can draw the cached bitmap without waiting for an HTTP request.
+  void avatarCache.warmAvatar(url).catch(() => null);
+}
+
 function fetchProfileInBackground(api, uid, fallback) {
   if (!uid || !api || typeof api.getUserInfo !== "function") return null;
   if (pending.has(uid)) return pending.get(uid);
 
   const request = Promise.resolve()
-    .then(() => api.getUserInfo(uid))
+    // Ask Zalo for a large avatar; its response keys are commonly UID_0,
+    // not the bare UID passed to getUserInfo().
+    .then(() => api.getUserInfo(uid, AVATAR_SIZE))
     .then((response) => {
-      const profilesMap = response?.changed_profiles || response?.profiles || response?.userInfo || response;
-      const profile = profilesMap?.[uid] || profilesMap?.[String(uid)] || profilesMap;
+      const profile = pickUser(response, uid);
       const name = String(pickName(profile, fallback.requesterName)).slice(0, 32);
       const avatarUrl = pickAvatar(profile) || fallback.requesterAvatarUrl;
-      if (name || avatarUrl) {
-        touch(uid, {
-          requesterName: name || "Người dùng",
-          requesterAvatarUrl: avatarUrl || "",
-          expiresAt: Date.now() + PROFILE_TTL_MS
-        });
-      }
-      return { requesterName: name || "Người dùng", requesterAvatarUrl: avatarUrl || "" };
+      const hasRemoteProfile = Boolean(profile && (
+        pickName(profile, "") || pickAvatar(profile)
+      ));
+      const result = {
+        requesterName: name || "Người dùng",
+        requesterAvatarUrl: avatarUrl || ""
+      };
+
+      // Do not cache a failed lookup for the full profile TTL. A short negative
+      // cache prevents repeated calls during bursts but allows later retries.
+      touch(uid, {
+        ...result,
+        expiresAt: Date.now() + (hasRemoteProfile && avatarUrl
+          ? PROFILE_TTL_MS
+          : PROFILE_RETRY_TTL_MS)
+      });
+      warmAvatar(result.requesterAvatarUrl);
+      return result;
     })
-    .catch(() => null)
+    .catch(() => {
+      const previous = profiles.get(uid);
+      if (previous) return {
+        requesterName: previous.requesterName || fallback.requesterName,
+        requesterAvatarUrl: previous.requesterAvatarUrl || fallback.requesterAvatarUrl
+      };
+
+      touch(uid, {
+        ...fallback,
+        expiresAt: Date.now() + PROFILE_RETRY_TTL_MS
+      });
+      return fallback;
+    })
     .finally(() => pending.delete(uid));
 
   pending.set(uid, request);
@@ -72,15 +107,16 @@ async function getRequesterProfile(api, event) {
     if (cached.expiresAt <= Date.now()) {
       void fetchProfileInBackground(api, uid, fallback);
     }
-    return {
+    const result = {
       requesterName: cached.requesterName || fallback.requesterName,
       requesterAvatarUrl: cached.requesterAvatarUrl || fallback.requesterAvatarUrl
     };
+    warmAvatar(result.requesterAvatarUrl);
+    return result;
   }
 
-  // Do not wait for a remote profile lookup just to draw a menu/folder card.
-  // The current event already provides a usable name; the real avatar/name is
-  // fetched in the background and becomes available for the next interaction.
+  // Return immediately; message listener prefetches this profile on ordinary
+  // messages so the avatar is usually ready before the user opens /menu.
   void fetchProfileInBackground(api, uid, fallback);
   return fallback;
 }
@@ -94,5 +130,7 @@ module.exports = {
   getRequesterProfile,
   clearRequesterProfileCache,
   PROFILE_TTL_MS,
+  PROFILE_RETRY_TTL_MS,
+  AVATAR_SIZE,
   MAX_PROFILES
 };
