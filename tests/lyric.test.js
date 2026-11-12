@@ -9,6 +9,7 @@ async function main() {
   const requested = [];
   const messages = [];
   let completed = false;
+  let cardCalls = 0;
 
   http.getJson = async (url) => {
     requested.push(url);
@@ -31,7 +32,8 @@ async function main() {
       reply: {
         async working() {},
         async failed() {},
-        async card(card) { messages.push(card); },
+        async text(message) { messages.push(message); },
+        async card() { cardCalls += 1; },
         async done() { completed = true; },
         async error(message) { messages.push(message); }
       }
@@ -43,7 +45,10 @@ async function main() {
 
   assert.strictEqual(requested.length, 1);
   assert.ok(requested[0].startsWith("https://lrclib.net/api/search?"));
-  assert.deepStrictEqual(messages[0].rows[0].lines, ["First line", "Second line"]);
+  assert.ok(messages[0].includes("♫ test song"));
+  assert.ok(messages[0].includes("First line"));
+  assert.ok(messages[0].includes("Second line"));
+  assert.strictEqual(cardCalls, 0, "lyrics must not be sent as an image card");
   assert.strictEqual(completed, true);
   assert.strictEqual(await music.getProvider("soundcloud"), await music.getProvider("scl"));
   console.log("✓ lyric tests passed");
