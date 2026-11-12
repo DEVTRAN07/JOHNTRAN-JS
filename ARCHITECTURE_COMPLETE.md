@@ -130,7 +130,7 @@ displayQR)"]
     end
 
     subgraph Plugins["plugins/"]
-        Commands["commands/ (23 lệnh)
+        Commands["commands/ (35 lệnh)
 scl, lyric, noi, stats, menu,
 spam, spamsticker, card, tiktok,
 infofb, getavt, autodown, events..."]
@@ -651,7 +651,7 @@ JOHNTRAN-JS/
 │   ├── botManager.js             # Bot Manager (spawn/stop/restart/logs/QR/watchdog)
 │   └── server/                   # Panel API Server (zero-dep, không Express)
 ├── plugins/
-│   ├── commands/                 # 23 lệnh (scl, lyric, noi, stats, menu, …)
+│   ├── commands/                 # 35 lệnh (scl, lyric, noi, stats, menu, …)
 │   └── events/                   # Đã bỏ v3 (pure command-based bot)
 ├── utils/
 │   ├── index.js                  # 35 dòng, re-export từ 5 module + convertTimestamp inline
@@ -664,7 +664,6 @@ JOHNTRAN-JS/
 │   │                               displayQRCodeInConsole
 │   ├── logger.js                 # Ghi log hệ thống
 │   ├── db.js                     # Kết nối database
-│   └── batchDb.js                # Ghi batch database
 ├── assets/
 │   ├── spam/*.txt                # (vi, en, zh, ja, ko, th, mix)
 │   ├── autosend.json
