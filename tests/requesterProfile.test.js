@@ -42,3 +42,48 @@ test("requester profile returns event fallback immediately and refreshes the rem
   assert.equal(calls, 1);
   clearRequesterProfileCache();
 });
+
+
+test("requester profile extracts the UID_0 key returned by Zalo and warms the real avatar", async () => {
+  const avatarCache = require("../core/canvas/avatarCache");
+  const originalWarmAvatar = avatarCache.warmAvatar;
+  const warmed = [];
+  const calls = [];
+  const uid = "profile-uid-zero-user";
+  const avatar = "https://example.test/real-user-avatar.jpg";
+
+  avatarCache.warmAvatar = async (url) => { warmed.push(url); };
+  clearRequesterProfileCache();
+
+  const api = {
+    async getUserInfo(requestedUid, avatarSize) {
+      calls.push([requestedUid, avatarSize]);
+      return {
+        changed_profiles: {
+          [requestedUid + "_0"]: {
+            userId: requestedUid,
+            displayName: "Real Zalo Name",
+            avatar
+          }
+        }
+      };
+    }
+  };
+
+  try {
+    const event = { data: { uidFrom: uid, dName: "Message Name" } };
+    const first = await getRequesterProfile(api, event);
+    assert.equal(first.requesterName, "Message Name");
+
+    await new Promise(resolve => setImmediate(resolve));
+    const second = await getRequesterProfile(api, event);
+
+    assert.equal(second.requesterName, "Real Zalo Name");
+    assert.equal(second.requesterAvatarUrl, avatar);
+    assert.deepEqual(calls, [[uid, 240]]);
+    assert.ok(warmed.includes(avatar), "real Zalo avatar should be prefetched into the image cache");
+  } finally {
+    avatarCache.warmAvatar = originalWarmAvatar;
+    clearRequesterProfileCache();
+  }
+});
