@@ -2,7 +2,8 @@
 const fs = require("fs");
 const path = require("path");
 const CONFIG_FILE = path.join(__dirname, "../../../../data/dhbc.json");
-const engine = require("../../../games/dhbcEngine");\nconst questionBank = require("../../../games/dhbcBank");
+const engine = require("../../../games/dhbcEngine");
+const questionBank = require("../../../games/dhbcBank");
 const sessions = new Map();
 let configCache;
 function readConfig() {
@@ -14,7 +15,8 @@ function readConfig() {
 }
 function writeConfig() {
   fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(readConfig(), null, 2) + "\n");
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(readConfig(), null, 2) + "
+");
 }
 function isEnabled() { return readConfig().enabled !== false; }
 function setEnabled(value) {
@@ -42,7 +44,8 @@ function start(threadId, uid, name) {
   const key = String(threadId);
   const current = sessions.get(key);
   if (current?.status === "active") return { ok: false, code: "RUNNING", session: current };
-  engine.setQuestionBank(questionBank.getAll());\n  const session = engine.createSession(key, uid, name);
+  engine.setQuestionBank(questionBank.getAll());
+  const session = engine.createSession(key, uid, name);
   sessions.set(key, session);
   return { ok: true, session };
 }
