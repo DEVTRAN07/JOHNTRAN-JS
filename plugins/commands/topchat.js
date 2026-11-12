@@ -119,17 +119,29 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
   let historyRead = false;
   let historyPending = false;
   let historyError = null;
+  const seenIds = thread.topchatDate === today ? thread.topchatSeenMessageIds || [] : [];
+  const historyKey = `${threadId}:${today}:${prefix}`;
+  const cachedHistory = historyCache.get(historyKey);
 
-  // Realtime counters are the immediate source of truth. Use a short bounded
-  // history lookup only to enrich a cold cache with earlier messages today.
-  if (!hasRealtimeCounts || Object.keys(counts).length < 10) {
+  if (cachedHistory && cachedHistory.expiresAt > Date.now()) {
+    mergeCounts(counts, countHistoryMessages(cachedHistory.messages, today, prefix, seenIds));
+    historyRead = true;
+  } else if (Object.keys(counts).length > 0) {
+    // A live ranking is ready. Refresh historical messages in the background
+    // so this command can return the realtime result without waiting for Zalo.
+    historyPending = true;
+    void getCachedHistoryCounts(api, threadId, today, prefix, seenIds).catch((error) => {
+      console.warn("[TOPCHAT] Không đọc được lịch sử nhóm:", error?.message || error);
+    });
+  } else {
+    // Cold start: no local counts exist yet, so wait briefly for a history seed.
     try {
       const historyResult = await readHistoryWithinBudget(
         api,
         threadId,
         today,
         prefix,
-        thread.topchatDate === today ? thread.topchatSeenMessageIds || [] : []
+        seenIds
       );
       if (historyResult) {
         mergeCounts(counts, historyResult.counts);
@@ -141,19 +153,17 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
       historyError = error;
       console.warn("[TOPCHAT] Không đọc được lịch sử nhóm:", error?.message || error);
     }
-  } else {
-    // Large realtime datasets are already available locally; do not spend
-    // time querying a remote endpoint for a result that is ready.
-    historyRead = false;
   }
 
   const ranking = buildRanking(counts, 10);
   if (!ranking.length) {
     const message = historyPending
       ? "⏳ Đang nạp lịch sử chat của nhóm. Hãy dùng /topchat lại sau ít giây."
-      : historyRead
-        ? "📊 Hôm nay nhóm chưa có tin nhắn để xếp hạng. Bot sẽ tiếp tục ghi nhận tin nhắn mới."
-        : "⚠️ Chưa có dữ liệu realtime để xếp hạng. Hãy nhắn tin trong nhóm rồi thử lại.";
+      : historyError
+        ? "⚠️ Không lấy được lịch sử nhóm. Hãy kiểm tra kết nối Zalo rồi thử lại."
+        : historyRead
+          ? "📊 Hôm nay nhóm chưa có tin nhắn để xếp hạng. Bot sẽ tiếp tục ghi nhận tin nhắn mới."
+          : "⚠️ Chưa có dữ liệu realtime để xếp hạng. Hãy nhắn tin trong nhóm rồi thử lại.";
     return reply?.info
       ? reply.info(message)
       : api.sendMessage({ msg: message }, event.threadId, event.type);
