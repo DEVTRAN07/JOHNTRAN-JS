@@ -16,7 +16,7 @@ const stats = require("./core/stats");
 const schedule = require("node-schedule");
 const { cleanOldMessages } = require("./utils/index");
 
-const loginMod = require("./core/login");
+const loginMod = login;
 
 global.client = new Object({
     commands: new Map(),
@@ -192,8 +192,10 @@ if (global.config.hot_reload) {
 
 // Gửi thống kê (hồ sơ, bạn bè, nhóm) lên store để panel hiển thị
 const STATS_INTERVAL = 30000;
+let statsInFlight = false;
 const sendStats = async () => {
-  if (!global.api) return;
+  if (!global.api || statsInFlight) return;
+  statsInFlight = true;
   try {
     const data = await stats.collectStats(global.api);
     db.saveData("BotStats", "name", process.env.JT_BOT_NAME || "main", {
@@ -204,6 +206,8 @@ const sendStats = async () => {
     });
   } catch (error) {
     logger.log(`Không gửi được thống kê: ${error.message}`, "warn");
+  } finally {
+    statsInFlight = false;
   }
 };
 sendStats();
