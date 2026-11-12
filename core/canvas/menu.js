@@ -320,8 +320,15 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   return filePath;
 }
 
+const FOLDER_ICON_ALIASES = Object.freeze({ utility: "public", group: "manager", bot: "mybot", special: "hidden" });
+
+function resolveFolderIconSlug(folderSlug, folderName) {
+  const key = String(folderSlug || folderName || "").trim().toLowerCase();
+  return FOLDER_ICON_ALIASES[key] || key;
+}
+
 async function renderFolderCard({
-  folderName, folderDescription, requesterName, requesterAvatarUrl, botVersion
+  folderName, folderSlug, folderDescription, requesterName, requesterAvatarUrl, botVersion
 }) {
   theme.initFonts();
   const S = theme.S;
@@ -342,7 +349,7 @@ async function renderFolderCard({
   const padX = panelX + S(23);
   const iconCenterX = padX + S(25);
   const iconCenterY = panelY + S(52);
-  const slug = String(folderName || "").toLowerCase();
+  const slug = resolveFolderIconSlug(folderSlug, folderName);
   drawCategoryIcon(ctx, slug, iconCenterX, iconCenterY, S(54));
 
   const titleX = padX + S(70);
@@ -395,4 +402,4 @@ async function renderFolderCard({
   return filePath;
 }
 
-module.exports = { renderMenuGrid, renderFolderCard, _test: { presenceBadgePosition } };
+module.exports = { renderMenuGrid, renderFolderCard, _test: { presenceBadgePosition, resolveFolderIconSlug } };

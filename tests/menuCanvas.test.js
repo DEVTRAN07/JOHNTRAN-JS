@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const { loadImage } = require("canvas");
 const { test } = require("node:test");
 const theme = require("../core/canvas/theme");
-const { renderMenuGrid } = require("../core/canvas/menu");
+const { renderMenuGrid, _test: menuCanvasTestHelpers } = require("../core/canvas/menu");
 
 test("menu renders individual command cards inside a macOS window", async () => {
   const filePath = await renderMenuGrid({
@@ -70,4 +70,14 @@ test("presence badge stays attached to avatars of different sizes", () => {
     assert.ok(distance < size / 2, "badge center should overlap the avatar circle");
     assert.ok(distance + outerRadius > size / 2, "badge ring should cross the avatar edge");
   }
+});
+
+test("folder icons resolve canonical slugs instead of display labels", () => {
+  const resolve = menuCanvasTestHelpers.resolveFolderIconSlug;
+  assert.equal(resolve("public", "Utility"), "public");
+  assert.equal(resolve("", "Utility"), "public");
+  assert.equal(resolve("", "Group"), "manager");
+  assert.equal(resolve("", "Bot"), "mybot");
+  assert.equal(resolve("", "Special"), "hidden");
+  assert.equal(resolve("game", "Game"), "game");
 });

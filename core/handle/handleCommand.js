@@ -75,6 +75,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
         const profile = await getRequesterProfile(api, event, { waitMs: 400, skipAvatarWarm: true });
         const imagePath = await renderCanvas("menu-folder", {
           folderName: folder.name,
+          folderSlug: folder.slug,
           folderDescription: folder.description,
           folderIcon: folder.icon,
           requesterName: profile.requesterName,
