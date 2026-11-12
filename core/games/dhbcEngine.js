@@ -58,6 +58,11 @@ function leave(session, uid) {
   const key = String(uid);
   if (!session.players.has(key)) return { ok: false, code: "NOT_JOINED" };
   session.players.delete(key);
+  if (session.ownerId === key && session.players.size) {
+    const nextOwner = session.players.values().next().value;
+    session.ownerId = nextOwner.uid;
+    session.ownerName = nextOwner.name;
+  }
   return { ok: true, empty: session.players.size === 0 };
 }
 function checkAnswer(session, answer) {
