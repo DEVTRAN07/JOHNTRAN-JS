@@ -38,31 +38,45 @@ function mergeCounts(target, addition) {
   return target;
 }
 
-async function readHistoryCounts(api, threadId, dateKey, prefix, seenIds) {
+async function readHistoryMessages(api, threadId) {
   if (typeof api?.getGroupChatHistory !== "function") {
     throw new Error("Zalo API không hỗ trợ getGroupChatHistory");
   }
   const response = await api.getGroupChatHistory(String(threadId), HISTORY_LIMIT);
-  const messages = Array.isArray(response?.groupMsgs)
+  return Array.isArray(response?.groupMsgs)
     ? response.groupMsgs
     : Array.isArray(response?.data?.groupMsgs)
       ? response.data.groupMsgs
       : [];
+}
+
+function countHistoryMessages(messages, dateKey, prefix, seenIds) {
   return aggregateMessages(messages, dateKey, prefix, "", seenIds);
+}
+
+async function readHistoryCounts(api, threadId, dateKey, prefix, seenIds) {
+  const messages = await readHistoryMessages(api, threadId);
+  return countHistoryMessages(messages, dateKey, prefix, seenIds);
 }
 
 function getCachedHistoryCounts(api, threadId, dateKey, prefix, seenIds) {
   const key = `${threadId}:${dateKey}:${prefix}`;
   const cached = historyCache.get(key);
   if (cached && cached.expiresAt > Date.now()) {
-    return Promise.resolve({ counts: cached.counts, source: "cache" });
+    return Promise.resolve({
+      counts: countHistoryMessages(cached.messages, dateKey, prefix, seenIds),
+      source: "cache"
+    });
   }
   if (historyFlights.has(key)) return historyFlights.get(key);
 
-  const task = readHistoryCounts(api, threadId, dateKey, prefix, seenIds)
-    .then((counts) => {
-      historyCache.set(key, { counts, expiresAt: Date.now() + HISTORY_CACHE_TTL_MS });
-      return { counts, source: "live" };
+  const task = readHistoryMessages(api, threadId)
+    .then((messages) => {
+      historyCache.set(key, { messages, expiresAt: Date.now() + HISTORY_CACHE_TTL_MS });
+      return {
+        counts: countHistoryMessages(messages, dateKey, prefix, seenIds),
+        source: "live"
+      };
     })
     .finally(() => {
       if (historyFlights.get(key) === task) historyFlights.delete(key);
@@ -75,7 +89,6 @@ async function readHistoryWithinBudget(api, threadId, dateKey, prefix, seenIds, 
   let timer;
   const timeout = new Promise(resolve => {
     timer = setTimeout(() => resolve(null), Math.max(0, budgetMs));
-    timer.unref?.();
   });
   try {
     return await Promise.race([
