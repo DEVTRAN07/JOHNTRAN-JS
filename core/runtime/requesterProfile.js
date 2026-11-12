@@ -35,10 +35,22 @@ function touch(uid, entry) {
 }
 
 function warmAvatar(url) {
-  if (!url) return;
+  if (!url) return Promise.resolve(null);
   // Fetch and decode the image outside the command's critical path. The next
   // card can draw the cached bitmap without waiting for an HTTP request.
-  void avatarCache.warmAvatar(url).catch(() => null);
+  return Promise.resolve(avatarCache.warmAvatar(url)).catch(() => null);
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function warmAvatarWithin(url, waitMs) {
+  if (!url) return;
+  const task = warmAvatar(url);
+  if (waitMs > 0) {
+    await Promise.race([task, delay(waitMs)]);
+  }
 }
 
 function fetchProfileInBackground(api, uid, fallback) {
@@ -91,7 +103,9 @@ function fetchProfileInBackground(api, uid, fallback) {
   return request;
 }
 
-async function getRequesterProfile(api, event) {
+async function getRequesterProfile(api, event, options = {}) {
+  const waitMs = Math.min(300, Math.max(0, Number(options.waitMs) || 0));
+  const avatarWaitMs = Math.min(300, Math.max(0, Number(options.avatarWaitMs) || 0));
   const data = event?.data || {};
   const uid = String(data.uidFrom || event?.senderID || event?.senderId || "");
   const fallback = {
@@ -111,13 +125,22 @@ async function getRequesterProfile(api, event) {
       requesterName: cached.requesterName || fallback.requesterName,
       requesterAvatarUrl: cached.requesterAvatarUrl || fallback.requesterAvatarUrl
     };
-    warmAvatar(result.requesterAvatarUrl);
+    if (avatarWaitMs > 0) await warmAvatarWithin(result.requesterAvatarUrl, avatarWaitMs);
+    else void warmAvatar(result.requesterAvatarUrl);
     return result;
   }
 
-  // Return immediately; message listener prefetches this profile on ordinary
-  // messages so the avatar is usually ready before the user opens /menu.
-  void fetchProfileInBackground(api, uid, fallback);
+  // Return immediately for normal messages. Visual menu cards may opt into a
+  // short bounded wait so the first card can include the requester's avatar.
+  const request = fetchProfileInBackground(api, uid, fallback);
+  if (waitMs > 0 && request) {
+    const profile = await Promise.race([request, delay(waitMs).then(() => null)]);
+    if (profile) {
+      if (avatarWaitMs > 0) await warmAvatarWithin(profile.requesterAvatarUrl, avatarWaitMs);
+      else void warmAvatar(profile.requesterAvatarUrl);
+      return profile;
+    }
+  }
   return fallback;
 }
 
