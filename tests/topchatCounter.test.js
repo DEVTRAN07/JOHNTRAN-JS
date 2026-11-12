@@ -1,6 +1,11 @@
 "use strict";
 
-const test = require("node:test");
+const { test, after } = require("node:test");
+const workerPool = require("../core/workerPool");
+
+after(async () => {
+  await workerPool.shutdown();
+});
 const assert = require("node:assert/strict");
 const { ThreadType } = require("zalo-client");
 const counter = require("../plugins/events/topchatCounter");
