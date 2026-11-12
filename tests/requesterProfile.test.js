@@ -91,3 +91,39 @@ test("requester profile extracts the UID_0 key returned by Zalo and warms the re
     clearRequesterProfileCache();
   }
 });
+
+
+test("visual menu profile lookup returns a fast UID_0 profile and waits for avatar cache warmup", async () => {
+  const avatarCache = require("../core/canvas/avatarCache");
+  const originalWarmAvatar = avatarCache.warmAvatar;
+  const avatar = "https://example.test/first-menu-avatar.jpg";
+  const uid = "profile-first-menu-user";
+  avatarCache.warmAvatar = async () => null;
+  clearRequesterProfileCache();
+
+  try {
+    const result = await getRequesterProfile({
+      async getUserInfo(requestedUid, size) {
+        assert.equal(requestedUid, uid);
+        assert.equal(size, 240);
+        return {
+          changed_profiles: {
+            [requestedUid + "_0"]: {
+              userId: requestedUid,
+              displayName: "Menu Owner",
+              avatar
+            }
+          }
+        };
+      }
+    }, {
+      data: { uidFrom: uid, dName: "Fallback Name" }
+    }, { waitMs: 90, avatarWaitMs: 110 });
+
+    assert.equal(result.requesterName, "Menu Owner");
+    assert.equal(result.requesterAvatarUrl, avatar);
+  } finally {
+    avatarCache.warmAvatar = originalWarmAvatar;
+    clearRequesterProfileCache();
+  }
+});
