@@ -22,7 +22,7 @@ async function renderQuestion(question, number = 1) {
   ctx.fillStyle = "#c6d6f5";
   ctx.font = "20px sans-serif";
   ctx.fillText(`CÂU HỎI #${number}  •  NHÌN GỢI Ý VÀ ĐOÁN TỪ`, width / 2, 105);
-  const clues = question.clues || [];
+  const clues = question.symbols || question.clues || [];
   const gap = 28, tileWidth = Math.min(340, (width - 100 - gap * (clues.length - 1)) / clues.length);
   const total = tileWidth * clues.length + gap * (clues.length - 1);
   const startX = (width - total) / 2;
@@ -35,11 +35,16 @@ async function renderQuestion(question, number = 1) {
     ctx.strokeRect(x + 2, y + 2, tileWidth - 4, 186);
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 92px sans-serif";
-    ctx.fillText(question.symbols?.[index] || "?", x + tileWidth / 2, y + 118, tileWidth - 24);
+    ctx.fillText(clue || "?", x + tileWidth / 2, y + 118, tileWidth - 24);
     ctx.fillStyle = "#f2d17b";
     ctx.font = "16px sans-serif";
     ctx.fillText(`HÌNH ${index + 1}`, x + tileWidth / 2, y + 155);
   });
+  if (clues.length > 1) {
+    ctx.fillStyle = "#f8d77b";
+    ctx.font = "bold 48px sans-serif";
+    ctx.fillText("+", width / 2, 270);
+  }
   ctx.fillStyle = "#ffffff";
   ctx.font = "22px sans-serif";
   ctx.fillText("Gõ đáp án trực tiếp vào khung chat", width / 2, 420);
