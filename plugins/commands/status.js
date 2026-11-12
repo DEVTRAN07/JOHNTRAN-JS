@@ -3,6 +3,7 @@
 const fs = require("fs");
 const stats = require("../../core/stats");
 const { collectDeviceMetrics } = require("../../core/runtime/deviceMetrics");
+const { renderStatus } = require("../../core/canvas/status");
 
 module.exports.config = {
   name: "status",
@@ -60,7 +61,7 @@ module.exports.run = async function ({ api, event, Threads, threadData, reply })
     const device = collectDeviceMetrics();
     const group = currentGroup(api, event, Threads, threadData);
 
-    imagePath = await require("../../core/canvas/status").renderStatus({
+    imagePath = await renderStatus({
       botName: profile?.displayName || global.config?.name_bot || "JOHNTRAN",
       botAvatar: profile?.avatar || "",
       device,
