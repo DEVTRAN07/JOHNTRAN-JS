@@ -25,7 +25,7 @@ module.exports.run = async function ({ api, event, args = [] }) {
   const commands = global.client?.commands;
 
   if (!(commands instanceof Map)) {
-    return api.sendMessage({ msg: "📂 Danh mục lệnh đang được khởi tạo. Vui lòng thử lại sau." }, threadId, type);
+    return api.sendMessage({ msg: "📂 Danh mục lệnh đang được khởi tạo. Gõ next / prev để chuyển mục khi danh sách sẵn sàng." }, threadId, type);
   }
 
   const requested = args.join(" ").trim();

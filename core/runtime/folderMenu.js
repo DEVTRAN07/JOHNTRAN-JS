@@ -127,7 +127,7 @@ function renderFolder(folder, commands, prefix, botName, version) {
   return [
     `╭━━━〔 ${folder.icon} ${folder.name.toUpperCase()} 〕━━━╮`,
     `│ ${folder.description}`,
-    `│ 📋 ${commands.length} lệnh`,
+    `│ 📋 Danh sách lệnh · ${commands.length} lệnh`,
     "├────────────────────────",
     ...lines.map(line => `│ ${line}`),
     "├────────────────────────",
