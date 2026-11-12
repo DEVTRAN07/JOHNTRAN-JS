@@ -12,6 +12,7 @@ const TABLE_MAP = {
 const SYNC_INTERVAL = Number(process.env.SUPABASE_SYNC_MS) || 30000;
 const BACKOFF_CAP = 5 * 60 * 1000;
 const LOG_COOLDOWN = 60 * 1000;
+const RETRY_CONCURRENCY = 5;
 const SYNC_ENABLED = process.env.JT_SUPABASE_SYNC !== "0";
 
 // "Prepared" query specs for consistent, reusable Supabase operations.
@@ -48,7 +49,11 @@ class SupabaseStore {
     this.prepared = PREPARED_STATEMENTS;
     this.client = createClient(url, serviceKey, this.clientOptions);
     this.mirror = { Users: {}, Threads: {}, Metrics: {} };
-    this.retryQueue = [];
+    // Keep only the latest failed mutation per table/id, not every retry copy.
+    this.retryQueue = new Map();
+    this.writeVersions = new Map();
+    this.writeSequence = 0;
+    this.retryFlush = null;
     this.syncing = null;
     this.lastSyncAt = 0;
     this.syncError = null;
@@ -162,24 +167,81 @@ class SupabaseStore {
     return this.syncing;
   }
 
+  async executeWrite(dbTable, op, payload) {
+    if (op === "upsert") {
+      const { error } = await this.executePrepared("upsert", dbTable, { payload });
+      if (error) throw new Error(error.message);
+      return true;
+    }
+    if (op === "delete") {
+      const { error } = await this.executePrepared("deleteById", dbTable, { id: payload.id });
+      if (error) throw new Error(error.message);
+      return true;
+    }
+    throw new Error(`Supabase write operation không hợp lệ: ${op}`);
+  }
+
   push(dbTable, op, payload) {
-    const run = async () => {
-      if (op === "upsert") { const { error } = await this.executePrepared("upsert", dbTable, { payload }); if (error) throw new Error(error.message); }
-      else if (op === "delete") { const { error } = await this.executePrepared("deleteById", dbTable, { id: payload.id }); if (error) throw new Error(error.message); }
-    };
-    run().catch((error) => {
+    const id = String(payload?.id ?? "");
+    if (!id) {
+      console.log(`[supabase] Bỏ qua ${op}: thiếu record id cho ${dbTable}`);
+      return;
+    }
+
+    const key = `${dbTable}:${id}`;
+    const version = ++this.writeSequence;
+    this.writeVersions.set(key, version);
+    // A newer mutation supersedes an older failed retry for this record.
+    this.retryQueue.delete(key);
+
+    this.executeWrite(dbTable, op, payload).then(() => {
+      if (this.writeVersions.get(key) === version) this.writeVersions.delete(key);
+    }).catch((error) => {
+      // Ignore stale failures that completed after a newer mutation.
+      if (this.writeVersions.get(key) !== version) return;
+
       const classified = this.classifyError(error);
       if (classified === "network") this.logFailure(`Ghi ${op} thất bại, xếp retry: ${error.message}`, classified);
       else console.log(`[supabase] Ghi ${op} thất bại, xếp retry: ${error.message}`);
-      this.retryQueue.push({ dbTable, op, payload });
+      this.retryQueue.set(key, { key, dbTable, op, payload, version, failedAt: Date.now() });
       this.metrics.retries += 1;
     });
   }
 
   async flushRetry() {
-    if (this.retryQueue.length === 0) return;
-    const queue = this.retryQueue; this.retryQueue = [];
-    for (const job of queue) this.push(job.dbTable, job.op, job.payload);
+    if (this.retryFlush) return this.retryFlush;
+    if (this.retryQueue.size === 0) return;
+
+    this.retryFlush = (async () => {
+      const pending = [...this.retryQueue.entries()];
+      for (let offset = 0; offset < pending.length; offset += RETRY_CONCURRENCY) {
+        const batch = pending.slice(offset, offset + RETRY_CONCURRENCY);
+        await Promise.all(batch.map(async ([key, job]) => {
+          // A newer local write may have replaced this retry after snapshotting.
+          if (this.writeVersions.get(key) !== job.version ||
+              this.retryQueue.get(key)?.version !== job.version) return;
+
+          try {
+            await this.executeWrite(job.dbTable, job.op, job.payload);
+            if (this.writeVersions.get(key) === job.version &&
+                this.retryQueue.get(key)?.version === job.version) {
+              this.retryQueue.delete(key);
+              this.writeVersions.delete(key);
+            }
+          } catch (error) {
+            // Keep the latest job in place. Do not append duplicate retries.
+            if (this.writeVersions.get(key) === job.version) {
+              const classified = this.classifyError(error);
+              if (classified === "network") this.logFailure(`Retry ${job.op} thất bại: ${error.message}`, classified);
+            }
+          }
+        }));
+      }
+    })().finally(() => {
+      this.retryFlush = null;
+    });
+
+    return this.retryFlush;
   }
 
   async healthCheck({ tables } = {}) {
@@ -201,7 +263,7 @@ class SupabaseStore {
   }
 
   getStatus() {
-    return { ok: !this.syncError && this.lastSyncAt > 0, lastSyncAt: this.lastSyncAt, syncError: this.syncError, consecutiveFailures: this.consecutiveFailures, classified: this.classified, pool: this.clientOptions?.pool || null, metrics: { ...this.metrics, retryQueue: this.retryQueue.length } };
+    return { ok: !this.syncError && this.lastSyncAt > 0, lastSyncAt: this.lastSyncAt, syncError: this.syncError, consecutiveFailures: this.consecutiveFailures, classified: this.classified, pool: this.clientOptions?.pool || null, metrics: { ...this.metrics, retryQueue: this.retryQueue.size } };
   }
 
   get(tableName, idField, id) { const key = String(id); const row = this.mirror[tableName]?.[key]; return row ? { ...row } : null; }
