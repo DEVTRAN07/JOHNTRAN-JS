@@ -263,7 +263,7 @@ async function drawSmallAvatar(ctx, url, name, x, y, size) {
   ctx.restore();
 }
 function drawAvatarInitials(ctx, name, x, y, size) {
-  const initials = String(name || "U").trim().split(/\\s+/).slice(-2).map(part => Array.from(part)[0] || "").join("").toUpperCase();
+  const initials = String(name || "U").trim().split(/\s+/).slice(-2).map(part => Array.from(part)[0] || "").join("").toUpperCase();
   ctx.save();
   ctx.fillStyle = "#ffffff";
   ctx.font = theme.font(17, "JT-Round-Bold");
