@@ -100,7 +100,9 @@ function enqueueGroupWrite(threadId, operation) {
 }
 
 function isCountableMessage(message, dateKey, prefix, receivedAt = 0) {
-  if (!message || message.isSelf || !isGroupMessage(message)) return false;
+  // Zalo SDK replaces uidFrom='0' with the authenticated account UID and keeps isSelf=true.
+  // Count that account like any other member; only reject unresolved placeholder IDs.
+  if (!message || !isGroupMessage(message)) return false;
   const data = message.data || {};
   const uid = String(data.uidFrom || data.senderId || "");
   if (!uid || uid === "0") return false;

@@ -94,14 +94,15 @@ test("topchat imports all today's old group messages from WebSocket in one batch
 
   const result = await counter.recordHistoryMessages(messages, Threads);
   await counter.flushAll(Threads);
-  assert.deepEqual(result, { groups: 1, messages: 3 });
+  assert.deepEqual(result, { groups: 1, messages: 4 });
 
   const saved = Threads.rows.get(threadId).data;
   assert.equal(saved.topchatDate, today);
   assert.equal(saved.topchatCounts.u1.count, 2);
   assert.equal(saved.topchatCounts.u2.count, 1);
   assert.equal(saved.topchatCounts.u3, undefined);
-  assert.equal(saved.topchatSeenMessageIds.length, 3);
+  assert.equal(saved.topchatCounts.bot.count, 1);
+  assert.equal(saved.topchatSeenMessageIds.length, 4);
 });
 
 test("topchat merges historical and realtime messages without counting overlap twice", async () => {
@@ -390,7 +391,7 @@ test("topchat does not trust legacy history completion markers without a version
   assert.match(message, /trạng thái quét lịch sử cũ/i);
 });
 
-test("topchat observes raw listener events before self filtering", async () => {
+test("topchat observes and counts the authenticated account as a group member", async () => {
   global.config = { prefix: "/" };
   const Threads = fakeThreads();
   const threadId = "topchat-self-event-diagnostics";
@@ -410,9 +411,9 @@ test("topchat observes raw listener events before self filtering", async () => {
   await counter.flushAll(Threads);
   const saved = Threads.rows.get(threadId).data;
   assert.equal(saved.topchatDiagnostics.received, 1);
-  assert.equal(saved.topchatDiagnostics.counted, 0);
-  assert.equal(saved.topchatDiagnostics.rejected, 1);
-  assert.deepEqual(saved.topchatCounts, {});
+  assert.equal(saved.topchatDiagnostics.counted, 1);
+  assert.equal(saved.topchatDiagnostics.rejected, 0);
+  assert.equal(saved.topchatCounts["bot-self"].count, 1);
 });
 
 test("topchat listener diagnostics are isolated per group and identify user message types", () => {

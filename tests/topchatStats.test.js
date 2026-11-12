@@ -44,7 +44,7 @@ test("aggregateMessages counts text and media, skips commands, self and other da
   assert.equal(counts.u1.name, "An");
   assert.equal(counts.u3.count, 1);
   assert.equal(counts.u2, undefined);
-  assert.equal(counts.u4, undefined);
+  assert.equal(counts.u4.count, 1);
   assert.equal(counts.u5, undefined);
   assert.equal(buildRanking(counts)[0].uid, "u1");
 });

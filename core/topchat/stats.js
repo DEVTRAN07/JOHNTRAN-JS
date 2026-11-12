@@ -66,7 +66,9 @@ function aggregateMessages(messages, dateKey, prefix = "/", selfUid = "", exclud
     const messageId = String(data.cliMsgId || data.msgId || "");
     if (messageId && excluded.has(messageId)) continue;
     const uid = String(data.uidFrom || data.senderId || data.uid || "");
-    if (!uid || uid === "0" || message?.isSelf === true || (selfUid && uid === String(selfUid))) continue;
+    // GroupMessage normalizes the bot account uidFrom from "0" to the real UID.
+    // Keep valid self messages in the ranking; skip only unresolved IDs.
+    if (!uid || uid === "0" || (selfUid && uid === String(selfUid))) continue;
 
     const timestamp = messageTimestamp(data.ts ?? data.timestamp ?? message?.timestamp);
     if (!timestamp || vietnamDateKey(timestamp) !== dateKey) continue;
