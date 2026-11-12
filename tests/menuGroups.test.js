@@ -67,7 +67,7 @@ test("each live command is assigned to its intended folder", () => {
     ["tiktok", "Tiện ích", "public"],
     ["scl", "Nhạc", "music"],
     ["lyric", "Nhạc", "music"],
-    ["tutien", "Game", "game"],
+    ["dhbc", "Game", "game"],
     ["autodown", "Tiện ích", "tools"],
     ["autosend", "Tiện ích", "tools"],
     ["stk", "Tiện ích", "tools"],
