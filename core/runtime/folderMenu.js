@@ -167,17 +167,17 @@ function renderAllCommands(groups, prefix, botName, version) {
  * shortcuts such as /game, /tools and /admin show the exact same commands.
  */
 const MENU_GROUPS = Object.freeze([
-  { name: "Info", slug: "info", icon: "💡", description: "Thông tin & hướng dẫn" },
-  { name: "Public", slug: "public", icon: "🌐", description: "Tiện ích chung" },
-  { name: "Music", slug: "music", icon: "🎵", description: "Nghe nhạc trực tuyến" },
-  { name: "Game", slug: "game", icon: "🎮", description: "Giải trí & game" },
-  { name: "Tools", slug: "tools", icon: "🧰", description: "Công cụ hỗ trợ" },
-  { name: "Test", slug: "test", icon: "🧪", description: "Lệnh thử nghiệm" },
-  { name: "Anti", slug: "anti", icon: "🛡️", description: "Bảo vệ nhóm" },
-  { name: "Manager", slug: "manager", icon: "⚙️", description: "Quản lý nhóm" },
-  { name: "Admin", slug: "admin", icon: "👑", description: "Quản trị hệ thống" },
-  { name: "Mybot", slug: "mybot", icon: "🤖", description: "Quản lý bot" },
-  { name: "Hidden", slug: "hidden", icon: "🔒", description: "Lệnh ẩn & đặc biệt" }
+  { name: "Thông tin", slug: "info", icon: "💡", description: "Thông tin tài khoản & hướng dẫn" },
+  { name: "Tiện ích", slug: "public", icon: "🌐", description: "Tiện ích dùng chung cho mọi người" },
+  { name: "Âm nhạc", slug: "music", icon: "🎵", description: "Tìm kiếm và nghe nhạc" },
+  { name: "Trò chơi", slug: "game", icon: "🎮", description: "Game và hoạt động giải trí" },
+  { name: "Công cụ", slug: "tools", icon: "🧰", description: "Công cụ tự động và xử lý tác vụ" },
+  { name: "Chống vi phạm", slug: "anti", icon: "🛡️", description: "Bảo vệ nhóm và chống spam" },
+  { name: "Quản lý nhóm", slug: "manager", icon: "👥", description: "Quản lý thành viên và tin nhắn" },
+  { name: "Quản trị", slug: "admin", icon: "👑", description: "Lệnh dành cho quản trị viên" },
+  { name: "Vận hành bot", slug: "mybot", icon: "🤖", description: "Theo dõi và điều khiển hoạt động bot" },
+  { name: "Lệnh đặc biệt", slug: "hidden", icon: "🔒", description: "Các lệnh đặc biệt, không hiển thị công khai" },
+  { name: "Thử nghiệm", slug: "test", icon: "🧪", description: "Các lệnh đang thử nghiệm" }
 ]);
 
 const MENU_COMMAND_GROUPS = Object.freeze({
@@ -252,8 +252,15 @@ function collectMenuGroups(commands, userId) {
 function resolveMenuGroup(commands, userId, value) {
   const key = normalizeFolder(value);
   if (!key || ALL_FOLDER_KEYS.has(key)) return null;
+  const legacyNames = {
+    info: ["info"], public: ["public"], music: ["music"], game: ["game"],
+    tools: ["tools"], anti: ["anti"], manager: ["manager"], admin: ["admin"],
+    mybot: ["mybot"], hidden: ["hidden"], test: ["test"]
+  };
   const group = MENU_GROUPS.find(item =>
-    normalizeFolder(item.name) === key || normalizeFolder(item.slug) === key
+    normalizeFolder(item.name) === key ||
+    normalizeFolder(item.slug) === key ||
+    (legacyNames[item.slug] || []).includes(key)
   );
   if (!group) return null;
   const collected = collectMenuGroups(commands, userId);
