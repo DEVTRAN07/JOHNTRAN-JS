@@ -29,5 +29,7 @@ test("status reads group enablement from the event's already-loaded thread recor
   assert.equal(result.id, "status-fast-group");
   assert.equal(result.enabled, true);
   assert.equal(result.name, "Nhóm hiện tại");
-  assert.equal(apiCalls, 1);
+  assert.equal(apiCalls, 0, "Zalo API call must not start on the synchronous status path");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(apiCalls, 1, "group metadata refresh should start in the background");
 });
