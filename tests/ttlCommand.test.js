@@ -3,14 +3,16 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const command = require("../plugins/commands/ttl");
 
-test("ttl accepts 30 seconds for bot messages", () => {
-  assert.deepEqual(command._test.parse("30s"), { mode: "local", ms: 30000, label: "30 giây" });
+test("ttl accepts bot-only recall durations", () => {
+  assert.deepEqual(command._test.parse("30s"), { mode: "local", ms: 30000, label: "30s" });
+  assert.equal(command._test.parse("5m").ms, 300000);
+  assert.equal(command._test.parse("1h").ms, 3600000);
+  assert.equal(command._test.parse("1d").ms, 86400000);
 });
-test("ttl keeps native Zalo chat expiry in whole days", () => {
-  assert.equal(command._test.parse("5d").mode, "native");
-  assert.equal(command._test.parse("5d").ms, 5 * command._test.DAY_MS);
+test("ttl rejects invalid and unsafe durations", () => {
+  for (const value of ["1s", "4s", "31d", "999999d", "abc", "30m?"]) assert.ok(command._test.parse(value).error);
 });
-test("ttl rejects unsupported sub-day native values and unsafe local values", () => {
-  for (const value of ["1s", "2s", "30m", "2h", "31d", "abc"]) assert.ok(command._test.parse(value).error);
+test("ttl supports disabling and restoring defaults", () => {
+  assert.equal(command._test.parse("off").mode, "off");
+  assert.equal(command._test.parse("default").mode, "default");
 });
-test("ttl off is recognized", () => assert.equal(command._test.parse("off").mode, "off"));
