@@ -68,7 +68,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
           const mentionUid = event?.data?.uidFrom;
           const commandLines = items.map(item => `➜ ${prefix}${item.usage || item.name} — ${item.description || "Chưa có mô tả"}`);
           const caption = [
-            `@\\u200b${mentionName}`,
+            `@\u200b${mentionName}`,
             `${folder.icon} Chi tiết chức năng: ${folder.name}`,
             folder.description,
             `📋 Danh sách lệnh ${folder.name} (${items.length})`,
@@ -76,7 +76,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
             ...commandLines,
             "",
             `💡 Gõ ${prefix}menu để xem các danh mục khác.`
-          ].join("\\n");
+          ].join("\n");
           const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
           return await wrappedApi.sendMessage({
             msg: caption,
