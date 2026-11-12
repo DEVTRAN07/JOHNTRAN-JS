@@ -7,116 +7,51 @@ const folders = require("../../core/runtime/folderMenu");
 module.exports.config = {
   name: "menu",
   aliases: [],
-  version: "5.3.0",
+  version: "5.4.0",
   role: 0,
   author: "JOHNTRAN",
-  description: "Danh mục thư mục và toàn bộ lệnh dạng thẻ ảnh",
+  description: "Hiển thị danh mục chức năng dạng Card",
   category: "Tiện ích",
-  usage: "[tên danh mục|tổng]",
+  usage: "",
   cooldowns: 0,
   dependencies: {}
 };
 
-function requesterName(event) {
-  return String(
-    event?.data?.dName ||
-    event?.data?.senderName ||
-    event?.data?.name ||
-    "Người dùng"
-  ).slice(0, 32);
-}
-
-async function sendImageMenu(api, event, cards, totalCommands, pageTitle = "Danh sách tính năng") {
-  const { threadId, type } = event;
-  const { renderMenuGrid } = require("../../core/canvas/menu");
-  const imagePath = await renderMenuGrid({
-    requesterName: requesterName(event),
-    requesterAvatarUrl: "",
-    botVersion,
-    prefix: global.config?.prefix || "/",
-    page: 1,
-    totalPages: 1,
-    commands: cards,
-    totalCommands
-  });
-
-  try {
-    return await api.sendMessage({
-      msg: pageTitle,
-      attachments: [imagePath],
-      ttlKind: "card"
-    }, threadId, type);
-  } finally {
-    // Zalo SDK uploads the attachment during sendMessage; keep a short
-    // grace period for asynchronous file reads, then remove the temp image.
-    setTimeout(() => {
-      try { fs.rmSync(imagePath, { force: true }); } catch { /* cleanup only */ }
-    }, 60000).unref?.();
-  }
-}
-
-module.exports.run = async function ({ api, event, args = [] }) {
+module.exports.run = async function ({ api, event }) {
   const senderId = event?.data?.uidFrom;
-  const prefix = global.config?.prefix || "/";
   const commands = global.client?.commands;
-
   if (!(commands instanceof Map)) {
-    return api.sendMessage({
-      msg: "📂 Danh mục lệnh đang được khởi tạo, vui lòng thử lại sau."
-    }, event.threadId, event.type);
+    return api.sendMessage({ msg: "📂 Danh mục đang được khởi tạo, vui lòng thử lại." }, event.threadId, event.type);
   }
 
-  const requested = args.join(" ").trim();
-  const normalized = folders.normalizeFolder(requested);
-
+  let imagePath;
   try {
-    if (normalized && folders.ALL_FOLDER_KEYS.has(normalized)) {
-      const groups = folders.collectAllCommands(commands, senderId);
-      const cards = groups.flatMap(group => group.commands.map(command => ({
-        name: command.name,
-        usage: command.usage,
-        category: group.name
-      })));
-      const total = cards.length;
-      return sendImageMenu(api, event, cards, total, "Danh sách toàn bộ tính năng");
-    }
-
-    if (requested) {
-      const folder = folders.resolveFolder(commands, senderId, requested);
-      if (folder) {
-        const items = folders.collectFolderCommands(commands, senderId, folder);
-        const cards = items.map(command => ({
-          name: command.name,
-          usage: command.usage,
-          category: folder.name
-        }));
-        return sendImageMenu(
-          api,
-          event,
-          cards,
-          items.length,
-          `Chi tiết chức năng: ${folder.name} · ${folder.description}`
-        );
-      }
-
-      return api.sendMessage({
-        msg: `❓ Không tìm thấy thư mục "${requested}". Gõ ${prefix}menu để xem danh mục.`
-      }, event.threadId, event.type);
-    }
-
     const list = folders.collectFolders(commands, senderId);
-    const total = list.reduce((sum, folder) => sum + folder.count, 0);
     const cards = list.map(folder => ({
       name: folder.name,
-      usage: `${folder.count} lệnh · ${prefix}${folder.slug}`,
+      usage: `${folder.count} lệnh · /${folder.slug}`,
       category: folder.description
     }));
-    return sendImageMenu(api, event, cards, total, "Danh sách tính năng");
+    const { renderMenuGrid } = require("../../core/canvas/menu");
+    imagePath = await renderMenuGrid({
+      requesterName: String(event?.data?.dName || event?.data?.senderName || "Người dùng").slice(0, 32),
+      requesterAvatarUrl: "",
+      botVersion,
+      prefix: global.config?.prefix || "/",
+      page: 1,
+      totalPages: 1,
+      commands: cards,
+      totalCommands: cards.reduce((sum, card) => sum + Number.parseInt(card.usage, 10) || sum, 0)
+    });
+    return await api.sendMessage({ msg: "Danh sách tính năng · Gõ /tên_danh_mục để xem chi tiết", attachments: [imagePath], ttlKind: "card" }, event.threadId, event.type);
   } catch (error) {
     console.error("[MENU_IMAGE]", error?.stack || error);
-    return api.sendMessage({
-      msg: "⚠️ Không thể tạo menu dạng ảnh. Vui lòng thử lại sau."
-    }, event.threadId, event.type);
+    return api.sendMessage({ msg: "⚠️ Không thể tạo menu dạng Card. Vui lòng thử lại." }, event.threadId, event.type);
+  } finally {
+    if (imagePath) {
+      const timer = setTimeout(() => { try { fs.rmSync(imagePath, { force: true }); } catch {} }, 60000);
+      timer.unref?.();
+    }
   }
 };
 
