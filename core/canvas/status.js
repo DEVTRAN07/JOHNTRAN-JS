@@ -1,5 +1,5 @@
 "use strict";
-const fs=require("fs"),os=require("os"),path=require("path"),{createCanvas,loadImage}=require("canvas"),{getBuffer}=require("../runtime/queuedHttp");
+const fs=require("fs"),os=require("os"),path=require("path"),{createCanvas}=require("canvas"),avatarCache=require("./avatarCache");
 const W=1280,H=640;
 const C={ink:"#211b2a",muted:"#776b80",purple:"#9364b2",green:"#00b96b",blue:"#078dbb",orange:"#d48618",teal:"#009d7a",violet:"#9b4acb",panel:"#f0edef",line:"#17131c"};
 function rounded(c,x,y,w,h,r,fill,stroke=C.line,lw=1.7){c.beginPath();c.roundRect(x,y,w,h,r);c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=lw;c.stroke();}}
@@ -27,8 +27,8 @@ async function renderStatus(o){
  const bg=c.createLinearGradient(0,0,W,H);bg.addColorStop(0,"#f4c5b8");bg.addColorStop(.5,"#e6b9d1");bg.addColorStop(1,"#f3cbb4");c.fillStyle=bg;c.fillRect(0,0,W,H);
  c.save();c.shadowColor="rgba(38,20,36,.28)";c.shadowBlur=28;c.shadowOffsetY=12;rounded(c,36,36,1208,568,34,"#f8f6f7",C.line,1.6);c.restore();
  // Header: avatar thật, tên bot, nhóm hiện tại và phiên bản
- c.save();c.beginPath();c.arc(120,105,45,0,Math.PI*2);c.clip();let av=null;
- if(/^https?:\/\//i.test(o.botAvatar||""))try{const r=await getBuffer(o.botAvatar,{timeout:5000,retries:0});if(r?.buffer?.length<3000000)av=await loadImage(r.buffer);}catch{}
+ c.save();c.beginPath();c.arc(120,105,45,0,Math.PI*2);c.clip();
+ const av=avatarCache.getAvatar(o.botAvatar);
  if(av){const s=Math.max(90/av.width,90/av.height);c.drawImage(av,120-av.width*s/2,105-av.height*s/2,av.width*s,av.height*s);}
  else{c.fillStyle="#d9e1e2";c.fillRect(75,60,90,90);text(c,"BOT",96,114,22,"#59636b","700");}
  c.restore();c.beginPath();c.arc(120,105,46,0,Math.PI*2);c.strokeStyle="#fff";c.lineWidth=4;c.stroke();c.beginPath();c.arc(151,137,12,0,Math.PI*2);c.fillStyle="#00c879";c.fill();c.strokeStyle="#fff";c.lineWidth=2;c.stroke();
@@ -52,6 +52,6 @@ async function renderStatus(o){
  // Footer help text as in the supplied reference
  rounded(c,72,527,1136,51,17,"#f4f1f3");text(c,"ⓘ",91,561,22,C.purple,"700");
  text(c,"Quản trị viên có thể dùng lệnh !off để tạm dừng hoặc !on để kích hoạt bot trong nhóm.",123,561,20,C.muted,"700");
- const file=path.join(os.tmpdir(),"johntran_status_"+Date.now()+".png");fs.writeFileSync(file,canvas.toBuffer("image/png"));return file;
+ const file=path.join(os.tmpdir(),"johntran_status_"+Date.now()+".png");await fs.promises.writeFile(file,canvas.toBuffer("image/png"));return file;
 }
 module.exports={renderStatus};
