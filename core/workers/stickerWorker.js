@@ -12,7 +12,7 @@ function mimeTypeFor(format) {
 }
 
 // Chuyển đổi sticker (ffmpeg, CPU-nặng) ở worker riêng.
-// Nhận: { url, frameId, forceStatic, threadId, type, apiToken }
+// Nhận: { url, forceStatic, threadId, type, apiToken }
 // Chỉ làm ffmpeg + trả về buffer; upload Zalo CDN cần api instance → chạy ở main thread.
 let idleTimer = null;
 function scheduleIdleExit() {
@@ -24,7 +24,7 @@ function scheduleIdleExit() {
 }
 
 parentPort.on("message", async (payload) => {
-  const { url, frameId, forceStatic } = payload || {};
+  const { url, forceStatic } = payload || {};
   if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
   try {
     if (!url || typeof url !== "string") {
@@ -38,8 +38,7 @@ parentPort.on("message", async (payload) => {
       url,
       CACHE_DIR,
       forceStatic === true,
-      undefined,
-      { frameId: Number(frameId || 1) }
+      undefined
     );
 
     const buffer = fs.readFileSync(file.path);
