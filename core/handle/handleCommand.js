@@ -3,6 +3,7 @@ const { wrapForThread } = require("../runtime/adapters/zalo");
 const metrics = require("../metrics");
 const fs = require("fs");
 const path = require("path");
+const { performance } = require("node:perf_hooks");
 
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
@@ -25,6 +26,7 @@ const { dispatchCommand } = require("../runtime/dispatcher");
 
 
 async function handleCommand(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
+  const pipelineStartedAt = performance.now();
   const config = global.config;
 
   if (!messageText || typeof messageText !== "string") return;
@@ -179,6 +181,10 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
 
   const cachedUserData = Users.getCachedData?.(UIDUsage) ?? null;
   const userData = cachedUserData || await Users.getData(UIDUsage).catch(() => null);
+
+  // Measures the hot path up to command dispatch/initial acknowledgement.
+  // The metric is in-memory only and does not add another database write.
+  metrics.trackLatency?.(performance.now() - pipelineStartedAt);
 
   await dispatchCommand({
     command,
