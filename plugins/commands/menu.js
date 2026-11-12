@@ -6,12 +6,12 @@ const folders = require("../../core/runtime/folderMenu");
 module.exports.config = {
   name: "menu",
   aliases: ["help", "folder", "folders"],
-  version: "5.0.0",
+  version: "5.1.0",
   role: 0,
   author: "JOHNTRAN",
   description: "Danh mục thư mục và toàn bộ lệnh bot",
   category: "Tiện ích",
-  usage: "[tên thư mục]",
+  usage: "[tên thư mục|tổng]",
   cooldowns: 0,
   dependencies: {}
 };
@@ -25,10 +25,19 @@ module.exports.run = async function ({ api, event, args = [] }) {
   const commands = global.client?.commands;
 
   if (!(commands instanceof Map)) {
-    return api.sendMessage({ msg: "📂 Danh mục lệnh đang được khởi tạo. Gõ next / prev để chuyển mục khi danh sách sẵn sàng." }, threadId, type);
+    return api.sendMessage({ msg: "📂 Danh mục lệnh đang được khởi tạo. Vui lòng thử lại sau." }, threadId, type);
   }
 
   const requested = args.join(" ").trim();
+  const normalized = folders.normalizeFolder(requested);
+
+  if (normalized && folders.ALL_FOLDER_KEYS.has(normalized)) {
+    const groups = folders.collectAllCommands(commands, senderId);
+    return api.sendMessage({
+      msg: folders.renderAllCommands(groups, prefix, botName, botVersion)
+    }, threadId, type);
+  }
+
   if (requested) {
     const folder = folders.resolveFolder(commands, senderId, requested);
     if (folder) {
