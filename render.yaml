@@ -8,6 +8,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22.22.1"
+      - key: FFMPEG_PATH
+        value: /usr/bin/ffmpeg
     disk:
       name: bot-data
       mountPath: /opt/render/project/src
