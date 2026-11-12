@@ -61,7 +61,7 @@ async function loadCommands(commandName = null) {
       continue;
     }
 
-    if (!command.config || (!command.config.name && command.config.name !== '') || !command.config.cooldowns || typeof command.run !== "function") {
+    if (!command.config || (!command.config.name && command.config.name !== '') || typeof command.config.cooldowns !== "number" || command.config.cooldowns < 0 || typeof command.run !== "function") {
       logger.log(`Command ${file} không hợp lệ`, "warn");
       result = { status: false, error: `Command ${file} không hợp lệ` };
       continue;
