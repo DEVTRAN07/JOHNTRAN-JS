@@ -32,7 +32,10 @@ function urlCacheKey(url) {
 
 async function cachedMedia(url, type) {
   const key = urlCacheKey(url);
-  const cached = await mediaCache.get(key);
+  const cached = await enqueue("media", () => mediaCache.get(key), {
+    key: `media-cache-read|${key}`,
+    label: "Đọc cache media TikTok"
+  });
   if (cached && cached.buffer) {
     const cachedUrl = mediaCache.getUrl(key);
     return { buffer: cached.buffer, url: cachedUrl, cached: true, key };
@@ -41,7 +44,10 @@ async function cachedMedia(url, type) {
 }
 
 async function storeMedia(url, buffer, type, metadata) {
-  const result = await mediaCache.upload(buffer, type, Object.assign({ sourceUrl: url }, metadata || {}));
+  const result = await enqueue("media", () => mediaCache.upload(buffer, type, Object.assign({ sourceUrl: url }, metadata || {})), {
+    key: `media-cache-write|${urlCacheKey(url)}`,
+    label: "Lưu cache media TikTok"
+  });
   return { buffer, url: result.url, cached: result.cached, key: result.key };
 }
 
