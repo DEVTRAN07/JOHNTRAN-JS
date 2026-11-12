@@ -315,10 +315,10 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   });
 
   defineWrapped(wrapped, "sendVoice", async (payload, tid, ty) => {
-    const extracted = extractRecallOptions(payload, threadRecall.get(targetThreadId));
-    const content = typeof extracted.payload === "string" ? { voiceUrl: extracted.payload } : extracted.payload;
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
+    const extracted = extractRecallOptions(payload, threadRecall.get(targetThreadId));
+    const content = typeof extracted.payload === "string" ? { voiceUrl: extracted.payload } : extracted.payload;
     const response = await api.sendVoice(content, targetThreadId, targetType);
     markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
@@ -328,7 +328,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   defineWrapped(wrapped, "sendVideo", async (payload, tid, ty) => {
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
-    const extracted = extractRecallOptions(payload);
+    const extracted = extractRecallOptions(payload, threadRecall.get(targetThreadId));
     const response = await api.sendVideo(extracted.payload, targetThreadId, targetType);
     markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
