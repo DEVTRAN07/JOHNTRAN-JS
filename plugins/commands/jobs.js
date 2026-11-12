@@ -1,0 +1,56 @@
+"use strict";
+
+const { stats: queueStats } = require("../../core/jobQueue");
+const { stats: workerStats } = require("../../core/workerPool");
+
+module.exports.config = {
+  name: "jobs",
+  aliases: ["queue", "jobstatus"],
+  version: "1.0.0",
+  role: 1,
+  author: "JOHNTRAN",
+  description: "Theo dõi hàng đợi tác vụ và worker của bot",
+  category: "Hệ thống",
+  usage: "jobs",
+  cooldowns: 3,
+  dependencies: {}
+};
+
+function formatLane(name, lane) {
+  return [
+    `• ${name}: ${lane.active} chạy / ${lane.pending} chờ (tối đa ${lane.concurrency})`,
+    `  Hoàn tất ${lane.completed} · lỗi ${lane.failed} · retry ${lane.retried} · từ chối ${lane.rejected}`
+  ].join("\n");
+}
+
+module.exports.run = async function ({ api, event }) {
+  const queues = queueStats();
+  const workers = workerStats();
+  const global = queues.global || { active: 0, pending: 0, concurrency: 0, maxPending: 0 };
+  const lanes = Object.entries(queues)
+    .filter(([name]) => name !== "global")
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  const workerLines = Object.entries(workers).map(([name, pool]) =>
+    `• ${name}: ${pool.busy}/${pool.workers} worker bận · ${pool.pending}/${pool.maxPending} chờ · lỗi ${pool.failed}`
+  );
+
+  const memory = process.memoryUsage();
+  const lines = [
+    "⚡ SPEED ENGINE · TRẠNG THÁI TÁC VỤ",
+    "",
+    `🌐 Tổng: ${global.active}/${global.concurrency} tác vụ chạy · ${global.pending}/${global.maxPending} tác vụ chờ`,
+    "",
+    "📦 HÀNG ĐỢI",
+    ...(lanes.length ? lanes.map(([name, lane]) => formatLane(name, lane)) : ["• Chưa có tác vụ nào được đưa vào queue."]),
+    "",
+    "🧵 WORKER POOL",
+    ...(workerLines.length ? workerLines : ["• Worker chưa được khởi tạo."]),
+    "",
+    `🧠 RAM: ${(memory.rss / 1024 / 1024).toFixed(1)} MB · Heap: ${(memory.heapUsed / 1024 / 1024).toFixed(1)} MB`,
+    "",
+    "Retry chỉ áp dụng cho tác vụ an toàn đã được cấu hình; bot không tự gửi lại tin nhắn Zalo để tránh gửi trùng."
+  ];
+
+  return api.sendMessage({ msg: lines.join("\n") }, event.threadId, event.type);
+};
