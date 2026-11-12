@@ -592,7 +592,6 @@ JOHNTRAN-JS/
 ├── tsconfig.json                 # Giữ lại (không dùng cho build)
 ├── nodemon.json
 ├── Dockerfile
-├── Dockerfile.prod
 ├── docker-compose.prod.yml
 ├── render.yaml
 ├── core/
