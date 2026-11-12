@@ -161,7 +161,7 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
         const code = error.code ? `code=${error.code}` : "";
         const signal = error.signal ? `signal=${error.signal}` : "";
         const detail = diagnostic || [code, signal, error.errno, error.syscall].filter(Boolean).join(", ") || "FFmpeg không trả stderr";
-        return reject(new Error(`FFmpeg AAC/HLS thất bại (${path.basename(ffmpegPath)}): ` + detail));
+        return reject(new Error(`FFmpeg AAC/HLS thất bại [binary=${ffmpegPath}]: ` + detail));
       }
 
       try {
