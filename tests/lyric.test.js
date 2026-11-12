@@ -15,7 +15,7 @@ async function main() {
     requested.push(url);
     return {
       status: 200,
-      data: [{ plainLyrics: "[00:01.00]First line\nSecond line" }]
+      data: [{ plainLyrics: Array.from({ length: 150 }, (_, index) => `[00:${String(index % 60).padStart(2, "0")}.00]Lyric line ${String(index + 1).padStart(3, "0")} with full text`).join("\n") }]
     };
   };
   music.search = async (provider, query, limit) => {
