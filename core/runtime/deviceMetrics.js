@@ -1,13 +1,159 @@
 "use strict";
-const os=require("os"),fs=require("fs"),{execFile}=require("child_process"),{promisify}=require("util");
-const run=promisify(execFile);
-function cpuSnap(){return os.cpus().map(c=>({...c.times}));}
-function netSnap(){try{let rx=0,tx=0;for(const line of fs.readFileSync("/proc/net/dev","utf8").trim().split("\n").slice(2)){const p=line.trim().split(":");if(p[0].trim()==="lo"||!p[1])continue;const v=p[1].trim().split(/\s+/).map(Number);rx+=v[0]||0;tx+=v[8]||0;}return {rx,tx};}catch{return null;}}
-async function disk(){try{if(process.platform!=="win32"){const r=await run("df",["-Pk","/"],{timeout:2500});const a=r.stdout.trim().split("\n").pop().trim().split(/\s+/);return {total:Number(a[1])*1024,used:Number(a[2])*1024};}}catch{}try{const s=await fs.promises.statfs("/");return {total:Number(s.blocks)*Number(s.bsize),used:(Number(s.blocks)-Number(s.bfree))*Number(s.bsize)};}catch{return null;}}
-async function collectDeviceMetrics(){
- const cpus0=cpuSnap(),net0=netSnap();await new Promise(r=>setTimeout(r,400));const cpus1=cpuSnap(),net1=netSnap();
- let total=0,idle=0;for(let i=0;i<Math.min(cpus0.length,cpus1.length);i++){const a=cpus0[i],b=cpus1[i];const dt=Object.keys(b).reduce((s,k)=>s+(b[k]-a[k]),0);total+=dt;idle+=b.idle-a.idle;}
- const d=await disk(),mem=os.totalmem(),used=mem-os.freemem();
- return {hostname:os.hostname(),platform:os.platform(),release:os.release(),arch:os.arch(),cpuModel:os.cpus()[0]?.model||"Unknown",cpuCores:os.cpus().length,cpuPercent:total?Math.round(Math.max(0,Math.min(100,100*(1-idle/total)))):0,ramTotal:mem,ramUsed:used,diskTotal:d?.total||0,diskUsed:d?.used||0,rxKBs:net0&&net1?Math.max(0,(net1.rx-net0.rx)/409.6):null,txKBs:net0&&net1?Math.max(0,(net1.tx-net0.tx)/409.6):null,processRam:process.memoryUsage().rss,node:process.version};
+
+const os = require("os");
+const fs = require("fs");
+
+const SAMPLE_INTERVAL_MS = 1000;
+const DISK_TTL_MS = 30000;
+
+function cpuSnapshot() {
+  return os.cpus().map((cpu) => ({ ...cpu.times }));
 }
-module.exports={collectDeviceMetrics};
+
+function networkSnapshot() {
+  try {
+    const raw = fs.readFileSync("/proc/net/dev", "utf8");
+    let rx = 0;
+    let tx = 0;
+    for (const line of raw.trim().split("\n").slice(2)) {
+      const [name, values] = line.trim().split(":");
+      if (!values || name.trim() === "lo") continue;
+      const fields = values.trim().split(/\s+/).map(Number);
+      rx += fields[0] || 0;
+      tx += fields[8] || 0;
+    }
+    return { rx, tx };
+  } catch {
+    return null;
+  }
+}
+
+function baseSnapshot() {
+  const memory = os.totalmem();
+  return {
+    hostname: os.hostname(),
+    platform: os.platform(),
+    release: os.release(),
+    arch: os.arch(),
+    cpuModel: os.cpus()[0]?.model || "Unknown",
+    cpuCores: os.cpus().length,
+    cpuPercent: 0,
+    ramTotal: memory,
+    ramUsed: memory - os.freemem(),
+    diskTotal: 0,
+    diskUsed: 0,
+    rxKBs: null,
+    txKBs: null,
+    processRam: process.memoryUsage().rss,
+    node: process.version,
+    sampledAt: Date.now()
+  };
+}
+
+let snapshot = baseSnapshot();
+let previousCpu = cpuSnapshot();
+let previousNetwork = networkSnapshot();
+let previousAt = Date.now();
+let lastDiskAt = 0;
+let diskFlight = null;
+
+async function refreshDisk() {
+  if (diskFlight) return diskFlight;
+  if (Date.now() - lastDiskAt < DISK_TTL_MS) return;
+
+  diskFlight = (async () => {
+    try {
+      if (typeof fs.promises.statfs !== "function") return;
+      const stats = await fs.promises.statfs("/");
+      const total = Number(stats.blocks) * Number(stats.bsize);
+      const free = Number(stats.bfree) * Number(stats.bsize);
+      if (Number.isFinite(total) && total > 0 && Number.isFinite(free)) {
+        snapshot = {
+          ...snapshot,
+          diskTotal: total,
+          diskUsed: Math.max(0, total - free)
+        };
+        lastDiskAt = Date.now();
+      }
+    } catch {
+      // Disk metrics are optional; never hold up command responses.
+    }
+  })().finally(() => {
+    diskFlight = null;
+  });
+
+  return diskFlight;
+}
+
+function refreshSnapshot(now = Date.now()) {
+  const currentCpu = cpuSnapshot();
+  const currentNetwork = networkSnapshot();
+  const elapsedMs = Math.max(1, now - previousAt);
+  let total = 0;
+  let idle = 0;
+
+  for (let index = 0; index < Math.min(previousCpu.length, currentCpu.length); index++) {
+    const before = previousCpu[index];
+    const after = currentCpu[index];
+    for (const key of Object.keys(after)) {
+      total += Math.max(0, (after[key] || 0) - (before[key] || 0));
+    }
+    idle += Math.max(0, (after.idle || 0) - (before.idle || 0));
+  }
+
+  const memory = os.totalmem();
+  const rxKBs = previousNetwork && currentNetwork
+    ? Math.max(0, ((currentNetwork.rx - previousNetwork.rx) / 1024) * 1000 / elapsedMs)
+    : snapshot.rxKBs;
+  const txKBs = previousNetwork && currentNetwork
+    ? Math.max(0, ((currentNetwork.tx - previousNetwork.tx) / 1024) * 1000 / elapsedMs)
+    : snapshot.txKBs;
+
+  snapshot = {
+    ...snapshot,
+    hostname: os.hostname(),
+    platform: os.platform(),
+    release: os.release(),
+    arch: os.arch(),
+    cpuModel: os.cpus()[0]?.model || snapshot.cpuModel,
+    cpuCores: currentCpu.length,
+    cpuPercent: total > 0 ? Math.round(Math.max(0, Math.min(100, 100 * (1 - idle / total)))) : snapshot.cpuPercent,
+    ramTotal: memory,
+    ramUsed: memory - os.freemem(),
+    rxKBs,
+    txKBs,
+    processRam: process.memoryUsage().rss,
+    node: process.version,
+    sampledAt: now
+  };
+
+  previousCpu = currentCpu;
+  previousNetwork = currentNetwork;
+  previousAt = now;
+
+  // Refresh slower disk data in the background (30-second TTL).
+  void refreshDisk();
+  return snapshot;
+}
+
+// Maintain a rolling snapshot while the bot is idle, not while a command waits.
+const sampler = setInterval(() => refreshSnapshot(), SAMPLE_INTERVAL_MS);
+sampler.unref?.();
+void refreshDisk();
+
+function collectDeviceMetrics() {
+  if (Date.now() - snapshot.sampledAt >= SAMPLE_INTERVAL_MS) {
+    refreshSnapshot();
+  }
+  // Return a copy immediately; CPU/network/disk sampling never waits on timers
+  // or child processes in a command handler.
+  return { ...snapshot };
+}
+
+module.exports = {
+  collectDeviceMetrics,
+  refreshSnapshot,
+  refreshDisk,
+  SAMPLE_INTERVAL_MS,
+  DISK_TTL_MS
+};
