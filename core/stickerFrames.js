@@ -98,6 +98,10 @@ function renderFrame(frameId) {
   ctx.strokeStyle = frame.colors[2];
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(cx, cy, 216, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 0.48;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, 220, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 1;
   ctx.strokeStyle = frame.colors[1];
   ctx.globalAlpha = 0.8;
   ctx.lineWidth = 2;
