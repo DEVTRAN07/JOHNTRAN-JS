@@ -82,7 +82,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
             "",
             `* ${hint} *`
           ].join("\n");
-          const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
+          const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 2 }] : [];
           return await wrappedApi.sendMessage({
             msg: caption,
             mentions,
