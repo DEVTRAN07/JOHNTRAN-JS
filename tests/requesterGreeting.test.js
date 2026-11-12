@@ -23,6 +23,15 @@ test("requester greeting distinguishes owner, other admin, support and users", (
 });
 
 test("UID comparison is consistent across number and string values", () => {
-  assert.equal(greeting.isBotAdmin(12345), true);
-  assert.equal(greeting.isBotAdmin("12345"), true);
+  const oldConfig = global.config;
+  const oldUsers = global.users;
+  global.config = { admin_bot: [] };
+  global.users = { admin: [12345] };
+  try {
+    assert.equal(greeting.isBotAdmin(12345), true);
+    assert.equal(greeting.isBotAdmin("12345"), true);
+  } finally {
+    global.config = oldConfig;
+    global.users = oldUsers;
+  }
 });
