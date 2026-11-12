@@ -21,7 +21,32 @@ function pickAvatar(value) {
 
 function pickName(value, fallback) {
   if (!value || typeof value !== "object") return fallback;
-  return value.displayName || value.dName || value.fullName || value.name || fallback;
+  return value.displayName || value.display_name || value.dName ||
+    value.fullName || value.full_name || value.name || fallback;
+}
+
+function pickAvatarByUid(response, uid) {
+  if (!response || typeof response !== "object") return "";
+  const userId = String(uid);
+  const roots = [response, response.data, response.result].filter(
+    value => value && typeof value === "object"
+  );
+  const keys = [userId, userId + "_0"];
+
+  for (const root of roots) {
+    for (const key of keys) {
+      const avatar = pickAvatar(root[key]);
+      if (avatar) return avatar;
+    }
+    for (const [key, value] of Object.entries(root)) {
+      if ((key === userId || key.startsWith(userId + "_")) && pickAvatar(value)) {
+        return pickAvatar(value);
+      }
+    }
+    const direct = pickAvatar(root);
+    if (direct) return direct;
+  }
+  return "";
 }
 
 function touch(uid, entry) {
@@ -53,35 +78,45 @@ async function warmAvatarWithin(url, waitMs) {
   }
 }
 
-function fetchProfileInBackground(api, uid, fallback) {
-  if (!uid || !api || typeof api.getUserInfo !== "function") return null;
+function fetchProfileInBackground(api, uid, fallback, options = {}) {
+  if (!uid || !api || (
+    typeof api.getUserInfo !== "function" &&
+    typeof api.getAvatarUrlProfile !== "function"
+  )) return null;
   if (pending.has(uid)) return pending.get(uid);
 
   const request = Promise.resolve()
-    // Ask Zalo for a large avatar; its response keys are commonly UID_0,
-    // not the bare UID passed to getUserInfo().
-    .then(() => api.getUserInfo(uid, AVATAR_SIZE))
-    .then((response) => {
-      const profile = pickUser(response, uid);
-      const name = String(pickName(profile, fallback.requesterName)).slice(0, 32);
-      const avatarUrl = pickAvatar(profile) || fallback.requesterAvatarUrl;
-      const hasRemoteProfile = Boolean(profile && (
-        pickName(profile, "") || pickAvatar(profile)
-      ));
+    .then(async () => {
+      // getUserInfo may contain only unchanged_profiles, which often has no
+      // avatar. Query Zalo's dedicated avatar endpoint in parallel.
+      const profileRequest = typeof api.getUserInfo === "function"
+        ? Promise.resolve().then(() => api.getUserInfo(uid, AVATAR_SIZE))
+        : Promise.resolve(null);
+      const avatarRequest = typeof api.getAvatarUrlProfile === "function"
+        ? Promise.resolve().then(() => api.getAvatarUrlProfile(uid, AVATAR_SIZE))
+        : Promise.resolve(null);
+      const [profileResult, avatarResult] = await Promise.allSettled([
+        profileRequest,
+        avatarRequest
+      ]);
+      const response = profileResult.status === "fulfilled" ? profileResult.value : null;
+      const avatarResponse = avatarResult.status === "fulfilled" ? avatarResult.value : null;
+      const remoteProfile = pickUser(response, uid);
+      const name = String(pickName(remoteProfile, fallback.requesterName)).slice(0, 32);
+      const avatarUrl = pickAvatar(remoteProfile) ||
+        pickAvatarByUid(avatarResponse, uid) ||
+        fallback.requesterAvatarUrl;
       const result = {
         requesterName: name || "Người dùng",
         requesterAvatarUrl: avatarUrl || ""
       };
 
-      // Do not cache a failed lookup for the full profile TTL. A short negative
-      // cache prevents repeated calls during bursts but allows later retries.
+      // A missing avatar is retried quickly; successful URLs are cached longer.
       touch(uid, {
         ...result,
-        expiresAt: Date.now() + (hasRemoteProfile && avatarUrl
-          ? PROFILE_TTL_MS
-          : PROFILE_RETRY_TTL_MS)
+        expiresAt: Date.now() + (avatarUrl ? PROFILE_TTL_MS : PROFILE_RETRY_TTL_MS)
       });
-      warmAvatar(result.requesterAvatarUrl);
+      if (!options.skipAvatarWarm) warmAvatar(result.requesterAvatarUrl);
       return result;
     })
     .catch(() => {
@@ -104,10 +139,11 @@ function fetchProfileInBackground(api, uid, fallback) {
 }
 
 async function getRequesterProfile(api, event, options = {}) {
-  const waitMs = Math.min(300, Math.max(0, Number(options.waitMs) || 0));
+  const waitMs = Math.min(1800, Math.max(0, Number(options.waitMs) || 0));
   const avatarWaitMs = Math.min(300, Math.max(0, Number(options.avatarWaitMs) || 0));
+  const skipAvatarWarm = options.skipAvatarWarm === true;
   const data = event?.data || {};
-  const uid = String(data.uidFrom || event?.senderID || event?.senderId || "");
+  const uid = String(data.uidFrom || data.uid || event?.uidFrom || event?.senderID || event?.senderId || "");
   const fallback = {
     requesterName: String(data.dName || data.senderName || event?.senderName || "Người dùng").slice(0, 32),
     requesterAvatarUrl: pickAvatar(data) || pickAvatar(event)
@@ -119,25 +155,29 @@ async function getRequesterProfile(api, event, options = {}) {
   if (cached) {
     touch(uid, cached);
     if (cached.expiresAt <= Date.now()) {
-      void fetchProfileInBackground(api, uid, fallback);
+      void fetchProfileInBackground(api, uid, fallback, { skipAvatarWarm });
     }
     const result = {
       requesterName: cached.requesterName || fallback.requesterName,
       requesterAvatarUrl: cached.requesterAvatarUrl || fallback.requesterAvatarUrl
     };
-    if (avatarWaitMs > 0) await warmAvatarWithin(result.requesterAvatarUrl, avatarWaitMs);
-    else void warmAvatar(result.requesterAvatarUrl);
+    if (!skipAvatarWarm) {
+      if (avatarWaitMs > 0) await warmAvatarWithin(result.requesterAvatarUrl, avatarWaitMs);
+      else void warmAvatar(result.requesterAvatarUrl);
+    }
     return result;
   }
 
   // Return immediately for normal messages. Visual menu cards may opt into a
   // short bounded wait so the first card can include the requester's avatar.
-  const request = fetchProfileInBackground(api, uid, fallback);
+  const request = fetchProfileInBackground(api, uid, fallback, { skipAvatarWarm });
   if (waitMs > 0 && request) {
     const profile = await Promise.race([request, delay(waitMs).then(() => null)]);
     if (profile) {
-      if (avatarWaitMs > 0) await warmAvatarWithin(profile.requesterAvatarUrl, avatarWaitMs);
-      else void warmAvatar(profile.requesterAvatarUrl);
+      if (!skipAvatarWarm) {
+        if (avatarWaitMs > 0) await warmAvatarWithin(profile.requesterAvatarUrl, avatarWaitMs);
+        else void warmAvatar(profile.requesterAvatarUrl);
+      }
       return profile;
     }
   }
@@ -155,5 +195,7 @@ module.exports = {
   PROFILE_TTL_MS,
   PROFILE_RETRY_TTL_MS,
   AVATAR_SIZE,
-  MAX_PROFILES
+  MAX_PROFILES,
+  pickAvatar,
+  pickAvatarByUid
 };

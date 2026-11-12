@@ -93,6 +93,48 @@ test("requester profile extracts the UID_0 key returned by Zalo and warms the re
 });
 
 
+
+test("requester profile uses Zalo's avatar endpoint when profile is unchanged", async () => {
+  const avatarCache = require("../core/canvas/avatarCache");
+  const originalWarmAvatar = avatarCache.warmAvatar;
+  const uid = "profile-unchanged-user";
+  const avatar = "https://example.test/direct-avatar.jpg";
+  const calls = [];
+
+  avatarCache.warmAvatar = async () => null;
+  clearRequesterProfileCache();
+  try {
+    const profile = await getRequesterProfile({
+      async getUserInfo(requestedUid, size) {
+        calls.push(["getUserInfo", requestedUid, size]);
+        return {
+          changed_profiles: {},
+          unchanged_profiles: {
+            [requestedUid + "_0"]: { isFr: 1, isBlocked: false }
+          }
+        };
+      },
+      async getAvatarUrlProfile(requestedUid, size) {
+        calls.push(["getAvatarUrlProfile", requestedUid, size]);
+        return { [requestedUid + "_0"]: { avatar } };
+      }
+    }, { data: { uidFrom: uid, dName: "Event Name" } }, {
+      waitMs: 300,
+      skipAvatarWarm: true
+    });
+
+    assert.equal(profile.requesterName, "Event Name");
+    assert.equal(profile.requesterAvatarUrl, avatar);
+    assert.deepEqual(calls, [
+      ["getUserInfo", uid, 240],
+      ["getAvatarUrlProfile", uid, 240]
+    ]);
+  } finally {
+    avatarCache.warmAvatar = originalWarmAvatar;
+    clearRequesterProfileCache();
+  }
+});
+
 test("visual menu profile lookup returns a fast UID_0 profile and waits for avatar cache warmup", async () => {
   const avatarCache = require("../core/canvas/avatarCache");
   const originalWarmAvatar = avatarCache.warmAvatar;

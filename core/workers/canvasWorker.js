@@ -16,6 +16,13 @@ async function renderToPath(type, data) {
     throw new Error("Canvas worker cannot load application config: " + configError.message);
   }
 
+  if (type === "menu" || type === "menu-folder") {
+    // Worker caches are isolated from the main thread. Load the avatar here
+    // before drawAvatar() runs, otherwise it always paints the initials.
+    const { prepareRequesterAvatar } = require("../canvas/prepareRequesterAvatar");
+    await prepareRequesterAvatar(data || {});
+  }
+
   switch (type) {
     case "menu": {
       const { renderMenuGrid } = require("../canvas/menu");

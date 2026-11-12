@@ -35,15 +35,16 @@ function getAvatar(url) {
   return null;
 }
 
-function warmAvatar(url) {
+function warmAvatar(url, options = {}) {
   const key = String(url || "").trim();
   if (!/^https?:\/\//i.test(key)) return Promise.resolve(null);
   if (pending.has(key)) return pending.get(key);
 
   const task = (async () => {
     try {
+      const timeout = Math.max(250, Math.min(3500, Number(options.timeout) || 3500));
       const result = await getBuffer(key, {
-        timeout: 3500,
+        timeout,
         retries: 0,
         headers: {
           "User-Agent": "Mozilla/5.0",

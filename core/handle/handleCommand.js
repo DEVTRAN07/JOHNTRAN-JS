@@ -11,7 +11,8 @@ const { getRequesterProfile } = require("../runtime/requesterProfile");
 const { renderCanvas } = require("../canvas/workerRender");
 
 
-const { ThreadType, Reactions } = require("zalo-client");
+const { ThreadType } = require("zalo-client");
+const { getFolderReaction } = require("../runtime/folderReaction");
 
 const ADMIN_GROUPS_FILE = path.join(__dirname, "..", "..", "data", "bot_admin_groups.json");
 
@@ -59,10 +60,13 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
       const folderMenu = folderMenuRuntime;
       const folder = menuGroupShortcut;
       if (folder) {
+        // Category shortcuts bypass dispatchCommand(), so use a reaction that
+        // matches the folder instead of leaving the original command unreacted.
+        void wrappedApi.__reply?.react(getFolderReaction(folder.slug));
         const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
         // Các thư mục luôn có thẻ riêng; nhóm rỗng vẫn hiển thị đúng bố cục và báo chưa có lệnh trong caption.
         const version = require("../../package.json").version;
-        const profile = await getRequesterProfile(api, event, { waitMs: 90, avatarWaitMs: 110 });
+        const profile = await getRequesterProfile(api, event, { waitMs: 1200, skipAvatarWarm: true });
         const imagePath = await renderCanvas("menu-folder", {
           folderName: folder.name,
           folderDescription: folder.description,

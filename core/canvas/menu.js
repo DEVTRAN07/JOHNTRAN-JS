@@ -541,9 +541,10 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   drawText(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(12), footerY + S(36), 20, palette.text, true);
 
   const iconY = footerY + footerH / 2;
-  drawPaletteIcon(ctx, W - margin - S(96), iconY, S(15), palette.accent);
-  drawBotIcon(ctx, W - margin - S(65), iconY, S(17), palette.accent);
-  drawText(ctx, botVersion || "1.0.2", W - margin - S(10), footerY + S(36), 18, palette.accent, true, "right");
+  // Reserve a dedicated version slot; the old icons overlapped v4.0.0.
+  drawPaletteIcon(ctx, W - margin - S(128), iconY, S(15), palette.accent);
+  drawBotIcon(ctx, W - margin - S(94), iconY, S(17), palette.accent);
+  drawText(ctx, "v" + (botVersion || "1.0.2"), W - margin - S(10), footerY + S(36), 16, palette.accent, true, "right");
 
   const filePath = path.join(os.tmpdir(), "johntran_menu_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) + ".png");
   fs.writeFileSync(filePath, result.canvas.toBuffer("image/png"));
@@ -615,9 +616,10 @@ async function renderFolderCard({
   await drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
 
   const footerY = panelY + panelH - S(18);
-  drawPaletteIcon(ctx, W - S(128), footerY, S(14), palette.accent);
-  drawBotIcon(ctx, W - S(101), footerY, S(16), palette.accent);
-  drawText(ctx, botVersion || "1.0.2", W - S(24), footerY + S(6), 18, palette.accent, true, "right");
+  // Keep the icons separate from the version label.
+  drawPaletteIcon(ctx, W - S(174), footerY, S(14), palette.accent);
+  drawBotIcon(ctx, W - S(140), footerY, S(16), palette.accent);
+  drawText(ctx, "v" + (botVersion || "1.0.2"), W - S(24), footerY + S(6), 16, palette.accent, true, "right");
 
   const filePath = path.join(os.tmpdir(), "johntran_folder_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
   fs.writeFileSync(filePath, result.canvas.toBuffer("image/png"));

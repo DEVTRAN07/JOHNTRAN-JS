@@ -3,7 +3,7 @@ const fs=require("fs"),os=require("os"),path=require("path"),{createCanvas}=requ
 const W=1280,H=640;
 const C={ink:"#211b2a",muted:"#776b80",purple:"#9364b2",green:"#00b96b",blue:"#078dbb",orange:"#d48618",teal:"#009d7a",violet:"#9b4acb",panel:"#f0edef",line:"#17131c"};
 function rounded(c,x,y,w,h,r,fill,stroke=C.line,lw=1.7){c.beginPath();c.roundRect(x,y,w,h,r);c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=lw;c.stroke();}}
-function text(c,s,x,y,size,color=C.ink,weight="600"){c.font=weight+" "+size+"px Arial, sans-serif";c.fillStyle=color;c.textBaseline="alphabetic";c.fillText(String(s??""),x,y);}
+function text(c,s,x,y,size,color=C.ink,weight="600",align="left"){c.font=weight+" "+size+"px Arial, sans-serif";c.fillStyle=color;c.textBaseline="alphabetic";c.textAlign=align;c.fillText(String(s??""),x,y);c.textAlign="left";}
 function fmt(n){if(!Number.isFinite(Number(n))||Number(n)<=0)return "N/A";let v=Number(n),u=["B","KB","GB","TB"];let i=0;while(v>=1024&&i<u.length-1){v/=1024;i++;}return v.toFixed(i?1:0)+" "+u[i];}
 function pct(n,d){return d>0?Math.max(0,Math.min(100,Math.round(n/d*100))):0;}
 function icon(c,type,x,y,color){
@@ -34,12 +34,14 @@ async function renderStatus(o){
  c.restore();c.beginPath();c.arc(120,105,46,0,Math.PI*2);c.strokeStyle="#fff";c.lineWidth=4;c.stroke();c.beginPath();c.arc(151,137,12,0,Math.PI*2);c.fillStyle="#00c879";c.fill();c.strokeStyle="#fff";c.lineWidth=2;c.stroke();
  text(c,o.botName||"JOHNTRAN",188,104,39,C.ink,"700");
  text(c,"♟ Nhóm: "+(g.name||"Tin nhắn riêng")+" ▤",188,135,22,C.purple,"700");
- text(c,"◉",1064,83,27,C.muted,"700");text(c,"▣",1108,83,25,C.muted,"700");text(c,o.version||"",1145,82,27,C.muted,"700");
+ text(c,"◉",1040,83,27,C.muted,"700");text(c,"▣",1080,83,25,C.muted,"700");text(c,"v"+(o.version||""),1208,82,22,C.muted,"700","right");
  // Status + uptime (uptime card stays in the reference design; /upt command is separate)
  rounded(c,72,169,558,107,24,C.panel);rounded(c,650,169,558,107,24,C.panel);
  rounded(c,92,191,63,63,18,"#073d2c","#073d2c");icon(c,"power",123,222,C.green);
  text(c,"♧ TRẠNG THÁI NHÓM",172,207,19,C.muted,"700");
- text(c,g.enabled?"BẬT (ON)":"TẮT (OFF)",172,251,34,g.enabled?C.green:"#d84b54","700");
+ const stateColor=g.enabled?C.green:"#d84b54";
+ rounded(c,416,195,178,55,16,g.enabled?"#e5f7ed":"#fdebed",g.enabled?"#a9ddbe":"#f2b9be",1.4);
+ text(c,g.enabled?"ĐANG BẬT":"ĐANG TẮT",505,229,22,stateColor,"700","center");
  rounded(c,670,191,63,63,18,"#102f3e","#102f3e");icon(c,"clock",701,222,C.blue);
  text(c,"◷ UPTIME HOẠT ĐỘNG",750,207,19,C.muted,"700");text(c,o.uptime||"N/A",750,251,34,C.blue,"700");
  // CPU / RAM / DISK

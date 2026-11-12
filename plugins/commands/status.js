@@ -20,9 +20,11 @@ module.exports.config = {
 
 function currentGroup(api, event, Threads, threadData) {
   const id = String(event?.threadId || "");
-  const isPrivate = event?.type === 1;
+  // Zalo ThreadType.User = 0 and ThreadType.Group = 1.
+  const isPrivate = Number(event?.type) === 0;
   const record = threadData || Threads.getCachedData?.(id) || null;
-  const enabled = record?.data?.bot_enabled === true;
+  // Bot is enabled by default; only explicit false means disabled.
+  const enabled = record?.data?.bot_enabled !== false;
 
   const cachedInfo = !isPrivate ? stats.getCachedGroupInfo(id) : null;
   const cachedGroup = cachedInfo?.gridInfoMap?.[id];
