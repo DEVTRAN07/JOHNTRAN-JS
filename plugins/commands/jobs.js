@@ -3,6 +3,7 @@
 const { stats: queueStats } = require("../../core/jobQueue");
 const { stats: workerStats } = require("../../core/workerPool");
 const { allStats: cacheStats } = require("../../core/cache");
+const { mediaCache } = require("../../core/mediaCache");
 
 module.exports.config = {
   name: "jobs",
@@ -39,6 +40,7 @@ module.exports.run = async function ({ api, event }) {
   const queues = queueStats();
   const workers = workerStats();
   const caches = cacheStats();
+  const media = mediaCache.stats();
   const global = queues.global || { active: 0, pending: 0, concurrency: 0, maxPending: 0 };
   const lanes = Object.entries(queues)
     .filter(([name]) => name !== "global")
@@ -51,6 +53,8 @@ module.exports.run = async function ({ api, event }) {
   const cacheLines = Object.entries(caches).map(([name, cache]) =>
     `• ${name}: ${cache.size}/${cache.max} entries · hit ${Math.round(Number(cache.hitRate || 0) * 100)}%`
   );
+
+  const mediaCacheLine = `• MediaCache: ${media.localFiles} file local · ${Math.round(Number(media.hitRate || 0) * 100)}% hit · ${media.uploads} lần ghi · R2 ${media.r2Configured ? "đã bật" : "local-only"}`;
 
   const memory = process.memoryUsage();
   const lines = [
@@ -66,6 +70,7 @@ module.exports.run = async function ({ api, event }) {
     "",
     "🗃️ CACHE",
     ...(cacheLines.length ? cacheLines : ["• Cache chưa có dữ liệu."]),
+    mediaCacheLine,
     "",
     `🧠 RAM: ${(memory.rss / 1024 / 1024).toFixed(1)} MB · Heap: ${(memory.heapUsed / 1024 / 1024).toFixed(1)} MB`,
     "",
