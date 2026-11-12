@@ -70,7 +70,6 @@ function requestOldMessagesThen(listener, threadType, onComplete, timeoutMs = 50
 
   listener.on("old_messages", onOldMessages);
   timer = setTimeout(() => finish("timeout"), Math.max(100, Number(timeoutMs) || 5000));
-  timer.unref?.();
   try {
     listener.requestOldMessages(threadType);
   } catch {
