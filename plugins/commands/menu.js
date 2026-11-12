@@ -3,6 +3,7 @@
 const fs = require("fs");
 const botVersion = require("../../package.json").version;
 const folders = require("../../core/runtime/folderMenu");
+const { renderMenuGrid } = require("../../core/canvas/menu");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 
 module.exports.config = {
@@ -41,7 +42,6 @@ module.exports.run = async function ({ api, event }) {
       slug: group.slug
     }));
     const totalVisibleCommands = groups.reduce((sum, group) => sum + group.count, 0);
-    const { renderMenuGrid } = require("../../core/canvas/menu");
     imagePath = await renderMenuGrid({
       requesterName: profile.requesterName,
       requesterAvatarUrl: profile.requesterAvatarUrl,
