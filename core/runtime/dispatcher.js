@@ -39,7 +39,8 @@ async function dispatchCommand({
       Promise.resolve(reply.react(icon)).catch(() => {});
     };
 
-    reactAuto(Reactions.LIKE);
+    // Fast acknowledgement: show that the command has been received and is running.
+    reactAuto(Reactions.PRAY);
     try {
       await command.run({
         args,
