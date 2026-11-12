@@ -146,3 +146,19 @@ test("topchat history timeout returns control to the command without waiting for
   );
   assert.equal(result, null);
 });
+
+
+test("topchat requests one Zalo history page using the default supported size", async () => {
+  const { readHistoryWithinBudget, HISTORY_LIMIT } = topchat._test;
+  const calls = [];
+  const api = {
+    async getGroupChatHistory(threadId, count) {
+      calls.push({ threadId, count });
+      return { groupMsgs: [] };
+    }
+  };
+  await readHistoryWithinBudget(api, "topchat-history-page-regression", "2026-11-12", "/", [], 100);
+
+  assert.equal(HISTORY_LIMIT, 50);
+  assert.deepEqual(calls, [{ threadId: "topchat-history-page-regression", count: 50 }]);
+});
