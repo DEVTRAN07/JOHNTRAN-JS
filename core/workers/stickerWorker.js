@@ -4,7 +4,7 @@ const path = require("path");
 
 const converter = require("../stickerConvert");
 
-const CACHE_DIR = path.join(__dirname, "..", "assets", "cache", "sticker");
+const CACHE_DIR = path.join(__dirname, "..", "..", "assets", "cache", "sticker");
 const IDLE_EXIT_MS = 20000;
 
 function mimeTypeFor(format) {
