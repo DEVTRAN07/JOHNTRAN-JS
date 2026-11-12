@@ -5,7 +5,9 @@ const path = require("path");
 const os = require("os");
 const { parseQuote, hint } = require("../../core/mediaReply");
 const { runInWorker } = require("../../core/workerPool");
-const { mediaCache } = require("../../core/mediaCache");
+const queuedMediaCache = require("../../core/runtime/queuedMediaCache");
+const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
+const { enqueue } = require("../../core/jobQueue");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegStatic = require("ffmpeg-static");
 
@@ -56,8 +58,7 @@ module.exports.run = async function ({ api, event }) {
     await api.sendMessage({ msg: "⏳ Đang trích audio...", plain: true }, threadId, type);
 
     // 1) Tải video về
-    const http = require("../../core/http");
-    const { buffer: videoBuffer } = await http.getBuffer(videoUrl, { timeout: 120000 });
+    const { buffer: videoBuffer } = await queuedGetBuffer(videoUrl, { timeout: 120000, retries: 1 });
     fs.writeFileSync(videoPath, videoBuffer);
 
     // 2) Kiểm tra có tiếng không (ffmpeg -i in stream ra stderr)
@@ -73,7 +74,12 @@ module.exports.run = async function ({ api, event }) {
     }
 
     // 3) Trích MP3 bằng worker pool (ffmpeg libmp3lame 128k)
-    const { audioBuffer } = await runInWorker("audioWorker", { videoPath }, { timeout: 180000 });
+    const { audioBuffer } = await enqueue("video", () => runInWorker("audioWorker", { videoPath }, { timeout: 180000 }), {
+      label: "Trích audio từ video",
+      retries: 1,
+      retryDelayMs: 500,
+      retryOn: error => /workerPool: timeout|worker .* exited|worker .* stopped/i.test(String(error?.message || error))
+    });
     if (!audioBuffer || !audioBuffer.length) throw new Error("Không trích được audio (buffer rỗng)");
 
     // 4) Ghi buffer ra file tạm để chuyển sang AAC
@@ -82,11 +88,11 @@ module.exports.run = async function ({ api, event }) {
 
     // 5) Chuyển MP3 sang AAC (chuẩn voice Zalo)
     const aacPath = path.join(tmpDir, "out.aac");
-    await convertMp3ToAac(mp3Path, aacPath);
+    await enqueue("video", () => convertMp3ToAac(mp3Path, aacPath), { label: "Chuyển MP3 sang AAC" });
 
     // 6) Đọc AAC buffer và upload lên mediaCache (tự deduplicate bằng key = hash(buffer + metadata))
     const aacBuffer = fs.readFileSync(aacPath);
-    const { url: voiceUrl } = await mediaCache.upload(aacBuffer, "audio", cacheMetadata);
+    const { url: voiceUrl } = await queuedMediaCache.upload(aacBuffer, "audio", cacheMetadata);
 
     // 7) Gửi voice
     await api.sendVoice({ voiceUrl }, threadId, type);
