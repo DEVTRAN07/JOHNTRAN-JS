@@ -48,6 +48,9 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   const command = resolveCommand(global.client.commands, commandName);
   const folderMenuRuntime = require("../runtime/folderMenu");
   const menuGroupShortcut = folderMenuRuntime.resolveMenuGroup(global.client.commands, UIDUsage, commandName);
+  if (threadInfo?.bot_enabled === false && !["mybot", "status", "menu"].includes(commandName)) {
+    return wrappedApi.sendMessage({ msg: "⏸️ Bot đang tắt trong nhóm này. Quản trị viên dùng /mybot on để bật lại." }, threadId, type);
+  }
   // A bare category shortcut opens its card. Commands with the same name
   // (for example /anti and /admin) still execute normally when arguments exist.
   if (!command || (menuGroupShortcut && args.length === 0)) {
