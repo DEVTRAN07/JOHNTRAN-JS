@@ -112,18 +112,37 @@ function assertSoundCloudStreamUrl(rawUrl) {
   return parsed.toString();
 }
 
+function redactStreamDiagnostics(value) {
+  return String(value || "")
+    .replace(/https?:\\/\\/[^\\s"'<>]+/g, (raw) => {
+      try {
+        const parsed = new URL(raw);
+        parsed.search = parsed.search ? "?[query]" : "";
+        return parsed.toString();
+      } catch {
+        return "[stream URL]";
+      }
+    })
+    .replace(/(client_id|token|secret|sig|signature)=([^&\\s]+)/gi, "$1=[redacted]");
+}
+
 function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
   return new Promise((resolve, reject) => {
     if (!ffmpegPath) {
       return reject(new Error("Không tìm thấy FFmpeg để xử lý luồng AAC/HLS."));
     }
 
-    const bitrate = Number(quality) === 320 ? 320 : 128;
+    const bitrate = Number(quality) === 320 ? 320 : 160;
     const args = [
-      "-hide_banner", "-loglevel", "error", "-y",
-      "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-      "-user_agent", "Mozilla/5.0",
-      "-headers", "Referer: https://soundcloud.com/\r\n",
+      "-hide_banner", "-loglevel", "warning", "-y",
+      "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
+      "-allowed_extensions", "ALL",
+      "-rw_timeout", "30000000",
+      "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+      "-headers", "Referer: https://soundcloud.com/\\r\\nOrigin: https://soundcloud.com\\r\\n",
+      "-reconnect", "1",
+      "-reconnect_streamed", "1",
+      "-reconnect_delay_max", "5",
       "-i", streamUrl,
       "-vn", "-c:a", "libmp3lame", "-b:a", `${bitrate}k`,
       "-f", "mp3", filePath
@@ -131,17 +150,16 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
 
     execFile(ffmpegPath, args, {
       timeout: 15 * 60 * 1000,
-      maxBuffer: 8 * 1024 * 1024
+      maxBuffer: 8 * 1024 * 1024,
+      windowsHide: true
     }, (error, _stdout, stderr) => {
       if (error) {
         try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* ignore */ }
-        const detail = String(stderr || error.message || "FFmpeg thất bại")
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .slice(-3)
-          .join(" ")
-          .replace(/https?:\/\/[^\s"'<>]+/g, "[stream URL]");
-        return reject(new Error("Không tải được âm thanh SoundCloud AAC/HLS: " + detail));
+        const diagnostic = redactStreamDiagnostics(stderr).split(/\\r?\\n/).filter(Boolean).slice(-8).join(" | ");
+        const code = error.code ? `code=${error.code}` : "";
+        const signal = error.signal ? `signal=${error.signal}` : "";
+        const detail = diagnostic || [code, signal, error.errno, error.syscall].filter(Boolean).join(", ") || "FFmpeg không trả stderr";
+        return reject(new Error("FFmpeg AAC/HLS thất bại: " + detail));
       }
 
       try {
@@ -163,19 +181,33 @@ async function downloadToFile(streamUrl, extension, options = {}) {
   fs.mkdirSync(tempDir, { recursive: true });
   const filePath = path.join(tempDir, `music_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`);
 
-  // AAC HLS không phải file MP3 có thể tải bằng HTTP buffer; phải đọc playlist,
-  // tải các segment và ghép/chuyển mã bằng FFmpeg.
+  // SoundCloud AAC streams are HLS playlists. Try 160k first, then the
+  // 96k alternative supplied by SoundCloud when available for this track.
   if (streamUrl && typeof streamUrl === "object" && streamUrl.protocol === "hls") {
-    try {
-      const playlistUrl = assertSoundCloudStreamUrl(streamUrl.url);
-      return await enqueue("music-audio", () => downloadHlsToMp3(playlistUrl, filePath, quality), {
-        key: `audio-hls|${playlistUrl}`,
-        label: "Tải và chuyển mã SoundCloud AAC/HLS"
-      });
-    } catch (error) {
-      try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* ignore */ }
-      throw error;
+    const candidates = [...new Set([
+      streamUrl.url,
+      ...(Array.isArray(streamUrl.fallbackUrls) ? streamUrl.fallbackUrls : [])
+    ].filter(Boolean))];
+    const errors = [];
+
+    for (let index = 0; index < candidates.length; index++) {
+      const candidateUrl = assertSoundCloudStreamUrl(candidates[index]);
+      try {
+        return await enqueue("music-audio", () => downloadHlsToMp3(candidateUrl, filePath, quality), {
+          key: `audio-hls|${candidateUrl}`,
+          label: index === 0 ? "Tải AAC/HLS SoundCloud" : "Thử luồng AAC/HLS dự phòng"
+        });
+      } catch (error) {
+        errors.push(error?.message || String(error));
+        try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* ignore */ }
+      }
     }
+
+    throw new Error(
+      candidates.length > 1
+        ? "Không tải được các luồng AAC/HLS của SoundCloud: " + errors.join(" || ")
+        : (errors[0] || "SoundCloud không có luồng HLS khả dụng.")
+    );
   }
 
   const directUrl = assertSoundCloudStreamUrl(streamUrl);
@@ -185,7 +217,7 @@ async function downloadToFile(streamUrl, extension, options = {}) {
       label: "Tải audio stream"
     });
     if (status < 200 || status >= 300 || !buffer?.length ||
-        (contentType && !/^(audio\/|application\/octet-stream)/i.test(contentType))) {
+        (contentType && !/^(audio\\/|application\\/octet-stream)/i.test(contentType))) {
       throw new Error(`SoundCloud trả dữ liệu audio không hợp lệ (HTTP ${status || "không rõ"}, Content-Type: ${contentType || "không rõ"}).`);
     }
     fs.writeFileSync(filePath, buffer);
