@@ -167,17 +167,17 @@ function renderAllCommands(groups, prefix, botName, version) {
  * shortcuts such as /game, /tools and /admin show the exact same commands.
  */
 const MENU_GROUPS = Object.freeze([
-  { name: "Information", slug: "info", icon: "💡", description: "Thông tin tài khoản & hướng dẫn" },
-  { name: "Utilities", slug: "public", icon: "🌐", description: "Tiện ích dùng chung cho mọi người" },
+  { name: "Info", slug: "info", icon: "💡", description: "Thông tin tài khoản & hướng dẫn" },
+  { name: "Utility", slug: "public", icon: "🌐", description: "Tiện ích dùng chung cho mọi người" },
   { name: "Music", slug: "music", icon: "🎵", description: "Tìm kiếm và nghe nhạc" },
-  { name: "Games", slug: "game", icon: "🎮", description: "Game và hoạt động giải trí" },
+  { name: "Game", slug: "game", icon: "🎮", description: "Game và hoạt động giải trí" },
   { name: "Tools", slug: "tools", icon: "🧰", description: "Công cụ tự động và xử lý tác vụ" },
-  { name: "Anti-Abuse", slug: "anti", icon: "🛡️", description: "Bảo vệ nhóm và chống spam" },
-  { name: "Group Management", slug: "manager", icon: "👥", description: "Quản lý thành viên và tin nhắn" },
-  { name: "Administration", slug: "admin", icon: "👑", description: "Lệnh dành cho quản trị viên" },
-  { name: "Bot Operations", slug: "mybot", icon: "🤖", description: "Theo dõi và điều khiển hoạt động bot" },
-  { name: "Special Commands", slug: "hidden", icon: "🔒", description: "Các lệnh đặc biệt, không hiển thị công khai" },
-  { name: "Testing", slug: "test", icon: "🧪", description: "Các lệnh đang thử nghiệm" }
+  { name: "Anti", slug: "anti", icon: "🛡️", description: "Bảo vệ nhóm và chống spam" },
+  { name: "Group", slug: "manager", icon: "👥", description: "Quản lý thành viên và tin nhắn" },
+  { name: "Admin", slug: "admin", icon: "👑", description: "Lệnh dành cho quản trị viên" },
+  { name: "Bot", slug: "mybot", icon: "🤖", description: "Theo dõi và điều khiển hoạt động bot" },
+  { name: "Special", slug: "hidden", icon: "🔒", description: "Các lệnh đặc biệt, không hiển thị công khai" },
+  { name: "Test", slug: "test", icon: "🧪", description: "Các lệnh đang thử nghiệm" }
 ]);
 
 const MENU_COMMAND_GROUPS = Object.freeze({
