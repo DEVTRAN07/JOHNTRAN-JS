@@ -52,10 +52,13 @@ function isCommand(data, prefix = "/") {
   return Boolean(prefix && text.startsWith(prefix));
 }
 
-function aggregateMessages(messages, dateKey, prefix = "/", selfUid = "") {
+function aggregateMessages(messages, dateKey, prefix = "/", selfUid = "", excludeIds = []) {
   const counts = {};
+  const excluded = excludeIds instanceof Set ? excludeIds : new Set(Array.isArray(excludeIds) ? excludeIds.map(String) : []);
   for (const message of Array.isArray(messages) ? messages : []) {
     const data = messageData(message);
+    const messageId = String(data.cliMsgId || data.msgId || "");
+    if (messageId && excluded.has(messageId)) continue;
     const uid = String(data.uidFrom || data.senderId || data.uid || "");
     if (!uid || uid === "0" || message?.isSelf === true || (selfUid && uid === String(selfUid))) continue;
 
