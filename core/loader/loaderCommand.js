@@ -26,11 +26,11 @@ async function loadCommands(commandName = null, options = {}) {
   if (commandName) {
     const base = String(commandName).replace(/\.js$/, "");
     if (!/^[a-zA-Z0-9_-]+$/.test(base)) {
-      const message = \`Tên command không hợp lệ: \${commandName}\`;
+      const message = "Tên command không hợp lệ: " + commandName;
       recordError(message);
       return { status: false, error: message, errors, loaded, restart: false };
     }
-    files = [\`\${base}.js\`];
+    files = [base + ".js"];
   } else {
     files = fs.readdirSync(dir).filter(file => file.endsWith(".js"));
   }
@@ -39,15 +39,15 @@ async function loadCommands(commandName = null, options = {}) {
     const filePath = path.join(dir, file);
 
     if (!fs.existsSync(filePath)) {
-      recordError(\`Không tìm thấy file: \${file}\`);
+      recordError("Không tìm thấy file: " + file);
       continue;
     }
 
     const resolved = path.resolve(filePath);
     const dirResolved = path.resolve(dir);
     const relative = path.relative(dirResolved, resolved);
-    if (relative === ".." || relative.startsWith(\`..\${path.sep}\`) || path.isAbsolute(relative)) {
-      recordError(\`Phát hiện path traversal trong commandName: \${commandName}\`);
+    if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
+      recordError("Phát hiện path traversal trong commandName: " + commandName);
       continue;
     }
 
@@ -71,7 +71,7 @@ async function loadCommands(commandName = null, options = {}) {
     try {
       command = require(filePath);
     } catch (err) {
-      recordError(\`Không thể require file \${file}: \${err.message}\`);
+      recordError("Không thể require file " + file + ": " + err.message);
       continue;
     }
 
@@ -83,7 +83,7 @@ async function loadCommands(commandName = null, options = {}) {
       command.config.cooldowns < 0 ||
       typeof command.run !== "function"
     ) {
-      recordError(\`Command \${file} không hợp lệ\`, "warn");
+      recordError("Command " + file + " không hợp lệ", "warn");
       continue;
     }
 
@@ -92,13 +92,13 @@ async function loadCommands(commandName = null, options = {}) {
     global.client.commands.set(name, command);
 
     if (typeof command.onLoad === "function") {
-      log.log(\`Đang chạy onLoad cho command \${name}\`, "info");
+      log.log("Đang chạy onLoad cho command " + name, "info");
       try {
         await command.onLoad({ api: global.api, Users, Threads });
       } catch (error) {
         if (previousCommand) global.client.commands.set(name, previousCommand);
         else global.client.commands.delete(name);
-        recordError(\`Lỗi trong onLoad của command \${name}: \${error.message}\`);
+        recordError("Lỗi trong onLoad cho command " + name + ": " + error.message);
         continue;
       }
     }
@@ -112,14 +112,14 @@ async function loadCommands(commandName = null, options = {}) {
 
   if (errors.length) {
     log.log(
-      \`Đã tải \${loaded} lệnh; có \${errors.length} lỗi cần kiểm tra\`,
+      "Đã tải " + loaded + " lệnh; có " + errors.length + " lỗi cần kiểm tra",
       "warn"
     );
   } else {
     log.log(
       commandName
-        ? \`Đã tải lại command "\${commandName}"\`
-        : \`Đã tải thành công \${global.client.commands.size} lệnh\`,
+        ? 'Đã tải lại command "' + commandName + '"'
+        : "Đã tải thành công " + global.client.commands.size + " lệnh",
       "info"
     );
   }
