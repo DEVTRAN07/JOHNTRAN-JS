@@ -9,7 +9,7 @@ const { createCipherReadyGate } = require("./topchat/historyBootstrap");
 const Threads = require("./controller/controllerThreads");
 const panelBridge = require("./panelBridge");
 const { getRequesterProfile } = require("./runtime/requesterProfile");
-const { vietnamDateKey } = require("./topchat/stats");
+const { vietnamDateKey, isGroupMessage } = require("./topchat/stats");
 const {
   HISTORY_PAGE_DELAY_MS,
   HISTORY_REQUEST_TIMEOUT_MS,
@@ -179,7 +179,7 @@ function startListening(api) {
     // Include groups that receive live messages while historical paging runs,
     // so their coverage status is finalized even if that group is absent from
     // the last history page returned by Zalo.
-    if (topchatHistorySync?.active && event?.type === ThreadType.Group && event?.threadId) {
+    if (topchatHistorySync?.active && isGroupMessage(event) && (event?.threadId || event?.data?.idTo)) {
       topchatHistorySync.groups.add(String(event.threadId));
     }
     const cliMsgId = event?.data?.cliMsgId;
@@ -188,7 +188,7 @@ function startListening(api) {
 
     // Daily Topchat counting is independent of bot_enabled and passive plugin
     // dispatch, so a disabled bot in a group still records that group's chat.
-    if (event?.type === ThreadType.Group && !event?.isSelf) {
+    if (isGroupMessage(event) && !event?.isSelf) {
       const topchatCounter = require("../plugins/events/topchatCounter");
       void topchatCounter.run({ event, Threads, isSelf: false }).catch((err) => {
         logger.log(`Lỗi ghi thống kê Topchat: ${err.message}`, "warn");

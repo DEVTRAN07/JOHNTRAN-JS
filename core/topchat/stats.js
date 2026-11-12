@@ -15,6 +15,12 @@ function vietnamDateKey(value = new Date()) {
   return values.year + "-" + values.month + "-" + values.day;
 }
 
+function isGroupMessage(message) {
+  const type = message?.type ?? message?.threadType ?? message?.thread_type;
+  return type === 1 || type === "1" ||
+    (typeof type === "string" && type.trim().toLowerCase() === "group");
+}
+
 function messageData(message) {
   return message?.data && typeof message.data === "object" ? message.data : (message || {});
 }

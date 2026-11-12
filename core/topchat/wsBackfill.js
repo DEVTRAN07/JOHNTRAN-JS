@@ -1,7 +1,7 @@
 "use strict";
 
 const { ThreadType } = require("zalo-client");
-const { messageTimestamp } = require("./stats");
+const { messageTimestamp, isGroupMessage } = require("./stats");
 
 const HISTORY_PAGE_SIZE = 50;
 const HISTORY_PAGE_DELAY_MS = 350;
@@ -19,9 +19,15 @@ function vietnamDayStartMs(dateKey) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function isHistoryCoverageComplete(reason) {
+  // An empty response or missing timestamps does not prove that today's
+  // history was fully scanned; Zalo may have returned an unusable page.
+  return reason === "day-boundary-reached" || reason === "history-exhausted";
+}
+
 function inspectGroupHistoryPage(messages, dateKey, pageNumber = 1, maxPages = DEFAULT_MAX_PAGES) {
   const list = Array.isArray(messages)
-    ? messages.filter(message => message?.type === ThreadType.Group)
+    ? messages.filter(isGroupMessage)
     : [];
 
   if (!list.length) {

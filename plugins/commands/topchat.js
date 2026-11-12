@@ -19,6 +19,45 @@ module.exports.config = {
   dependencies: { canvas: "" }
 };
 
+const GROUP_HISTORY_FALLBACK_COOLDOWN_MS = 15000;
+const groupHistoryFallbackAt = new Map();
+
+async function backfillCurrentGroupHistory(api, threadId, Threads) {
+  const key = String(threadId || "");
+  if (!key || typeof api?.getGroupChatHistory !== "function") {
+    return { available: false, reason: "group-history-api-unavailable", received: 0, added: 0 };
+  }
+
+  const now = Date.now();
+  const lastAttempt = groupHistoryFallbackAt.get(key) || 0;
+  if (now - lastAttempt < GROUP_HISTORY_FALLBACK_COOLDOWN_MS) {
+    return { available: true, skipped: true, reason: "cooldown", received: 0, added: 0 };
+  }
+  groupHistoryFallbackAt.set(key, now);
+
+  const response = await api.getGroupChatHistory(key, 50);
+  const messages = Array.isArray(response?.groupMsgs)
+    ? response.groupMsgs
+    : Array.isArray(response?.data?.groupMsgs)
+      ? response.data.groupMsgs
+      : [];
+  const imported = await topchatCounter.recordHistoryMessages(messages, Threads);
+
+  // This endpoint returns only the latest page, not a guaranteed full-day
+  // archive. Mark it as partial so the bot never claims complete coverage.
+  await topchatCounter.markHistoryCoverage(
+    [key], Threads, vietnamDateKey(), false, 0, "group-api-fallback"
+  );
+  await topchatCounter.flushGroup(key, Threads);
+
+  return {
+    available: true,
+    received: messages.length,
+    added: Number(imported?.messages) || 0,
+    reason: messages.length ? "latest-page-imported" : "empty-group-history"
+  };
+}
+
 function readDailyCounts(thread) {
   const today = vietnamDateKey();
   if (thread?.topchatDate !== today) return { today, counts: {} };
@@ -45,11 +84,25 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
   );
 
   if (!ranking.length) {
+    const invalidCoverageReasons = new Set([
+      "empty-page", "missing-timestamps", "response-timeout",
+      "request-error", "connection-closed", "page-limit", "missing-cursor"
+    ]);
     const historyComplete = thread.topchatHistoryDate === today &&
-      thread.topchatHistoryComplete === true;
-    const message = historyComplete
-      ? "📊 Hôm nay nhóm chưa có tin nhắn phù hợp để xếp hạng."
-      : "📥 Bot đang đồng bộ lịch sử nhóm qua WebSocket và ghi nhận tin nhắn realtime. Hãy thử /topchat lại sau khi quá trình đồng bộ hoàn tất.";
+      thread.topchatHistoryComplete === true &&
+      !invalidCoverageReasons.has(String(thread.topchatHistoryReason || ""));
+    let message;
+    if (historyFallback?.error) {
+      message = "⚠️ Không đọc được lịch sử nhóm từ Zalo: " +
+        String(historyFallback.error).slice(0, 180) +
+        "\\nBot vẫn tiếp tục ghi nhận tin nhắn mới qua realtime.";
+    } else if (historyFallback?.available && !historyFallback.skipped && historyFallback.received === 0) {
+      message = "⚠️ Zalo không trả tin nhắn từ API lịch sử nhóm. Bot đang chờ dữ liệu realtime; hãy nhắn thử một tin trong nhóm rồi chạy lại /topchat.";
+    } else if (historyComplete) {
+      message = "📊 Đã quét đủ lịch sử nhưng hôm nay chưa có tin nhắn phù hợp để xếp hạng.";
+    } else {
+      message = "📥 Chưa đủ dữ liệu xếp hạng. Bot đang ghi nhận realtime và thử đồng bộ lịch sử nhóm; hãy thử lại sau khi có thêm tin nhắn.";
+    }
     return reply?.info
       ? reply.info(message)
       : api.sendMessage({ msg: message }, event.threadId, event.type);
@@ -86,4 +139,4 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
   }
 };
 
-module.exports._test = { readDailyCounts };
+module.exports._test = { readDailyCounts, backfillCurrentGroupHistory, groupHistoryFallbackAt, GROUP_HISTORY_FALLBACK_COOLDOWN_MS };

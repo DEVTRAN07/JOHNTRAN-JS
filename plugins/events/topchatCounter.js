@@ -1,7 +1,7 @@
 "use strict";
 
 const { ThreadType } = require("zalo-client");
-const { vietnamDateKey, messageText, messageTimestamp, avatarUrl } = require("../../core/topchat/stats");
+const { vietnamDateKey, isGroupMessage, messageText, messageTimestamp, avatarUrl } = require("../../core/topchat/stats");
 
 const writeQueues = new Map();
 const seenMessages = new Map();
@@ -234,7 +234,7 @@ async function markHistoryCoverage(threadIds, Threads, dateKey, complete, pageCo
 }
 
 module.exports.run = async function ({ event, Threads, isSelf }) {
-  if (isSelf || event?.isSelf || event?.type !== ThreadType.Group || !event?.threadId) return;
+  if (isSelf || event?.isSelf || !isGroupMessage(event) || !(event?.threadId || event?.data?.idTo)) return;
   await recordMessage({ event, Threads });
 };
 module.exports.recordHistoryMessages = recordHistoryMessages;
@@ -242,7 +242,7 @@ module.exports.markHistoryCoverage = markHistoryCoverage;
 module.exports.flushGroup = flushGroup;
 module.exports.flushAll = flushAll;
 module.exports._test = {
-  rememberMessage, recordMessage, recordHistoryMessages, markHistoryCoverage,
+  rememberMessage, recordMessage, recordHistoryMessages, markHistoryCoverage, isGroupMessage,
   applyMessagesToGroup, flushGroup, flushAll, enqueueGroupWrite, isCountableMessage,
   writeQueues, seenMessages, pendingGroups, MAX_STORED_IDS, FLUSH_DELAY_MS
 };

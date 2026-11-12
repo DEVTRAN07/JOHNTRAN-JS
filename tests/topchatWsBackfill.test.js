@@ -82,3 +82,13 @@ test("WebSocket backfill stops safely at the configured page cap", () => {
   assert.equal(result.continue, false);
   assert.equal(result.reason, "page-limit");
 });
+
+test("an empty WebSocket history response is not proof of complete daily coverage", () => {
+  const result = inspectGroupHistoryPage([], "2026-11-12", 1, 120);
+  assert.equal(result.reason, "empty-page");
+  assert.equal(isHistoryCoverageComplete(result.reason), false);
+  assert.equal(isHistoryCoverageComplete("missing-timestamps"), false);
+  assert.equal(isHistoryCoverageComplete("response-timeout"), false);
+  assert.equal(isHistoryCoverageComplete("history-exhausted"), true);
+  assert.equal(isHistoryCoverageComplete("day-boundary-reached"), true);
+});

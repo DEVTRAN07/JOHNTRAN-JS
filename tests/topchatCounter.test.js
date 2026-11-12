@@ -262,3 +262,38 @@ test("topchat automatically retries a failed batched storage write", async () =>
   assert.equal(saved.topchatCounts["member-1"].count, 1);
   assert.ok(attempts >= 2);
 });
+
+test("topchat accepts the official Zalo GroupMessage model and missing live timestamps", async () => {
+  global.config = { prefix: "/" };
+  const { GroupMessage } = require("zalo-client");
+  const Threads = fakeThreads();
+  const threadId = "topchat-real-zalo-message-shape";
+  const model = new GroupMessage("bot-self", {
+    idTo: threadId,
+    uidFrom: "member-model",
+    dName: "Member Model",
+    cliMsgId: "model-message-1",
+    content: "tin nhắn không có timestamp",
+    msgType: "text"
+  });
+
+  assert.equal(model.type, ThreadType.Group);
+  assert.equal(model.threadId, threadId);
+  await counter.run({ event: model, Threads, isSelf: false });
+  await counter.flushAll(Threads);
+
+  const saved = Threads.rows.get(threadId).data;
+  assert.equal(saved.topchatCounts["member-model"].count, 1);
+  assert.equal(saved.topchatCounts["member-model"].name, "Member Model");
+});
+
+test("topchat normalizes serialized group ThreadType values", async () => {
+  global.config = { prefix: "/" };
+  const Threads = fakeThreads();
+  const threadId = "topchat-string-group-type";
+  const event = makeGroupMessage(threadId, "member-string-type", "string-type-1", "hello");
+  event.type = "1";
+  await counter.run({ event, Threads, isSelf: false });
+  await counter.flushAll(Threads);
+  assert.equal(Threads.rows.get(threadId).data.topchatCounts["member-string-type"].count, 1);
+});
