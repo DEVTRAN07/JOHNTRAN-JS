@@ -62,7 +62,10 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
       filePath = await music.downloadToFile(streamUrl, "mp3", { fallbackUrl: track.sourceUrl || track.permalink_url || track.permalinkUrl || "", quality });
       
       // Use worker pool for CPU-intensive audio conversion
-      const voiceUrl = await music.processAudioInWorker(filePath, threadId, type, api);
+      // Worker audioWorker hiện chỉ nhận videoPath, không xử lý audioPath hoặc upload Zalo.
+      // Dùng pipeline processAudio hiện hành để chuyển AAC + upload và nhận voiceUrl.
+      const voiceUrl = await require("../../utils").processAudio(filePath, threadId, type, api);
+      filePath = null;
 
       // Audio is the primary result. Never wait for a decorative card.
       await api.sendVoice({ voiceUrl }, threadId, type);
