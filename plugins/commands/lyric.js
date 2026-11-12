@@ -117,21 +117,26 @@ async function showLyric(reply, track, existingLines = null) {
   try {
     const lines = existingLines || await findLyrics(track);
     const shown = lines.slice(0, MAX_LYRIC_LINES);
-    await reply.card({
-      theme: "ai",
-      title: track.title,
-      subtitle: track.artist || "Lời bài hát",
-      avatar: track.thumbnail,
-      rows: [{ icon: "list", label: "Lời bài hát", lines: shown }],
-      footer: lines.length > shown.length
-        ? models.BRAND + "\n...và " + (lines.length - shown.length) + " dòng nữa"
-        : models.BRAND
-    });
+    const artist = String(track?.artist || "").trim();
+    const footer = lines.length > shown.length
+      ? \`...và \${lines.length - shown.length} dòng nữa\`
+      : models.BRAND;
+    const message = [
+      \`♫ \${track.title || "Lời bài hát"}\`,
+      artist && artist !== "Không rõ" ? \`🎤 \${artist}\` : null,
+      "━━━━━━━━━━━━━━━━",
+      "",
+      ...shown,
+      "",
+      footer
+    ].filter((line) => line !== null).join("\n");
+
+    // Lời bài hát là nội dung văn bản thuần, không dựng card ảnh.
+    await reply.text(message, { plain: true });
     await reply.done();
   } catch (error) {
     await reply.failed();
     return reply.error(error.message);
   }
 }
-
 module.exports._test = { findLyrics, showLyric };
