@@ -44,6 +44,22 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   const wrappedApi = wrapForThread(api, threadId, type, commandName, event);
   const command = resolveCommand(global.client.commands, commandName);
   if (!command) {
+    // Folder shortcuts (e.g. /tools, /music, /game) render the same
+    // category detail as /menu <folder>, without a network/profile lookup.
+    try {
+      const folderMenu = require("../runtime/folderMenu");
+      const folder = folderMenu.resolveFolder(global.client.commands, UIDUsage, commandName);
+      if (folder) {
+        const items = folderMenu.collectFolderCommands(global.client.commands, UIDUsage, folder);
+        const version = require("../../package.json").version;
+        const botName = global.config?.name_bot || "JOHNTRAN";
+        return wrappedApi.sendMessage({
+          msg: folderMenu.renderFolder(folder, items, prefix, botName, version)
+        }, threadId, type);
+      }
+    } catch (error) {
+      logger.log("Không thể dựng danh mục lệnh: " + error.message, "warn");
+    }
     if (wrappedApi && threadId && type) {
       await wrappedApi.sendMessage({ msg: "⚠️ Lệnh không tồn tại!" }, threadId, type);
     }
