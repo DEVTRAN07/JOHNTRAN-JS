@@ -70,7 +70,7 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
   if (!threadId || !Array.isArray(messages) || !messages.length) return 0;
 
   return enqueueGroupWrite(threadId, async () => {
-    const record = await Threads.getData(threadId);
+    const record = Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
     const thread = record?.data || {};
     const prefix = String(thread.prefix || global.config?.prefix || "/");
 
@@ -161,7 +161,7 @@ async function markHistoryCoverage(threadIds, Threads, dateKey, complete, pageCo
   const uniqueIds = [...new Set((threadIds || []).map(String).filter(Boolean))];
   for (const threadId of uniqueIds) {
     await enqueueGroupWrite(threadId, async () => {
-      const record = await Threads.getData(threadId);
+      const record = Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
       const thread = record?.data || {};
       if (thread.topchatDate !== dateKey) {
         thread.topchatDate = dateKey;
