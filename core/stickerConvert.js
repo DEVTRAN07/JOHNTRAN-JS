@@ -12,8 +12,30 @@ const MAX_SECONDS = 8;
 const FPS = 15;
 const SIZE_LIMIT = 512 * 1024; // 512KB: Zalo upload nhanh và ổn định hơn
 
-const ffmpegBin = "ffmpeg";
-const ffprobeBin = "ffprobe";
+function resolveFfmpegBinary({ envPath = process.env.FFMPEG_PATH, staticPath } = {}) {
+  let packagedPath = staticPath;
+  if (packagedPath === undefined) {
+    try { packagedPath = require("ffmpeg-static"); } catch { packagedPath = null; }
+  }
+
+  for (const candidate of [envPath, packagedPath]) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue;
+    const resolved = candidate.trim();
+    try {
+      if (path.isAbsolute(resolved)) {
+        fs.accessSync(resolved, fs.constants.X_OK);
+      } else {
+        // A command name such as "ffmpeg" is resolved by the operating system PATH.
+      }
+      return resolved;
+    } catch {
+      // Ignore stale paths from platform configuration and try the packaged binary.
+    }
+  }
+  return "ffmpeg";
+}
+
+const ffmpegBin = resolveFfmpegBinary();
 
 let libwebpCache = null; // true | false | null (chưa probe)
 
@@ -99,19 +121,65 @@ function imageSize(buf) {
   return { width: TARGET_W, height: TARGET_W };
 }
 
-function isAnimatedBuffer(buf) {
-  // GIF nhiều frame: đếm bộ giải mã ảnh (0x2C image descriptor) sau header
-  if (buf.slice(0, 4).toString() === "GIF8") {
-    let count = 0;
-    for (let i = 13; i < buf.length - 1; i++) {
-      if (buf[i] === 0x00 && buf[i + 1] === 0x2c && buf[i + 2] !== 0x00) count++;
-      if (count > 1) return true;
+function skipGifSubBlocks(buf, offset) {
+  while (offset < buf.length) {
+    const size = buf[offset++];
+    if (size === 0) return offset;
+    if (offset + size > buf.length) return buf.length;
+    offset += size;
+  }
+  return offset;
+}
+
+function isAnimatedGif(buf) {
+  if (buf.length < 13 || !/^GIF8[79]a$/.test(buf.subarray(0, 6).toString())) return false;
+
+  const packed = buf[10];
+  let offset = 13;
+  if (packed & 0x80) offset += 3 * (1 << ((packed & 0x07) + 1));
+  let frames = 0;
+
+  while (offset < buf.length) {
+    const marker = buf[offset++];
+    if (marker === 0x3b) break; // trailer
+    if (marker === 0x21) {
+      // Extension block: label then a sequence of size-prefixed sub-blocks.
+      if (offset >= buf.length) break;
+      offset = skipGifSubBlocks(buf, offset + 1);
+      continue;
     }
+    if (marker !== 0x2c) break; // image descriptor
+    if (offset + 9 > buf.length) break;
+
+    const imagePacked = buf[offset + 8];
+    offset += 9;
+    if (imagePacked & 0x80) offset += 3 * (1 << ((imagePacked & 0x07) + 1));
+    if (offset >= buf.length) break;
+    offset = skipGifSubBlocks(buf, offset + 1); // LZW minimum code size + data blocks
+
+    frames++;
+    if (frames > 1) return true;
+  }
+  return false;
+}
+
+function isAnimatedBuffer(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 16) return false;
+  if (isAnimatedGif(buf)) return true;
+
+  // WebP animation is marked by VP8X animation flag and/or ANIM/ANMF chunks.
+  if (buf.subarray(0, 4).toString() !== "RIFF" || buf.subarray(8, 12).toString() !== "WEBP") {
     return false;
   }
-  // WebP động: chunk VP8X + flag ANIM (bit 0x02 của byte 20)
-  if (buf.slice(0, 4).toString() === "RIFF" && buf.slice(12, 16).toString() === "VP8X") {
-    return (buf[20] & 0x02) !== 0;
+
+  let offset = 12;
+  while (offset + 8 <= buf.length) {
+    const chunk = buf.subarray(offset, offset + 4).toString();
+    const size = buf.readUInt32LE(offset + 4);
+    const dataOffset = offset + 8;
+    if (chunk === "ANIM" || chunk === "ANMF") return true;
+    if (chunk === "VP8X" && size >= 1 && (buf[dataOffset] & 0x02) !== 0) return true;
+    offset = dataOffset + size + (size & 1);
   }
   return false;
 }
@@ -206,6 +274,8 @@ module.exports = {
   imageSize,
   isAnimatedBuffer,
   hasLibwebp,
+  resolveFfmpegBinary,
+  ffmpegBin,
   SIZE_LIMIT,
   TARGET_W,
   FPS,
