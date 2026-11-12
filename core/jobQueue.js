@@ -180,7 +180,7 @@ function stats() {
     rejected: lane.rejected,
     retried: lane.retried,
     oldestPendingMs: lane.pending.length
-      ? Math.max(0, Date.now() - lane.pending[0].queuedAt) : 0,
+      ? Math.max(0, Date.now() - Math.min(...lane.pending.map(job => job.queuedAt))) : 0,
     runningJobs: [...lane.running.values()].map(job => ({
       label: job.label,
       runningForMs: job.startedAt ? Math.max(0, Date.now() - job.startedAt) : 0,
