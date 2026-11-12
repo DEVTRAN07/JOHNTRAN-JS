@@ -86,10 +86,12 @@ function startListening(api) {
     // Bot thuần lệnh: không còn event tự động — handleEvent giữ lại làm khung
     // cho command có handleEvent (anti/autokick/autodown) và tương lai mở rộng.
     // handleEvent throw đồng bộ (plugin thiếu config...) phải không làm chết luồng lệnh.
-    try {
-      handleEvent("message", event, api, event.isSelf === true);
-    } catch (err) {
-      logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn");
+    if (threadInfo?.bot_enabled !== false) {
+      try {
+        handleEvent("message", event, api, event.isSelf === true);
+      } catch (err) {
+        logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn");
+      }
     }
 
     const { data } = event;
