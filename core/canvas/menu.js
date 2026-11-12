@@ -6,331 +6,514 @@ const path = require("path");
 const { loadImage } = require("canvas");
 const theme = require("./theme");
 
-const TEXT_MAIN = "#1e293b";
-const TEXT_SUB = "#64748b";
-const BURGUNDY = "#7a2e54";
-const CARD_BORDER = "#e2e8f0";
-const INFO_BG = "#ffffff";
-const INFO_BORDER = "#e2e8f0";
-
 function rounded(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
   ctx.closePath();
 }
 
-function drawText(ctx, str, x, y, size, color, bold, S, align = "left", maxWidth) {
+function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
   ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
   ctx.fillStyle = color;
-  ctx.textAlign = align;
+  ctx.textAlign = align || "left";
   ctx.textBaseline = "alphabetic";
-  let value = String(str || "");
-  if (maxWidth && align === "left") {
-    while (value.length > 1 && ctx.measureText(value).width > maxWidth) value = value.slice(0, -2) + "…";
+  let text = String(value == null ? "" : value);
+  if (maxWidth && ctx.measureText(text).width > maxWidth) {
+    while (text.length > 1 && ctx.measureText(text + "…").width > maxWidth) {
+      text = text.slice(0, -1);
+    }
+    text += "…";
   }
-  ctx.fillText(value, x, y);
+  ctx.fillText(text, x, y);
   ctx.restore();
 }
 
-async function drawSmallAvatar(ctx, avatarUrl, name, x, y, size, S) {
+function paintBackdrop(ctx, w, h, variant) {
+  const palette = variant === "folder"
+    ? ["#c68a9e", "#a75c76", "#dd9a80", "#6c8b91"]
+    : ["#bd7657", "#c58aa0", "#d49b70", "#327f8a"];
+  const base = ctx.createLinearGradient(0, 0, w, h);
+  base.addColorStop(0, palette[0]);
+  base.addColorStop(0.42, palette[1]);
+  base.addColorStop(0.7, palette[2]);
+  base.addColorStop(1, palette[3]);
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, w, h);
+
+  const glow = (x, y, radius, color) => {
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+  };
+  glow(w * 0.16, h * 0.05, w * 0.5, "rgba(255,190,190,.5)");
+  glow(w * 0.88, h * 0.16, w * 0.42, "rgba(28,178,190,.42)");
+  glow(w * 0.28, h * 0.98, w * 0.52, "rgba(235,126,47,.48)");
+  glow(w * 0.92, h * 0.9, w * 0.5, "rgba(255,194,122,.34)");
+}
+
+function drawOuterPanel(ctx, x, y, w, h, radius, colors) {
   ctx.save();
-  rounded(ctx, x, y, size, size, S(10));
-  ctx.clip();
-  if (avatarUrl) {
-    try {
-      const img = await loadImage(avatarUrl);
-      ctx.drawImage(img, x, y, size, size);
-      ctx.restore();
-      return;
-    } catch { /* fallthrough */ }
-  }
+  rounded(ctx, x, y, w, h, radius);
+  ctx.shadowColor = "rgba(0,0,0,.38)";
+  ctx.shadowBlur = theme.S(24);
+  ctx.shadowOffsetY = theme.S(10);
+  const fill = ctx.createLinearGradient(x, y, x + w, y + h);
+  fill.addColorStop(0, colors[0]);
+  fill.addColorStop(1, colors[1]);
+  ctx.fillStyle = fill;
+  ctx.fill();
   ctx.restore();
-  const bg = ctx.createRadialGradient(x + size / 2, y + size / 2, 0, x + size / 2, y + size / 2, size / 2);
-  bg.addColorStop(0, "#cbd5e1");
-  bg.addColorStop(1, "#94a3b8");
-  ctx.fillStyle = bg;
+
+  rounded(ctx, x, y, w, h, radius);
+  ctx.strokeStyle = "rgba(177,231,237,.52)";
+  ctx.lineWidth = Math.max(1, theme.S(1));
+  ctx.stroke();
+  rounded(ctx, x + theme.S(1), y + theme.S(1), w - theme.S(2), h - theme.S(2), Math.max(0, radius - theme.S(1)));
+  ctx.strokeStyle = "rgba(255,255,255,.12)";
+  ctx.lineWidth = Math.max(1, theme.S(1));
+  ctx.stroke();
+}
+
+async function drawAvatar(ctx, url, name, x, y, size, withStatus) {
+  ctx.save();
   ctx.beginPath();
   ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.clip();
+  if (url) {
+    try {
+      const image = await loadImage(url);
+      const scale = Math.max(size / image.width, size / image.height);
+      const width = image.width * scale;
+      const height = image.height * scale;
+      ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height);
+    } catch {
+      drawAvatarFallback(ctx, name, x, y, size);
+    }
+  } else {
+    drawAvatarFallback(ctx, name, x, y, size);
+  }
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2 - theme.S(0.7), 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(255,255,255,.9)";
+  ctx.lineWidth = theme.S(1.2);
+  ctx.stroke();
+
+  if (withStatus) {
+    const radius = theme.S(6.5);
+    const cx = x + size - radius * 0.8;
+    const cy = y + size - radius * 0.8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + theme.S(1.5), 0, Math.PI * 2);
+    ctx.fillStyle = "#f5ffff";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#08c977";
+    ctx.fill();
+  }
+}
+
+function drawAvatarFallback(ctx, name, x, y, size) {
+  const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+  gradient.addColorStop(0, "#d8c8b8");
+  gradient.addColorStop(1, "#718c9b");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x, y, size, size);
   ctx.fillStyle = "#ffffff";
-  ctx.font = theme.font(S(14), "JT-Round-Bold");
+  ctx.font = theme.font(17, "JT-Round-Bold");
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText((name || "U").charAt(0).toUpperCase(), x + size / 2, y + size / 2 + S(2));
+  ctx.fillText(Array.from(String(name || "U"))[0].toUpperCase(), x + size / 2, y + size / 2);
 }
 
-async function renderMenuGrid({
-  requesterName, requesterAvatarUrl, botVersion, prefix, commands, totalCommands
-}) {
-  theme.initFonts();
-  const S = theme.S;
-  const W = theme.WIDTH;
-  const H = Math.round(W * 0.71);
-  const { ctx, canvas } = theme.newCanvas(W, H);
-  const margin = S(20);
-  const gap = S(16);
-  const headerY = S(16);
-  const headerH = S(60);
-  const footerH = S(90);
-  const gridY = headerY + headerH + S(20);
-  const footerBottomGap = S(16);
-  const gridBottom = H - footerH - footerBottomGap - S(20);
-  const cols = 3;
-  const rows = Math.max(1, Math.ceil(commands.length / cols));
-  const cardW = (W - margin * 2 - gap * 2) / cols;
-  const cardH = (gridBottom - gridY - gap * (rows - 1)) / rows;
-
-  // Nền trắng
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, W, H);
-
-  // Viền ngoài nhẹ
-  rounded(ctx, 0, 0, W, H, S(16));
-  ctx.strokeStyle = "#f1f5f9";
-  ctx.lineWidth = S(2);
-  ctx.stroke();
-
-  // Header: tiêu đề + đồng hồ
-  drawText(ctx, "Danh sách tính năng", margin, headerY + S(34), 24, TEXT_MAIN, true, S);
-  drawText(ctx, new Intl.DateTimeFormat("vi-VN", {
-    hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh"
-  }).format(new Date()), W - margin - S(10), headerY + S(34), 16, TEXT_SUB, false, S, "right");
-
-  // Vẽ thẻ danh mục
-  commands.forEach((item, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = margin + col * (cardW + gap);
-    const y = gridY + row * (cardH + gap);
-    drawCategoryCard(ctx, x, y, cardW, cardH, item, S);
-  });
-
-  // Footer: avatar + tên + phiên bản (giống ảnh)
-  const footerY = H - footerH + S(10);
-  const avatarSize = S(40);
-  const avatarX = margin;
-  const avatarY = footerY;
-  await drawSmallAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, S);
-
-  const nameX = avatarX + avatarSize + S(14);
-  const nameY = footerY + avatarSize / 2 + S(2);
-  drawText(ctx, requesterName || "Dinh Nghĩa", nameX, nameY, 18, TEXT_MAIN, true, S, "left");
-
-  drawText(ctx, `v${botVersion || "1.0.2"}`, W - margin - S(10), nameY, 15, TEXT_SUB, true, S, "right");
-
-  const filePath = path.join(os.tmpdir(), "johntran_menu_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) + ".png");
-  fs.writeFileSync(filePath, canvas.toBuffer("image/png"));
-  return filePath;
-}
-
-function drawCategoryCard(ctx, x, y, w, h, item, S) {
-  // Nền trắng
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(x, y, w, h);
-
-  // Bo góc + viền đen nhẹ (giống ảnh)
-  rounded(ctx, x, y, w, h, S(14));
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = S(1.5);
-  ctx.stroke();
-
-  // Icon giống ảnh (màu theo nhóm)
-  const iconSize = S(34);
-  const iconX = x + S(18);
-  const iconY = y + (h - iconSize) / 2;
-  const menuIconMap = {
-    info: { color: "#22c3ee", idx: 9 },
-    public: { color: "#22d3ee", idx: 10 },
-    music: { color: "#a855f7", idx: 2 },
-    game: { color: "#22c3ee", idx: 0 },
-    tools: { color: "#f59e0b", idx: 1 },
-    test: { color: "#64748b", idx: 11 },
-    anti: { color: "#22d3ee", idx: 3 },
-    manager: { color: "#64748b", idx: 4 },
-    admin: { color: "#10b981", idx: 12 },
-    mybot: { color: "#fbbf24", idx: 6 },
-    hidden: { color: "#3b82f6", idx: 7 }
-  };
-  const key = String(item.slug || item.name || "").toLowerCase();
-  const m = menuIconMap[key] || { color: "#3b82f6", idx: 8 };
-  drawCategoryIcon(ctx, iconX + iconSize / 2, iconY + iconSize / 2, S(15), m.idx, S, m.color);
-
-  // Tên (in đậm)
-  const textX = iconX + iconSize + S(14);
-  const textMax = w - S(20) - iconSize - S(14) - S(40);
-  drawText(ctx, item.name, textX, y + h / 2 - S(4), 18, TEXT_MAIN, true, S, "left", textMax);
-
-  // Mô tả
-  drawText(ctx, item.category || "", textX, y + h / 2 + S(16), 13, TEXT_SUB, false, S, "left", textMax);
-
-  // Mũi tên >
-  drawText(ctx, ">", x + w - S(22), y + h / 2 + S(4), 20, TEXT_SUB, false, S, "center");
-}
-
-async function renderFolderCard({
-  folderName, folderDescription, folderIcon, requesterName, requesterAvatarUrl,
-  botVersion, totalCommands
-}) {
-  theme.initFonts();
-  const S = theme.S;
-  const W = theme.WIDTH;
-  const H = S(430);
-  const { ctx, canvas } = theme.newCanvas(W, H);
-
-  // Nền burgundy (giống ảnh 1)
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, BURGUNDY);
-  g.addColorStop(1, "#5a2242");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-
-  // Viền ngoài nhẹ
-  rounded(ctx, 0, 0, W, H, S(16));
-  ctx.strokeStyle = "rgba(255,255,255,.15)";
-  ctx.lineWidth = S(2);
-  ctx.stroke();
-
-  const pad = S(26);
-  const x = pad;
-  const y = S(20);
-  const w = W - pad * 2;
-
-  // Màu badge theo nhóm
-  const groupIndex = ["Info","Public","Music","Game","Tools","Test","Anti","Manager","Admin","Mybot","Hidden"]
-    .findIndex(name => name.toLowerCase() === String(folderName || "").toLowerCase());
-  const iconColors = ["#22c3ee", "#22d3ee", "#a855f7", "#22c3ee", "#f59e0b", "#64748b", "#22d3ee", "#64748b", "#10b981", "#fbbf24", "#3b82f6"];
-  const iconColor = groupIndex >= 0 ? iconColors[groupIndex] : "#3b82f6";
-
-  // Icon nhóm bên trái tiêu đề (màu đen như ảnh)
-  drawCategoryIcon(ctx, x + S(16), y + S(18), S(16), Math.max(0, groupIndex), S, "#000000");
-
-  // Tiêu đề: "Chi tiết chức năng: Game"
-  const titleX = x + S(46);
-  drawText(ctx, `Chi tiết chức năng: ${folderName || "Danh mục"}`, titleX, y + S(36), 20, "#ffffff", true, S);
-
-  // Mô tả: "Giải trí & game"
-  drawText(ctx, folderDescription || "Các chức năng hỗ trợ", x, y + S(64), 16, "#e2e8f0", false, S, "left", w);
-
-  // Viền phân cách
-  ctx.beginPath();
-  ctx.moveTo(x, y + S(86));
-  ctx.lineTo(x + w, y + S(86));
-  ctx.strokeStyle = "rgba(255,255,255,.15)";
-  ctx.lineWidth = S(1);
-  ctx.stroke();
-
-  // Ô thông báo sử dụng (trắng, viền hồng)
-  const infoY = y + S(108);
-  const infoH = S(72);
-  rounded(ctx, x, infoY, w, infoH, S(10));
-  ctx.fillStyle = INFO_BG;
-  ctx.fill();
-  rounded(ctx, x, infoY, w, infoH, S(10));
-  ctx.strokeStyle = "#e879f9";
-  ctx.lineWidth = S(1.5);
-  ctx.stroke();
-
-  drawText(ctx, "ℹ️", x + S(24), infoY + S(28), 16, TEXT_SUB, false, S);
-  drawText(ctx, `Gõ tên lệnh hoặc tag bot để thực thi chức năng ${folderName}`, x + S(52), infoY + S(24), 14, TEXT_MAIN, false, S, "left", w - S(110));
-  drawText(ctx, `${Number(totalCommands) || 1} lệnh khả dụng`, x + S(52), infoY + S(50), 12, TEXT_SUB, false, S);
-
-  // Footer: avatar góc dưới phải (góc phải nhất), text icon+version bên trái avatar
-  const footerY = H - S(56);
-  const avatarSize = S(48);
-  const avatarX = W - pad - avatarSize;
-  const avatarY = footerY;
-  await drawSmallAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, S);
-
-  const textX = avatarX - S(12);
-  drawText(ctx, "⚙️   🖼️   v" + (botVersion || "1.0.2"), textX, footerY + S(8), 15, "#e2e8f0", true, S, "right");
-
-  const filePath = path.join(os.tmpdir(), "johntran_folder_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
-  fs.writeFileSync(filePath, canvas.toBuffer("image/png"));
-  return filePath;
-}
-
-function drawCategoryIcon(ctx, cx, cy, r, index, S, overrideColor) {
-  const c = overrideColor || "#3b82f6";
+function gear(ctx, cx, cy, radius, color) {
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.fillStyle = c;
-  ctx.strokeStyle = c;
-  ctx.lineWidth = S(2.5);
+  ctx.fillStyle = color;
+  for (let i = 0; i < 10; i++) {
+    ctx.save();
+    ctx.rotate((Math.PI * 2 * i) / 10);
+    ctx.fillRect(-radius * 0.18, -radius * 1.02, radius * 0.36, radius * 0.38);
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.78, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,.22)";
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawGroupIcon(ctx, slug, centerX, centerY, size, monochrome) {
+  const colors = monochrome
+    ? { main: "#05060a", light: "#05060a", dark: "#05060a", accent: "#05060a" }
+    : {
+        main: "#20bfd0", light: "#b9f4fb", dark: "#087e9b",
+        accent: "#ffca35"
+      };
+  ctx.save();
+  ctx.translate(centerX - size / 2, centerY - size / 2);
+  ctx.scale(size / 64, size / 64);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  if (index === 0) { // gamepad
-    ctx.beginPath(); ctx.moveTo(-r*.95,-r*.25); ctx.quadraticCurveTo(-r*.8,-r*.7,-r*.35,-r*.62); ctx.lineTo(r*.55,-r*.62); ctx.quadraticCurveTo(r*.95,-r*.55,r*.98,-r*.05); ctx.lineTo(r*.82,r*.5); ctx.quadraticCurveTo(r*.65,r*.8,r*.35,r*.45); ctx.lineTo(-r*.35,r*.45); ctx.quadraticCurveTo(-r*.75,r*.85,-r*.9,r*.4); ctx.closePath(); ctx.fill();
-    ctx.fillStyle="rgba(0,0,0,.15)"; ctx.fillRect(-r*.58,-r*.16,r*.34,r*.12); ctx.fillRect(-r*.47,-r*.27,r*.12,r*.34);
-    ctx.fillStyle = c;
-    ctx.beginPath(); ctx.arc(r*.4,-r*.15,S(2),0,Math.PI*2); ctx.arc(r*.62,r*.05,S(2),0,Math.PI*2); ctx.fill();
-  } else if (index === 1) { // tools
-    ctx.lineWidth = S(4);
-    ctx.beginPath(); ctx.moveTo(-r*.55,r*.55); ctx.lineTo(r*.45,-r*.45); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-r*.4,-r*.4); ctx.lineTo(-r*.15,-r*.65); ctx.stroke();
-    ctx.beginPath(); ctx.arc(-r*.2,-r*.5,S(1.5),0,Math.PI*2); ctx.fill();
-  } else if (index === 2) { // music note
-    ctx.beginPath(); ctx.arc(-r*.35,-r*.35,r*.28,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-r*.35,-r*.05); ctx.lineTo(-r*.35,r*.55); ctx.lineTo(r*.4,r*.55); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(r*.4,r*.55); ctx.lineTo(r*.55,r*.35); ctx.stroke();
-  } else if (index === 3) { // shield (Anti)
-    ctx.beginPath(); ctx.moveTo(0,-r*.75); ctx.lineTo(r*.6,-r*.2); ctx.lineTo(r*.65,r*.55); ctx.lineTo(0,r*.85); ctx.lineTo(-r*.65,r*.55); ctx.lineTo(-r*.6,-r*.2); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = S(1.5);
-    ctx.beginPath(); ctx.moveTo(-r*.25,-r*.1); ctx.lineTo(-r*.05,r*.2); ctx.lineTo(r*.25,-r*.3); ctx.stroke();
-  } else if (index === 4) { // gear (Manager)
-    ctx.beginPath(); ctx.arc(0,0,r*.6,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = "rgba(0,0,0,.15)";
-    ctx.beginPath(); ctx.arc(0,0,r*.25,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = c;
-    for (let i=0;i<8;i++){ const a=(i/8)*Math.PI*2; ctx.beginPath(); ctx.moveTo(r*.45*Math.cos(a),r*.45*Math.sin(a)); ctx.lineTo(r*.75*Math.cos(a),r*.75*Math.sin(a)); ctx.fill(); }
-  } else if (index === 5) { // crown (Admin)
-    ctx.beginPath(); ctx.moveTo(-r*.5,r*.3); ctx.lineTo(-r*.62,-r*.3); ctx.lineTo(-r*.25,-r*.05); ctx.lineTo(0,-r*.65); ctx.lineTo(r*.25,-r*.05); ctx.lineTo(r*.62,-r*.3); ctx.lineTo(r*.5,r*.3); ctx.closePath(); ctx.fill();
-    ctx.fillRect(-r*.5,r*.38,r, r*.18);
-  } else if (index === 6) { // lock (Mybot)
-    ctx.beginPath(); ctx.roundRect(-r*.5,-r*.3,r,r*.75,S(4)); ctx.fill();
-    ctx.fillStyle="rgba(0,0,0,.15)";
-    ctx.beginPath(); ctx.arc(0,-r*.05,r*.32,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle=c;
-    ctx.beginPath(); ctx.moveTo(-r*.1,r*.25); ctx.lineTo(-r*.1,r*.55); ctx.lineTo(r*.1,r*.55); ctx.lineTo(r*.1,r*.25); ctx.fill();
-  } else if (index === 7) { // eye (Hidden)
-    ctx.beginPath(); ctx.ellipse(0,0,r*.7,r*.42,0,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle="rgba(0,0,0,.15)";
-    ctx.beginPath(); ctx.arc(0,0,r*.3,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle=c;
-    ctx.beginPath(); ctx.arc(0,0,r*.12,0,Math.PI*2); ctx.fill();
-  } else if (index === 8) { // star (Khác)
-    const spikes=5, outer=r*.62, inner=r*.24;
-    ctx.beginPath();
-    for(let i=0;i<spikes*2;i++){
-      const rad=(i/ (spikes*2)) * Math.PI * 2;
-      const rr = i%2===0?outer:inner;
-      ctx.lineTo(Math.cos(rad)*rr, Math.sin(rad)*rr);
+  if (slug === "info") {
+    ctx.fillStyle = "#00b99b";
+    rounded(ctx, 5, 15, 54, 39, 7);
+    ctx.fill();
+    ctx.beginPath(); ctx.moveTo(14, 48); ctx.lineTo(7, 59); ctx.lineTo(8, 43); ctx.closePath(); ctx.fill();
+    const bulb = ctx.createRadialGradient(31, 20, 2, 31, 23, 18);
+    bulb.addColorStop(0, "#fff36b"); bulb.addColorStop(1, "#f5b900");
+    ctx.fillStyle = bulb;
+    ctx.beginPath(); ctx.arc(32, 23, 15, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#e49a00";
+    rounded(ctx, 26, 34, 12, 10, 3); ctx.fill();
+    ctx.fillRect(27, 45, 10, 3);
+    ctx.strokeStyle = "#ffe65a"; ctx.lineWidth = 3;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(32 + Math.cos(a) * 19, 23 + Math.sin(a) * 19);
+      ctx.lineTo(32 + Math.cos(a) * 23, 23 + Math.sin(a) * 23);
+      ctx.stroke();
     }
-    ctx.closePath(); ctx.fill();
-  } else if (index === 9) { // info (lightbulb)
-    ctx.beginPath(); ctx.arc(0, -r*.2, r*.35, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(0, r*.15); ctx.lineTo(0, r*.6); ctx.stroke();
-  } else if (index === 10) { // public (globe)
-    ctx.beginPath(); ctx.arc(0, 0, r*.4, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-r*.3, 0); ctx.lineTo(r*.3, 0); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, -r*.3); ctx.lineTo(0, r*.3); ctx.stroke();
-  } else if (index === 11) { // test (document lines)
-    ctx.beginPath(); ctx.roundRect(-r*.4, -r*.4, r*.8, r*.8, S(4)); ctx.fill();
-    ctx.fillStyle = "rgba(0,0,0,.15)";
-    ctx.fillRect(-r*.3, -r*.3, r*.6, r*.1); ctx.fillRect(-r*.3, -r*.1, r*.5, r*.1); ctx.fillRect(-r*.3, r*.1, r*.4, r*.1);
-    ctx.fillStyle = c;
-  } else if (index === 12) { // admin (building)
-    ctx.beginPath(); ctx.roundRect(-r*.4, -r*.4, r*.8, r*.8, S(3)); ctx.fill();
-    ctx.fillStyle = "rgba(0,0,0,.15)";
-    ctx.fillRect(-r*.3, -r*.2, r*.6, r*.4);
-    ctx.fillStyle = c;
+  } else if (slug === "public") {
+    const g = ctx.createRadialGradient(22, 14, 2, 32, 32, 34);
+    g.addColorStop(0, "#8ffaff"); g.addColorStop(1, "#08a9c5");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(32, 32, 29, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(0,100,130,.45)"; ctx.lineWidth = 1.7;
+    ctx.beginPath(); ctx.ellipse(32, 32, 13, 28, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(32, 32, 25, 12, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(32, 32, 25, 21, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#e9feff"; rounded(ctx, 5, 25, 54, 15, 4); ctx.fill();
+    ctx.font = "bold 10px Arial"; ctx.fillStyle = "#0b9bb1";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("www", 29, 33);
+  } else if (slug === "music") {
+    ctx.strokeStyle = "#f26a77"; ctx.fillStyle = "#f26a77"; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(36, 8); ctx.lineTo(36, 43); ctx.lineTo(55, 39); ctx.lineTo(55, 4); ctx.lineTo(36, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(36, 12); ctx.lineTo(55, 8); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(18, 49, 10, 6, -0.45, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(43, 43, 10, 6, -0.45, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#f26a77"; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(18, 49); ctx.lineTo(18, 34); ctx.lineTo(36, 30); ctx.stroke();
+  } else if (slug === "game") {
+    ctx.strokeStyle = monochrome ? "#05060a" : "#03040a";
+    ctx.fillStyle = monochrome ? "rgba(0,0,0,0)" : "#080b12";
+    ctx.lineWidth = 5.5;
+    ctx.beginPath();
+    ctx.moveTo(17, 20); ctx.quadraticCurveTo(20, 12, 29, 13);
+    ctx.lineTo(47, 13); ctx.quadraticCurveTo(56, 13, 59, 22);
+    ctx.lineTo(62, 43); ctx.quadraticCurveTo(63, 54, 54, 54);
+    ctx.quadraticCurveTo(49, 54, 43, 45); ctx.lineTo(22, 45);
+    ctx.quadraticCurveTo(15, 57, 7, 53); ctx.quadraticCurveTo(1, 50, 4, 41);
+    ctx.lineTo(9, 25); ctx.quadraticCurveTo(11, 20, 17, 20); ctx.closePath();
+    if (!monochrome) ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = monochrome ? "#05060a" : "#aab2bf";
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(17, 27); ctx.lineTo(17, 39); ctx.moveTo(11, 33); ctx.lineTo(23, 33); ctx.stroke();
+    ctx.fillStyle = monochrome ? "#05060a" : "#aab2bf";
+    ctx.beginPath(); ctx.arc(45, 28, 3.2, 0, Math.PI * 2); ctx.arc(52, 36, 3.2, 0, Math.PI * 2); ctx.fill();
+  } else if (slug === "tools") {
+    const tiles = [
+      { x: 4, y: 5, c: "#00b99b", t: "+" },
+      { x: 34, y: 5, c: "#ffc400", t: "÷" },
+      { x: 4, y: 34, c: "#f05b72", t: "−" },
+      { x: 34, y: 34, c: "#08b6cf", t: "×" }
+    ];
+    for (const tile of tiles) {
+      ctx.fillStyle = tile.c; rounded(ctx, tile.x, tile.y, 27, 27, 5); ctx.fill();
+      ctx.font = "bold 27px Arial"; ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(tile.t, tile.x + 13.5, tile.y + 14);
+    }
+  } else if (slug === "test") {
+    ctx.fillStyle = "#9aa1ad"; rounded(ctx, 4, 5, 56, 54, 9); ctx.fill();
+    ctx.fillStyle = "#d9dce2";
+    for (let i = 0; i < 4; i++) {
+      const x = 12 + i * 12;
+      rounded(ctx, x, 15, 5, 34, 2); ctx.fill();
+      ctx.fillStyle = "#777f8b";
+      rounded(ctx, x, [22, 31, 17, 35][i], 5, 12, 2); ctx.fill();
+      ctx.fillStyle = "#d9dce2";
+    }
+  } else if (slug === "anti") {
+    ctx.fillStyle = "#20c4df"; rounded(ctx, 4, 8, 56, 46, 6); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(16, 49); ctx.lineTo(9, 60); ctx.lineTo(10, 45); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#ed5a66";
+    ctx.beginPath(); ctx.moveTo(32, 44); ctx.bezierCurveTo(12, 29, 22, 15, 32, 25);
+    ctx.bezierCurveTo(42, 15, 53, 29, 32, 44); ctx.fill();
+    ctx.fillStyle = "#ffffff"; rounded(ctx, 28, 23, 8, 20, 2); ctx.fill();
+    rounded(ctx, 22, 29, 20, 8, 2); ctx.fill();
+    ctx.fillStyle = "#e5ffff"; ctx.fillRect(19, 48, 28, 2);
+  } else if (slug === "manager") {
+    const large = ctx.createLinearGradient(14, 6, 50, 58);
+    large.addColorStop(0, "#13bfe7"); large.addColorStop(1, "#087aa9");
+    gear(ctx, 43, 24, 14, large);
+    gear(ctx, 17, 47, 10, "#16a6d5");
+    ctx.fillStyle = "#e8f8ff";
+    ctx.beginPath(); ctx.arc(43, 24, 5, 0, Math.PI * 2); ctx.arc(17, 47, 3.5, 0, Math.PI * 2); ctx.fill();
+  } else if (slug === "admin") {
+    ctx.fillStyle = "#00b997"; rounded(ctx, 5, 7, 54, 52, 7); ctx.fill();
+    ctx.fillStyle = "#c9fff1";
+    ctx.beginPath(); ctx.moveTo(11, 24); ctx.lineTo(32, 8); ctx.lineTo(53, 24); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#f2fffb";
+    ctx.fillRect(14, 26, 36, 4);
+    for (let i = 0; i < 4; i++) ctx.fillRect(17 + i * 9, 31, 5, 19);
+    ctx.fillRect(12, 51, 40, 4);
+    ctx.fillStyle = "#00a989"; ctx.fillRect(14, 56, 36, 2);
+  } else if (slug === "mybot") {
+    const body = ctx.createLinearGradient(12, 25, 51, 60);
+    body.addColorStop(0, "#ffe33f"); body.addColorStop(1, "#f1aa00");
+    ctx.strokeStyle = "#f5b500"; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(32, 25, 15, Math.PI, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = body; rounded(ctx, 10, 25, 44, 35, 8); ctx.fill();
+    ctx.fillStyle = "#e98d00"; rounded(ctx, 14, 29, 36, 27, 5); ctx.fill();
+    ctx.fillStyle = "#ffe34d"; rounded(ctx, 15, 30, 34, 27, 5); ctx.fill();
+    ctx.fillStyle = "#087c99"; rounded(ctx, 27, 37, 10, 13, 4); ctx.fill();
+    ctx.beginPath(); ctx.arc(32, 37, 4, Math.PI, 0); ctx.fill();
+  } else if (slug === "hidden") {
+    ctx.fillStyle = "#f2f4f5"; rounded(ctx, 4, 5, 56, 54, 8); ctx.fill();
+    ctx.save();
+    rounded(ctx, 9, 10, 46, 44, 4); ctx.clip();
+    ctx.fillStyle = "#15b99a";
+    ctx.beginPath(); ctx.moveTo(4, 50); ctx.lineTo(30, 17); ctx.lineTo(61, 49); ctx.lineTo(61, 60); ctx.lineTo(4, 60); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#9ee9dc";
+    ctx.beginPath(); ctx.moveTo(5, 11); ctx.lineTo(19, 11); ctx.lineTo(47, 53); ctx.lineTo(35, 53); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#ee6c86";
+    ctx.beginPath(); ctx.moveTo(31, 18); ctx.bezierCurveTo(15, 18, 20, 39, 31, 48);
+    ctx.bezierCurveTo(42, 39, 47, 18, 31, 18); ctx.fill();
+    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(31, 28, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
   ctx.restore();
+}
+
+function drawClock(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = theme.S(1.6);
+  ctx.beginPath(); ctx.arc(x, y, size / 2, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - size * 0.24);
+  ctx.moveTo(x, y); ctx.lineTo(x + size * 0.19, y + size * 0.08); ctx.stroke();
+  ctx.restore();
+}
+
+function drawPaletteIcon(ctx, cx, cy, size, color) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = theme.S(1.7);
+  ctx.beginPath(); ctx.ellipse(cx, cy, size * 0.45, size * 0.36, -0.18, 0, Math.PI * 2); ctx.stroke();
+  const dots = [[-0.2, -0.08], [0.02, -0.19], [0.23, -0.05], [-0.08, 0.16]];
+  ctx.fillStyle = color;
+  for (const dot of dots) {
+    ctx.beginPath(); ctx.arc(cx + dot[0] * size, cy + dot[1] * size, theme.S(1.5), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBotIcon(ctx, cx, cy, size, color) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = theme.S(1.6);
+  rounded(ctx, cx - size * 0.34, cy - size * 0.2, size * 0.68, size * 0.48, theme.S(4)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - size * 0.2); ctx.lineTo(cx, cy - size * 0.42); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy - size * 0.47, theme.S(1.7), 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - size * 0.13, cy, theme.S(1.4), 0, Math.PI * 2);
+  ctx.arc(cx + size * 0.13, cy, theme.S(1.4), 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, commands }) {
+  theme.initFonts();
+  const S = theme.S;
+  const W = theme.WIDTH;
+  const H = Math.round(W * 900 / 1280);
+  const result = theme.newCanvas(W, H);
+  const ctx = result.ctx;
+
+  paintBackdrop(ctx, W, H, "menu");
+
+  const panelX = S(18);
+  const panelY = S(17);
+  const panelW = W - panelX * 2;
+  const panelH = H - panelY * 2;
+  drawOuterPanel(ctx, panelX, panelY, panelW, panelH, S(18), ["#04566a", "#003f52"]);
+
+  const margin = S(32);
+  drawText(ctx, "Danh sách tính năng", margin, S(58), 24, "#f7fcff", true);
+  const time = new Intl.DateTimeFormat("vi-VN", {
+    hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh"
+  }).format(new Date());
+  drawClock(ctx, W - margin - S(57), S(45), S(14), "#d9f5ff");
+  drawText(ctx, time, W - margin, S(58), 19, "#d9f5ff", true, "right");
+
+  const groups = Array.isArray(commands) ? commands : [];
+  const columns = 3;
+  const rows = Math.max(1, Math.ceil(groups.length / columns));
+  const gap = S(9);
+  const gridY = S(70);
+  const gridBottom = S(420);
+  const cardW = (W - margin * 2 - gap * (columns - 1)) / columns;
+  const cardH = (gridBottom - gridY - gap * (rows - 1)) / rows;
+
+  groups.forEach((item, index) => {
+    const col = index % columns;
+    const row = Math.floor(index / columns);
+    const x = margin + col * (cardW + gap);
+    const y = gridY + row * (cardH + gap);
+
+    rounded(ctx, x, y, cardW, cardH, S(12));
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.18)";
+    ctx.shadowBlur = S(7);
+    ctx.shadowOffsetY = S(3);
+    const cardFill = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
+    cardFill.addColorStop(0, "#2b3447");
+    cardFill.addColorStop(1, "#252e40");
+    ctx.fillStyle = cardFill;
+    ctx.fill();
+    ctx.restore();
+    rounded(ctx, x, y, cardW, cardH, S(12));
+    ctx.strokeStyle = "rgba(199,220,230,.64)";
+    ctx.lineWidth = S(0.85);
+    ctx.stroke();
+    rounded(ctx, x + S(1), y + S(1), cardW - S(2), cardH - S(2), S(11));
+    ctx.strokeStyle = "rgba(255,255,255,.07)";
+    ctx.lineWidth = S(0.8);
+    ctx.stroke();
+
+    const slug = String(item.slug || item.name || "").toLowerCase();
+    const iconSize = S(38);
+    const iconX = x + S(29);
+    drawGroupIcon(ctx, slug, iconX, y + cardH / 2, iconSize, false);
+
+    const textX = x + S(57);
+    const maxTextWidth = cardW - S(91);
+    drawText(ctx, item.name, textX, y + cardH / 2 - S(2), 20, "#f7f9fd", true, "left", maxTextWidth);
+    drawText(ctx, item.category || "", textX, y + cardH / 2 + S(13), 12.5, "#d4e0eb", false, "left", maxTextWidth);
+
+    drawText(ctx, "›", x + cardW - S(10), y + cardH / 2 + S(5), 25, "#d6eefa", false, "center");
+  });
+
+  const footerX = margin;
+  const footerY = S(439);
+  const footerW = W - margin * 2;
+  const footerH = S(56);
+  rounded(ctx, footerX, footerY, footerW, footerH, S(17));
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,.34)";
+  ctx.shadowBlur = S(12);
+  ctx.shadowOffsetY = S(4);
+  const footerFill = ctx.createLinearGradient(footerX, footerY, footerX, footerY + footerH);
+  footerFill.addColorStop(0, "#111b2b");
+  footerFill.addColorStop(1, "#0c1421");
+  ctx.fillStyle = footerFill;
+  ctx.fill();
+  ctx.restore();
+  rounded(ctx, footerX, footerY, footerW, footerH, S(17));
+  ctx.strokeStyle = "rgba(139,205,220,.58)";
+  ctx.lineWidth = S(0.9);
+  ctx.stroke();
+
+  const avatarSize = S(40);
+  const avatarX = footerX + S(11);
+  const avatarY = footerY + (footerH - avatarSize) / 2;
+  await drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
+  drawText(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(12), footerY + S(36), 20, "#f7fbff", true);
+
+  const iconY = footerY + footerH / 2;
+  drawPaletteIcon(ctx, W - margin - S(96), iconY, S(15), "#d4f6ff");
+  drawBotIcon(ctx, W - margin - S(65), iconY, S(17), "#d4f6ff");
+  drawText(ctx, botVersion || "1.0.2", W - margin - S(10), footerY + S(36), 18, "#d4f6ff", true, "right");
+
+  const filePath = path.join(os.tmpdir(), "johntran_menu_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) + ".png");
+  fs.writeFileSync(filePath, result.canvas.toBuffer("image/png"));
+  return filePath;
+}
+
+async function renderFolderCard({
+  folderName, folderDescription, requesterName, requesterAvatarUrl, botVersion
+}) {
+  theme.initFonts();
+  const S = theme.S;
+  const W = theme.WIDTH;
+  const H = Math.round(W * 540 / 1280);
+  const result = theme.newCanvas(W, H);
+  const ctx = result.ctx;
+
+  paintBackdrop(ctx, W, H, "folder");
+
+  const panelX = S(24);
+  const panelY = S(24);
+  const panelW = W - panelX * 2;
+  const panelH = S(252);
+  drawOuterPanel(ctx, panelX, panelY, panelW, panelH, S(15), ["#71123f", "#5d1038"]);
+
+  const padX = panelX + S(23);
+  const iconCenterX = padX + S(25);
+  const iconCenterY = panelY + S(52);
+  const slug = String(folderName || "").toLowerCase();
+  drawGroupIcon(ctx, slug, iconCenterX, iconCenterY, S(54), slug === "game");
+
+  const titleX = padX + S(70);
+  drawText(ctx, "Chi tiết chức năng: " + (folderName || "Danh mục"), titleX, panelY + S(61), 22, "#fff8fb", true);
+  drawText(ctx, folderDescription || "Các chức năng hỗ trợ", padX, panelY + S(120), 20, "#fff8fb", true);
+
+  const infoX = padX;
+  const infoY = panelY + S(149);
+  const infoW = S(502);
+  const infoH = S(42);
+  rounded(ctx, infoX, infoY, infoW, infoH, S(12));
+  ctx.fillStyle = "rgba(255,255,255,.075)";
+  ctx.fill();
+  rounded(ctx, infoX, infoY, infoW, infoH, S(12));
+  ctx.strokeStyle = "rgba(237,159,207,.55)";
+  ctx.lineWidth = S(1);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(infoX + S(23), infoY + infoH / 2, S(8), 0, Math.PI * 2);
+  ctx.strokeStyle = "#f17ab8";
+  ctx.lineWidth = S(1.5);
+  ctx.stroke();
+  drawText(ctx, "i", infoX + S(23), infoY + infoH / 2 + S(4), 11, "#f17ab8", true, "center");
+  drawText(
+    ctx,
+    "Gõ tên lệnh hoặc tag bot để thực thi chức năng " + (folderName || ""),
+    infoX + S(42),
+    infoY + S(27),
+    15.5,
+    "#fff8fc",
+    true,
+    "left",
+    infoW - S(54)
+  );
+
+  const avatarSize = S(76);
+  const avatarX = panelX + panelW - S(28) - avatarSize;
+  const avatarY = panelY + S(81);
+  await drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
+
+  const footerY = panelY + panelH - S(18);
+  drawPaletteIcon(ctx, W - S(128), footerY, S(14), "#fbe7f4");
+  drawBotIcon(ctx, W - S(101), footerY, S(16), "#fbe7f4");
+  drawText(ctx, botVersion || "1.0.2", W - S(24), footerY + S(6), 18, "#fff3f9", true, "right");
+
+  const filePath = path.join(os.tmpdir(), "johntran_folder_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
+  fs.writeFileSync(filePath, result.canvas.toBuffer("image/png"));
+  return filePath;
 }
 
 module.exports = { renderMenuGrid, renderFolderCard };
