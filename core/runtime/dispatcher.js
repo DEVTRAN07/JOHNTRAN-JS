@@ -32,6 +32,7 @@ async function dispatchCommand({
     metrics?.track?.("command", { command: commandName });
 
     const reply = api.__reply;
+    reply?.scheduleAcknowledgement?.();
     let autoReacted = false;
     const reactAuto = (icon) => {
       if (reply.reacted && !autoReacted) return;
@@ -64,6 +65,8 @@ async function dispatchCommand({
       } catch {
         // Ignore reply failures; command errors are already logged.
       }
+    } finally {
+      reply?.finishCommand?.();
     }
   } catch (error) {
     logger.log(`Lỗi pipeline lệnh '${commandName}': ${error.message}`, "error");
