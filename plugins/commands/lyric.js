@@ -119,11 +119,11 @@ async function showLyric(reply, track, existingLines = null) {
     const shown = lines.slice(0, MAX_LYRIC_LINES);
     const artist = String(track?.artist || "").trim();
     const footer = lines.length > shown.length
-      ? \`...và \${lines.length - shown.length} dòng nữa\`
+      ? "...và " + (lines.length - shown.length) + " dòng nữa"
       : models.BRAND;
     const message = [
-      \`♫ \${track.title || "Lời bài hát"}\`,
-      artist && artist !== "Không rõ" ? \`🎤 \${artist}\` : null,
+      "♫ " + String(track?.title || "Lời bài hát"),
+      artist && artist !== "Không rõ" ? "🎤 " + artist : null,
       "━━━━━━━━━━━━━━━━",
       "",
       ...shown,
