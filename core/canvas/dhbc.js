@@ -34,8 +34,8 @@ async function renderQuestion(question, number = 1) {
     ctx.lineWidth = 4;
     ctx.strokeRect(x + 2, y + 2, tileWidth - 4, 186);
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 38px sans-serif";
-    ctx.fillText(clue, x + tileWidth / 2, y + 108, tileWidth - 24);
+    ctx.font = "bold 92px sans-serif";
+    ctx.fillText(question.symbols?.[index] || "?", x + tileWidth / 2, y + 118, tileWidth - 24);
     ctx.fillStyle = "#f2d17b";
     ctx.font = "16px sans-serif";
     ctx.fillText(`HÌNH ${index + 1}`, x + tileWidth / 2, y + 155);
