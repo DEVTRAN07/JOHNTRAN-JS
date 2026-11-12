@@ -169,7 +169,7 @@ function registerStickerApi(api) {
   });
 
   // ===== 2. Gửi sticker từ URL CDN =====
-  api.custom("sendCustomStickerUrl", async ({ utils, props }) => {
+  api.custom("sendCustomStickerUrl", async ({ ctx, utils, props }) => {
     const {
       staticImgUrl, animationImgUrl, threadId, threadType,
       reply = null, ttl = 0,
