@@ -1,20 +1,27 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const dhbc = require("../core/runtime/services/games/dhbcService");
+const noitu = require("../core/runtime/services/games/noituService");
 const { dispatchEvent } = require("../core/runtime/eventRegistry");
 const { dispatchCommand } = require("../core/runtime/dispatcher");
 
-test("DHBC service starts a round, accepts a correct answer and advances", () => {
-  const threadId = `dhbc-test-${Date.now()}`;
-  const started = dhbc.start(threadId, "u-a", "Player A");
+test("Nối Từ service starts a round, joins players and advances turns", () => {
+  const threadId = "noitu-test-" + Date.now();
+  const started = noitu.start(threadId, "u-a", "Player A");
   assert.equal(started.ok, true);
   assert.equal(started.session.players.size, 1);
-  const answer = started.session.question.answer;
-  const result = dhbc.answer(threadId, answer);
-  assert.equal(result.correct, true);
-  assert.equal(result.session.questionNumber, 2);
-  dhbc.stop(threadId);
+
+  try {
+    const joined = noitu.join(threadId, "u-b", "Player B");
+    assert.equal(joined.ok, true);
+    const nextPhrase = started.session.currentPhrase.last + " thử";
+    const played = noitu.play(threadId, "u-a", nextPhrase);
+    assert.equal(played.ok, true);
+    assert.equal(played.nextPlayer.uid, "u-b");
+    assert.equal(noitu.get(threadId).moves, 1);
+  } finally {
+    noitu.stop(threadId);
+  }
 });
 
 test("legacy command and event plugin contracts remain callable through runtime dispatchers", async () => {
