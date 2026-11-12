@@ -1,12 +1,14 @@
+"use strict";
+
 const metrics = require("../../core/metrics");
 const { allStats } = require("../../core/cache");
 
-const BRAND = "ᴶᴼᴴᴺ ᵀᴿᴬᴺ";
+const BRAND = "JOHNTRAN";
 
 module.exports.config = {
   name: "stats",
   aliases: ["thongke", "metrics"],
-  version: "2.0.0",
+  version: "2.1.0",
   role: 0,
   author: BRAND,
   description: "Thống kê hoạt động bot và cache",
@@ -17,29 +19,40 @@ module.exports.config = {
 };
 
 module.exports.run = async ({ reply }) => {
-  const stats = metrics.getDayStats();
+  const daily = metrics.getDayStats();
   const cacheStats = allStats();
-
   const top = metrics.topCommands();
-  const topLines = top.length > 0
-    ? top.map(([name, count], i) => `${i + 1}. ${name} — ${count} lần`)
+  const latency = metrics.getLatencyStats?.();
+
+  const topLines = top.length
+    ? top.map(([name, count], index) => `${index + 1}. ${name}: ${count} lần`)
     : ["Chưa có dữ liệu"];
 
-  await reply.card({
-    theme: "brand",
-    title: "Thống kê hôm nay",
-    subtitle: `Ngày ${stats.day}`,
-    progress: { percent: Math.min(100, Math.round((stats.commands / 100) * 100)), label: `Lệnh đã dùng (mục tiêu 100)` },
-    rows: [
-      { icon: "chart", label: "Hoạt động", lines: [
-        `Lệnh đã xử lý: ${stats.commands}`,
-        `Tìm nhạc: ${stats.musicSearch} • Tải nhạc: ${stats.musicDownload}`,
-        `AI: ${stats.aiRequests} • Giọng nói: ${stats.ttsRequests}`,
-        `Lỗi: ${stats.errors}`
-      ]},
-      { icon: "list", label: "Top lệnh", lines: topLines },
-      { icon: "spark", label: "Cache nội bộ", lines: Object.entries(cacheStats).map(([name, s]) => `${name}: ${s.size}/${s.max} (hit ${s.hitRate})`) }
-    ],
-    footer: `${BRAND} • uptime ${Math.floor(process.uptime() / 60)} phút`
-  });
+  const cacheLines = Object.entries(cacheStats).map(([name, value]) =>
+    `${name}: ${value.size}/${value.max} (hit ${value.hitRate})`
+  );
+
+  const lines = [
+    "📊 THỐNG KÊ HOẠT ĐỘNG",
+    `Ngày: ${daily.day}`,
+    "",
+    `Lệnh: ${daily.commands}  •  Lỗi: ${daily.errors}`,
+    `Nhạc: ${daily.musicSearch} tìm kiếm / ${daily.musicDownload} tải`,
+    `AI: ${daily.aiRequests}  •  TTS: ${daily.ttsRequests}`,
+    "",
+    "🏆 TOP LỆNH",
+    ...topLines,
+    "",
+    "⚡ ĐỘ TRỄ LỆNH",
+    latency
+      ? `P50: ${latency.p50Ms} ms  •  P95: ${latency.p95Ms} ms  •  Gần nhất: ${latency.lastMs} ms`
+      : "Chưa có dữ liệu",
+    "",
+    "🧠 CACHE",
+    ...cacheLines,
+    "",
+    `${BRAND} • uptime ${Math.floor(process.uptime() / 60)} phút`
+  ];
+
+  return reply.text(lines.join("\n"));
 };
