@@ -145,7 +145,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     return wrappedApi.sendMessage({ msg: roleCheck.denied }, threadId, type);
   }
 
-  const groupCheck = await checkGroupPermissions({
+  const groupCheckResult = checkGroupPermissions({
     api: wrappedApi,
     threadId,
     isGroup: type == ThreadType.Group,
@@ -155,6 +155,10 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     isSupport,
     logger
   });
+  // Avoid an async/microtask boundary unless live group-admin verification is needed.
+  const groupCheck = groupCheckResult && typeof groupCheckResult.then === "function"
+    ? await groupCheckResult
+    : groupCheckResult;
   if (groupCheck.denied) {
     return wrappedApi.sendMessage({ msg: groupCheck.denied }, threadId, type);
   }
