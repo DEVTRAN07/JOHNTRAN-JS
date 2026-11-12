@@ -222,6 +222,7 @@ function menuGroupForCommand(command) {
     if (["cmd", "events", "jobs", "stats", "upt"].includes(name)) return "mybot";
     return "admin";
   }
+  if (config.test === true || ["test", "thunghiem", "kiemthu", "testing"].includes(category)) return "test";
   if (["giaitri", "hanhdong", "ai", "khac"].includes(category)) return "hidden";
   return "hidden";
 }
@@ -245,7 +246,7 @@ function collectMenuGroups(commands, userId) {
   return MENU_GROUPS.map(group => {
     const items = buckets.get(group.slug).sort((a, b) => a.name.localeCompare(b.name, "vi"));
     return { ...group, count: items.length, commands: items };
-  }).filter(group => group.count > 0);
+  });
 }
 
 function resolveMenuGroup(commands, userId, value) {
