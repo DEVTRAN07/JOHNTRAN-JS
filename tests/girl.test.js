@@ -6,11 +6,13 @@ const command = require("../plugins/commands/girl");
 
 async function main() {
   const originalGetBuffer = http.getBuffer;
+  const originalRandom = Math.random;
   const messages = [];
   const sentPaths = [];
   const jpeg = Buffer.from("ffd8ffe000104a46494600010100000100010000ffd9", "hex");
   let downloadCalls = 0;
 
+  Math.random = () => 0;
   http.getBuffer = async (url) => {
     downloadCalls++;
     assert.strictEqual(command.config.name, "girl");
@@ -37,6 +39,7 @@ async function main() {
     await command.run({ event: { threadId: "test-thread", type: 1 }, api });
   } finally {
     http.getBuffer = originalGetBuffer;
+    Math.random = originalRandom;
   }
 
   assert.strictEqual(messages.length, 2);
