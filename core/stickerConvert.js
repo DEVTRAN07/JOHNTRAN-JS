@@ -13,7 +13,8 @@ const MAX_SECONDS = 8;
 const FPS = 15;
 const SIZE_LIMIT = 512 * 1024; // 512KB: Zalo upload nhanh và ổn định hơn
 const FRAME_PATH = path.join(__dirname, "..", "khung-stk", "hoa-anh-dao.png");
-const STICKER_DIAMETER = 360;
+// Ảnh lớn hơn, viền mảnh hơn: chủ thể chiếm ~69% diện tích sticker.
+const STICKER_DIAMETER = 400;
 const STICKER_OFFSET = (TARGET_W - STICKER_DIAMETER) / 2;
 const ROUND_R = 28; // bán kính bo góc (px) cho sticker 480x480
 
