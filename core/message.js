@@ -258,31 +258,31 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   const markResponseStarted = () => reply?.markResponseStarted?.();
 
   defineWrapped(wrapped, "sendMessage", async (message, tid, ty) => {
-    markResponseStarted();
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
     const content = typeof message === "string" ? { msg: message } : { ...message };
     if (content.plain) delete content.plain;
     const response = await api.sendMessage(content, targetThreadId, targetType);
+    markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType);
     return response;
   });
 
   defineWrapped(wrapped, "sendVoice", async (payload, tid, ty) => {
-    markResponseStarted();
     const content = typeof payload === "string" ? { voiceUrl: payload } : { ...payload };
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
     const response = await api.sendVoice(content, targetThreadId, targetType);
+    markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType);
     return response;
   });
 
   defineWrapped(wrapped, "sendVideo", async (payload, tid, ty) => {
-    markResponseStarted();
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
     const response = await api.sendVideo({ ...payload }, targetThreadId, targetType);
+    markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType);
     return response;
   });
@@ -290,10 +290,10 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   for (const method of ["sendSticker", "sendCard"]) {
     if (typeof api[method] !== "function") continue;
     defineWrapped(wrapped, method, async (payload, tid, ty) => {
-      markResponseStarted();
       const targetThreadId = threadId || tid;
       const targetType = type || ty;
       const response = await api[method](payload, targetThreadId, targetType);
+      markResponseStarted();
       scheduleRecall(api, response, targetThreadId, targetType);
       return response;
     });
@@ -301,10 +301,10 @@ function wrapApi(api, threadId, type, commandName, event = null) {
 
   if (typeof api.sendCustomStickerUrl === "function") {
     defineWrapped(wrapped, "sendCustomStickerUrl", async (payload) => {
-      markResponseStarted();
       const targetThreadId = payload?.threadId || threadId;
       const targetType = payload?.threadType ?? type;
       const response = await api.sendCustomStickerUrl(payload);
+      markResponseStarted();
       scheduleRecall(api, response, targetThreadId, targetType);
       return response;
     });
