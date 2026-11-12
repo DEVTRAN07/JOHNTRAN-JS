@@ -14,7 +14,7 @@ test("menu shows only populated folders in the reference order", () => {
     ["id", command("id", "Tiện ích")],
     ["getlink", command("getlink", "Tiện ích")],
     ["scl", command("scl", "Nhạc")],
-    ["tutien", command("tutien", "Game")],
+    ["dhbc", command("dhbc", "Game")],
     ["autodown", command("autodown", "Tiện ích")],
     ["anti", command("anti", "Nhóm", 1)],
     ["delmsg", command("delmsg", "Nhóm")],
@@ -37,7 +37,7 @@ test("menu folders use clear English display names", () => {
   const commands = new Map([
     ["id", command("id", "Tiện ích")],
     ["scl", command("scl", "Nhạc")],
-    ["tutien", command("tutien", "Game")],
+    ["dhbc", command("dhbc", "Game")],
     ["anti", command("anti", "Nhóm")],
     ["restart", command("restart", "Hệ thống")],
     ["command", command("command", "Hệ thống")],
