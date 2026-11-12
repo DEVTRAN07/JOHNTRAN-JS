@@ -176,15 +176,19 @@ function startListening(api) {
   };
 
   const handleIncoming = (event) => {
+    // Observe the raw SDK event before duplicate/self filters so /topchat can
+    // distinguish "listener received nothing" from "self/duplicate was skipped".
+    const topchatCounter = require("../plugins/events/topchatCounter");
+    topchatCounter.observeIncomingEvent(event);
+
     const cliMsgId = event?.data?.cliMsgId;
     if (cliMsgId && processedIds.has(cliMsgId)) return; // trùng lặp (server gửi lại / backfill)
     markProcessed(cliMsgId);
 
-    // Daily Topchat counting is independent of bot_enabled and passive plugin
-    // dispatch, so a disabled bot in a group still records that group's chat.
-    if (isGroupMessage(event) && !event?.isSelf) {
-      const topchatCounter = require("../plugins/events/topchatCounter");
-      void topchatCounter.run({ event, Threads, isSelf: false }).catch((err) => {
+    // Count every group event for diagnostics. The counter still excludes
+    // bot-self messages from the actual member ranking.
+    if (isGroupMessage(event)) {
+      void topchatCounter.run({ event, Threads }).catch((err) => {
         logger.log(`Lỗi ghi thống kê Topchat: ${err.message}`, "warn");
       });
     }

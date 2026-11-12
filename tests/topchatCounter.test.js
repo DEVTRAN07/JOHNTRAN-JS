@@ -389,3 +389,45 @@ test("topchat does not trust legacy history completion markers without a version
   assert.doesNotMatch(message, /Đã quét đủ lịch sử nhóm/);
   assert.match(message, /trạng thái quét lịch sử cũ/i);
 });
+
+test("topchat observes raw listener events before self filtering", async () => {
+  global.config = { prefix: "/" };
+  const Threads = fakeThreads();
+  const threadId = "topchat-self-event-diagnostics";
+  const selfEvent = {
+    ...makeGroupMessage(threadId, "bot-self", "self-diag-1", "/topchat"),
+    isSelf: true
+  };
+
+  const runtime = counter.observeIncomingEvent(selfEvent);
+  assert.equal(runtime.events, 1);
+  assert.equal(runtime.groups, 1);
+  assert.equal(runtime.self, 1);
+  assert.equal(runtime.other, 0);
+  assert.equal(runtime.lastType, String(ThreadType.Group));
+
+  await counter.run({ event: selfEvent, Threads, isSelf: true });
+  await counter.flushAll(Threads);
+  const saved = Threads.rows.get(threadId).data;
+  assert.equal(saved.topchatDiagnostics.received, 1);
+  assert.equal(saved.topchatDiagnostics.counted, 0);
+  assert.equal(saved.topchatDiagnostics.rejected, 1);
+  assert.deepEqual(saved.topchatCounts, {});
+});
+
+test("topchat listener diagnostics are isolated per group and identify user message types", () => {
+  const groupA = "topchat-listener-diagnostic-a";
+  const groupB = "topchat-listener-diagnostic-b";
+  counter.observeIncomingEvent(makeGroupMessage(groupA, "u1", "event-a", "hello"));
+  counter.observeIncomingEvent({
+    type: ThreadType.User,
+    threadId: groupB,
+    isSelf: false,
+    data: { uidFrom: "u2", content: "private", msgType: "text" }
+  });
+
+  assert.equal(counter.getRuntimeDiagnostics(groupA).groups, 1);
+  assert.equal(counter.getRuntimeDiagnostics(groupA).other, 1);
+  assert.equal(counter.getRuntimeDiagnostics(groupB).private, 1);
+  assert.equal(counter.getRuntimeDiagnostics(groupB).lastMessageType, "text");
+});

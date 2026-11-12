@@ -5,6 +5,8 @@ const { vietnamDateKey, isGroupMessage, messageText, messageTimestamp, avatarUrl
 const writeQueues = new Map();
 const seenMessages = new Map();
 const pendingGroups = new Map();
+const runtimeDiagnostics = new Map();
+const MAX_RUNTIME_DIAGNOSTIC_GROUPS = 1000;
 const MAX_SEEN_PER_GROUP = 10000;
 const MAX_STORED_IDS = 10000;
 const DEFAULT_FLUSH_DELAY_MS = 750;
@@ -22,6 +24,60 @@ module.exports.config = {
   usage: "Tự động",
   cooldowns: 0
 };
+
+function observeIncomingEvent(event) {
+  const threadId = String(event?.threadId || event?.data?.idTo || "");
+  if (!threadId) return null;
+
+  const today = vietnamDateKey();
+  let value = runtimeDiagnostics.get(threadId);
+  if (!value || value.date !== today) {
+    value = {
+      date: today,
+      events: 0,
+      groups: 0,
+      private: 0,
+      unknown: 0,
+      self: 0,
+      other: 0,
+      lastType: "missing",
+      lastMessageType: "",
+      lastSeenAt: 0
+    };
+  }
+
+  value.events++;
+  if (isGroupMessage(event)) value.groups++;
+  else if (event?.type === 0 || event?.type === "0" ||
+      (typeof event?.type === "string" && event.type.toLowerCase() === "user")) value.private++;
+  else value.unknown++;
+
+  if (event?.isSelf) value.self++;
+  else value.other++;
+  value.lastType = String(event?.type ?? "missing").slice(0, 20);
+  value.lastMessageType = String(event?.data?.msgType || "").slice(0, 40);
+  value.lastSeenAt = Date.now();
+
+  runtimeDiagnostics.delete(threadId);
+  runtimeDiagnostics.set(threadId, value);
+  while (runtimeDiagnostics.size > MAX_RUNTIME_DIAGNOSTIC_GROUPS) {
+    runtimeDiagnostics.delete(runtimeDiagnostics.keys().next().value);
+  }
+  return { ...value };
+}
+
+function getRuntimeDiagnostics(threadId) {
+  const key = String(threadId || "");
+  const value = runtimeDiagnostics.get(key);
+  if (!value || value.date !== vietnamDateKey()) {
+    return {
+      date: vietnamDateKey(), events: 0, groups: 0, private: 0,
+      unknown: 0, self: 0, other: 0, lastType: "none",
+      lastMessageType: "", lastSeenAt: 0
+    };
+  }
+  return { ...value };
+}
 
 function rememberMessage(threadId, data) {
   const messageId = String(data?.cliMsgId || data?.msgId || "");
@@ -215,7 +271,7 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
 
 async function recordMessage({ event, Threads }) {
   const threadId = String(event?.threadId || event?.data?.idTo || "");
-  if (!threadId || !isGroupMessage(event) || event?.isSelf) return 0;
+  if (!threadId || !isGroupMessage(event)) return 0;
   return applyMessagesToGroup(threadId, [event], Threads, vietnamDateKey(), "live");
 }
 
@@ -262,10 +318,14 @@ async function markHistoryCoverage(threadIds, Threads, dateKey, complete, pageCo
   return uniqueIds.length;
 }
 
-module.exports.run = async function ({ event, Threads, isSelf }) {
-  if (isSelf || event?.isSelf || !isGroupMessage(event) || !(event?.threadId || event?.data?.idTo)) return;
+module.exports.run = async function ({ event, Threads }) {
+  if (!isGroupMessage(event) || !(event?.threadId || event?.data?.idTo)) return;
+  // Self messages are passed through for diagnostics; isCountableMessage still
+  // excludes them from the member ranking while persisting the rejection count.
   await recordMessage({ event, Threads });
 };
+module.exports.observeIncomingEvent = observeIncomingEvent;
+module.exports.getRuntimeDiagnostics = getRuntimeDiagnostics;
 module.exports.recordHistoryMessages = recordHistoryMessages;
 module.exports.markHistoryCoverage = markHistoryCoverage;
 module.exports.flushGroup = flushGroup;
@@ -273,5 +333,6 @@ module.exports.flushAll = flushAll;
 module.exports._test = {
   rememberMessage, recordMessage, recordHistoryMessages, markHistoryCoverage, isGroupMessage,
   applyMessagesToGroup, flushGroup, flushAll, enqueueGroupWrite, isCountableMessage,
-  writeQueues, seenMessages, pendingGroups, MAX_STORED_IDS, FLUSH_DELAY_MS
+  writeQueues, seenMessages, pendingGroups, runtimeDiagnostics,
+  observeIncomingEvent, getRuntimeDiagnostics, MAX_STORED_IDS, FLUSH_DELAY_MS
 };

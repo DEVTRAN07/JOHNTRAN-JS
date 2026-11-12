@@ -27,37 +27,38 @@ function readDailyCounts(thread) {
   return { today, counts };
 }
 
-function emptyRankingMessage(thread, today) {
+function emptyRankingMessage(thread, today, listenerDiagnostics = {}) {
   const diagnostics = thread?.topchatDiagnostics?.date === today
     ? thread.topchatDiagnostics
     : { received: 0, counted: 0, rejected: 0, duplicates: 0 };
   const realtime = `\n📡 Realtime: nhận ${Number(diagnostics.received) || 0}, ghi nhận ${Number(diagnostics.counted) || 0}, bị lọc ${Number(diagnostics.rejected) || 0}, trùng ${Number(diagnostics.duplicates) || 0} tin.`;
+  const listenerLine = `\n🎧 Listener: ${Number(listenerDiagnostics.events) || 0} event, nhóm ${Number(listenerDiagnostics.groups) || 0}, tự gửi ${Number(listenerDiagnostics.self) || 0}, người khác ${Number(listenerDiagnostics.other) || 0}, type=${String(listenerDiagnostics.lastType || "none")}, msgType=${String(listenerDiagnostics.lastMessageType || "none")}.`;
   const historyComplete = thread?.topchatHistoryDate === today &&
     thread?.topchatHistoryComplete === true &&
     thread?.topchatHistoryVersion === 2;
 
   if (historyComplete) {
-    return "📊 Đã quét đủ lịch sử nhóm. Hôm nay chưa có tin nhắn phù hợp để xếp hạng." + realtime;
+    return "📊 Đã quét đủ lịch sử nhóm. Hôm nay chưa có tin nhắn phù hợp để xếp hạng." + realtime + listenerLine;
   }
 
   if (thread?.topchatHistoryDate === today && thread?.topchatHistoryComplete === true) {
     return "📥 Trạng thái quét lịch sử cũ không còn được tin cậy; bot đang chờ đồng bộ lại. " +
-      "Tin nhắn mới vẫn được ghi nhận qua realtime." + realtime;
+      "Tin nhắn mới vẫn được ghi nhận qua realtime." + realtime + listenerLine;
   }
 
   const reason = String(thread?.topchatHistoryReason || "");
   if (reason === "response-timeout" || reason === "request-error" ||
       reason === "empty-page" || reason === "missing-timestamps") {
-    return "⚠️ Zalo chưa trả dữ liệu lịch sử nhóm qua WebSocket. Bot vẫn ghi nhận tin nhắn mới theo thời gian thực." + realtime;
+    return "⚠️ Zalo chưa trả dữ liệu lịch sử nhóm qua WebSocket. Bot vẫn ghi nhận tin nhắn mới theo thời gian thực." + realtime + listenerLine;
   }
 
   if (!diagnostics.received) {
-    return "📥 Chưa ghi nhận event tin nhắn nhóm nào trong ngày. Hãy gửi tin nhắn thường từ một thành viên khác rồi chạy lại /topchat để kiểm tra realtime." + realtime;
+    return "📥 Chưa ghi nhận event tin nhắn nhóm nào trong ngày. Hãy gửi tin nhắn thường từ một thành viên khác rồi chạy lại /topchat để kiểm tra realtime." + realtime + listenerLine;
   }
   if (!diagnostics.counted) {
-    return "📥 Bot đã nhận event nhóm nhưng chưa có tin nào đủ điều kiện xếp hạng (tin nhắn lệnh, tin bot hoặc dữ liệu không hợp lệ sẽ bị bỏ qua)." + realtime;
+    return "📥 Bot đã nhận event nhóm nhưng chưa có tin nào đủ điều kiện xếp hạng (tin nhắn lệnh, tin bot hoặc dữ liệu không hợp lệ sẽ bị bỏ qua)." + realtime + listenerLine;
   }
-  return "📥 Đã nhận event realtime nhưng bộ đếm chưa tạo được bảng xếp hạng. Cần kiểm tra trạng thái lưu dữ liệu nhóm." + realtime;
+  return "📥 Đã nhận event realtime nhưng bộ đếm chưa tạo được bảng xếp hạng. Cần kiểm tra trạng thái lưu dữ liệu nhóm." + realtime + listenerLine;
 }
 
 module.exports.run = async function ({ api, event, Threads, reply }) {
@@ -78,7 +79,8 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
   );
 
   if (!ranking.length) {
-    const message = emptyRankingMessage(thread, today);
+    const listenerDiagnostics = topchatCounter.getRuntimeDiagnostics(threadId);
+    const message = emptyRankingMessage(thread, today, listenerDiagnostics);
     return reply?.info
       ? reply.info(message)
       : api.sendMessage({ msg: message }, event.threadId, event.type);
