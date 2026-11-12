@@ -8,6 +8,9 @@ services:
       - .env.production
     environment:
       - NODE_ENV=production
+      - JT_ACCOUNT_FILE=/app/data/account.json
+      - JT_DB_FILE=/app/data/store.json
+      - JT_QRCODE_PATH=/app/data/qr.png
     restart: unless-stopped
     ports:
       - "8000:8000"
