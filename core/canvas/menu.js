@@ -23,9 +23,10 @@ async function renderMenuGrid({
   const gap = S(8);
   const headerY = S(8);
   const headerH = S(144);
-  const footerH = S(76);
+  const footerH = S(54);
   const gridY = headerY + headerH + S(14);
-  const gridBottom = H - footerH - S(18);
+  const footerBottomGap = S(14);
+  const gridBottom = H - footerH - footerBottomGap - S(18);
   const cols = 3;
   const rows = 3;
   const cardW = (W - margin * 2 - gap * 2) / cols;
@@ -48,7 +49,7 @@ async function renderMenuGrid({
     drawCategoryCard(ctx, x, y, cardW, cardH, item, i, S);
   });
 
-  await drawBrandFooter(ctx, margin, H - footerH - S(4), W - margin * 2, footerH, {
+  await drawBrandFooter(ctx, margin, H - footerH - footerBottomGap, W - margin * 2, footerH, {
     requesterName, requesterAvatarUrl, botVersion, totalCommands, S
   });
 
@@ -158,9 +159,11 @@ function drawCategoryCard(ctx, x, y, w, h, item, index, S) {
   ctx.lineWidth = S(1.4);
   ctx.stroke();
 
-  drawCategoryIcon(ctx, x + S(24), y + h / 2, S(38), index, S);
-  drawText(ctx, item.name, x + S(91), y + h / 2 - S(2), 23, "#f7faff", true, S);
-  drawText(ctx, item.category || item.description || "", x + S(91), y + h / 2 + S(27), 15, "#c7d8f4", false, S);
+  drawCategoryIcon(ctx, x + S(51), y + h / 2, S(31), index, S);
+  const textX = x + S(91);
+  const textMax = w - S(128);
+  drawText(ctx, item.name, textX, y + h / 2 - S(2), 23, "#f7faff", true, S, "left", textMax);
+  drawText(ctx, item.category || item.description || "", textX, y + h / 2 + S(27), 15, "#c7d8f4", false, S, "left", textMax);
   drawText(ctx, "›", x + w - S(18), y + h / 2 + S(8), 32, "#d9eaff", false, S, "center");
 }
 
@@ -210,7 +213,7 @@ function drawCategoryIcon(ctx, cx, cy, r, index, S) {
 }
 
 async function drawBrandFooter(ctx, x, y, w, h, opts) {
-  const { requesterName, requesterAvatarUrl, botVersion, S } = opts;
+  const { botVersion, S } = opts;
   rounded(ctx, x, y, w, h, S(28));
   const g = ctx.createLinearGradient(x,y,x+w,y+h);
   g.addColorStop(0,"rgba(9,39,91,.98)");
@@ -226,14 +229,11 @@ async function drawBrandFooter(ctx, x, y, w, h, opts) {
   drawMiniCrown(ctx,logoX+logoSize/2,logoY+logoSize*.37,S);
   drawText(ctx,"MrQ",logoX+logoSize/2,logoY+logoSize*.79,10,"#e6d8ff",true,S,"center");
 
-  drawText(ctx,"JOHNTRAN-JS",x+S(88),y+h/2+S(7),21,"#ffffff",true,S);
-  drawVerified(ctx,x+S(242),y+h/2-S(2),S(8),S);
-
-  // Avatar người gọi được giữ nhỏ ở phía phải, không thay logo thương hiệu.
-  if (requesterAvatarUrl) await drawSmallAvatar(ctx, requesterAvatarUrl, x+w-S(188), y+(h-S(38))/2, S(38));
-  drawLink(ctx,x+w-S(145),y+h/2,S);
-  drawBotIcon(ctx,x+w-S(94),y+h/2,S);
-  drawText(ctx,"v"+(botVersion||"1.0.0"),x+w-S(16),y+h/2+S(7),18,"#edf5ff",true,S,"right");
+  drawText(ctx,"JOHNTRAN-JS",x+S(82),y+h/2+S(7),21,"#ffffff",true,S);
+  drawVerified(ctx,x+S(238),y+h/2-S(2),S(8),S);
+  drawLink(ctx,x+w-S(125),y+h/2,S);
+  drawBotIcon(ctx,x+w-S(76),y+h/2,S);
+  drawText(ctx,"v"+(botVersion||"1.0.0"),x+w-S(12),y+h/2+S(7),18,"#edf5ff",true,S,"right");
 }
 
 async function drawSmallAvatar(ctx,url,x,y,size){
@@ -268,7 +268,19 @@ function drawRobot(ctx,x,y,S){
   ctx.restore();
 }
 function drawClock(ctx,x,y,r){ctx.save();ctx.strokeStyle="#d9eaff";ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.moveTo(x,y-r*.55);ctx.lineTo(x,y);ctx.lineTo(x+r*.4,y+r*.2);ctx.stroke();ctx.restore();}
-function drawText(ctx,str,x,y,size,color,bold,S,align="left"){ctx.save();ctx.font=theme.font(size,bold?"JT-Round-Bold":"JT-Round");ctx.fillStyle=color;ctx.textAlign=align;ctx.textBaseline="alphabetic";ctx.fillText(String(str||""),x,y);ctx.restore();}
+function drawText(ctx,str,x,y,size,color,bold,S,align="left",maxWidth){
+  ctx.save();
+  ctx.font=theme.font(size,bold?"JT-Round-Bold":"JT-Round");
+  ctx.fillStyle=color;
+  ctx.textAlign=align;
+  ctx.textBaseline="alphabetic";
+  let value=String(str||"");
+  if (maxWidth && align==="left") {
+    while (value.length>1 && ctx.measureText(value).width>maxWidth) value=value.slice(0,-2)+"…";
+  }
+  ctx.fillText(value,x,y);
+  ctx.restore();
+}
 function rounded(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 
 module.exports = { renderMenuGrid };
