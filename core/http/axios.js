@@ -29,7 +29,7 @@ function installAxiosGuard() {
 
   pooledAxios.interceptors.request.use(
     (config) => {
-      const url = config.url || "";
+      let url = config.url || "";
       if (/^https?:\/\//i.test(url) === false && config.baseURL) {
         config.url = new URL(url.replace(/^\//, ""), config.baseURL).toString();
         url = config.url;
