@@ -114,7 +114,7 @@ function assertSoundCloudStreamUrl(rawUrl) {
 
 function redactStreamDiagnostics(value) {
   return String(value || "")
-    .replace(/https?:\\/\\/[^\\s"'<>]+/g, (raw) => {
+    .replace(/https?:\/\/[^\s"'<>]+/g, (raw) => {
       try {
         const parsed = new URL(raw);
         parsed.search = parsed.search ? "?[query]" : "";
@@ -123,7 +123,7 @@ function redactStreamDiagnostics(value) {
         return "[stream URL]";
       }
     })
-    .replace(/(client_id|token|secret|sig|signature)=([^&\\s]+)/gi, "$1=[redacted]");
+    .replace(/(client_id|token|secret|sig|signature)=([^&\s]+)/gi, "$1=[redacted]");
 }
 
 function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
