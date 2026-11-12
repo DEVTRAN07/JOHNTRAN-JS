@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { currentGroup } = require("../plugins/commands/status")._test;
 
-test("status reads group enablement from the event's already-loaded thread record", () => {
+test("status reads group enablement from the event's already-loaded thread record", async () => {
   let apiCalls = 0;
   const api = {
     getGroupInfo() {
