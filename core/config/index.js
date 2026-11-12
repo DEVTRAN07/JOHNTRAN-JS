@@ -168,6 +168,7 @@ const DEFAULTS = {
       // Nhạc (SoundCloud — /scl)
       "soundcloud.com",
       "sndcdn.com",
+      "soundcloud.cloud",
       "api-v2.soundcloud.com",
       // Đọc giọng nói (/noi — Google TTS)
       "translate.google.com",
