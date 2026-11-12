@@ -16,7 +16,8 @@ const { getFolderReaction } = require("../runtime/folderReaction");
 const {
   isBotAdmin: isBotAdminUser,
   isSupportUser,
-  getRequesterGreeting
+  getRequesterGreeting,
+  getRequesterPrompt
 } = require("../runtime/requesterGreeting");
 
 const ADMIN_GROUPS_FILE = path.join(__dirname, "..", "..", "data", "bot_admin_groups.json");
@@ -95,6 +96,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
           const caption = [
             `@${mentionName}`,
             getRequesterGreeting(UIDUsage),
+            getRequesterPrompt(UIDUsage),
             heading,
             "",
             ...commandLines,

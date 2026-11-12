@@ -5,7 +5,7 @@ const botVersion = require("../../package.json").version;
 const folders = require("../../core/runtime/folderMenu");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
-const { getRequesterGreeting } = require("../../core/runtime/requesterGreeting");
+const { getRequesterGreeting, getRequesterPrompt } = require("../../core/runtime/requesterGreeting");
 
 module.exports.config = {
   name: "menu",
@@ -55,7 +55,7 @@ module.exports.run = async function ({ api, event }) {
     }, { timeout: 30000, poolSize: 2 });
     const mentionName = profile.requesterName;
     const mentionUid = event?.data?.uidFrom;
-    const caption = `@${mentionName}\n${getRequesterGreeting(senderId)}\n👉 Hôm nay có gì hay không? Hãy chọn tính năng bạn muốn nhé! 📍`;
+    const caption = `@${mentionName}\n${getRequesterGreeting(senderId)}\n${getRequesterPrompt(senderId)}`;
     const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
     return await api.sendMessage({
       msg: caption,
