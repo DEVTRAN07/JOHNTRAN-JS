@@ -38,25 +38,46 @@ function loadRingFromDisk() {
   try {
     if (!fs.existsSync(CACHE_FILE)) return;
     const data = JSON.parse(fs.readFileSync(CACHE_FILE, "utf8"));
-    for (const [tid, list] of Object.entries(data || {})) {
-      if (Array.isArray(list) && list.length) ring.set(tid, list);
+    const entries = Object.entries(data || {})
+      .filter(([, list]) => Array.isArray(list) && list.length)
+      .map(([tid, list]) => [String(tid), list.slice(-MAX_PER_THREAD)])
+      .sort((a, b) => {
+        const lastA = Number(a[1][a[1].length - 1]?.ts) || 0;
+        const lastB = Number(b[1][b[1].length - 1]?.ts) || 0;
+        return lastA - lastB;
+      });
+    for (const [tid, list] of entries.slice(-MAX_THREADS)) {
+      ring.set(tid, list);
     }
   } catch { /* không đọc được thì thôi */ }
 }
 
+let persistInFlight = false;
+let persistAgain = false;
+
 function persistRing() {
   persistTimer = null;
-  try {
-    // chỉ giữ MAX_THREADS hội thoại gần nhất (tránh file phình)
-    const sorted = [...ring.entries()].sort((a, b) => {
-      const lastA = a[1].length ? a[1][a[1].length - 1].ts : 0;
-      const lastB = b[1].length ? b[1][b[1].length - 1].ts : 0;
-      return lastB - lastA;
+  if (persistInFlight) {
+    persistAgain = true;
+    return;
+  }
+
+  persistInFlight = true;
+  // Chỉ serialize tối đa MAX_THREADS × MAX_PER_THREAD tin nhắn.
+  const keep = Object.fromEntries(ring.entries());
+  const tempPath = `${CACHE_FILE}.${process.pid}.tmp`;
+
+  fs.promises.mkdir(path.dirname(CACHE_FILE), { recursive: true })
+    .then(() => fs.promises.writeFile(tempPath, JSON.stringify(keep), "utf8"))
+    .then(() => fs.promises.rename(tempPath, CACHE_FILE))
+    .catch(() => { /* lưu panel history không được làm gián đoạn bot */ })
+    .finally(() => {
+      persistInFlight = false;
+      if (persistAgain) {
+        persistAgain = false;
+        schedulePersist();
+      }
     });
-    const keep = Object.fromEntries(sorted.slice(0, MAX_THREADS));
-    fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(keep));
-  } catch { /* bỏ qua */ }
 }
 
 function schedulePersist() {
@@ -64,13 +85,23 @@ function schedulePersist() {
   persistTimer = setTimeout(persistRing, 10000).unref?.();
 }
 
-function record(threadId, message) {
-  if (!threadId) return;
-  let list = ring.get(threadId);
-  if (!list) {
-    list = [];
-    ring.set(threadId, list);
+function touchThread(threadId, list) {
+  const key = String(threadId);
+  if (ring.has(key)) {
+    // Chuyển hội thoại vừa hoạt động về cuối Map để giữ thứ tự LRU.
+    ring.delete(key);
+  } else if (ring.size >= MAX_THREADS) {
+    const oldestKey = ring.keys().next().value;
+    if (oldestKey !== undefined) ring.delete(oldestKey);
   }
+  ring.set(key, list);
+}
+
+function record(threadId, message) {
+  if (threadId == null || threadId === "") return;
+  const key = String(threadId);
+  const list = ring.get(key) || [];
+  touchThread(key, list);
   list.push({ ts: Date.now(), ...message });
   if (list.length > MAX_PER_THREAD) list.splice(0, list.length - MAX_PER_THREAD);
   schedulePersist();
@@ -140,7 +171,7 @@ async function loadGroupHistory(threadId, limit) {
     })).filter((m) => m.ts > 0);
     if (!list.length) return current;
     const live = current.filter((m) => m.ts > list[list.length - 1].ts);
-    ring.set(threadId, [...list, ...live]);
+    touchThread(threadId, [...list, ...live].slice(-MAX_PER_THREAD));
     historyAt.set(threadId, Date.now());
     return getMessages(threadId, limit);
   } catch (error) {
