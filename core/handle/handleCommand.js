@@ -19,17 +19,6 @@ function readAdminGroups() {
   try { return JSON.parse(fs.readFileSync(ADMIN_GROUPS_FILE, "utf8")) || []; } catch { return []; }
 }
 
-function scheduleCommandAcknowledgement(wrappedApi, commandName, prefix, config) {
-  if (config?.command_ack === false) return;
-  const configuredDelay = Number(config?.command_ack_delay_ms);
-  const delayMs = Number.isFinite(configuredDelay) && configuredDelay >= 0
-    ? Math.min(configuredDelay, 2000)
-    : 350;
-  wrappedApi?.__reply?.scheduleAcknowledgement?.({
-    delayMs,
-    message: `⏳ Đang xử lý lệnh ${prefix || config?.prefix || "/"}${commandName}...`
-  });
-}
 
 const { resolve: resolveCommand } = require("../runtime/commandRegistry");
 const { commandLimiter } = require("../runtime/rateLimiter");
@@ -70,7 +59,6 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
       const folderMenu = folderMenuRuntime;
       const folder = menuGroupShortcut;
       if (folder) {
-        scheduleCommandAcknowledgement(wrappedApi, commandName, prefix, config);
         const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
         // Các thư mục luôn có thẻ riêng; nhóm rỗng vẫn hiển thị đúng bố cục và báo chưa có lệnh trong caption.
         const version = require("../../package.json").version;
@@ -160,9 +148,6 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   if (roleCheck.denied) {
     return wrappedApi.sendMessage({ msg: roleCheck.denied }, threadId, type);
   }
-
-  // Start acknowledgement before a box_only permission check can wait on Zalo.
-  scheduleCommandAcknowledgement(wrappedApi, commandName, prefix, config);
 
   const groupCheckResult = checkGroupPermissions({
     api: wrappedApi,
