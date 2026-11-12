@@ -44,31 +44,37 @@ function clearCachedClientId() {
 
 function scriptUrlsFromHtml(html) {
   const urls = [];
-  const re = /<script[^>]+src=["']([^"']+)["']/gi;
+  const re = /<script\\b[^>]*?\\b(?:src|data-src)\\s*=\\s*(["'])(.*?)\\1/gi;
   let match;
-  while ((match = re.exec(html)) !== null) {
-    const src = match[1];
-    if (!src) continue;
-    if (/sndcdn\.com|soundcloud\.com/.test(src) && /\.js(\?|$)/.test(src)) {
-      urls.push(src.startsWith("//") ? "https:" + src : src);
-    } else if (/^\/[^/]/.test(src) && /\.js(\?|$)/.test(src)) {
-      urls.push("https://soundcloud.com" + src);
-    }
+  while ((match = re.exec(String(html || ""))) !== null) {
+    const src = String(match[2] || "").trim();
+    if (!src || !/\\.js(?:[?#]|$)/i.test(src)) continue;
+    try {
+      const url = new URL(src, HOME_URL).toString();
+      const host = new URL(url).hostname;
+      if (host === "soundcloud.com" || host.endsWith(".soundcloud.com") ||
+          host === "sndcdn.com" || host.endsWith(".sndcdn.com")) {
+        urls.push(url);
+      }
+    } catch { /* bỏ URL script không hợp lệ */ }
   }
-  return [...new Set(urls)].sort((a, b) => (b.includes("sndcdn") ? 1 : 0) - (a.includes("sndcdn") ? 1 : 0));
+  return [...new Set(urls)].sort((a, b) => {
+    const score = (url) => /sndcdn\\.com/i.test(url) ? 2 : /soundcloud\\.com/i.test(url) ? 1 : 0;
+    return score(b) - score(a);
+  });
 }
 
-function extractClientId(text) {
-  if (!text) return null;
+function extractClientId(source) {
+  const text = String(source || "").replace(/\\\\u0026/g, "&").replace(/\\\\x3d/gi, "=");
   const patterns = [
-    /[?&]client_id=([A-Za-z0-9]{32})/,
-    /client_id[=:"\s]{1,6}"?([A-Za-z0-9]{32})"?/,
-    /"client_id"\s*:\s*"([A-Za-z0-9]{32})"/,
-    /clientId[=:"\s]{1,6}"?([A-Za-z0-9]{32})"?/
+    /[?&]client_id=([A-Za-z0-9]{32})/i,
+    /(?:client_id|clientId)\\s*[=:]\\s*["']?([A-Za-z0-9]{32})/i,
+    /["'](?:client_id|clientId)["']\\s*:\\s*["']([A-Za-z0-9]{32})["']/i,
+    /client_id%3[dD]([A-Za-z0-9]{32})/i
   ];
   for (const pattern of patterns) {
-    const m = text.match(pattern);
-    if (m && m[1]) return m[1];
+    const match = text.match(pattern);
+    if (match?.[1]) return match[1];
   }
   return null;
 }
