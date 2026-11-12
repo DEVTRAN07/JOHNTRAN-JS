@@ -52,26 +52,31 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
       if (folder) {
         const items = folderMenu.collectFolderCommands(global.client.commands, UIDUsage, folder);
         const version = require("../../package.json").version;
-        const { renderMenuGrid } = require("../canvas/menu");
+        const { renderFolderCard } = require("../canvas/menu");
         const profile = await getRequesterProfile(api, event);
-        const imagePath = await renderMenuGrid({
+        const imagePath = await renderFolderCard({
+          folderName: folder.name,
+          folderDescription: folder.description,
+          folderIcon: folder.icon,
           requesterName: profile.requesterName,
           requesterAvatarUrl: profile.requesterAvatarUrl,
           botVersion: version,
-          prefix,
-          page: 1,
-          totalPages: 1,
-          commands: items.map(item => ({
-            name: item.name,
-            usage: item.usage,
-            category: folder.name
-          })),
           totalCommands: items.length
         });
         try {
           const mentionName = profile.requesterName;
           const mentionUid = event?.data?.uidFrom;
-          const caption = `@\u200b${mentionName}\n🛠️ Danh sách lệnh ${folder.name}\n👉 Gõ tên lệnh hoặc tag bot để thực thi chức năng ${folder.name}.`;
+          const commandLines = items.map(item => `➜ ${prefix}${item.usage || item.name} — ${item.description || "Chưa có mô tả"}`);
+          const caption = [
+            `@\\u200b${mentionName}`,
+            `${folder.icon} Chi tiết chức năng: ${folder.name}`,
+            folder.description,
+            `📋 Danh sách lệnh ${folder.name} (${items.length})`,
+            "",
+            ...commandLines,
+            "",
+            `💡 Gõ ${prefix}menu để xem các danh mục khác.`
+          ].join("\\n");
           const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
           return await wrappedApi.sendMessage({
             msg: caption,
