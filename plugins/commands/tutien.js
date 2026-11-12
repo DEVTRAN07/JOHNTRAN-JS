@@ -1,9 +1,8 @@
 "use strict";
 
-const engine = require("../../core/runtime/services/games/tuTienService");
+const engine = require("../../core/games/tuTienEngine");
 const { createTuTienEffects } = require("../../core/games/tuTienEffects");
-const pvp = require("../../core/runtime/services/games/pvpService");
-const leaderboard = require("../../core/runtime/services/games/leaderboardService");
+const arena = require("../../core/games/tuTienArena");
 const { sendBattleMedia } = require("../../core/games/tuTienBattleMedia");
 
 module.exports.config = {
@@ -209,7 +208,7 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
         if (!pendingRow) return sendPhase(api, event, "📭 Không có lời thách đấu nào đang chờ ngươi.");
         const challenger = pendingRow.data.tuTien;
         const challenge = challenger.arena.pendingChallenge;
-        const started = pvp.startBattle(challenge);
+        const started = arena.startBattle(challenge);
         if (!started.ok) {
           challenger.arena.pendingChallenge = null;
           await Users.setData(pendingRow.userId, pendingRow.data);
@@ -251,7 +250,7 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
         const targetPlayer = targetStored.tuTien ? engine.normalizePlayer(targetStored.tuTien) : null;
         if (!targetPlayer) return sendPhase(api, event, "📜 Đối thủ chưa khai mở tiên lộ. Họ cần dùng /tutien batdau trước.");
         if (targetPlayer.arena?.battle?.status === "active" || targetPlayer.arena?.pendingChallenge) return sendPhase(api, event, "⏳ Đối thủ đang có trận đấu hoặc lời mời chờ xử lý.");
-        const created = pvp.createChallenge(uid, targetUid, player, targetPlayer);
+        const created = arena.createChallenge(uid, targetUid, player, targetPlayer);
         if (!created.ok) return sendPhase(api, event, created.code === "POWER_GAP" ? "⚖️ Chênh lệch chiến lực quá lớn (trên 65%). Hãy tìm đối thủ cân bằng hơn." : "❌ Không thể tạo lời thách đấu.");
         player.arena = player.arena || {};
         player.arena.pendingChallenge = created.challenge;
@@ -262,7 +261,7 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
       const actionMap = { danh: "normal", attack: "normal", skill: "skill", ultimate: "ultimate", defend: "defend", phongthu: "defend" };
       const move = actionMap[sub];
       if (!move) return sendPhase(api, event, "❓ Chiêu thức không hợp lệ. Chọn danh, skill, ultimate hoặc defend.");
-      const turn = pvp.takeTurn(battle, uid, move);
+      const turn = arena.takeTurn(battle, uid, move);
       if (!turn.ok) {
         const errors = {
           NOT_YOUR_TURN: "⌛ Chưa đến lượt của ngươi.",
@@ -282,7 +281,7 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
         const loserStored = loserUid === uid ? stored : opponentStored;
         const winnerPlayer = winnerUid === uid ? player : opponentPlayer;
         const loserPlayer = loserUid === uid ? player : opponentPlayer;
-        const reward = pvp.settleRating(winnerPlayer, loserPlayer);
+        const reward = arena.settleRating(winnerPlayer, loserPlayer);
         winnerPlayer.spiritStones = (Number(winnerPlayer.spiritStones) || 0) + reward.reward;
         winnerPlayer.arena.battle = null;
         loserPlayer.arena.battle = null;
@@ -312,7 +311,7 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
     if (["bxh", "rank", "leaderboard"].includes(action)) {
       const metric = String(args[1] || "rating").toLowerCase();
       const titles = { rating: "ĐIỂM ĐẤU TRƯỜNG", wins: "SỐ TRẬN THẮNG", power: "CHIẾN LỰC", seasonPoints: "ĐIỂM MÙA", bestStreak: "CHUỖI THẮNG" };
-      const rows = leaderboard.leaderboard(Users.getAll(), metric, 10);
+      const rows = arena.leaderboard(Users.getAll(), metric, 10);
       if (!rows.length) return sendPhase(api, event, "📊 Chưa có dữ liệu xếp hạng. Hãy tham gia đấu trường PvP.");
       const lines = rows.map((row, i) => `${["🥇","🥈","🥉"][i] || `${i + 1}.`} ${row.name} — ${row.score} • ${row.realm}`);
       return send(api, event, `🏆 BẢNG XẾP HẠNG TIÊN ĐẠO\n📊 ${titles[metric] || titles.rating}\n━━━━━━━━━━━━━━━━━━\n${lines.join("\n")}\n━━━━━━━━━━━━━━━━━━\n/tutien bxh wins | power | seasonPoints`);
@@ -320,20 +319,20 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
 
     if (["tranhdoat", "season", "mua"].includes(action)) {
       const sub = String(args[1] || "info").toLowerCase();
-      const currentSeason = leaderboard.seasonId();
+      const currentSeason = arena.seasonId();
       if (["nhan", "claim", "reward"].includes(sub)) {
         const allRows = Users.getAll();
         for (const row of allRows) {
           if (!row?.data?.tuTien) continue;
-          pvp.ensureArena(row.data.tuTien);
+          arena.ensureArena(row.data.tuTien);
           await Users.setData(row.userId, row.data);
         }
-        const previous = leaderboard.previousSeasonLeaderboard(allRows);
+        const previous = arena.previousSeasonLeaderboard(allRows);
         const targetSeason = previous.map((row) => row.season).sort().at(-1);
         const standings = previous.filter((row) => row.season === targetSeason);
         const rank = standings.findIndex((row) => row.uid === uid);
         if (!targetSeason || rank < 0 || rank > 2) return sendPhase(api, event, "🎁 Chưa có phần thưởng mùa trước dành cho ngươi. Chỉ Top 3 được nhận thưởng.");
-        pvp.ensureArena(player);
+        arena.ensureArena(player);
         if (player.arena.previousSeason?.claimed) return sendPhase(api, event, "✅ Phần thưởng mùa này đã được nhận trước đó.");
         const reward = [500, 300, 150][rank];
         player.arena.previousSeason.claimed = true;
@@ -342,12 +341,12 @@ Mọi đạo hữu đều có thể nhận nhiệm vụ để cống hiến.`);
         return send(api, event, `🏆 VINH DANH TRANH ĐOẠT ${targetSeason}!\n🎖️ Thứ hạng: Top ${rank + 1}\n💎 Thưởng: +${reward} linh thạch tông môn\n🏯 Số dư: ${player.sectStones}`);
       }
       if (["thamgia", "join"].includes(sub)) {
-        const a = pvp.ensureArena(player);
+        const a = arena.ensureArena(player);
         a.joinedSeason = currentSeason;
         savePlayer(stored, player); await Users.setData(uid, stored);
         return send(api, event, `⚔️ ĐÃ GHI DANH TRANH ĐOẠT ${currentSeason}!\n🏆 Mỗi trận PvP thắng nhận 30 điểm mùa.\n🎁 Top 3 cuối mùa nhận thưởng linh thạch tông môn.`);
       }
-      const contest = leaderboard.contestStatus(Users.getAll());
+      const contest = arena.contestStatus(Users.getAll());
       const lines = contest.rows.length ? contest.rows.slice(0, 10).map((row, i) => `${i + 1}. ${row.name} — ${row.seasonPoints} điểm`) : ["Chưa có đạo hữu ghi danh mùa này."];
       return send(api, event, `🏆 TRANH ĐOẠT TIÊN BẢNG ${contest.id}\n⚔️ Ghi danh: /tutien tranhdoat thamgia\n🎁 Phần thưởng: Top 1 +500, Top 2 +300, Top 3 +150 linh thạch tông môn.\n━━━━━━━━━━━━━━━━━━\n${lines.join("\n")}`);
     }
