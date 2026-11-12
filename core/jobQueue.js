@@ -2,12 +2,14 @@
 
 // Bounded in-process queues. A global worker ceiling prevents independent
 // lanes from collectively exhausting CPU/RAM. Pending work is bounded too.
+const DOWNLOAD_CONCURRENCY = positiveEnv("JT_DOWNLOAD_CONCURRENCY", 1);
+
 const DEFAULT_LANES = {
   sticker: { concurrency: 1, maxPending: 30, maxInFlight: 31 },
   image: { concurrency: 1, maxPending: 20, maxInFlight: 21 },
   gif: { concurrency: 1, maxPending: 12, maxInFlight: 13 },
   video: { concurrency: 1, maxPending: 8, maxInFlight: 9 },
-  download: { concurrency: 2, maxPending: 24, maxInFlight: 26 },
+  download: { concurrency: DOWNLOAD_CONCURRENCY, maxPending: 24, maxInFlight: DOWNLOAD_CONCURRENCY + 24 },
   "music-search": { concurrency: 2, maxPending: 40, maxInFlight: 42 },
   "music-resolve": { concurrency: 2, maxPending: 24, maxInFlight: 26 },
   "music-audio": { concurrency: 1, maxPending: 12, maxInFlight: 13 },
@@ -208,5 +210,6 @@ module.exports = {
   stats,
   DEFAULT_LANES,
   GLOBAL_CONCURRENCY,
-  GLOBAL_MAX_PENDING
+  GLOBAL_MAX_PENDING,
+  DOWNLOAD_CONCURRENCY
 };
