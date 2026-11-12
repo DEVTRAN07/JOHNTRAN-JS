@@ -21,6 +21,18 @@ const SEND_GROUP_PATH = "/api/group/photo_url";
 // Hậu tố ma thuật: Zalo nhìn thấy "?sticker.webp" sẽ coi file là sticker
 const STICKER_SUFFIX = "?sticker.webp";
 
+function resolveUploadHost(ctx) {
+  const serviceHost = ctx?.loginInfo?.zpw_service_map_v3?.file?.[0];
+  if (typeof serviceHost === "string" && /^https:\/\//i.test(serviceHost)) {
+    try {
+      return new URL(serviceHost).origin;
+    } catch {
+      // Use the stable fallback when the session service map is malformed.
+    }
+  }
+  return UPLOAD_HOST;
+}
+
 function now() {
   return Date.now();
 }
@@ -108,7 +120,8 @@ function registerStickerApi(api) {
     const encryptedParams = utils.encodeAES(JSON.stringify(params));
     if (!encryptedParams) throw new Error("Failed to encode sticker upload params");
 
-    const url = utils.makeURL(UPLOAD_HOST + uploadPath, { type: typeParam, params: encryptedParams });
+    const uploadHost = resolveUploadHost(ctx);
+    const url = utils.makeURL(uploadHost + uploadPath, { type: typeParam, params: encryptedParams });
 
     // Body must contain only chunkContent (no params field), matching uploadAttachment.
     const { body, contentType } = buildMultipart(
@@ -170,7 +183,7 @@ function registerStickerApi(api) {
 
     const isGroup = Number(threadType) === 1;
     const sendPath = isGroup ? SEND_GROUP_PATH : SEND_USER_PATH;
-    const url = utils.makeURL(UPLOAD_HOST + sendPath, { nretry: 0 });
+    const url = utils.makeURL(resolveUploadHost(ctx) + sendPath, { nretry: 0 });
 
     // ext.sSrcStr ĐẶC BIỆT: "@NGH_STICKER" cho bản stk, "@STICKER" cho stkvd
     const srcStr = variant === "std" ? "@STICKER" : "@NGH_STICKER";
@@ -205,10 +218,13 @@ function registerStickerApi(api) {
 
     if (reply) params.refMessage = String(reply);
 
+    const encryptedParams = utils.encodeAES(JSON.stringify(params));
+    if (!encryptedParams) throw new Error("Không mã hoá được dữ liệu gửi sticker");
+
     const res = await utils.request(url, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "params=" + encodeURIComponent(utils.encodeAES(JSON.stringify(params)))
+      body: "params=" + encodeURIComponent(encryptedParams)
     });
 
     const result = await utils.resolve(res);
@@ -221,6 +237,7 @@ function registerStickerApi(api) {
 
 module.exports = {
   registerStickerApi,
+  resolveUploadHost,
   buildStickerUrl,
   stripStickerSuffix,
   jxlToJpg,
