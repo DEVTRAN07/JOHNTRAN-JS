@@ -9,6 +9,7 @@ const DEFAULT_LANES = {
   video: { concurrency: 1, maxPending: 8, maxInFlight: 9 },
   download: { concurrency: 2, maxPending: 24, maxInFlight: 26 },
   "music-search": { concurrency: 2, maxPending: 40, maxInFlight: 42 },
+  "music-resolve": { concurrency: 2, maxPending: 24, maxInFlight: 26 },
   "music-audio": { concurrency: 1, maxPending: 12, maxInFlight: 13 },
   canvas: { concurrency: 1, maxPending: 16, maxInFlight: 17 },
   media: { concurrency: 1, maxPending: 20, maxInFlight: 21 }
