@@ -110,29 +110,11 @@ class Reply {
     this._ackTimer = null;
   }
 
-  // Schedule one lightweight text acknowledgement only when a command has
-  // not produced its own first message within the configured grace period.
-  // Fast commands keep their original single-message output.
-  scheduleAcknowledgement(options = {}) {
-    if (this._responseStarted || this._commandCompleted || this._ackSent || this._ackTimer) return false;
-    const delayValue = typeof options === "number" ? options : Number(options.delayMs);
-    const delayMs = Number.isFinite(delayValue) && delayValue >= 0 ? delayValue : 350;
-    const message = typeof options === "object" && options.message
-      ? String(options.message)
-      : `⏳ Đang xử lý lệnh /${this.commandName}...`;
-
-    this._ackTimer = setTimeout(() => {
-      this._ackTimer = null;
-      if (this._responseStarted || this._commandCompleted || this._ackSent) return;
-      this._ackSent = true;
-      Promise.resolve(this.api.sendMessage(
-        { msg: message },
-        this.threadId,
-        this.type
-      )).catch(() => {});
-    }, delayMs);
-    this._ackTimer.unref?.();
-    return true;
+  // Universal textual progress messages are disabled. Commands send only
+  // their actual result, error, or command-specific output.
+  scheduleAcknowledgement() {
+    this.cancelAcknowledgement();
+    return false;
   }
 
   markResponseStarted() {
