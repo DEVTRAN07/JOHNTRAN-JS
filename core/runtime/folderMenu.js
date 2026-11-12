@@ -190,8 +190,8 @@ const MENU_COMMAND_GROUPS = Object.freeze({
   anti: new Set(["anti", "autokick"]),
   manager: new Set(["adduser", "delmsg"]),
   admin: new Set(["adc", "admin", "reloadconfig", "restart", "spam", "spamsticker"]),
-  mybot: new Set(["cmd", "events", "jobs", "stats", "upt"]),
-  hidden: new Set(["noi", "vdgirl"])
+  mybot: new Set(["cmd", "command", "events", "jobs", "stats", "upt"]),
+  hidden: new Set(["girl", "hon", "noi", "vdgirl"])
 });
 
 function menuGroupForCommand(command) {
@@ -246,7 +246,7 @@ function collectMenuGroups(commands, userId) {
   return MENU_GROUPS.map(group => {
     const items = buckets.get(group.slug).sort((a, b) => a.name.localeCompare(b.name, "vi"));
     return { ...group, count: items.length, commands: items };
-  });
+  }).filter(group => group.count > 0);
 }
 
 function resolveMenuGroup(commands, userId, value) {
