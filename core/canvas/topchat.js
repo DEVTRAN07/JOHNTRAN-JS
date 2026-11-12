@@ -78,7 +78,7 @@ async function renderTopChat({ title, subtitle, ranking }) {
   ctx.font = "bold 24px Arial";
   ctx.fillText("🏆 " + (subtitle || "VINH DANH TOP 3"), 60, 145);
 
-  const podium = rows.slice(0, 3);
+  const podium = [rows[1], rows[0], rows[2]].filter(Boolean);
   const centers = [235, 500, 765];
   const podiumY = [210, 180, 210];
   for (let i = 0; i < podium.length; i++) {
