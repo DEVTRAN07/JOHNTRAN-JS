@@ -76,3 +76,24 @@ test("metrics preserve existing daily counters loaded from storage", () => {
   assert.equal(backend.writes.length, 1);
   metrics.dispose();
 });
+
+test("command pipeline latency reports recent percentiles without storing samples in the database", () => {
+  const backend = createFakeDb();
+  const metrics = createMetricsStore(backend, { flushDelayMs: 60000 });
+
+  metrics.trackLatency(10);
+  metrics.trackLatency(20);
+  metrics.trackLatency(30);
+  metrics.trackLatency(Number.NaN);
+
+  assert.deepEqual(metrics.getLatencyStats(), {
+    count: 3,
+    avgMs: 20,
+    p50Ms: 20,
+    p95Ms: 30,
+    maxMs: 30,
+    lastMs: 30
+  });
+  assert.equal(backend.writes.length, 0);
+  metrics.dispose();
+});
