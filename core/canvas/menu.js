@@ -4,6 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { loadImage } = require("canvas");
+const avatarCache = require("./avatarCache");
 const theme = require("./theme");
 
 function rounded(ctx, x, y, w, h, r) {
@@ -82,26 +83,25 @@ function drawOuterPanel(ctx, x, y, w, h, radius, colors) {
   ctx.stroke();
 }
 
-async function drawAvatar(ctx, url, name, x, y, size, withStatus) {
+function drawAvatar(ctx, url, name, x, y, size, withStatus) {
   ctx.save();
   ctx.beginPath();
   ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
   ctx.clip();
-  if (url) {
-    try {
-      const image = await loadImage(url);
-      const scale = Math.max(size / image.width, size / image.height);
-      const width = image.width * scale;
-      const height = image.height * scale;
-      ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height);
-    } catch {
-      drawAvatarFallback(ctx, name, x, y, size);
-    }
+
+  // Never wait for a remote avatar while drawing a command card. A cache miss
+  // paints the initials now and starts a background download for the next card.
+  const image = avatarCache.getAvatar(url);
+  if (image) {
+    const scale = Math.max(size / image.width, size / image.height);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height);
   } else {
     drawAvatarFallback(ctx, name, x, y, size);
   }
-  ctx.restore();
 
+  ctx.restore();
   ctx.beginPath();
   ctx.arc(x + size / 2, y + size / 2, size / 2 - theme.S(0.7), 0, Math.PI * 2);
   ctx.strokeStyle = "rgba(255,255,255,.9)";
@@ -537,7 +537,7 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   const avatarSize = S(40);
   const avatarX = footerX + S(11);
   const avatarY = footerY + (footerH - avatarSize) / 2;
-  await drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
+  drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
   drawText(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(12), footerY + S(36), 20, "#f7fbff", true);
 
   const iconY = footerY + footerH / 2;
