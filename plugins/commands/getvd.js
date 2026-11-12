@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { parseQuote, hint } = require("../../core/mediaReply");
+const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
 
 module.exports.config = {
   name: "getvd",
@@ -41,7 +42,7 @@ module.exports.run = async function ({ api, event }) {
     await api.sendMessage({ msg: "⏳ Đang tải video gốc...", plain: true }, threadId, type);
 
     const http = require("../../core/http");
-    const { buffer } = await http.getBuffer(videoUrl, { timeout: 180000 });
+    const { buffer } = await queuedGetBuffer(videoUrl, { timeout: 180000, retries: 1 });
     fs.writeFileSync(filePath, buffer);
 
     const sizeMb = fs.statSync(filePath).size / 1048576;
