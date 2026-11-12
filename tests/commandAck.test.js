@@ -24,36 +24,33 @@ function createWrapped() {
   return { wrapped: wrapApi(api, event.threadId, event.type, "slowcmd", event), sent };
 }
 
-test("slow commands receive one early acknowledgement when no reply has started", async () => {
+test("universal processing acknowledgement is disabled", async () => {
   const { wrapped, sent } = createWrapped();
-  wrapped.__reply.scheduleAcknowledgement({
-    delayMs: 15,
-    message: "⏳ Đang xử lý lệnh /slowcmd..."
-  });
-  await delay(35);
-  assert.equal(sent.length, 1);
-  assert.match(sent[0].msg, /Đang xử lý lệnh \/slowcmd/);
+  assert.equal(wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 }), false);
+  await delay(30);
+  assert.equal(sent.length, 0);
+  assert.equal(sent.some(item => /Đang xử lý lệnh/.test(item.msg || "")), false);
 });
 
-test("a command's own first text reply cancels the universal acknowledgement", async () => {
+test("command sends only its own text result", async () => {
   const { wrapped, sent } = createWrapped();
-  wrapped.__reply.scheduleAcknowledgement({ delayMs: 25 });
+  wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 });
   await wrapped.sendMessage({ msg: "Kết quả lệnh" }, "ack-group", 2);
-  await delay(40);
+  await delay(30);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].msg, "Kết quả lệnh");
 });
 
-test("voice/media output also cancels the pending acknowledgement", async () => {
+test("voice/media command output does not get a processing text message", async () => {
   const { wrapped, sent } = createWrapped();
-  wrapped.__reply.scheduleAcknowledgement({ delayMs: 25 });
+  wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 });
   await wrapped.sendVoice({ voiceUrl: "https://example.invalid/audio.aac" });
-  await delay(40);
+  await delay(30);
   assert.equal(sent.length, 1);
   assert.ok(sent[0].voice);
 });
 
-test("a slow outgoing media/text upload does not suppress the early acknowledgement", async () => {
+test("slow outgoing text does not create a universal processing message", async () => {
   const sent = [];
   const api = {
     async sendMessage(payload) {
@@ -65,21 +62,20 @@ test("a slow outgoing media/text upload does not suppress the early acknowledgem
   const event = { threadId: "ack-slow-send", type: 2, data: { msgId: 1, cliMsgId: 1 } };
   const wrapped = wrapApi(api, event.threadId, event.type, "slowcmd", event);
 
-  wrapped.__reply.scheduleAcknowledgement({ delayMs: 15 });
-  const pendingSend = wrapped.sendMessage({ msg: "Kết quả chậm" });
-  await delay(35);
+  wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 });
+  await wrapped.sendMessage({ msg: "Kết quả chậm" });
+  await delay(30);
 
-  assert.ok(sent.some(item => /Đang xử lý lệnh/.test(item.msg || "")));
-  await pendingSend;
+  assert.equal(sent.length, 1);
+  assert.equal(sent.some(item => /Đang xử lý lệnh/.test(item.msg || "")), false);
 });
 
-test("dispatcher keeps an early acknowledgement alive for a slow command handler", async () => {
+test("slow dispatcher handler does not send a universal processing message", async () => {
   const { dispatchCommand } = require("../core/runtime/dispatcher");
   const { wrapped, sent } = createWrapped();
-  wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 });
 
   await dispatchCommand({
-    command: { run: async () => delay(35) },
+    command: { run: async () => delay(25) },
     commandName: "slowcmd",
     args: [],
     event: { data: { content: "/slowcmd" }, mentions: [] },
@@ -89,14 +85,5 @@ test("dispatcher keeps an early acknowledgement alive for a slow command handler
     Reactions: { PRAY: "working", OK: "ok", CRY: "cry" }
   });
 
-  assert.equal(sent.length, 1);
-  assert.match(sent[0].msg, /Đang xử lý lệnh/);
-});
-
-test("finishing a command before the acknowledgement timer fires leaves the original output unchanged", async () => {
-  const { wrapped, sent } = createWrapped();
-  wrapped.__reply.scheduleAcknowledgement({ delayMs: 25 });
-  wrapped.__reply.finishCommand();
-  await delay(40);
   assert.equal(sent.length, 0);
 });
