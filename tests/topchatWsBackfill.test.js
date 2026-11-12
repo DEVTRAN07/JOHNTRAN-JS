@@ -9,6 +9,7 @@ const {
   maxHistoryPages,
   vietnamDayStartMs,
   inspectGroupHistoryPage,
+  historyGroupIds,
   isHistoryCoverageComplete
 } = require("../core/topchat/wsBackfill");
 
@@ -92,5 +93,16 @@ test("an empty WebSocket history response is not proof of complete daily coverag
   assert.equal(isHistoryCoverageComplete("response-timeout"), false);
   assert.equal(isHistoryCoverageComplete("history-exhausted"), true);
   assert.equal(isHistoryCoverageComplete("day-boundary-reached"), true);
+});
+
+
+test("Topchat history coverage includes only groups present in old_messages pages", () => {
+  const ids = historyGroupIds([
+    groupMessage("history-a", Date.now()),
+    { type: ThreadType.Group, data: { idTo: "history-b", uidFrom: "u2", ts: String(Date.now()) } },
+    { type: ThreadType.User, threadId: "private-user", data: { uidFrom: "u3" } },
+    null
+  ]);
+  assert.deepEqual(ids, ["group", "history-b"]);
 });
 

@@ -25,6 +25,16 @@ function isHistoryCoverageComplete(reason) {
   return reason === "day-boundary-reached" || reason === "history-exhausted";
 }
 
+function historyGroupIds(messages) {
+  const ids = new Set();
+  for (const message of Array.isArray(messages) ? messages : []) {
+    if (!isGroupMessage(message)) continue;
+    const threadId = message?.threadId || message?.data?.idTo;
+    if (threadId != null && String(threadId).trim()) ids.add(String(threadId));
+  }
+  return [...ids];
+}
+
 function inspectGroupHistoryPage(messages, dateKey, pageNumber = 1, maxPages = DEFAULT_MAX_PAGES) {
   const list = Array.isArray(messages)
     ? messages.filter(isGroupMessage)
@@ -101,5 +111,6 @@ module.exports = {
   maxHistoryPages,
   vietnamDayStartMs,
   inspectGroupHistoryPage,
+  historyGroupIds,
   isHistoryCoverageComplete
 };
