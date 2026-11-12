@@ -184,6 +184,16 @@ function startListening(api) {
     const cliMsgId = event?.data?.cliMsgId;
     if (cliMsgId && processedIds.has(cliMsgId)) return; // trùng lặp (server gửi lại / backfill)
     markProcessed(cliMsgId);
+
+    // Daily Topchat counting is independent of bot_enabled and passive plugin
+    // dispatch, so a disabled bot in a group still records that group's chat.
+    if (event?.type === ThreadType.Group && !event?.isSelf) {
+      const topchatCounter = require("../plugins/events/topchatCounter");
+      void topchatCounter.run({ event, Threads, isSelf: false }).catch((err) => {
+        logger.log(`Lỗi ghi thống kê Topchat: ${err.message}`, "warn");
+      });
+    }
+
     Promise.resolve(onMessage(event)).catch((err) => {
       logger.log(`Lỗi listener message: ${err.message}`, "error");
     });
