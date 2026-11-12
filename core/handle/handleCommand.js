@@ -75,13 +75,13 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
             ? `💡 Xem chi tiết cách dùng, hãy gõ trực tiếp: ${exampleNames.join(", ")}...`
             : `💡 Gõ ${prefix}menu để xem các danh mục khác.`;
           const caption = [
-            `@\\u200b${mentionName}`,
+            `@\u200b${mentionName}`,
             heading,
             "",
             ...commandLines,
             "",
             `* ${hint} *`
-          ].join("\\n");
+          ].join("\n");
           const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
           return await wrappedApi.sendMessage({
             msg: caption,
