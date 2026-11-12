@@ -63,9 +63,13 @@ function startListening(api) {
       panelBridge.recordIncoming(event);
     } catch { /* bỏ qua */ }
 
+    // Active groups are normally already cached. Use the synchronous cache
+    // hit so a hot message can enter command parsing without an avoidable
+    // Promise/microtask boundary; cold groups retain the safe async fallback.
     let threadData = null;
     try {
-      threadData = await Threads.getData(event.threadId);
+      threadData = Threads.getCachedData?.(event.threadId) || null;
+      if (!threadData) threadData = await Threads.getData(event.threadId);
     } catch (err) {
       // DB (Supabase) hỏng / timeout → vẫn chạy lệnh với threadInfo rỗng
       logger.log(`Lỗi đọc dữ liệu nhóm ${event.threadId} (bỏ qua): ${err.message}`, "warn");

@@ -16,6 +16,14 @@ module.exports = {
     });
   },
 
+  // Synchronous hot-path lookup: realtime messages in active groups should
+  // not yield to an async cache read before command parsing starts.
+  getCachedData: (threadId) => {
+    const cached = threadCache.get(String(threadId));
+    if (cached === undefined || (cached && typeof cached.then === "function")) return null;
+    return normalizeThreadRecord(cached, String(threadId));
+  },
+
   getData: async (threadId) => {
     const key = String(threadId);
     const cached = threadCache.get(key);

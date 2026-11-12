@@ -12,6 +12,7 @@ function createThreadService(controller) {
   return {
     getAll(...args) { return controller.getAll(...args); },
     getData(...args) { return controller.getData(...args); },
+    getCachedData(...args) { return controller.getCachedData?.(...args) || null; },
     setData(...args) { return controller.setData(...args); },
     delData(...args) { return controller.delData(...args); },
     createData(...args) { return controller.createData(...args); }
