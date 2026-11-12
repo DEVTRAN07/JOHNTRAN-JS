@@ -6,12 +6,8 @@ const { runInWorker } = require("../../core/workerPool");
 const { pickMediaUrl, cleanMediaUrl } = require("../../core/stickerCreate");
 const { buildStickerUrl } = require("../../core/stickerFactory");
 const { parseQuote } = require("../../core/mediaReply");
-const { frameList } = require("../../core/stickerFrames");
 const { mediaCache } = require("../../core/mediaCache");
 const { enqueue } = require("../../core/jobQueue");
-
-const FRAMES = frameList();
-const frameOptions = () => FRAMES.map(({ id, name }) => `${id}. ${name}`).join("\n");
 
 module.exports.config = {
   name: "stk",
@@ -19,32 +15,21 @@ module.exports.config = {
   version: "7.0.2",
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
-  description: "Tạo sticker với nhiều mẫu khung",
+  description: "Tạo sticker ảnh/GIF/video phong cách tối giản, không khung",
   category: "Tiện ích",
-  usage: "stk [số khung] (reply ảnh/gif/video/sticker) | stk [số khung] <link media>",
+  usage: "stk (reply ảnh/gif/video/sticker) | stk <link media>",
   cooldowns: 5,
   dependencies: {}
 };
 
 const GUIDE =
-  "❌ Reply ảnh/GIF/video/sticker rồi gõ /stk [số khung]\n"
-  + "hoặc: /stk [số khung] <link ảnh/GIF/video>\n"
-  + "Danh sách khung:\n" + frameOptions();
+  "CÁCH DÙNG STK\n"
+  + "• Reply ảnh, GIF hoặc video rồi gõ /stk\n"
+  + "• Hoặc gửi /stk kèm link ảnh/GIF/video\n"
+  + "Sticker mới: ảnh tràn khung, không viền trang trí.";
 
 const ZALO_HOST_RE = /(^|\.)(zdn\.vn|dlfl\.vn|zadn\.vn|zaloapp\.com|zalo\.me|zalo\.ai)$/i;
 
-function parseFrameSelection(args) {
-  const commandArgs = Array.isArray(args) ? [...args] : [];
-  if (!/^\d+$/.test(String(commandArgs[0] ?? ""))) {
-    return { frameId: 1, args: commandArgs };
-  }
-
-  const frameId = Number(commandArgs.shift());
-  if (!FRAMES.some((frame) => frame.id === frameId)) {
-    return { frameId, args: commandArgs, invalid: true };
-  }
-  return { frameId, args: commandArgs };
-}
 
 function isValidMediaUrl(url) {
   return /^https?:\/\/\S+$/i.test(String(url || ""));
@@ -101,17 +86,8 @@ module.exports.run = async function ({ api, event, args }) {
   const data = event?.data || {};
 
   try {
-    const selection = parseFrameSelection(args);
-    if (selection.invalid) {
-      return safeSend(
-        api,
-        { plain: true, msg: `❌ Số khung không hợp lệ. Chọn từ 1 đến ${FRAMES.length}:\n${frameOptions()}`, ttl: 60000 },
-        threadId,
-        type
-      );
-    }
-
-    const urlArg = selection.args.find((a) => isValidMediaUrl(a));
+    const commandArgs = Array.isArray(args) ? args : [];
+    const urlArg = commandArgs.find((arg) => isValidMediaUrl(arg));
     if (!urlArg && !data?.quote) {
       return safeSend(api, { plain: true, msg: GUIDE }, threadId, type);
     }
@@ -150,14 +126,13 @@ module.exports.run = async function ({ api, event, args }) {
     try {
       stickerFile = await enqueue("sticker", () => runInWorker("stickerWorker", {
         url: srcPath,
-        frameId: selection.frameId,
         forceStatic: false,
         threadId,
         type,
         apiToken: global.config?.token
       }, { timeout: 300000 }), {
-        key: `${url}|${selection.frameId}`,
-        label: `Tạo sticker khung ${selection.frameId}`,
+        key: url,
+        label: "Tạo sticker không khung",
         retries: 1,
         retryDelayMs: 500,
         retryOn: error => /workerPool: timeout|worker .* exited|worker .* stopped/i.test(String(error?.message || error))
@@ -213,4 +188,3 @@ module.exports.run = async function ({ api, event, args }) {
   }
 };
 
-module.exports.parseFrameSelection = parseFrameSelection;
