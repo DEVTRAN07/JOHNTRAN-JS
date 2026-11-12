@@ -81,3 +81,9 @@ module.exports.run = async function ({ api, event, Users, isSelf }) {
   await send(api, event, `🎉 Chính xác @${event?.data?.dName || event?.data?.name || "bạn"}! +1 điểm • +1⭐`);
   return sendQuestion(api, event, game.get(threadId));
 };
+
+module.exports.onLoad = async function ({ Users }) {
+  if (!Users?.getAll || !Users?.setData) return;
+  const removed = await game.cleanupLegacyData(Users);
+  if (removed) console.log(`[DHBC] Removed legacy Tu Tien data from ${removed} user records.`);
+};
