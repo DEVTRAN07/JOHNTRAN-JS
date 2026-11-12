@@ -13,8 +13,8 @@ module.exports.config = {
 };
 
 const isAdmin = (uid) => global.users?.admin?.map(String).includes(String(uid));
-const enabled = () => global.dhbcEnabled !== false;
-const setEnabled = (value) => { global.dhbcEnabled = Boolean(value); };
+const enabled = () => game.isEnabled();
+const setEnabled = (value) => game.setEnabled(value);
 const unwrap = (record) => record?.data && typeof record.data === "object" ? record.data : (record || {});
 async function readUser(Users, uid) { return unwrap(await Users.getData(String(uid))); }
 async function writeUser(Users, uid, data) { await Users.setData(String(uid), data); }
