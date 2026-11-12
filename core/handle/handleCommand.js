@@ -67,8 +67,13 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
           totalCommands: items.length
         });
         try {
+          const mentionName = String(event?.data?.dName || event?.data?.senderName || "Người dùng").slice(0, 32);
+          const mentionUid = event?.data?.uidFrom;
+          const caption = `@\u200b${mentionName}\n🛠️ Danh sách lệnh ${folder.name}\n👉 Gõ tên lệnh hoặc tag bot để thực thi chức năng ${folder.name}.`;
+          const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
           return await wrappedApi.sendMessage({
-            msg: `Chi tiết chức năng: ${folder.name} · ${folder.description}`,
+            msg: caption,
+            mentions,
             attachments: [imagePath],
             ttlKind: "card"
           }, threadId, type);
