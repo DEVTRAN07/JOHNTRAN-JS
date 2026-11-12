@@ -8,7 +8,8 @@ const converter = require("../core/stickerConvert");
 const stickerCommand = require("../plugins/commands/stk");
 const { test } = require("node:test");
 
-const hasFfmpeg = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
+const FFMPEG = converter.ffmpegBin || "ffmpeg";
+const hasFfmpeg = spawnSync(FFMPEG, ["-version"], { stdio: "ignore" }).status === 0;
 
 test("/stk tạo sticker vuông full-bleed, không ghép khung", { skip: !hasFfmpeg }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-sticker-clean-"));
@@ -28,7 +29,7 @@ test("/stk tạo sticker vuông full-bleed, không ghép khung", { skip: !hasFfm
     assert.equal(result.width, result.height);
     assert.ok(result.size <= converter.SIZE_LIMIT);
     const extracted = path.join(dir, "first-frame.png");
-    const extraction = spawnSync("ffmpeg", [
+    const extraction = spawnSync(FFMPEG, [
       "-y", "-i", result.path, "-frames:v", "1", "-update", "1", extracted
     ], { encoding: "utf8" });
     assert.equal(extraction.status, 0, extraction.stderr);
@@ -45,6 +46,41 @@ test("/stk tạo sticker vuông full-bleed, không ghép khung", { skip: !hasFfm
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("/stk hỗ trợ quote theo field dQuote và tạo đúng file path có query", { skip: !hasFfmpeg }, async () => {
+  const canvas = createCanvas(100, 100);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#dd8844";
+  ctx.fillRect(0, 0, 100, 100);
+  let requestedUrl = "";
+  let sent = false;
+
+  await stickerCommand.run({
+    api: {
+      sendMessage: async () => {},
+      fetchZaloMedia: async ({ url }) => {
+        requestedUrl = url;
+        return { buffer: canvas.toBuffer("image/png") };
+      },
+      uploadStickerImage: async () => ({ normalUrl: "https://cdn.example.test/dquote.png" }),
+      sendCustomStickerUrl: async () => { sent = true; }
+    },
+    event: {
+      threadId: "test-thread",
+      type: 0,
+      data: {
+        dQuote: {
+          msgId: "quoted-1",
+          attach: JSON.stringify({ photoUrl: "https://files.zdn.vn/photo.png?token=abc" })
+        }
+      }
+    },
+    args: []
+  });
+
+  assert.equal(requestedUrl, "https://files.zdn.vn/photo.png?token=abc");
+  assert.equal(sent, true);
 });
 
 test("/stk <URL> upload rồi gửi sticker, không gửi preview", { skip: !hasFfmpeg }, async () => {
