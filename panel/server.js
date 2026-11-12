@@ -492,6 +492,37 @@ function startPanel({ manager, config }) {
       // Panel UI tĩnh (docs/) — xử lý trước mọi route API
       if (!pathname.startsWith("/api") && serveStatic(pathname, res)) return;
 
+      // ===== DHBC Question Bank API (đã được bảo vệ bằng Panel Bearer token) =====
+      if (pathname === "/api/dhbc/questions" || pathname.startsWith("/api/dhbc/questions/")) {
+        const bank = require("../core/games/dhbcBank");
+        if (req.method === "GET" && pathname === "/api/dhbc/questions") {
+          const questions = bank.getAll();
+          return sendJson(res, 200, {
+            success: true, total: questions.length,
+            source: fs.existsSync(bank.FILE) ? "persistent-json" : "built-in-fallback",
+            questions
+          });
+        }
+        if (req.method === "POST" && pathname === "/api/dhbc/questions") {
+          const body = await readBody(req);
+          const questions = bank.add(body);
+          return sendJson(res, 201, { success: true, total: questions.length, question: questions[questions.length - 1] });
+        }
+        const questionMatch = pathname.match(/^\\/api\\/dhbc\\/questions\\/([a-z0-9-]+)$/);
+        if (questionMatch && req.method === "PATCH") {
+          const body = await readBody(req);
+          const questions = bank.update(questionMatch[1], body);
+          return sendJson(res, 200, { success: true, total: questions.length, question: questions.find((q) => q.id === questionMatch[1]) });
+        }
+        if (questionMatch && req.method === "DELETE") {
+          const removed = bank.remove(questionMatch[1]);
+          return removed
+            ? sendJson(res, 200, { success: true, removed: questionMatch[1], total: bank.getAll().length })
+            : sendJson(res, 404, { error: "Không tìm thấy câu hỏi" });
+        }
+        return sendJson(res, 405, { error: "Method không hỗ trợ" });
+      }
+
       if (pathname === "/api/bots" && req.method === "GET") {
         maybeSyncStore();
         const bots = manager.list().map(enrichBot);
