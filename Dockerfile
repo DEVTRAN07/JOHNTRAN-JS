@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     ca-certificates \
     && pip3 install --break-system-packages -U --pre yt-dlp \
+    && ffmpeg -hide_banner -version >/dev/null \
     && rm -rf /var/lib/apt/lists/* && yt-dlp --version
 
 WORKDIR /app
@@ -29,6 +30,7 @@ COPY . .
 ENV NODE_ENV=production
 ENV TZ=Asia/Ho_Chi_Minh
 ENV YTDLP_PATH=/usr/local/bin/yt-dlp
+ENV FFMPEG_PATH=/usr/bin/ffmpeg
 ENV PORT=8000
 EXPOSE 8000
 
