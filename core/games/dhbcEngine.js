@@ -1,6 +1,6 @@
 "use strict";
 
-const QUESTIONS = Object.freeze([
+let QUESTIONS = Object.freeze([
   { id: "ca-ngua", clues: ["CÁ", "NGỰA"], symbols: ["🐟", "🐎"], answer: "cá ngựa", hint: "Một loài sinh vật biển" },
   { id: "banh-mi", clues: ["BÁNH", "MÌ"], symbols: ["🍞", "🍜"], answer: "bánh mì", hint: "Món ăn quen thuộc buổi sáng" },
   { id: "den-pin", clues: ["ĐÈN", "PIN"], symbols: ["🔦", "🔋"], answer: "đèn pin", hint: "Dùng để chiếu sáng khi mất điện" },
@@ -27,7 +27,7 @@ const QUESTIONS = Object.freeze([
   { id: "trong-dong", clues: ["TRỐNG", "ĐỒNG"], symbols: ["🥁", "🪙"], answer: "trống đồng", hint: "Biểu tượng văn hóa Đông Sơn" }
 ]);
 
-function normalizeAnswer(value) {
+function setQuestionBank(items) {\n  if (!Array.isArray(items) || !items.length) return false;\n  QUESTIONS = Object.freeze(items.map((item) => Object.freeze({ ...item, clues: [...item.clues], symbols: [...item.symbols] })));\n  return true;\n}\nfunction normalizeAnswer(value) {
   return String(value || "").toLowerCase().normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d")
     .replace(/[^a-z0-9]/g, "");
@@ -92,4 +92,4 @@ function nextQuestion(session, random = Math.random) {
   session.revealed = new Set();
   return question;
 }
-module.exports = { QUESTIONS, normalizeAnswer, pickQuestion, createSession, join, leave, checkAnswer, hint, nextQuestion };
+module.exports = { get QUESTIONS() { return QUESTIONS; }, setQuestionBank, normalizeAnswer, pickQuestion, createSession, join, leave, checkAnswer, hint, nextQuestion };
