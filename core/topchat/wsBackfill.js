@@ -48,7 +48,7 @@ function inspectGroupHistoryPage(messages, dateKey, pageNumber = 1, maxPages = D
     .map(message => ({
       message,
       timestamp: messageTimestamp(message?.data?.ts ?? message?.data?.timestamp),
-      cursor: String(message?.data?.msgId || message?.data?.actionId || "")
+      cursor: String(message?.data?.actionId || message?.data?.msgId || "")
     }))
     .filter(item => item.timestamp > 0)
     .sort((a, b) => a.timestamp - b.timestamp);

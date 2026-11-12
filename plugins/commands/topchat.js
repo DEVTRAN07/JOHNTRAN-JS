@@ -28,19 +28,36 @@ function readDailyCounts(thread) {
 }
 
 function emptyRankingMessage(thread, today) {
+  const diagnostics = thread?.topchatDiagnostics?.date === today
+    ? thread.topchatDiagnostics
+    : { received: 0, counted: 0, rejected: 0, duplicates: 0 };
+  const realtime = `\n📡 Realtime: nhận ${Number(diagnostics.received) || 0}, ghi nhận ${Number(diagnostics.counted) || 0}, bị lọc ${Number(diagnostics.rejected) || 0}, trùng ${Number(diagnostics.duplicates) || 0} tin.`;
   const historyComplete = thread?.topchatHistoryDate === today &&
-    thread?.topchatHistoryComplete === true;
+    thread?.topchatHistoryComplete === true &&
+    thread?.topchatHistoryVersion === 2;
+
   if (historyComplete) {
-    return "📊 Đã quét đủ lịch sử nhóm. Hôm nay chưa có tin nhắn phù hợp để xếp hạng.";
+    return "📊 Đã quét đủ lịch sử nhóm. Hôm nay chưa có tin nhắn phù hợp để xếp hạng." + realtime;
+  }
+
+  if (thread?.topchatHistoryDate === today && thread?.topchatHistoryComplete === true) {
+    return "📥 Trạng thái quét lịch sử cũ không còn được tin cậy; bot đang chờ đồng bộ lại. " +
+      "Tin nhắn mới vẫn được ghi nhận qua realtime." + realtime;
   }
 
   const reason = String(thread?.topchatHistoryReason || "");
   if (reason === "response-timeout" || reason === "request-error" ||
       reason === "empty-page" || reason === "missing-timestamps") {
-    return "⚠️ Zalo chưa trả lịch sử nhóm qua WebSocket. Bot vẫn ghi nhận tin nhắn mới theo thời gian thực; hãy gửi thử tin nhắn trong nhóm rồi chạy lại /topchat.";
+    return "⚠️ Zalo chưa trả dữ liệu lịch sử nhóm qua WebSocket. Bot vẫn ghi nhận tin nhắn mới theo thời gian thực." + realtime;
   }
 
-  return "📥 Nhóm chưa có dữ liệu Topchat trong bộ đếm. Bot sẽ ghi nhận tin nhắn thành viên qua realtime và đồng bộ lịch sử qua WebSocket; hãy thử lại sau khi có tin nhắn mới.";
+  if (!diagnostics.received) {
+    return "📥 Chưa ghi nhận event tin nhắn nhóm nào trong ngày. Hãy gửi tin nhắn thường từ một thành viên khác rồi chạy lại /topchat để kiểm tra realtime." + realtime;
+  }
+  if (!diagnostics.counted) {
+    return "📥 Bot đã nhận event nhóm nhưng chưa có tin nào đủ điều kiện xếp hạng (tin nhắn lệnh, tin bot hoặc dữ liệu không hợp lệ sẽ bị bỏ qua)." + realtime;
+  }
+  return "📥 Đã nhận event realtime nhưng bộ đếm chưa tạo được bảng xếp hạng. Cần kiểm tra trạng thái lưu dữ liệu nhóm." + realtime;
 }
 
 module.exports.run = async function ({ api, event, Threads, reply }) {

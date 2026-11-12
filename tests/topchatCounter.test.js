@@ -356,3 +356,36 @@ test("topchat does not call the unsupported REST history endpoint when local cou
   assert.match(infoMessage, /realtime/i);
   assert.doesNotMatch(infoMessage, /404|Request failed/i);
 });
+
+test("topchat persists realtime diagnostics even when every incoming group message is filtered", async () => {
+  global.config = { prefix: "/" };
+  const Threads = fakeThreads({ "topchat-live-diagnostics": { prefix: "/" } });
+  const threadId = "topchat-live-diagnostics";
+  await counter.run({
+    event: makeGroupMessage(threadId, "u1", "diag-command", "/menu"),
+    Threads,
+    isSelf: false
+  });
+  await counter.run({
+    event: makeGroupMessage(threadId, "u1", "diag-normal", "hello"),
+    Threads,
+    isSelf: false
+  });
+  await counter.flushAll(Threads);
+
+  const diagnostics = Threads.rows.get(threadId).data.topchatDiagnostics;
+  assert.equal(diagnostics.received, 2);
+  assert.equal(diagnostics.counted, 1);
+  assert.equal(diagnostics.rejected, 1);
+});
+
+test("topchat does not trust legacy history completion markers without a version", () => {
+  const today = vietnamDateKey();
+  const message = topchat._test.emptyRankingMessage({
+    topchatHistoryDate: today,
+    topchatHistoryComplete: true,
+    topchatHistoryReason: "history-exhausted"
+  }, today);
+  assert.doesNotMatch(message, /Đã quét đủ lịch sử nhóm/);
+  assert.match(message, /trạng thái quét lịch sử cũ/i);
+});

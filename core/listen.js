@@ -4,7 +4,7 @@ const { wrapForThread } = require("./runtime/adapters/zalo");
 const logger = require("../utils/logger");
 const { updateMessageCache, getMessageCache } = require("../utils/index");
 const { ThreadType } = require("zalo-client");
-const { createCipherReadyGate } = require("./topchat/historyBootstrap");
+const { createCipherReadyGate, requestOldMessagesThen } = require("./topchat/historyBootstrap");
 
 const Threads = require("./controller/controllerThreads");
 const panelBridge = require("./panelBridge");
@@ -200,6 +200,7 @@ function startListening(api) {
   // Tin lịch sử được cache nhưng không thực thi lại lệnh cũ.
   let reconnectSince = Date.now();
   let topchatHistorySync = null;
+  let cancelPrivateHistoryWait = null;
 
   function clearTopchatHistoryTimers(state) {
     if (!state) return;
@@ -417,16 +418,31 @@ function startListening(api) {
   // frame arrives. History responses are encrypted, so requesting them here can
   // race the key handshake and make the initial Topchat backfill silently fail.
   const historyBootstrapGate = createCipherReadyGate(() => {
-    logger.log("WebSocket đã cấp cipher key; bắt đầu đồng bộ lịch sử nhóm cho Topchat", "info");
+    logger.log("WebSocket đã cấp cipher key; đồng bộ lịch sử theo thứ tự DM → Group", "info");
+    cancelPrivateHistoryWait?.();
     try {
-      listener.requestOldMessages(ThreadType.User);
+      const wait = requestOldMessagesThen(listener, ThreadType.User, () => {
+        cancelPrivateHistoryWait = null;
+        if (listener.ws && listener.ws.readyState !== 1) return;
+        try {
+          startTopchatHistorySync();
+        } catch (error) {
+          logger.log(`Không thể bắt đầu đồng bộ lịch sử Topchat: ${error.message}`, "warn");
+        }
+      }, HISTORY_REQUEST_TIMEOUT_MS);
+      cancelPrivateHistoryWait = wait.cancel;
+      void wait.promise.then((reason) => {
+        if (reason === "timeout" || reason === "request-error") {
+          logger.log(`Đồng bộ DM kết thúc bằng ${reason}; chuyển sang lịch sử nhóm Topchat`, "warn");
+        }
+      }).catch((error) => {
+        logger.log(`Lỗi tuần tự hóa yêu cầu lịch sử Zalo: ${error.message}`, "warn");
+      });
     } catch (error) {
       logger.log(`Không yêu cầu được tin nhắn riêng cũ: ${error.message}`, "warn");
-    }
-    try {
-      startTopchatHistorySync();
-    } catch (error) {
-      logger.log(`Không thể bắt đầu đồng bộ lịch sử Topchat: ${error.message}`, "warn");
+      try { startTopchatHistorySync(); } catch (startError) {
+        logger.log(`Không thể bắt đầu đồng bộ lịch sử Topchat: ${startError.message}`, "warn");
+      }
     }
   });
 
@@ -444,6 +460,8 @@ function startListening(api) {
   });
 
   listener.on("closed", (code) => {
+    cancelPrivateHistoryWait?.();
+    cancelPrivateHistoryWait = null;
     historyBootstrapGate.disconnected();
     reconnectSince = Date.now();
     if (topchatHistorySync?.active) {

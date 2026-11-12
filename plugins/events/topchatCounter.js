@@ -66,10 +66,12 @@ function resetDailyFields(thread, dateKey) {
   thread.topchatHistoryComplete = false;
   thread.topchatHistoryPages = 0;
   thread.topchatHistoryReason = "";
+  thread.topchatHistoryVersion = 0;
+  thread.topchatDiagnostics = { date: dateKey, received: 0, counted: 0, rejected: 0, duplicates: 0, lastSeenAt: 0 };
 }
 
 function makePending(dateKey) {
-  return { dateKey, counts: new Map(), ids: [], idsSet: new Set(), total: 0, history: false, timer: null };
+  return { dateKey, counts: new Map(), ids: [], idsSet: new Set(), total: 0, history: false, liveReceived: 0, liveCounted: 0, liveRejected: 0, liveDuplicates: 0, timer: null };
 }
 
 function scheduleFlush(threadId, Threads, pending) {
@@ -105,6 +107,19 @@ async function flushGroupUnlocked(threadId, Threads) {
   const idsToAdd = pending.ids.filter(id => !storedSet.has(id));
   thread.topchatCounts = counts;
   thread.topchatSeenMessageIds = [...storedIds, ...idsToAdd].slice(-MAX_STORED_IDS);
+  if (pending.liveReceived > 0) {
+    const previousDiag = thread.topchatDiagnostics?.date === pending.dateKey
+      ? thread.topchatDiagnostics
+      : { date: pending.dateKey, received: 0, counted: 0, rejected: 0, duplicates: 0, lastSeenAt: 0 };
+    thread.topchatDiagnostics = {
+      date: pending.dateKey,
+      received: Math.max(0, Number(previousDiag.received) || 0) + pending.liveReceived,
+      counted: Math.max(0, Number(previousDiag.counted) || 0) + pending.liveCounted,
+      rejected: Math.max(0, Number(previousDiag.rejected) || 0) + pending.liveRejected,
+      duplicates: Math.max(0, Number(previousDiag.duplicates) || 0) + pending.liveDuplicates,
+      lastSeenAt: Date.now()
+    };
+  }
   if (pending.history) {
     thread.topchatHistoryDate = pending.dateKey;
     thread.topchatHistoryComplete = false;
@@ -163,15 +178,26 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
     let added = 0;
     const receivedAt = source === "live" ? Date.now() : 0;
     for (const message of messages) {
-      if (!isCountableMessage(message, dateKey, prefix, receivedAt)) continue;
+      if (source === "live") pending.liveReceived++;
+      if (!isCountableMessage(message, dateKey, prefix, receivedAt)) {
+        if (source === "live") pending.liveRejected++;
+        continue;
+      }
       const data = message.data || {};
       const uid = String(data.uidFrom || data.senderId || "");
       const messageId = String(data.cliMsgId || data.msgId || "");
-      if (messageId && (storedSet.has(messageId) || pending.idsSet.has(messageId))) continue;
-      if (messageId && !rememberMessage(threadId, data)) continue;
+      if (messageId && (storedSet.has(messageId) || pending.idsSet.has(messageId))) {
+        if (source === "live") pending.liveDuplicates++;
+        continue;
+      }
+      if (messageId && !rememberMessage(threadId, data)) {
+        if (source === "live") pending.liveDuplicates++;
+        continue;
+      }
 
       const member = pending.counts.get(uid) || { count: 0, name: "", avatar: "" };
       member.count += 1;
+      if (source === "live") pending.liveCounted++;
       member.name = String(data.dName || data.senderName || data.name || member.name || "Thành viên").slice(0, 40);
       member.avatar = avatarUrl(data) || member.avatar || "";
       pending.counts.set(uid, member);
@@ -182,7 +208,7 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
         pending.ids.push(messageId);
       }
     }
-    if (added || source === "history") scheduleFlush(threadId, Threads, pending);
+    if (added || source === "history" || source === "live") scheduleFlush(threadId, Threads, pending);
     return added;
   });
 }
@@ -227,6 +253,7 @@ async function markHistoryCoverage(threadIds, Threads, dateKey, complete, pageCo
       resetDailyFields(thread, dateKey);
       thread.topchatHistoryDate = dateKey;
       thread.topchatHistoryComplete = Boolean(complete);
+      thread.topchatHistoryVersion = 2;
       thread.topchatHistoryPages = Math.max(0, Number(pageCount) || 0);
       thread.topchatHistoryReason = String(reason || "").slice(0, 40);
       await Threads.setData(threadId, thread);
