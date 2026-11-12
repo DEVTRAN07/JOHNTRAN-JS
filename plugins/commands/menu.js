@@ -29,6 +29,11 @@ module.exports.run = async function ({ api, event }) {
   try {
     const profile = await getRequesterProfile(api, event);
     const groups = folders.collectMenuGroups(commands, senderId);
+
+    // Thứ tự ưu tiên hiển thị menu (từ quan trọng/popular đến ít)
+    const PRIORITY = ["info", "public", "music", "game", "tools", "test", "anti", "manager", "admin", "mybot", "hidden"];
+    groups.sort((a, b) => PRIORITY.indexOf(a.slug) - PRIORITY.indexOf(b.slug));
+
     const cards = groups.map(group => ({
       name: group.name,
       usage: `${group.count} lệnh`,

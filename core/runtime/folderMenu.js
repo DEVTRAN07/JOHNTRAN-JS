@@ -167,24 +167,31 @@ function renderAllCommands(groups, prefix, botName, version) {
  * shortcuts such as /game, /tools and /admin show the exact same commands.
  */
 const MENU_GROUPS = Object.freeze([
-  { name: "Game", slug: "game", icon: "🎮", description: "Giải trí & Game" },
-  { name: "Tools", slug: "tools", icon: "🧰", description: "Công cụ hỗ trợ" },
+  { name: "Info", slug: "info", icon: "💡", description: "Thông tin & hướng dẫn" },
+  { name: "Public", slug: "public", icon: "🌐", description: "Tiện ích chung" },
   { name: "Music", slug: "music", icon: "🎵", description: "Nghe nhạc trực tuyến" },
+  { name: "Game", slug: "game", icon: "🎮", description: "Giải trí & game" },
+  { name: "Tools", slug: "tools", icon: "🧰", description: "Công cụ hỗ trợ" },
+  { name: "Test", slug: "test", icon: "🧪", description: "Lệnh thử nghiệm" },
   { name: "Anti", slug: "anti", icon: "🛡️", description: "Bảo vệ nhóm" },
   { name: "Manager", slug: "manager", icon: "⚙️", description: "Quản lý nhóm" },
   { name: "Admin", slug: "admin", icon: "👑", description: "Quản trị hệ thống" },
   { name: "Mybot", slug: "mybot", icon: "🤖", description: "Quản lý bot" },
-  { name: "Hidden", slug: "hidden", icon: "🔒", description: "Lệnh ẩn & đặc biệt" },
-  { name: "Khác", slug: "khac", icon: "⭐", description: "Thêm tính năng" }
+  { name: "Hidden", slug: "hidden", icon: "🔒", description: "Lệnh ẩn & đặc biệt" }
 ]);
 
 const MENU_COMMAND_GROUPS = Object.freeze({
+  info: new Set(["id", "infofb"]),
+  public: new Set(["card", "getavt", "getlink", "getvd", "getvoice", "tiktok"]),
   music: new Set(["scl", "lyric"]),
+  game: new Set(["tutien"]),
+  tools: new Set(["autodown", "autosend", "stk"]),
+  test: new Set([]),
   anti: new Set(["anti", "autokick"]),
   manager: new Set(["adduser", "delmsg"]),
-  admin: new Set(["admin", "adc", "reloadconfig", "restart"]),
-  mybot: new Set(["cmd", "command", "events", "stats", "upt"]),
-  hidden: new Set(["spam", "spamsticker"])
+  admin: new Set(["adc", "admin", "reloadconfig", "restart", "spam", "spamsticker"]),
+  mybot: new Set(["cmd", "events", "jobs", "stats", "upt"]),
+  hidden: new Set(["noi", "vdgirl"])
 });
 
 function menuGroupForCommand(command) {
@@ -198,12 +205,25 @@ function menuGroupForCommand(command) {
 
   const category = normalizeFolder(config.category);
   if (category === "game") return "game";
-  if (category === "tienich") return "tools";
+  if (category === "tienich" || category === "tie n ich") {
+    const name = String(config.name || "").toLowerCase();
+    if (["id", "infofb"].includes(name)) return "info";
+    if (["card", "getavt", "getlink", "getvd", "getvoice", "tiktok"].includes(name)) return "public";
+    return "tools";
+  }
   if (category === "nhac" || category === "music") return "music";
-  if (category === "nhom") return "manager";
-  if (category === "hethong") return Number(config.role || 0) >= 2 ? "admin" : "mybot";
-  if (["giaitri", "hanhdong", "ai", "khac"].includes(category)) return "khac";
-  return "khac";
+  if (category === "nhom") {
+    const name = String(config.name || "").toLowerCase();
+    if (["anti", "autokick"].includes(name)) return "anti";
+    return "manager";
+  }
+  if (category === "hethong") {
+    const name = String(config.name || "").toLowerCase();
+    if (["cmd", "events", "jobs", "stats", "upt"].includes(name)) return "mybot";
+    return "admin";
+  }
+  if (["giaitri", "hanhdong", "ai", "khac"].includes(category)) return "hidden";
+  return "hidden";
 }
 
 function collectMenuGroups(commands, userId) {
@@ -225,7 +245,7 @@ function collectMenuGroups(commands, userId) {
   return MENU_GROUPS.map(group => {
     const items = buckets.get(group.slug).sort((a, b) => a.name.localeCompare(b.name, "vi"));
     return { ...group, count: items.length, commands: items };
-  });
+  }).filter(group => group.count > 0);
 }
 
 function resolveMenuGroup(commands, userId, value) {

@@ -56,6 +56,15 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
       const folder = menuGroupShortcut;
       if (folder) {
         const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
+        // Nhóm không có lệnh nào → không hiển thị thẻ trống
+        if (!items || items.length === 0) {
+          if (wrappedApi && threadId && type) {
+            await wrappedApi.sendMessage({
+              msg: `📂 Danh mục "${folder.name}" hiện chưa có lệnh nào.`
+            }, threadId, type);
+          }
+          return;
+        }
         const version = require("../../package.json").version;
         const { renderFolderCard } = require("../canvas/menu");
         const profile = await getRequesterProfile(api, event);
