@@ -4,7 +4,8 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
-const http = require("../../core/http");
+const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
+const { enqueue } = require("../../core/jobQueue");
 const { mediaCache } = require("../../core/mediaCache");
 const { getVideoInfo } = require("../../core/tiktok");
 
@@ -66,7 +67,10 @@ module.exports.run = async function ({ api, event, args }) {
   try {
     await api.sendMessage({ msg: "⏳ Đang lấy thông tin TikTok...", plain: true }, threadId, type);
 
-    const info = await getVideoInfo(url);
+    const info = await enqueue("download", () => getVideoInfo(url), {
+      key: `tiktok-info|${urlCacheKey(url)}`,
+      label: "Lấy metadata TikTok"
+    });
     const videoUrl = info.videoUrl;
     const musicUrl = info.music || "";
     const thumbUrl = info.thumbnail || "";
@@ -79,7 +83,7 @@ module.exports.run = async function ({ api, event, args }) {
         videoResult = { buffer: videoCached.buffer, url: videoCached.url, cached: true };
       } else {
         const tmpVideo = path.join(tmpDir, "video.mp4");
-        const { buffer } = await http.getBuffer(videoUrl, { timeout: 180000, retries: 1 });
+        const { buffer } = await queuedGetBuffer(videoUrl, { timeout: 180000, retries: 1 });
         if (!buffer || !buffer.length) throw new Error("Video tải về rỗng");
         fs.writeFileSync(tmpVideo, buffer);
         videoResult = await storeMedia(videoUrl, buffer, "video", {
@@ -97,7 +101,7 @@ module.exports.run = async function ({ api, event, args }) {
       if (musicCached.cached) {
         musicResult = { buffer: musicCached.buffer, url: musicCached.url, cached: true };
       } else {
-        const { buffer } = await http.getBuffer(musicUrl, { timeout: 120000, retries: 1 });
+        const { buffer } = await queuedGetBuffer(musicUrl, { timeout: 120000, retries: 1 });
         if (buffer && buffer.length) {
           musicResult = await storeMedia(musicUrl, buffer, "audio", {
             title: info.title,
@@ -114,7 +118,7 @@ module.exports.run = async function ({ api, event, args }) {
       if (thumbCached.cached) {
         thumbResult = { buffer: thumbCached.buffer, url: thumbCached.url, cached: true };
       } else {
-        const { buffer } = await http.getBuffer(thumbUrl, { timeout: 30000, retries: 1 });
+        const { buffer } = await queuedGetBuffer(thumbUrl, { timeout: 30000, retries: 1 });
         if (buffer && buffer.length) {
           thumbResult = await storeMedia(thumbUrl, buffer, "image", {
             title: info.title,
