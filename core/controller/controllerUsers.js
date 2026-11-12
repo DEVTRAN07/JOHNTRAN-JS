@@ -12,25 +12,28 @@ module.exports = {
     }));
   },
 
-  getData: (userId) => {
+  // Keep the historical Promise contract used by commands (.then/.catch),
+  // while reading the in-memory database mirror immediately (no batch timer).
+  getData: async (userId) => {
     const key = String(userId);
     const cached = userCache.get(key);
     if (cached !== undefined) return cached;
 
-    const existing = hasData("Users", "userId", userId);
-    if (!existing) {
+    if (!hasData("Users", "userId", userId)) {
       module.exports.createData(userId, DEFAULT_USER());
       logger.log("Da tao database cho nguoi dung: " + userId, "info");
     }
-    const data = getData("Users", "userId", userId);
+    const record = getData("Users", "userId", userId);
+    const data = record || { userId: key, data: DEFAULT_USER() };
     userCache.set(key, data);
     return data;
   },
 
   setData: (userId, data) => {
     const key = String(userId);
-    saveData("Users", "userId", userId, data);
-    userCache.set(key, data);
+    const record = saveData("Users", "userId", userId, data);
+    userCache.set(key, record || { userId: key, data });
+    return record;
   },
 
   delData: (userId) => {
@@ -43,20 +46,23 @@ module.exports = {
 
   createData: (userId, defaultData = {}) => {
     const key = String(userId);
-    if (!hasData("Users", "userId", userId)) {
-      saveData("Users", "userId", userId, defaultData);
+    let record = getData("Users", "userId", userId);
+    if (!record) {
+      record = saveData("Users", "userId", userId, defaultData);
     }
-    userCache.set(key, defaultData);
+    userCache.set(key, record || { userId: key, data: defaultData });
+    return record;
   },
 
-  isBanned: (userId) => {
-    const record = getData("Users", "userId", userId);
+  isBanned: async (userId) => {
+    const record = await module.exports.getData(userId);
     return Boolean(record?.data?.ban);
   },
 
-  setBan: (userId, banned) => {
-    const data = module.exports.getData(userId).data || {};
-    data.ban = Boolean(banned);
+  setBan: async (userId, banned) => {
+    const record = await module.exports.getData(userId);
+    const data = { ...(record?.data || {}), ban: Boolean(banned) };
     module.exports.setData(userId, data);
+    return data;
   }
 };
