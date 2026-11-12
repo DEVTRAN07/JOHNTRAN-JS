@@ -39,7 +39,8 @@ for (const url of [
   "https://www.instagram.com/reel/123/",
   "https://video.twimg.com/example.mp4",
   "https://lrclib.net/api/search",
-  "https://files.catbox.moe/example.mp4"
+  "https://files.catbox.moe/example.mp4",
+  "https://s120.avatar.zalo.me/avatar.jpg"
 ]) {
   assert.ok(hostAllowed(url, configured).allowed, `${new URL(url).hostname} should be allowed for autodown`);
 }
