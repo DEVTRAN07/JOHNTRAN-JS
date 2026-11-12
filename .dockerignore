@@ -6,3 +6,20 @@ data/
 qr.png
 *.log
 .env
+
+# Local tooling and documentation are not part of the runtime image
+.github
+.kilo
+app
+docs
+deploy
+scripts
+tests
+reference-images
+
+# Generated/runtime data must never be baked into an image layer
+assets/cache
+core/assets/cache
+plugins/commands/temp
+plugins/events/temp
+logs
