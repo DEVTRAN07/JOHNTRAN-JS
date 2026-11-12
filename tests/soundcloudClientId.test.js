@@ -10,7 +10,7 @@ function main() {
   assert.strictEqual(extractClientId("https://api-v2.soundcloud.com/search?client_id=" + id), id);
   assert.strictEqual(extractClientId('{"client_id":"' + id + '"}'), id);
   assert.strictEqual(extractClientId('clientId = "' + id + '"'), id);
-  assert.strictEqual(extractClientId("client_id\\u0026value=" + id), id);
+  assert.strictEqual(extractClientId("https://example.com/?foo=1\\u0026client_id=" + id), id);
 
   const html = [
     '<script defer src="/assets/app.js"></script>',
