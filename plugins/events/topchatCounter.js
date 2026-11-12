@@ -27,7 +27,7 @@ module.exports.run = async function ({ event, Threads, isSelf }) {
   if (!uid) return;
 
   const content = typeof data.content === "string" ? data.content.trim() : "";
-  if (!content) return;
+  if (!content || (global.config?.prefix && content.startsWith(global.config.prefix))) return;
 
   const threadId = String(event.threadId);
   const record = await Threads.getData(threadId);
