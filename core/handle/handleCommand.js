@@ -8,6 +8,7 @@ const { performance } = require("node:perf_hooks");
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
 const { getRequesterProfile } = require("../runtime/requesterProfile");
+const { renderFolderCard } = require("../canvas/menu");
 
 
 const { ThreadType, Reactions } = require("zalo-client");
@@ -61,7 +62,6 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
         const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
         // Các thư mục luôn có thẻ riêng; nhóm rỗng vẫn hiển thị đúng bố cục và báo chưa có lệnh trong caption.
         const version = require("../../package.json").version;
-        const { renderFolderCard } = require("../canvas/menu");
         const profile = await getRequesterProfile(api, event);
         const imagePath = await renderFolderCard({
           folderName: folder.name,
