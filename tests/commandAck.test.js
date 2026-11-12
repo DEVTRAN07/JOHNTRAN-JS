@@ -53,6 +53,46 @@ test("voice/media output also cancels the pending acknowledgement", async () => 
   assert.ok(sent[0].voice);
 });
 
+test("a slow outgoing media/text upload does not suppress the early acknowledgement", async () => {
+  const sent = [];
+  const api = {
+    async sendMessage(payload) {
+      sent.push(payload);
+      if (payload.msg === "Kết quả chậm") await delay(70);
+      return { message: { msgId: sent.length, cliMsgId: sent.length } };
+    }
+  };
+  const event = { threadId: "ack-slow-send", type: 2, data: { msgId: 1, cliMsgId: 1 } };
+  const wrapped = wrapApi(api, event.threadId, event.type, "slowcmd", event);
+
+  wrapped.__reply.scheduleAcknowledgement({ delayMs: 15 });
+  const pendingSend = wrapped.sendMessage({ msg: "Kết quả chậm" });
+  await delay(35);
+
+  assert.ok(sent.some(item => /Đang xử lý lệnh/.test(item.msg || "")));
+  await pendingSend;
+});
+
+test("dispatcher keeps an early acknowledgement alive for a slow command handler", async () => {
+  const { dispatchCommand } = require("../core/runtime/dispatcher");
+  const { wrapped, sent } = createWrapped();
+  wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 });
+
+  await dispatchCommand({
+    command: { run: async () => delay(35) },
+    commandName: "slowcmd",
+    args: [],
+    event: { data: { content: "/slowcmd" }, mentions: [] },
+    api: wrapped,
+    logger: { log() {} },
+    metrics: { track() {} },
+    Reactions: { PRAY: "working", OK: "ok", CRY: "cry" }
+  });
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].msg, /Đang xử lý lệnh/);
+});
+
 test("finishing a command before the acknowledgement timer fires leaves the original output unchanged", async () => {
   const { wrapped, sent } = createWrapped();
   wrapped.__reply.scheduleAcknowledgement({ delayMs: 25 });
