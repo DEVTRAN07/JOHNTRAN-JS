@@ -22,6 +22,6 @@ test("DHBC question validation normalizes API input", () => {
   });
   assert.deepEqual(question, {
     id: "test-question", answer: "Đáp án", clues: ["Gợi ý 1", "Gợi ý 2"],
-    symbols: ["🧩", "🎯"], hint: "Gợi ý"
+    symbols: ["🧩", "🎯"], images: [], hint: "Gợi ý"
   });
 });
