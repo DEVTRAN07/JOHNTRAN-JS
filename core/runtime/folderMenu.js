@@ -31,11 +31,11 @@ function canSee(command, userId) {
     (role === 2 && global.users?.admin?.includes(userId));
 }
 
-function collectFolders(commands, userId) {
+function canonicalCategory(value) {\n  const key = normalizeFolder(value);\n  if (key === "hethong") return "Hệ thống";\n  if (key === "tienich") return "Tiện ích";\n  return String(value || "Khác");\n}\n\nfunction collectFolders(commands, userId) {
   const groups = new Map();
   for (const command of commands.values()) {
     if (!canSee(command, userId)) continue;
-    const category = command?.config?.category || "Khác";
+    const category = canonicalCategory(command?.config?.category || "Khác");
     if (!groups.has(category)) groups.set(category, []);
     groups.get(category).push(command);
   }
@@ -73,7 +73,7 @@ function resolveFolder(commands, userId, value) {
 function collectFolderCommands(commands, userId, folder) {
   return [...commands.values()]
     .filter((command) => canSee(command, userId))
-    .filter((command) => (command?.config?.category || "Khác") === folder.category)
+    .filter((command) => canonicalCategory(command?.config?.category || "Khác") === folder.category)
     .map((command) => ({
       name: String(command.config.name || "").toLowerCase(),
       usage: command.config.usage || command.config.name,
@@ -116,6 +116,6 @@ function renderFolder(folder, commands, prefix, botName, version) {
 }
 
 module.exports = {
-  collectFolders, resolveFolder, collectFolderCommands,
+  collectFolders, resolveFolder, collectFolderCommands, canonicalCategory,
   renderFolders, renderFolder, normalizeFolder
 };

@@ -5,7 +5,7 @@ const folders = require("../../core/runtime/folderMenu");
 
 module.exports.config = {
   name: "menu",
-  aliases: ["help"],
+  aliases: ["help", "folder", "folders"],
   version: "5.0.0",
   role: 0,
   author: "JOHNTRAN",
