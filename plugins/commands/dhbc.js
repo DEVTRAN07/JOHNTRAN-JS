@@ -1,7 +1,6 @@
 "use strict";
 
 const fs = require("fs");
-const path = require("path");
 const game = require("../../core/runtime/services/games/dhbcService");
 const { renderQuestion } = require("../../core/canvas/dhbc");
 
@@ -63,10 +62,11 @@ async function saveWin(Users, uid) {
 }
 async function leaderboard(Users, monthOnly = false) {
   const month = new Date().toISOString().slice(0, 7);
+  const monthOf = (value) => { const date = new Date(Number(value)); return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 7) : ""; };
   const rows = Users.getAll().map((row) => {
     const profile = row?.data?.dhbc || {};
     const history = Array.isArray(profile.history) ? profile.history : [];
-    const monthly = history.filter((item) => new Date(Number(item.at)).toISOString().slice(0, 7) === month)
+    const monthly = history.filter((item) => monthOf(item.at) === month)
       .reduce((sum, item) => sum + (Number(item.points) || 0), 0);
     return { uid: String(row.userId), points: monthOnly ? monthly : Number(profile.points) || 0, stars: Number(profile.stars) || 0 };
   }).filter((row) => row.points > 0).sort((a, b) => b.points - a.points).slice(0, 10);
