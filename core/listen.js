@@ -175,6 +175,12 @@ function startListening(api) {
   };
 
   const handleIncoming = (event) => {
+    // Include groups that receive live messages while historical paging runs,
+    // so their coverage status is finalized even if that group is absent from
+    // the last history page returned by Zalo.
+    if (topchatHistorySync?.active && event?.type === ThreadType.Group && event?.threadId) {
+      topchatHistorySync.groups.add(String(event.threadId));
+    }
     const cliMsgId = event?.data?.cliMsgId;
     if (cliMsgId && processedIds.has(cliMsgId)) return; // trùng lặp (server gửi lại / backfill)
     markProcessed(cliMsgId);
