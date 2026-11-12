@@ -139,7 +139,7 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
       "-allowed_extensions", "ALL",
       "-rw_timeout", "30000000",
       "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-      "-headers", "Referer: https://soundcloud.com/\\r\\nOrigin: https://soundcloud.com\\r\\n",
+      "-headers", "Referer: https://soundcloud.com/\r\nOrigin: https://soundcloud.com\r\n",
       "-reconnect", "1",
       "-reconnect_streamed", "1",
       "-reconnect_delay_max", "5",
@@ -155,7 +155,7 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
     }, (error, _stdout, stderr) => {
       if (error) {
         try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* ignore */ }
-        const diagnostic = redactStreamDiagnostics(stderr).split(/\\r?\\n/).filter(Boolean).slice(-8).join(" | ");
+        const diagnostic = redactStreamDiagnostics(stderr).split(/\r?\n/).filter(Boolean).slice(-8).join(" | ");
         const code = error.code ? `code=${error.code}` : "";
         const signal = error.signal ? `signal=${error.signal}` : "";
         const detail = diagnostic || [code, signal, error.errno, error.syscall].filter(Boolean).join(", ") || "FFmpeg không trả stderr";
@@ -217,7 +217,7 @@ async function downloadToFile(streamUrl, extension, options = {}) {
       label: "Tải audio stream"
     });
     if (status < 200 || status >= 300 || !buffer?.length ||
-        (contentType && !/^(audio\\/|application\\/octet-stream)/i.test(contentType))) {
+        (contentType && !/^(audio\/|application\/octet-stream)/i.test(contentType))) {
       throw new Error(`SoundCloud trả dữ liệu audio không hợp lệ (HTTP ${status || "không rõ"}, Content-Type: ${contentType || "không rõ"}).`);
     }
     fs.writeFileSync(filePath, buffer);
