@@ -4,7 +4,7 @@ const { pickUser } = require("../zaloProfile");
 const avatarCache = require("../canvas/avatarCache");
 
 const PROFILE_TTL_MS = 5 * 60 * 1000;
-const PROFILE_RETRY_TTL_MS = 15 * 1000;
+const PROFILE_RETRY_TTL_MS = 5 * 1000;
 const MAX_PROFILES = 1000;
 const AVATAR_SIZE = 240;
 const profiles = new Map();
@@ -16,7 +16,9 @@ function pickAvatar(value) {
   if (Array.isArray(value)) return pickAvatar(value[0]);
   if (typeof value !== "object") return "";
   return value.url || value.href || value.avatar || value.avatarUrl || value.avatar_url ||
-    value.photoUrl || value.photo_url || value.profilePicture || value.profile_picture || "";
+    value.photoUrl || value.photo_url || value.profilePicture || value.profile_picture ||
+    value.hdAvatar || value.hd_avatar || value.largeAvatar || value.large_avatar ||
+    value.fullAvatar || value.full_avatar || value.avatarURL || value.imageUrl || "";
 }
 
 function pickName(value, fallback) {
@@ -26,27 +28,85 @@ function pickName(value, fallback) {
 }
 
 function pickAvatarByUid(response, uid) {
-  if (!response || typeof response !== "object") return "";
-  const userId = String(uid);
-  const roots = [response, response.data, response.result].filter(
-    value => value && typeof value === "object"
-  );
-  const keys = [userId, userId + "_0"];
+  if (!response || typeof response !== "object") {
+    return typeof response === "string" && /^https?:\/\//i.test(response) ? response : "";
+  }
 
-  for (const root of roots) {
-    for (const key of keys) {
-      const avatar = pickAvatar(root[key]);
-      if (avatar) return avatar;
+  const userId = String(uid);
+  const expectedIds = new Set([userId, userId + "_0"]);
+  const queue = [response];
+  const visited = new Set();
+  let inspected = 0;
+
+  while (queue.length && inspected < 120) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || visited.has(current)) continue;
+    visited.add(current);
+    inspected++;
+
+    if (Array.isArray(current)) {
+      const matched = current.find(item => {
+        if (!item || typeof item !== "object") return false;
+        const id = String(item.userId ?? item.user_id ?? item.uid ?? item.id ?? "");
+        return expectedIds.has(id) || id.startsWith(userId + "_");
+      });
+      if (matched) {
+        const avatar = pickAvatar(matched);
+        if (avatar) return avatar;
+        queue.unshift(matched);
+      } else if (current.length === 1) {
+        queue.push(current[0]);
+      }
+      continue;
     }
-    for (const [key, value] of Object.entries(root)) {
-      if ((key === userId || key.startsWith(userId + "_")) && pickAvatar(value)) {
-        return pickAvatar(value);
+
+    // Some Zalo builds return { data: { "<uid>_0": { avatarUrl } } },
+    // others wrap the same map inside result/profiles/avatars.
+    for (const key of expectedIds) {
+      if (Object.prototype.hasOwnProperty.call(current, key)) {
+        const avatar = pickAvatar(current[key]);
+        if (avatar) return avatar;
+        queue.unshift(current[key]);
       }
     }
-    const direct = pickAvatar(root);
+
+    const recordId = String(current.userId ?? current.user_id ?? current.uid ?? current.id ?? "");
+    if (recordId && (expectedIds.has(recordId) || recordId.startsWith(userId + "_"))) {
+      const avatar = pickAvatar(current);
+      if (avatar) return avatar;
+    }
+
+    // The endpoint is queried for one UID at a time, so a direct URL on the
+    // response envelope is safe; nested collections are inspected below.
+    const direct = pickAvatar(current);
     if (direct) return direct;
+
+    for (const value of Object.values(current)) {
+      if (value && typeof value === "object") queue.push(value);
+    }
   }
+
   return "";
+}
+
+function pickProfileByUid(response, uid) {
+  const queue = [response];
+  const visited = new Set();
+  let inspected = 0;
+  while (queue.length && inspected < 80) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || visited.has(current)) continue;
+    visited.add(current);
+    inspected++;
+
+    const profile = pickUser(current, String(uid));
+    if (profile) return profile;
+
+    for (const value of Object.values(current)) {
+      if (value && typeof value === "object") queue.push(value);
+    }
+  }
+  return null;
 }
 
 function touch(uid, entry) {
@@ -101,7 +161,7 @@ function fetchProfileInBackground(api, uid, fallback, options = {}) {
       ]);
       const response = profileResult.status === "fulfilled" ? profileResult.value : null;
       const avatarResponse = avatarResult.status === "fulfilled" ? avatarResult.value : null;
-      const remoteProfile = pickUser(response, uid);
+      const remoteProfile = pickProfileByUid(response, uid);
       const name = String(pickName(remoteProfile, fallback.requesterName)).slice(0, 32);
       const avatarUrl = pickAvatar(remoteProfile) ||
         pickAvatarByUid(avatarResponse, uid) ||
@@ -197,5 +257,6 @@ module.exports = {
   AVATAR_SIZE,
   MAX_PROFILES,
   pickAvatar,
-  pickAvatarByUid
+  pickAvatarByUid,
+  pickProfileByUid
 };

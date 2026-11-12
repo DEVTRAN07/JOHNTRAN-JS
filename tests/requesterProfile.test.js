@@ -169,3 +169,26 @@ test("visual menu profile lookup returns a fast UID_0 profile and waits for avat
     clearRequesterProfileCache();
   }
 });
+
+test("requester avatar parser handles nested Zalo avatar records and uid arrays", () => {
+  const { pickAvatarByUid, pickProfileByUid } = require("../core/runtime/requesterProfile");
+  const uid = "nested-avatar-user";
+  const avatar = "https://example.test/nested-avatar.jpg";
+  const response = {
+    data: {
+      avatars: [{ userId: uid + "_0", avatar_url: avatar }]
+    }
+  };
+  assert.equal(pickAvatarByUid(response, uid), avatar);
+  assert.deepEqual(
+    pickProfileByUid({
+      result: {
+        changed_profiles: {
+          [uid + "_0"]: { userId: uid, displayName: "Nested Profile" }
+        }
+      }
+    }, uid),
+    { userId: uid, displayName: "Nested Profile" }
+  );
+});
+

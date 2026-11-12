@@ -109,12 +109,23 @@ function drawAvatar(ctx, url, name, x, y, size, withStatus) {
 
   if (withStatus) {
     const radius = theme.S(6.5);
-    const cx = x + size - radius * 0.8;
-    const cy = y + size - radius * 0.8;
+    const inset = radius * 0.9;
+    const cx = x + size - inset;
+    const cy = y + size - inset;
+
+    // Put the presence badge on the same 45-degree anchor of every avatar
+    // and draw its shadow separately so it cannot shift the green center.
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.42)";
+    ctx.shadowBlur = theme.S(2.2);
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = theme.S(1);
     ctx.beginPath();
-    ctx.arc(cx, cy, radius + theme.S(1.5), 0, Math.PI * 2);
+    ctx.arc(cx, cy, radius + theme.S(1.2), 0, Math.PI * 2);
     ctx.fillStyle = "#f5ffff";
     ctx.fill();
+    ctx.restore();
+
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fillStyle = "#08c977";
@@ -461,7 +472,8 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   const time = new Intl.DateTimeFormat("vi-VN", {
     hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh"
   }).format(new Date());
-  drawClock(ctx, W - margin - S(57), S(45), S(14), palette.accent);
+  // Align the clock's visual center with the time text, not the title's top edge.
+  drawClock(ctx, W - margin - S(57), S(51), S(14), palette.accent);
   drawText(ctx, time, W - margin, S(58), 19, palette.accent, true, "right");
 
   const groups = Array.isArray(commands) ? commands : [];

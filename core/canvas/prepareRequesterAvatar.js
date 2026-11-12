@@ -2,7 +2,7 @@
 
 const avatarCache = require("./avatarCache");
 
-const AVATAR_PRELOAD_TIMEOUT_MS = 1600;
+const AVATAR_PRELOAD_TIMEOUT_MS = 550;
 
 async function prepareRequesterAvatar(data) {
   const url = String(data?.requesterAvatarUrl || "").trim();

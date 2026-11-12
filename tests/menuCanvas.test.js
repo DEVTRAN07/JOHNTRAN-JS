@@ -50,3 +50,10 @@ test("menu does not treat /menu <command> as a command-info shortcut", async () 
     global.config = previousConfig;
   }
 });
+
+test("menu render accepts requester avatar and keeps the clock within the header", async () => {
+  const source = fs.readFileSync(require.resolve("../core/canvas/menu"), "utf8");
+  assert.match(source, /drawClock\(ctx, W - margin - S\(57\), S\(51\), S\(14\)/);
+  assert.match(source, /const inset = radius \* 0\.9/);
+  assert.match(source, /shadowOffsetY = theme\.S\(1\)/);
+});

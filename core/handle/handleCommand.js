@@ -13,6 +13,11 @@ const { renderCanvas } = require("../canvas/workerRender");
 
 const { ThreadType, Reactions } = require("zalo-client");
 const { getFolderReaction } = require("../runtime/folderReaction");
+const {
+  isBotAdmin: isBotAdminUser,
+  isSupportUser,
+  getRequesterGreeting
+} = require("../runtime/requesterGreeting");
 
 const ADMIN_GROUPS_FILE = path.join(__dirname, "..", "..", "data", "bot_admin_groups.json");
 
@@ -66,7 +71,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
         const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
         // Các thư mục luôn có thẻ riêng; nhóm rỗng vẫn hiển thị đúng bố cục và báo chưa có lệnh trong caption.
         const version = require("../../package.json").version;
-        const profile = await getRequesterProfile(api, event, { waitMs: 90, skipAvatarWarm: true });
+        const profile = await getRequesterProfile(api, event, { waitMs: 400, skipAvatarWarm: true });
         const imagePath = await renderCanvas("menu-folder", {
           folderName: folder.name,
           folderDescription: folder.description,
@@ -89,6 +94,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
             : `📂 Thư mục này chưa có lệnh khả dụng. Gõ ${prefix}menu để xem danh mục khác.`;
           const caption = [
             `@${mentionName}`,
+            getRequesterGreeting(UIDUsage),
             heading,
             "",
             ...commandLines,
@@ -132,8 +138,8 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   }
 
   const role = command.config.role || 0;
-  const isBotAdmin = global.users?.admin?.includes(UIDUsage);
-  const isSupport = global.users?.support?.includes(UIDUsage);
+  const isBotAdmin = isBotAdminUser(UIDUsage);
+  const isSupport = isSupportUser(UIDUsage);
 
   // Bảo mật: lệnh nhạy (role 2 = admin bot) chỉ cho phép chạy trong nhóm
   // đã đăng ký làm admin group qua Panel. Ngăn trường hợp uidFrom bị giả mạo

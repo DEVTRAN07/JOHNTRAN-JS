@@ -24,6 +24,7 @@ const FOLDER_META = Object.freeze({
 });
 
 const ALL_FOLDER_KEYS = new Set(["tong", "all", "total", "tatca", "allcommands"]);
+const { isBotAdmin, isSupportUser } = require("./requesterGreeting");
 
 function normalizeFolder(value) {
   return String(value || "").trim().toLowerCase()
@@ -34,8 +35,8 @@ function normalizeFolder(value) {
 function canSee(command, userId) {
   const role = Number(command?.config?.role || 0);
   if (role === 0) return true;
-  if (role === 1) return Boolean(global.users?.admin?.includes(userId) || global.users?.support?.includes(userId));
-  if (role === 2) return Boolean(global.users?.admin?.includes(userId));
+  if (role === 1) return Boolean(isBotAdmin(userId) || isSupportUser(userId));
+  if (role === 2) return Boolean(isBotAdmin(userId));
   return false;
 }
 
