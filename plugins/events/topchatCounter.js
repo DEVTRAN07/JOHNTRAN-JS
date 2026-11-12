@@ -156,6 +156,8 @@ module.exports.run = async function ({ event, Threads, isSelf }) {
   await recordMessage({ event, Threads });
 };
 
+module.exports.recordHistoryMessages = recordHistoryMessages;
+
 module.exports._test = {
   rememberMessage,
   recordMessage,
