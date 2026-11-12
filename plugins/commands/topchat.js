@@ -8,7 +8,8 @@ const {
   buildRanking
 } = require("../../core/topchat/stats");
 
-const HISTORY_LIMIT = 200;
+// Match Zalo's documented/default history page size; large requests can be rejected.
+const HISTORY_LIMIT = 50;
 const HISTORY_CACHE_TTL_MS = 30000;
 const HISTORY_RESPONSE_BUDGET_MS = 650;
 const historyCache = new Map();
