@@ -213,43 +213,66 @@ function drawCategoryIcon(ctx, cx, cy, r, index, S) {
 }
 
 async function drawBrandFooter(ctx, x, y, w, h, opts) {
-  const { botVersion, S } = opts;
+  const { requesterName, requesterAvatarUrl, botVersion, S } = opts;
   rounded(ctx, x, y, w, h, S(28));
-  const g = ctx.createLinearGradient(x,y,x+w,y+h);
-  g.addColorStop(0,"rgba(9,39,91,.98)");
-  g.addColorStop(1,"rgba(7,63,119,.98)");
-  ctx.fillStyle=g;ctx.fill();
-  ctx.strokeStyle="#168cff";ctx.lineWidth=S(1.5);ctx.stroke();
+  const g = ctx.createLinearGradient(x, y, x + w, y + h);
+  g.addColorStop(0, "rgba(9,39,91,.98)");
+  g.addColorStop(1, "rgba(7,63,119,.98)");
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = "#168cff";
+  ctx.lineWidth = S(1.5);
+  ctx.stroke();
 
-  const logoX=x+S(22), logoY=y+S(8), logoSize=h-S(16);
-  const lg=ctx.createRadialGradient(logoX+logoSize/2,logoY+logoSize/2,0,logoX+logoSize/2,logoY+logoSize/2,logoSize/2);
-  lg.addColorStop(0,"#301b89");lg.addColorStop(1,"#08052c");
-  ctx.beginPath();ctx.arc(logoX+logoSize/2,logoY+logoSize/2,logoSize/2,0,Math.PI*2);ctx.fillStyle=lg;ctx.fill();
-  ctx.strokeStyle="#6b6cff";ctx.lineWidth=S(1.5);ctx.stroke();
-  drawMiniCrown(ctx,logoX+logoSize/2,logoY+logoSize*.37,S);
-  drawText(ctx,"MrQ",logoX+logoSize/2,logoY+logoSize*.79,10,"#e6d8ff",true,S,"center");
+  const avatarSize = S(42);
+  const avatarX = x + S(18);
+  const avatarY = y + (h - avatarSize) / 2;
+  await drawSmallAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize);
 
-  drawText(ctx,"JOHNTRAN-JS",x+S(82),y+h/2+S(7),21,"#ffffff",true,S);
-  drawVerified(ctx,x+S(238),y+h/2-S(2),S(8),S);
-  drawLink(ctx,x+w-S(125),y+h/2,S);
-  drawBotIcon(ctx,x+w-S(76),y+h/2,S);
-  drawText(ctx,"v"+(botVersion||"1.0.0"),x+w-S(12),y+h/2+S(7),18,"#edf5ff",true,S,"right");
+  drawText(ctx, requesterName || "Người dùng", x + S(72), y + h / 2 + S(7), 20, "#ffffff", true, S, "left", w - S(250));
+
+  drawLink(ctx, x + w - S(125), y + h / 2, S);
+  drawBotIcon(ctx, x + w - S(76), y + h / 2, S);
+  drawText(ctx, "v" + (botVersion || "1.0.0"), x + w - S(12), y + h / 2 + S(7), 18, "#edf5ff", true, S, "right");
 }
 
-async function drawSmallAvatar(ctx,url,x,y,size){
+async function drawSmallAvatar(ctx, url, name, x, y, size) {
   ctx.save();
   ctx.beginPath();
-  ctx.arc(x+size/2,y+size/2,size/2,0,Math.PI*2);
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
   ctx.clip();
-  ctx.fillStyle="#253c65";
-  ctx.fillRect(x,y,size,size);
-  try {
-    const { buffer } = await require("../http").getBuffer(url,{timeout:5000,retries:0});
-    const img = await loadImage(buffer);
-    ctx.drawImage(img,x,y,size,size);
-  } catch {}
+
+  const fallback = ctx.createLinearGradient(x, y, x + size, y + size);
+  fallback.addColorStop(0, "#167cff");
+  fallback.addColorStop(1, "#7138d8");
+  ctx.fillStyle = fallback;
+  ctx.fillRect(x, y, size, size);
+
+  if (url) {
+    try {
+      const { buffer } = await require("../http").getBuffer(url, { timeout: 5000, retries: 0 });
+      const img = await loadImage(buffer);
+      ctx.drawImage(img, x, y, size, size);
+    } catch {
+      drawAvatarInitials(ctx, name, x, y, size);
+    }
+  } else {
+    drawAvatarInitials(ctx, name, x, y, size);
+  }
+
   ctx.restore();
 }
+function drawAvatarInitials(ctx, name, x, y, size) {
+  const initials = String(name || "U").trim().split(/\\s+/).slice(-2).map(part => Array.from(part)[0] || "").join("").toUpperCase();
+  ctx.save();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = theme.font(17, "JT-Round-Bold");
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(initials || "U", x + size / 2, y + size / 2);
+  ctx.restore();
+}
+
 function drawMiniCrown(ctx,cx,cy,S){ctx.save();ctx.translate(cx,cy);ctx.fillStyle="#d99aff";ctx.strokeStyle="#f1c5ff";ctx.lineWidth=S(1.5);ctx.beginPath();ctx.moveTo(-S(15),S(6));ctx.lineTo(-S(16),-S(8));ctx.lineTo(-S(6),0);ctx.lineTo(0,-S(15));ctx.lineTo(S(7),0);ctx.lineTo(S(16),-S(8));ctx.lineTo(S(15),S(6));ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}
 function drawVerified(ctx,x,y,r,S){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle="#1688ff";ctx.fill();ctx.strokeStyle="#d9efff";ctx.lineWidth=S(1);ctx.stroke();ctx.strokeStyle="#fff";ctx.lineWidth=S(1.5);ctx.beginPath();ctx.moveTo(x-r*.5,y);ctx.lineTo(x-r*.12,y+r*.35);ctx.lineTo(x+r*.55,y-r*.4);ctx.stroke();}
 function drawLink(ctx,cx,cy,S){ctx.save();ctx.strokeStyle="#d5ebff";ctx.lineWidth=S(2.5);ctx.beginPath();ctx.arc(cx-S(3),cy-S(2),S(7),-.8,1.8);ctx.stroke();ctx.beginPath();ctx.arc(cx+S(3),cy+S(2),S(7),2.3,4.9);ctx.stroke();ctx.restore();}
