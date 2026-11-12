@@ -3,6 +3,7 @@
 const fs = require("fs");
 const botVersion = require("../../package.json").version;
 const folders = require("../../core/runtime/folderMenu");
+const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 
 module.exports.config = {
   name: "menu",
@@ -26,6 +27,7 @@ module.exports.run = async function ({ api, event }) {
 
   let imagePath;
   try {
+    const profile = await getRequesterProfile(api, event);
     const list = folders.collectFolders(commands, senderId);
     const cards = list.map(folder => ({
       name: folder.name,
@@ -34,8 +36,8 @@ module.exports.run = async function ({ api, event }) {
     }));
     const { renderMenuGrid } = require("../../core/canvas/menu");
     imagePath = await renderMenuGrid({
-      requesterName: String(event?.data?.dName || event?.data?.senderName || "Người dùng").slice(0, 32),
-      requesterAvatarUrl: "",
+      requesterName: profile.requesterName,
+      requesterAvatarUrl: profile.requesterAvatarUrl,
       botVersion,
       prefix: global.config?.prefix || "/",
       page: 1,
@@ -43,7 +45,7 @@ module.exports.run = async function ({ api, event }) {
       commands: cards,
       totalCommands: cards.reduce((sum, card) => sum + Number.parseInt(card.usage, 10) || sum, 0)
     });
-    const mentionName = String(event?.data?.dName || event?.data?.senderName || "Người dùng").slice(0, 32);
+    const mentionName = profile.requesterName;
     const mentionUid = event?.data?.uidFrom;
     const caption = `@\u200b${mentionName}\n🤖 Chào bạn!\n👉 Hôm nay có gì hay không? Hãy chọn tính năng bạn muốn nhé! 📍`;
     const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
