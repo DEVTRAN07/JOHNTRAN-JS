@@ -83,19 +83,8 @@ function startListening(api) {
     const threadInfo = threadData?.data || {};
     const prefix = threadInfo.prefix ? threadInfo.prefix : global.config.prefix;
 
-    // Bot thuần lệnh: không còn event tự động — handleEvent giữ lại làm khung
-    // cho command có handleEvent (anti/autokick/autodown) và tương lai mở rộng.
-    // handleEvent throw đồng bộ (plugin thiếu config...) phải không làm chết luồng lệnh.
-    if (threadInfo?.bot_enabled !== false) {
-      try {
-        handleEvent("message", event, api, event.isSelf === true);
-      } catch (err) {
-        logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn");
-      }
-    }
-
     const { data } = event;
-    const content = typeof data?.content === "object" && data?.content !== null
+    const content = typeof data?.content === "object" && data.content !== null
       ? (data.content.title ?? data.content)
       : data?.content;
 
@@ -104,12 +93,26 @@ function startListening(api) {
     const allowSelfCommand = global.config.allow_self_command === true;
     const canRunCommand = !event.isSelf || allowSelfCommand;
 
+    const dispatchMessageEvents = () => {
+      if (threadInfo?.bot_enabled === false) return;
+      try {
+        handleEvent("message", event, api, event.isSelf === true);
+      } catch (err) {
+        logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn");
+      }
+    };
+
     if (canRunCommand && typeof content === "string" && content.startsWith(prefix)) {
+      // Start command parsing immediately. Passive event handlers run on the
+      // next event-loop turn so they cannot delay the command hot path.
       Promise.resolve(handleCommand(content, event, api, threadInfo, prefix, threadData)).catch((err) => {
         logger.log(`Lỗi xử lý lệnh: ${err.message}`, "error");
       });
+      if (threadInfo?.bot_enabled !== false) setImmediate(dispatchMessageEvents);
       return;
     }
+
+    dispatchMessageEvents();
 
     // ===== Điều hướng bằng từ TRẦN (không cần prefix): next / prev / out / số =====
     // Xử lý TRỰC TIẾP tại đây (không đi qua handleEvent) để chắc chắn chạy:
