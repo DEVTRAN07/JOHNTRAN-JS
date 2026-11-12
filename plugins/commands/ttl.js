@@ -19,7 +19,7 @@ function parse(input) {
   const value = String(input ?? "").trim().toLowerCase();
   if (["off", "tat", "tắt", "0"].includes(value)) return { mode: "off" };
   if (["default", "macdinh", "mặc định"].includes(value)) return { mode: "default" };
-  const match = value.match(/^(\\d+)(s|sec|secs|giay|giây|m|min|mins|phut|phút|h|hr|hrs|gio|giờ|d|day|days|ngay|ngày)$/);
+  const match = value.match(/^(\d+)(s|sec|secs|giay|giây|m|min|mins|phut|phút|h|hr|hrs|gio|giờ|d|day|days|ngay|ngày)$/);
   if (!match) return { error: "Cú pháp: /ttl 30s, /ttl 5m, /ttl 1h, /ttl off hoặc /ttl default." };
   const amount = Number(match[1]);
   const unit = match[2];
@@ -40,8 +40,8 @@ module.exports.run = async function ({ args = [], event, api }) {
   if (!args[0]) {
     const local = threadRecall.get(event.threadId);
     const status = local > 0 ? "sau " + (local / 1000) + " giây" : "đang tắt";
-    return send(api, event, "⏱️ TỰ THU HỒI TIN NHẮN BOT\\nTrạng thái: " + status +
-      "\\n\\n/ttl 30s — thu hồi tin bot sau 30 giây\\n/ttl 5m — sau 5 phút\\n/ttl 1h — sau 1 giờ\\n/ttl off — tắt tự thu hồi\\n/ttl default — trở về mặc định 60 giây\\n\\nTin nhắn thành viên không bị xóa.");
+    return send(api, event, "⏱️ TỰ THU HỒI TIN NHẮN BOT\nTrạng thái: " + status +
+      "\n\n/ttl 30s — thu hồi tin bot sau 30 giây\n/ttl 5m — sau 5 phút\n/ttl 1h — sau 1 giờ\n/ttl off — tắt tự thu hồi\n/ttl default — trở về mặc định 60 giây\n\nTin nhắn thành viên không bị xóa.");
   }
 
   const parsed = parse(args[0]);
