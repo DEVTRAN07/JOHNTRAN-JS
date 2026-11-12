@@ -56,15 +56,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
       const folder = menuGroupShortcut;
       if (folder) {
         const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
-        // Nhóm không có lệnh nào → không hiển thị thẻ trống
-        if (!items || items.length === 0) {
-          if (wrappedApi && threadId && type) {
-            await wrappedApi.sendMessage({
-              msg: `📂 Danh mục "${folder.name}" hiện chưa có lệnh nào.`
-            }, threadId, type);
-          }
-          return;
-        }
+        // Các thư mục luôn có thẻ riêng; nhóm rỗng vẫn hiển thị đúng bố cục và báo chưa có lệnh trong caption.
         const version = require("../../package.json").version;
         const { renderFolderCard } = require("../canvas/menu");
         const profile = await getRequesterProfile(api, event);
@@ -87,7 +79,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
           const exampleNames = items.slice(0, 3).map(item => `${prefix}${item.usage || item.name}`);
           const hint = exampleNames.length
             ? `💡 Xem chi tiết cách dùng, hãy gõ trực tiếp: ${exampleNames.join(", ")}...`
-            : `💡 Gõ ${prefix}menu để xem các danh mục khác.`;
+            : `📂 Thư mục này chưa có lệnh khả dụng. Gõ ${prefix}menu để xem danh mục khác.`;
           const caption = [
             `@${mentionName}`,
             heading,
