@@ -273,30 +273,114 @@ async function search(query, limit) {
 
 function pickTranscoding(transcodings) {
   const list = Array.isArray(transcodings) ? transcodings : [];
-  const progressive = list.find((item) => item && item.format && item.format.protocol === "progressive");
-  if (progressive) return { item: progressive, protocol: "progressive" };
-  const hlsAac = list.find((item) => item && item.format && item.format.protocol === "hls" && /aac/i.test(item.format.mime_type || item.preset || ""));
+  const isHls = (item) => item?.format?.protocol === "hls";
+  const isAacHls = (item) => isHls(item) && /aac|m4a/i.test([
+    item?.url,
+    item?.preset,
+    item?.format?.mime_type
+  ].filter(Boolean).join(" "));
+
+  // SoundCloud đã chuyển chuẩn stream sang AAC/HLS; chỉ dùng progressive
+  // như fallback cho các track/API cũ còn cung cấp định dạng này.
+  const hlsAac = list.find(isAacHls);
   if (hlsAac) return { item: hlsAac, protocol: "hls" };
-  const hlsAny = list.find((item) => item && item.format && item.format.protocol === "hls");
+
+  const hlsAny = list.find(isHls);
   if (hlsAny) return { item: hlsAny, protocol: "hls" };
+
+  const progressive = list.find((item) => item?.format?.protocol === "progressive");
+  if (progressive) return { item: progressive, protocol: "progressive" };
   return null;
 }
 
-async function resolveTranscodingUrl(transcoding, clientId) {
+function getResponseHeader(headers, name) {
+  if (!headers) return "";
+  if (typeof headers.get === "function") return headers.get(name) || "";
+  return headers[name] || headers[name.toLowerCase()] || headers[name.toUpperCase()] || "";
+}
+
+function extractResolvedStreamUrl(response, requestUrl) {
+  if (!response) return null;
+  const status = Number(response.status) || 0;
+  const location = getResponseHeader(response.headers, "location");
+
+  if ([301, 302, 303, 307, 308].includes(status) && location) {
+    const redirected = new URL(String(location), requestUrl);
+    return /^https?:$/.test(redirected.protocol) ? redirected.toString() : null;
+  }
+
+  let payload = response.data;
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    try { payload = JSON.parse(trimmed); } catch { /* có thể là playlist trực tiếp */ }
+  }
+
+  const candidates = [
+    payload?.url,
+    payload?.data?.url,
+    payload?.location,
+    payload?.data?.location,
+    payload?.redirect_url,
+    payload?.data?.redirect_url
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue;
+    try {
+      const resolved = new URL(candidate.trim(), requestUrl);
+      if (/^https?:$/.test(resolved.protocol)) return resolved.toString();
+    } catch { /* thử trường URL kế tiếp */ }
+  }
+
+  const contentType = String(getResponseHeader(response.headers, "content-type")).toLowerCase();
+  const textBody = typeof payload === "string" ? payload.trim() : "";
+  if (status >= 200 && status < 300 && (
+    /^(audio\/|application\/vnd\.apple\.mpegurl|application\/x-mpegurl)/i.test(contentType) ||
+    textBody.startsWith("#EXTM3U")
+  )) {
+    // Một số response trả thẳng audio/playlist thay vì JSON hoặc redirect.
+    return requestUrl;
+  }
+  return null;
+}
+
+async function resolveTranscodingUrl(transcoding, clientId, retryAuth = true) {
+  let streamUrl;
   try {
-    const streamUrl = new URL(transcoding.url);
+    streamUrl = new URL(transcoding.url);
     streamUrl.searchParams.set("client_id", clientId);
-    const response = await pooledAxios.get(streamUrl.toString(), { timeout: 25000 });
-    const stream = response.data;
-    if (!stream || !stream.data || !stream.data.url) {
-      const error = new Error("Khong lay duoc link stream tu SoundCloud");
-      error.notAvailable = true;
-      throw error;
+
+    const response = await pooledAxios.get(streamUrl.toString(), {
+      timeout: 25000,
+      maxRedirects: 0,
+      validateStatus: (status) => status >= 200 && status < 400,
+      headers: { Accept: "application/json, application/vnd.apple.mpegurl, audio/*, */*" }
+    });
+
+    const resolvedUrl = extractResolvedStreamUrl(response, streamUrl.toString());
+    if (!resolvedUrl) {
+      const contentType = getResponseHeader(response.headers, "content-type") || "không rõ";
+      throw new Error(`HTTP ${response.status}: SoundCloud không trả URL stream (Content-Type: ${contentType}).`);
     }
-    return stream.data.url;
+    return resolvedUrl;
   } catch (err) {
-    const error = new Error("Khong lay duoc link stream tu SoundCloud: " + (err && err.message ? err.message : err));
+    const status = Number(err?.response?.status || err?.status || 0);
+    if (retryAuth && (status === 401 || status === 403)) {
+      clearCachedClientId();
+      const refreshedClientId = await discoverClientId();
+      if (refreshedClientId && refreshedClientId !== clientId) {
+        return resolveTranscodingUrl(transcoding, refreshedClientId, false);
+      }
+    }
+
+    const apiMessage = err?.response?.data?.errors?.[0]?.error_message ||
+      err?.response?.data?.message || err?.message || String(err);
+    const error = new Error(
+      status
+        ? `SoundCloud không lấy được stream (HTTP ${status}): ${apiMessage}`
+        : `SoundCloud không lấy được stream: ${apiMessage}`
+    );
     error.notAvailable = true;
+    error.status = status || undefined;
     throw error;
   }
 }
@@ -336,5 +420,5 @@ module.exports = {
   label: SOURCE,
   search,
   resolve,
-  _test: { isValidClientId, scriptUrlsFromHtml, extractClientId }
+  _test: { isValidClientId, scriptUrlsFromHtml, extractClientId, pickTranscoding, extractResolvedStreamUrl }
 };
