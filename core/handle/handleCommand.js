@@ -190,11 +190,10 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   const cachedUserData = Users.getCachedData?.(UIDUsage) ?? null;
   const userData = cachedUserData || await Users.getData(UIDUsage).catch(() => null);
 
-  // Measures the hot path up to command dispatch/initial acknowledgement.
-  // The metric is in-memory only and does not add another database write.
-  metrics.trackLatency?.(performance.now() - pipelineStartedAt);
-
-  await dispatchCommand({
+  // Measure the full command, including its handler and external API waits.
+  // This makes /stats latency meaningful instead of timing only the pre-dispatch path.
+  try {
+    await dispatchCommand({
     command,
     commandName,
     args,
@@ -206,8 +205,11 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     userData,
     logger,
     metrics,
-    Reactions
-  });
+      Reactions
+    });
+  } finally {
+    metrics.trackLatency?.(performance.now() - pipelineStartedAt);
+  }
 
 }
 
