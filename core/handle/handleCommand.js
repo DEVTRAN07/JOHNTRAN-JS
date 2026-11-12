@@ -66,17 +66,22 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
         try {
           const mentionName = profile.requesterName;
           const mentionUid = event?.data?.uidFrom;
+          const heading = folder.name.toLowerCase() === "game"
+            ? "🎮 DANH SÁCH GAME MINI"
+            : `${folder.icon || "📂"} DANH SÁCH LỆNH ${folder.name.toLocaleUpperCase("vi-VN")}`;
           const commandLines = items.map(item => `➜ ${prefix}${item.usage || item.name} — ${item.description || "Chưa có mô tả"}`);
+          const exampleNames = items.slice(0, 3).map(item => `${prefix}${item.usage || item.name}`);
+          const hint = exampleNames.length
+            ? `💡 Xem chi tiết cách dùng, hãy gõ trực tiếp: ${exampleNames.join(", ")}...`
+            : `💡 Gõ ${prefix}menu để xem các danh mục khác.`;
           const caption = [
-            `@\u200b${mentionName}`,
-            `${folder.icon} Chi tiết chức năng: ${folder.name}`,
-            folder.description,
-            `📋 Danh sách lệnh ${folder.name} (${items.length})`,
+            `@\\u200b${mentionName}`,
+            heading,
             "",
             ...commandLines,
             "",
-            `💡 Gõ ${prefix}menu để xem các danh mục khác.`
-          ].join("\n");
+            `* ${hint} *`
+          ].join("\\n");
           const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
           return await wrappedApi.sendMessage({
             msg: caption,
