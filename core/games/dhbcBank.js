@@ -11,13 +11,15 @@ function validateQuestion(input) {
   const answer = String(q.answer || "").trim();
   const clues = Array.isArray(q.clues) ? q.clues.map((v) => String(v || "").trim()).filter(Boolean) : [];
   const symbols = Array.isArray(q.symbols) ? q.symbols.map((v) => String(v || "").trim()).filter(Boolean) : [];
+  const images = Array.isArray(q.images) ? q.images.map((v) => String(v || "").trim()).filter(Boolean) : [];
   const hint = String(q.hint || "").trim();
   if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(id)) throw new Error("id chỉ gồm chữ thường, số và dấu gạch ngang (2-64 ký tự)");
   if (!answer || answer.length > 120) throw new Error("answer bắt buộc và tối đa 120 ký tự");
   if (clues.length < 2 || clues.length > 6) throw new Error("clues cần từ 2 đến 6 phần");
   if (symbols.length !== clues.length) throw new Error("symbols phải có số phần tử bằng clues");
+  if (images.length && (images.length !== clues.length || images.some((url) => !/^https:\/\//i.test(url)))) throw new Error("images phải là danh sách URL HTTPS, có số phần tử bằng clues");
   if (!hint || hint.length > 240) throw new Error("hint bắt buộc và tối đa 240 ký tự");
-  return { id, clues, symbols, answer, hint };
+  return { id, clues, symbols, images, answer, hint };
 }
 function readFile() {
   try {
