@@ -5,6 +5,9 @@ const assert = require("node:assert/strict");
 const { clearRequesterProfileCache, getRequesterProfile } = require("../core/runtime/requesterProfile");
 
 test("requester profile returns event fallback immediately and refreshes the remote profile in background", async () => {
+  const avatarCache = require("../core/canvas/avatarCache");
+  const originalWarmAvatar = avatarCache.warmAvatar;
+  avatarCache.warmAvatar = async () => null;
   clearRequesterProfileCache();
   let resolveProfile;
   let calls = 0;
@@ -41,6 +44,7 @@ test("requester profile returns event fallback immediately and refreshes the rem
   assert.equal(second.requesterAvatarUrl, "https://example.test/avatar.jpg");
   assert.equal(calls, 1);
   clearRequesterProfileCache();
+  avatarCache.warmAvatar = originalWarmAvatar;
 });
 
 
