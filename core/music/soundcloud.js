@@ -105,10 +105,17 @@ async function discoverClientId() {
       let home;
       try {
         const response = await pooledAxios.get(HOME_URL, {
-          timeout: 20000,
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" }
+          timeout: 25000,
+          responseType: "text",
+          transformResponse: [(body) => body],
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9"
+          }
         });
-        home = { status: response.status, body: Buffer.from(JSON.stringify(response.data)) };
+        const rawHtml = typeof response.data === "string" ? response.data : Buffer.from(response.data || []).toString("utf8");
+        home = { status: response.status, body: Buffer.from(rawHtml) };
       } catch (error) {
         const err = new Error("Khong ket noi duoc trang chu SoundCloud de lay client_id: " + (error && error.message ? error.message : error));
         err.notAvailable = true;
@@ -131,8 +138,13 @@ async function discoverClientId() {
       const scriptUrls = scriptUrlsFromHtml(html).slice(0, 25);
       for (const scriptUrl of scriptUrls) {
         try {
-          const response = await pooledAxios.get(scriptUrl, { timeout: 20000 });
-          const js = response.data ? response.data.toString("utf8") : "";
+          const response = await pooledAxios.get(scriptUrl, {
+            timeout: 25000,
+            responseType: "text",
+            transformResponse: [(body) => body],
+            headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }
+          });
+          const js = typeof response.data === "string" ? response.data : Buffer.from(response.data || []).toString("utf8");
           const clientId = extractClientId(js) || extractClientId(scriptUrl);
           if (clientId) {
             cachedClientId = clientId;
@@ -145,8 +157,13 @@ async function discoverClientId() {
         }
       }
       try {
-        const response = await pooledAxios.get("https://w.soundcloud.com/player/api.js", { timeout: 15000 });
-        const wjs = response.data ? response.data.toString("utf8") : "";
+        const response = await pooledAxios.get("https://w.soundcloud.com/player/api.js", {
+          timeout: 20000,
+          responseType: "text",
+          transformResponse: [(body) => body],
+          headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }
+        });
+        const wjs = typeof response.data === "string" ? response.data : Buffer.from(response.data || []).toString("utf8");
         const wid = extractClientId(wjs);
         if (wid) {
           cachedClientId = wid;
