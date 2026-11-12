@@ -1,5 +1,7 @@
 "use strict";
 
+const { performance } = require("node:perf_hooks");
+
 /**
  * Executes a resolved command using the legacy plugin contract.
  * Parsing, permissions and cooldowns stay in the pipeline; this module owns
@@ -19,6 +21,7 @@ async function dispatchCommand({
   metrics,
   Reactions
 } = {}) {
+  const commandStartedAt = performance.now();
   try {
     const replyData = {
       content: event.data.content,
@@ -69,6 +72,8 @@ async function dispatchCommand({
     }
   } catch (error) {
     logger.log(`Lỗi pipeline lệnh '${commandName}': ${error.message}`, "error");
+  } finally {
+    metrics?.trackCommandLatency?.(commandName, performance.now() - commandStartedAt);
   }
 }
 

@@ -62,3 +62,40 @@ test("canvas worker renders a valid SoundCloud search grid PNG", async () => {
     try { fs.unlinkSync(outputPath); } catch { /* already removed */ }
   }
 });
+
+
+test("canvas worker renders a valid topchat PNG", async () => {
+  const outputPath = await renderCanvas("topchat", {
+    title: "TOP CHAT TEST",
+    subtitle: "TEST · 2026-11-12 · 2 TIN NHẮN",
+    ranking: [
+      { uid: "u1", name: "First", count: 2, avatar: "" },
+      { uid: "u2", name: "Second", count: 1, avatar: "" }
+    ]
+  }, { timeout: 20000, poolSize: 1 });
+  try {
+    const png = fs.readFileSync(outputPath);
+    assert.ok(png.length > 1000);
+    assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  } finally {
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+});
+
+test("canvas worker renders the status card off the main thread", async () => {
+  const outputPath = await renderCanvas("status", {
+    botName: "JOHNTRAN",
+    botAvatar: "",
+    device: { cpuCores: 2, cpuPercent: 5, ramUsed: 1024, ramTotal: 2048 },
+    group: { name: "Test group", enabled: true },
+    uptime: "1 giờ",
+    version: "4.0.0"
+  }, { timeout: 20000, poolSize: 1 });
+  try {
+    const png = fs.readFileSync(outputPath);
+    assert.ok(png.length > 1000);
+    assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  } finally {
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+});

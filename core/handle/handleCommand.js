@@ -8,7 +8,7 @@ const { performance } = require("node:perf_hooks");
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
 const { getRequesterProfile } = require("../runtime/requesterProfile");
-const { renderFolderCard } = require("../canvas/menu");
+const { renderCanvas } = require("../canvas/workerRender");
 
 
 const { ThreadType, Reactions } = require("zalo-client");
@@ -63,7 +63,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
         // Các thư mục luôn có thẻ riêng; nhóm rỗng vẫn hiển thị đúng bố cục và báo chưa có lệnh trong caption.
         const version = require("../../package.json").version;
         const profile = await getRequesterProfile(api, event, { waitMs: 90, avatarWaitMs: 110 });
-        const imagePath = await renderFolderCard({
+        const imagePath = await renderCanvas("menu-folder", {
           folderName: folder.name,
           folderDescription: folder.description,
           folderIcon: folder.icon,
@@ -71,7 +71,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
           requesterAvatarUrl: profile.requesterAvatarUrl,
           botVersion: version,
           totalCommands: items.length
-        });
+        }, { timeout: 30000, poolSize: 2 });
         try {
           const mentionName = profile.requesterName;
           const mentionUid = event?.data?.uidFrom;

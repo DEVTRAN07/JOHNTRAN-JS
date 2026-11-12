@@ -21,6 +21,18 @@ async function renderToPath(type, data) {
       const { renderMenuGrid } = require("../canvas/menu");
       return renderMenuGrid(data || {});
     }
+    case "menu-folder": {
+      const { renderFolderCard } = require("../canvas/menu");
+      return renderFolderCard(data || {});
+    }
+    case "status": {
+      const { renderStatus } = require("../canvas/status");
+      return renderStatus(data || {});
+    }
+    case "topchat": {
+      const { renderTopChat } = require("../canvas/topchat");
+      return renderTopChat(data || {});
+    }
     case "music-grid": {
       const { renderSearchGrid } = require("../canvas/music");
       const payload = data || {};

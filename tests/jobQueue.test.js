@@ -144,3 +144,30 @@ test("job queue does not retry permanent errors", async () => {
   assert.equal(attempts, 1);
   assert.equal(stats()["test-permanent-error"].failed, 1);
 });
+
+
+test("job queue releases global slots while retry backoff is pending", async () => {
+  const attempts = [0, 0, 0, 0];
+  const retryJobs = attempts.map((_, index) => enqueue("test-retry-yield-" + index, async () => {
+    attempts[index]++;
+    if (attempts[index] === 1) throw new Error("temporary network failure");
+    return "retried";
+  }, {
+    retries: 1,
+    retryDelayMs: 180,
+    retryOn: error => /temporary/.test(error.message)
+  }));
+
+  const deadline = Date.now() + 100;
+  while (stats().global.active > 0 && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+  assert.equal(stats().global.active, 0, "retry delay must not hold worker slots");
+  assert.equal(stats().global.pending, 4, "delayed retries count toward backpressure");
+
+  const started = Date.now();
+  const urgent = await enqueue("test-retry-yield-urgent", async () => "urgent");
+  assert.equal(urgent, "urgent");
+  assert.ok(Date.now() - started < 120, "unrelated lane should run before delayed retries");
+  assert.deepEqual(await Promise.all(retryJobs), ["retried", "retried", "retried", "retried"]);
+});

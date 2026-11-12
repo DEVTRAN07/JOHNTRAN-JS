@@ -36,6 +36,7 @@ function fakeThreads(initial = {}) {
       return rows.get(String(threadId)) || null;
     },
     async setData(threadId, data) {
+      this.writeCount = (this.writeCount || 0) + 1;
       rows.set(String(threadId), { threadId: String(threadId), data: { ...data } });
     }
   };
@@ -55,6 +56,7 @@ test("topchat counter records group text/media and ignores commands and duplicat
 
   const mediaEvent = makeGroupMessage(threadId, "member-2", "msg-media-1", "", { msgType: "photo" });
   await counter.run({ event: mediaEvent, Threads, isSelf: false });
+  await counter.flushAll(Threads);
 
   const saved = Threads.rows.get(threadId).data;
   assert.equal(saved.topchatCounts["member-1"].count, 1);
@@ -86,6 +88,7 @@ test("topchat imports all today's old group messages from WebSocket in one batch
   ];
 
   const result = await counter.recordHistoryMessages(messages, Threads);
+  await counter.flushAll(Threads);
   assert.deepEqual(result, { groups: 1, messages: 3 });
 
   const saved = Threads.rows.get(threadId).data;
@@ -108,6 +111,7 @@ test("topchat merges historical and realtime messages without counting overlap t
   await counter.run({ event: oldMessage, Threads, isSelf: false });
   const newLive = makeGroupMessage(threadId, "u1", "live-2", "new live message");
   await counter.run({ event: newLive, Threads, isSelf: false });
+  await counter.flushAll(Threads);
 
   const saved = Threads.rows.get(threadId).data;
   assert.equal(saved.topchatCounts.u1.count, 2);
@@ -201,7 +205,28 @@ test("topchat history respects each group's custom prefix", async () => {
     makeGroupMessage(threadId, "u1", "custom-1", "/not-a-command"),
     makeGroupMessage(threadId, "u1", "custom-2", "!menu")
   ], Threads);
+  await counter.flushAll(Threads);
 
   const saved = Threads.rows.get(threadId).data;
   assert.equal(saved.topchatCounts.u1.count, 1);
+});
+
+
+test("topchat batches high-volume realtime counters into one group write", async () => {
+  global.config = { prefix: "/" };
+  const Threads = fakeThreads();
+  const threadId = "topchat-batched-write-regression";
+  for (let index = 0; index < 25; index++) {
+    await counter.run({
+      event: makeGroupMessage(threadId, "member-1", "batch-" + index, "hello " + index),
+      Threads,
+      isSelf: false
+    });
+  }
+  assert.equal(Threads.writeCount || 0, 0, "live messages should be accumulated before DB write");
+  await counter.flushAll(Threads);
+  const saved = Threads.rows.get(threadId).data;
+  assert.equal(saved.topchatCounts["member-1"].count, 25);
+  assert.equal(saved.topchatSeenMessageIds.length, 25);
+  assert.equal(Threads.writeCount, 1, "one batch should persist only once per group");
 });

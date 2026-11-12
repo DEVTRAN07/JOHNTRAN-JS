@@ -97,3 +97,21 @@ test("command pipeline latency reports recent percentiles without storing sample
   assert.equal(backend.writes.length, 0);
   metrics.dispose();
 });
+
+
+test("metrics use Asia/Ho_Chi_Minh day boundary rather than UTC midnight", () => {
+  const metricsModule = require("../core/metrics");
+  assert.equal(metricsModule.todayKey(Date.parse("2026-11-12T16:59:59.999Z")), "2026-11-12");
+  assert.equal(metricsModule.todayKey(Date.parse("2026-11-12T17:00:00.000Z")), "2026-11-13");
+});
+
+test("metrics expose bounded latency summaries per command", () => {
+  const backend = createFakeDb();
+  const metrics = createMetricsStore(backend, { flushDelayMs: 60000 });
+  metrics.trackCommandLatency("menu", 20);
+  metrics.trackCommandLatency("menu", 40);
+  metrics.trackCommandLatency("status", 80);
+  assert.deepEqual(metrics.getCommandLatencyStats(2).map(item => item.command), ["status", "menu"]);
+  assert.equal(metrics.getCommandLatencyStats(2)[1].avgMs, 30);
+  metrics.dispose();
+});

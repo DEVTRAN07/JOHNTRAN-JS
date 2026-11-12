@@ -3,7 +3,7 @@
 const fs = require("fs");
 const botVersion = require("../../package.json").version;
 const folders = require("../../core/runtime/folderMenu");
-const { renderMenuGrid } = require("../../core/canvas/menu");
+const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 
 module.exports.config = {
@@ -42,7 +42,7 @@ module.exports.run = async function ({ api, event }) {
       slug: group.slug
     }));
     const totalVisibleCommands = groups.reduce((sum, group) => sum + group.count, 0);
-    imagePath = await renderMenuGrid({
+    imagePath = await renderCanvas("menu", {
       requesterName: profile.requesterName,
       requesterAvatarUrl: profile.requesterAvatarUrl,
       botVersion,
@@ -51,7 +51,7 @@ module.exports.run = async function ({ api, event }) {
       totalPages: 1,
       commands: cards,
       totalCommands: totalVisibleCommands
-    });
+    }, { timeout: 30000, poolSize: 2 });
     const mentionName = profile.requesterName;
     const mentionUid = event?.data?.uidFrom;
     const caption = `@${mentionName}\n🤖 Chào bạn!\n👉 Hôm nay có gì hay không? Hãy chọn tính năng bạn muốn nhé! 📍`;

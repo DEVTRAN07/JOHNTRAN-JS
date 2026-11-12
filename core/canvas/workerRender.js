@@ -18,7 +18,7 @@ async function renderCanvas(type, data, options = {}) {
     os.tmpdir(),
     "jt_" + type + "_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".png"
   );
-  fs.writeFileSync(filePath, buf);
+  await fs.promises.writeFile(filePath, buf);
   return filePath;
 }
 

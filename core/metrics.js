@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { db } = require("./runtime/adapters/database");
+const { vietnamDateKey } = require("./topchat/stats");
 
 const METRICS_TABLE = "Metrics";
 const AUDIT_FILE = path.join(__dirname, "..", "data", "audit.log");
@@ -10,7 +11,7 @@ const DEFAULT_FLUSH_DELAY_MS = 2000;
 const MAX_CACHED_DAYS = 14;
 
 function todayKey(now = Date.now()) {
-  return new Date(now).toISOString().slice(0, 10);
+  return vietnamDateKey(now);
 }
 
 function createEmptyStats(day) {
@@ -44,6 +45,9 @@ function createMetricsStore(backend, options = {}) {
   const cache = new Map();
   const dirtyDays = new Set();
   const recentLatencies = [];
+  const commandLatencies = new Map();
+  const MAX_COMMAND_LATENCY_KEYS = 100;
+  const MAX_COMMAND_LATENCY_SAMPLES = 100;
   let latencyCount = 0;
   let latencyTotalMs = 0;
   let latencyMaxMs = 0;
@@ -159,6 +163,41 @@ function createMetricsStore(backend, options = {}) {
     };
   }
 
+  function trackCommandLatency(commandName, durationMs) {
+    const name = String(commandName || "unknown").toLowerCase().slice(0, 64);
+    const value = Number(durationMs);
+    if (!Number.isFinite(value) || value < 0) return;
+    if (!commandLatencies.has(name)) {
+      if (commandLatencies.size >= MAX_COMMAND_LATENCY_KEYS) {
+        const oldest = commandLatencies.keys().next().value;
+        if (oldest !== undefined) commandLatencies.delete(oldest);
+      }
+      commandLatencies.set(name, []);
+    }
+    const samples = commandLatencies.get(name);
+    samples.push(value);
+    if (samples.length > MAX_COMMAND_LATENCY_SAMPLES) samples.shift();
+  }
+
+  function getCommandLatencyStats(limit = 5) {
+    return [...commandLatencies.entries()]
+      .map(([command, samples]) => {
+        const sorted = [...samples].sort((a, b) => a - b);
+        const percentile = ratio => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
+        const avgMs = samples.reduce((sum, value) => sum + value, 0) / samples.length;
+        return {
+          command,
+          count: samples.length,
+          avgMs: Number(avgMs.toFixed(2)),
+          p50Ms: Number(percentile(0.5).toFixed(2)),
+          p95Ms: Number(percentile(0.95).toFixed(2)),
+          maxMs: Number(Math.max(...samples).toFixed(2))
+        };
+      })
+      .sort((a, b) => b.p95Ms - a.p95Ms || b.avgMs - a.avgMs)
+      .slice(0, Math.max(0, Number(limit) || 0));
+  }
+
   function topCommands(day = todayKey(now()), limit = 5) {
     const stats = getDayStats(day);
     return Object.entries(stats.byCommand)
@@ -174,7 +213,7 @@ function createMetricsStore(backend, options = {}) {
     return flush();
   }
 
-  return { track, trackLatency, getLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
+  return { track, trackLatency, trackCommandLatency, getCommandLatencyStats, getLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
 }
 
 const metricsStore = createMetricsStore(db, {
@@ -209,6 +248,7 @@ function readAudit(limit = 50) {
 module.exports = {
   ...metricsStore,
   createMetricsStore,
+  todayKey,
   audit,
   readAudit
 };

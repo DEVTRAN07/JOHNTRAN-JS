@@ -23,6 +23,7 @@ module.exports.run = async ({ reply }) => {
   const cacheStats = allStats();
   const top = metrics.topCommands();
   const latency = metrics.getLatencyStats?.();
+  const slowCommands = metrics.getCommandLatencyStats?.(5) || [];
 
   const topLines = top.length
     ? top.map(([name, count], index) => `${index + 1}. ${name}: ${count} lần`)
@@ -31,6 +32,9 @@ module.exports.run = async ({ reply }) => {
   const cacheLines = Object.entries(cacheStats).map(([name, value]) =>
     `${name}: ${value.size}/${value.max} (hit ${value.hitRate})`
   );
+  const slowCommandLines = slowCommands.length
+    ? slowCommands.map(item => `${item.command}: P95 ${item.p95Ms} ms · TB ${item.avgMs} ms`)
+    : ["Chưa đủ dữ liệu"];
 
   const lines = [
     "📊 THỐNG KÊ HOẠT ĐỘNG",
@@ -47,6 +51,8 @@ module.exports.run = async ({ reply }) => {
     latency
       ? `P50: ${latency.p50Ms} ms  •  P95: ${latency.p95Ms} ms  •  Gần nhất: ${latency.lastMs} ms`
       : "Chưa có dữ liệu",
+    "🐢 LỆNH CÓ ĐỘ TRỄ CAO",
+    ...slowCommandLines,
     "",
     "🧠 CACHE",
     ...cacheLines,

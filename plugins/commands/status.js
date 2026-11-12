@@ -3,7 +3,7 @@
 const fs = require("fs");
 const stats = require("../../core/stats");
 const { collectDeviceMetrics } = require("../../core/runtime/deviceMetrics");
-const { renderStatus } = require("../../core/canvas/status");
+const { renderCanvas } = require("../../core/canvas/workerRender");
 
 module.exports.config = {
   name: "status",
@@ -61,14 +61,14 @@ module.exports.run = async function ({ api, event, Threads, threadData, reply })
     const device = collectDeviceMetrics();
     const group = currentGroup(api, event, Threads, threadData);
 
-    imagePath = await renderStatus({
+    imagePath = await renderCanvas("status", {
       botName: profile?.displayName || global.config?.name_bot || "JOHNTRAN",
       botAvatar: profile?.avatar || "",
       device,
       group,
       uptime: formatUptime(process.uptime()),
       version: require("../../package.json").version
-    });
+    }, { timeout: 30000, poolSize: 2 });
 
     return await api.sendMessage({
       msg: "",
