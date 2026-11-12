@@ -2,6 +2,7 @@
 
 const { stats: queueStats } = require("../../core/jobQueue");
 const { stats: workerStats } = require("../../core/workerPool");
+const { allStats: cacheStats } = require("../../core/cache");
 
 module.exports.config = {
   name: "jobs",
@@ -26,6 +27,7 @@ function formatLane(name, lane) {
 module.exports.run = async function ({ api, event }) {
   const queues = queueStats();
   const workers = workerStats();
+  const caches = cacheStats();
   const global = queues.global || { active: 0, pending: 0, concurrency: 0, maxPending: 0 };
   const lanes = Object.entries(queues)
     .filter(([name]) => name !== "global")
@@ -33,6 +35,10 @@ module.exports.run = async function ({ api, event }) {
 
   const workerLines = Object.entries(workers).map(([name, pool]) =>
     `• ${name}: ${pool.busy}/${pool.workers} worker bận · ${pool.pending}/${pool.maxPending} chờ · lỗi ${pool.failed}`
+  );
+
+  const cacheLines = Object.entries(caches).map(([name, cache]) =>
+    `• ${name}: ${cache.size}/${cache.max} entries · hit ${Math.round(Number(cache.hitRate || 0) * 100)}%`
   );
 
   const memory = process.memoryUsage();
@@ -46,6 +52,9 @@ module.exports.run = async function ({ api, event }) {
     "",
     "🧵 WORKER POOL",
     ...(workerLines.length ? workerLines : ["• Worker chưa được khởi tạo."]),
+    "",
+    "🗃️ CACHE",
+    ...(cacheLines.length ? cacheLines : ["• Cache chưa có dữ liệu."]),
     "",
     `🧠 RAM: ${(memory.rss / 1024 / 1024).toFixed(1)} MB · Heap: ${(memory.heapUsed / 1024 / 1024).toFixed(1)} MB`,
     "",
