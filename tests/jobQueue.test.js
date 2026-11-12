@@ -171,3 +171,64 @@ test("job queue releases global slots while retry backoff is pending", async () 
   assert.ok(Date.now() - started < 120, "unrelated lane should run before delayed retries");
   assert.deepEqual(await Promise.all(retryJobs), ["retried", "retried", "retried", "retried"]);
 });
+
+
+test("retry timer keeps the job counted while it waits in the runnable queue", async () => {
+  function heldTask() {
+    let release;
+    let started;
+    const gate = new Promise(resolve => { release = resolve; });
+    const startedPromise = new Promise(resolve => { started = resolve; });
+    return {
+      started: startedPromise,
+      release,
+      run: async () => { started(); await gate; }
+    };
+  }
+
+  const held = Array.from({ length: 3 }, () => heldTask());
+  const heldPromises = held.map(task => enqueue("test-retry-hold", task.run, {
+    concurrency: 4, maxPending: 10, maxInFlight: 10
+  }));
+  await Promise.all(held.map(task => task.started));
+
+  let attempts = 0;
+  const retryPromise = enqueue("test-retry-backpressure", async () => {
+    attempts++;
+    if (attempts === 1) throw new Error("temporary retry");
+    return "ok";
+  }, {
+    retries: 1,
+    retryDelayMs: 80,
+    retryOn: error => /temporary/.test(error.message)
+  });
+
+  const retryDeadline = Date.now() + 1000;
+  while (
+    !(stats().global.active === 3 &&
+      stats().global.pending === 1 &&
+      stats()["test-retry-backpressure"]?.retrying === 1) &&
+    Date.now() < retryDeadline
+  ) {
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+  assert.equal(stats().global.active, 3);
+  assert.equal(stats().global.pending, 1);
+
+  const fourth = heldTask();
+  const fourthPromise = enqueue("test-retry-hold", fourth.run, {
+    concurrency: 4, maxPending: 10, maxInFlight: 10
+  });
+  await fourth.started;
+  await new Promise(resolve => setTimeout(resolve, 110));
+
+  assert.equal(stats().global.active, 4);
+  assert.equal(stats().global.pending, 1, "retrying -> pending must not decrement the global count");
+  assert.equal(stats()["test-retry-backpressure"].pending, 1);
+  assert.equal(stats()["test-retry-backpressure"].retrying, 0);
+
+  for (const task of [...held, fourth]) task.release();
+  assert.deepEqual(await Promise.all([...heldPromises, fourthPromise]), [undefined, undefined, undefined, undefined]);
+  assert.equal(await retryPromise, "ok");
+  assert.equal(attempts, 2);
+});

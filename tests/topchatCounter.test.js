@@ -230,3 +230,30 @@ test("topchat batches high-volume realtime counters into one group write", async
   assert.equal(saved.topchatSeenMessageIds.length, 25);
   assert.equal(Threads.writeCount, 1, "one batch should persist only once per group");
 });
+
+
+test("topchat automatically retries a failed batched storage write", async () => {
+  global.config = { prefix: "/" };
+  const Threads = fakeThreads();
+  const threadId = "topchat-retry-write-regression";
+  const setData = Threads.setData.bind(Threads);
+  let attempts = 0;
+  Threads.setData = async (id, data) => {
+    attempts++;
+    if (attempts === 1) throw new Error("temporary database failure");
+    return setData(id, data);
+  };
+
+  await counter.run({
+    event: makeGroupMessage(threadId, "member-1", "retry-write-1", "hello"),
+    Threads,
+    isSelf: false
+  });
+  await assert.rejects(counter.flushGroup(threadId, Threads), /temporary database failure/);
+  await new Promise(resolve => setTimeout(resolve, counter._test.FLUSH_DELAY_MS + 150));
+
+  const saved = Threads.rows.get(threadId)?.data;
+  assert.ok(saved, "retry should eventually persist the batch");
+  assert.equal(saved.topchatCounts["member-1"].count, 1);
+  assert.ok(attempts >= 2);
+});
