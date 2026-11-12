@@ -33,6 +33,28 @@ test("menu shows only populated folders in the reference order", () => {
   assert.ok(!groups.some(group => group.slug === "test"));
 });
 
+test("menu folders use clear Vietnamese display names", () => {
+  const commands = new Map([
+    ["id", command("id", "Tiện ích")],
+    ["scl", command("scl", "Nhạc")],
+    ["tutien", command("tutien", "Game")],
+    ["anti", command("anti", "Nhóm")],
+    ["restart", command("restart", "Hệ thống")],
+    ["command", command("command", "Hệ thống")],
+    ["girl", command("girl", "Giải trí")]
+  ]);
+  const groups = menu.collectMenuGroups(commands, "guest");
+  const names = Object.fromEntries(groups.map(group => [group.slug, group.name]));
+  assert.equal(names.info, "Thông tin");
+  assert.equal(names.music, "Âm nhạc");
+  assert.equal(names.game, "Trò chơi");
+  assert.equal(names.anti, "Chống vi phạm");
+  assert.equal(names.admin, "Quản trị");
+  assert.equal(names.mybot, "Vận hành bot");
+  assert.equal(names.hidden, "Lệnh đặc biệt");
+  assert.ok(!groups.some(group => group.slug === "test"));
+});
+
 test("each live command is assigned to its intended folder", () => {
   const cases = [
     ["id", "Tiện ích", "info"],
