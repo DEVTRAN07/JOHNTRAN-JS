@@ -62,7 +62,7 @@ module.exports.run = async function ({ api, event }) {
     });
     const mentionName = profile.requesterName;
     const mentionUid = event?.data?.uidFrom;
-    const caption = `@\u200b${mentionName}\n🤖 Chào bạn!\n👉 Hôm nay có gì hay không? Hãy chọn tính năng bạn muốn nhé! 📍`;
+    const caption = `@${mentionName}\n🤖 Chào bạn!\n👉 Hôm nay có gì hay không? Hãy chọn tính năng bạn muốn nhé! 📍`;
     const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
     return await api.sendMessage({
       msg: caption,
