@@ -9,7 +9,6 @@ const configSystem = require("./core/config");
 const { installAxiosGuard } = require("./core/http/axios");
 const musicSystem = require("./core/music");
 const hotReload = require("./core/hotReload");
-const lazyLoader = require("./core/lazyLoader");
 const { startHealthServer } = require("./core/health");
 const { bootstrapFiles } = require("./core/bootstrap");
 const db = require("./utils/db");
@@ -218,9 +217,5 @@ require("./core/panelBridge").start({
   port: Number(process.env.JT_BRIDGE_PORT) || 3901,
   token: process.env.JT_BRIDGE_TOKEN || global.config?.panel?.bridge_token || undefined
 }).catch(() => { /* hỏng bridge không được làm chết bot */ });
-
-// Lazy preload heavy modules in background (jimp, cheerio, canvas, axios, ...)
-// so first-use commands feel instant. Non-blocking, does not hold the process.
-lazyLoader.preloadHeavy();
 
 })();

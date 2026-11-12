@@ -12,6 +12,23 @@ module.exports = {
     }));
   },
 
+  // Synchronous mirror lookup for command dispatch. getData below retains
+  // its Promise contract for legacy plugins that call .then()/.catch().
+  getCachedData: (userId) => {
+    const key = String(userId);
+    const cached = userCache.get(key);
+    if (cached !== undefined) return cached;
+    try {
+      let record = getData("Users", "userId", key);
+      if (!record) record = saveData("Users", "userId", key, DEFAULT_USER());
+      const data = record || { userId: key, data: DEFAULT_USER() };
+      userCache.set(key, data);
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
   // Keep the historical Promise contract used by commands (.then/.catch),
   // while reading the in-memory database mirror immediately (no batch timer).
   getData: async (userId) => {

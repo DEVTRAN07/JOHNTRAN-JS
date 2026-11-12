@@ -137,7 +137,8 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     }
   }
 
-  const userData = await Users.getData(UIDUsage).catch(() => null);
+  const cachedUserData = Users.getCachedData?.(UIDUsage) ?? null;
+  const userData = cachedUserData || await Users.getData(UIDUsage).catch(() => null);
 
   await dispatchCommand({
     command,

@@ -19,9 +19,36 @@ module.exports = {
   // Synchronous hot-path lookup: realtime messages in active groups should
   // not yield to an async cache read before command parsing starts.
   getCachedData: (threadId) => {
-    const cached = threadCache.get(String(threadId));
-    if (cached === undefined || (cached && typeof cached.then === "function")) return null;
-    return normalizeThreadRecord(cached, String(threadId));
+    const key = String(threadId);
+    const cached = threadCache.get(key);
+    if (cached !== undefined) {
+      return cached && typeof cached.then !== "function"
+        ? normalizeThreadRecord(cached, key)
+        : null;
+    }
+
+    // JSON/Supabase adapters expose an in-memory mirror. Read it synchronously
+    // on the message hot path; remote persistence remains background work.
+    try {
+      let record;
+      if (hasData("Threads", "threadId", key)) {
+        record = normalizeThreadRecord(getData("Threads", "threadId", key), key);
+      } else {
+        const data = {
+          ban: false,
+          admin_only: false,
+          support_only: false,
+          box_only: false,
+          prefix: global.config?.prefix || "/"
+        };
+        saveData("Threads", "threadId", key, data);
+        record = normalizeThreadRecord({ id: key, threadId: key, data }, key);
+      }
+      if (record && typeof record.then !== "function") threadCache.set(key, record);
+      return record && typeof record.then !== "function" ? record : null;
+    } catch {
+      return null;
+    }
   },
 
   getData: async (threadId) => {
