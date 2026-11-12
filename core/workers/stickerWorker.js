@@ -12,7 +12,7 @@ function mimeTypeFor(format) {
 }
 
 // Chuyển đổi sticker (ffmpeg, CPU-nặng) ở worker riêng.
-// Nhận: { url, forceStatic, threadId, type, apiToken }
+// Nhận tối thiểu: { url, forceStatic }
 // Chỉ làm ffmpeg + trả về buffer; upload Zalo CDN cần api instance → chạy ở main thread.
 let idleTimer = null;
 function scheduleIdleExit() {
