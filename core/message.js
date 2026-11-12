@@ -1,7 +1,6 @@
 const { Reactions } = require("zalo-client");
 const cache = require("./cache");
 const logger = require("../utils/logger");
-const threadRecall = require("./threadRecall");
 const styledText = require("./styled");
 const fs = require("fs");
 const crypto = require("crypto");
@@ -305,7 +304,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   defineWrapped(wrapped, "sendMessage", async (message, tid, ty) => {
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
-    const extracted = extractRecallOptions(message, threadRecall.get(targetThreadId));
+    const extracted = extractRecallOptions(message, DEFAULT_AUTO_RECALL_MS);
     const content = typeof extracted.payload === "string" ? { msg: extracted.payload } : extracted.payload;
     if (content.plain) delete content.plain;
     const response = await api.sendMessage(content, targetThreadId, targetType);
@@ -317,7 +316,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   defineWrapped(wrapped, "sendVoice", async (payload, tid, ty) => {
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
-    const extracted = extractRecallOptions(payload, threadRecall.get(targetThreadId));
+    const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
     const content = typeof extracted.payload === "string" ? { voiceUrl: extracted.payload } : extracted.payload;
     const response = await api.sendVoice(content, targetThreadId, targetType);
     markResponseStarted();
@@ -328,7 +327,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   defineWrapped(wrapped, "sendVideo", async (payload, tid, ty) => {
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
-    const extracted = extractRecallOptions(payload, threadRecall.get(targetThreadId));
+    const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
     const response = await api.sendVideo(extracted.payload, targetThreadId, targetType);
     markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
@@ -340,7 +339,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     defineWrapped(wrapped, method, async (payload, tid, ty) => {
       const targetThreadId = threadId || tid;
       const targetType = type || ty;
-      const extracted = extractRecallOptions(payload, threadRecall.get(targetThreadId));
+      const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
       const response = await api[method](extracted.payload, targetThreadId, targetType);
       markResponseStarted();
       scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
@@ -352,7 +351,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     defineWrapped(wrapped, "sendCustomStickerUrl", async (payload) => {
       const targetThreadId = payload?.threadId || threadId;
       const targetType = payload?.threadType ?? type;
-      const extracted = extractRecallOptions(payload, threadRecall.get(targetThreadId));
+      const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
       const response = await api.sendCustomStickerUrl(extracted.payload);
       markResponseStarted();
       scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
