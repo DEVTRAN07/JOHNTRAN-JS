@@ -199,8 +199,15 @@ function drawGroupIcon(ctx, slug, centerX, centerY, size, monochrome) {
     ctx.beginPath(); ctx.ellipse(32, 32, 25, 12, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.beginPath(); ctx.ellipse(32, 32, 25, 21, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = "#e9feff"; rounded(ctx, 5, 25, 54, 15, 4); ctx.fill();
-    ctx.font = "bold 10px Arial"; ctx.fillStyle = "#0b9bb1";
-    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("www", 29, 33);
+    ctx.strokeStyle = "#0b9bb1"; ctx.lineWidth = 2.1; ctx.lineCap = "round";
+    // Stable globe/web mark drawn without text glyph dependencies.
+    ctx.beginPath();
+    ctx.moveTo(13, 32); ctx.lineTo(51, 32);
+    ctx.moveTo(18, 28); ctx.lineTo(22, 36);
+    ctx.moveTo(28, 28); ctx.lineTo(30, 36);
+    ctx.moveTo(39, 28); ctx.lineTo(37, 36);
+    ctx.moveTo(47, 28); ctx.lineTo(43, 36);
+    ctx.stroke();
   } else if (slug === "music") {
     ctx.strokeStyle = "#f26a77"; ctx.fillStyle = "#f26a77"; ctx.lineWidth = 6;
     ctx.beginPath(); ctx.moveTo(36, 8); ctx.lineTo(36, 43); ctx.lineTo(55, 39); ctx.lineTo(55, 4); ctx.lineTo(36, 8); ctx.stroke();
@@ -235,10 +242,32 @@ function drawGroupIcon(ctx, slug, centerX, centerY, size, monochrome) {
       { x: 34, y: 34, c: "#08b6cf", t: "×" }
     ];
     for (const tile of tiles) {
-      ctx.fillStyle = tile.c; rounded(ctx, tile.x, tile.y, 27, 27, 5); ctx.fill();
-      ctx.font = "bold 27px Arial"; ctx.fillStyle = "#ffffff";
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(tile.t, tile.x + 13.5, tile.y + 14);
+      ctx.fillStyle = tile.c;
+      rounded(ctx, tile.x, tile.y, 27, 27, 5);
+      ctx.fill();
+      // Draw operators as vector paths instead of font glyphs; this avoids
+      // tofu/missing characters on minimal Linux/Render font installations.
+      ctx.strokeStyle = "#ffffff";
+      ctx.fillStyle = "#ffffff";
+      ctx.lineWidth = 3.8;
+      ctx.lineCap = "round";
+      const cx = tile.x + 13.5;
+      const cy = tile.y + 13.5;
+      if (tile.t === "+") {
+        ctx.beginPath(); ctx.moveTo(cx - 6, cy); ctx.lineTo(cx + 6, cy);
+        ctx.moveTo(cx, cy - 6); ctx.lineTo(cx, cy + 6); ctx.stroke();
+      } else if (tile.t === "÷") {
+        ctx.beginPath(); ctx.moveTo(cx - 7, cy); ctx.lineTo(cx + 7, cy); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy - 7, 1.8, 0, Math.PI * 2);
+        ctx.arc(cx, cy + 7, 1.8, 0, Math.PI * 2); ctx.fill();
+      } else if (tile.t === "−") {
+        ctx.beginPath(); ctx.moveTo(cx - 7, cy); ctx.lineTo(cx + 7, cy); ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(cx - 6, cy - 6); ctx.lineTo(cx + 6, cy + 6);
+        ctx.moveTo(cx + 6, cy - 6); ctx.lineTo(cx - 6, cy + 6);
+        ctx.stroke();
+      }
     }
   } else if (slug === "test") {
     ctx.fillStyle = "#9aa1ad"; rounded(ctx, 4, 5, 56, 54, 9); ctx.fill();
@@ -298,6 +327,17 @@ function drawGroupIcon(ctx, slug, centerX, centerY, size, monochrome) {
     ctx.bezierCurveTo(42, 39, 47, 18, 31, 18); ctx.fill();
     ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(31, 28, 5, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
+  } else {
+    // Unknown/future folder: always draw a visible fallback instead of a blank
+    // icon when a new command category is introduced.
+    ctx.fillStyle = "#1cabc0";
+    rounded(ctx, 7, 18, 50, 38, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(7, 24); ctx.lineTo(25, 24); ctx.lineTo(30, 18);
+    ctx.lineTo(57, 18); ctx.lineTo(57, 54); ctx.lineTo(7, 54); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#d9fbff";
+    rounded(ctx, 14, 30, 36, 3, 1.5); ctx.fill();
+    rounded(ctx, 14, 38, 29, 3, 1.5); ctx.fill();
+    rounded(ctx, 14, 46, 22, 3, 1.5); ctx.fill();
   }
   ctx.restore();
 }
@@ -364,9 +404,11 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   const rows = Math.max(1, Math.ceil(groups.length / columns));
   const gap = S(9);
   const gridY = S(70);
-  const gridBottom = S(420);
   const cardW = (W - margin * 2 - gap * (columns - 1)) / columns;
-  const cardH = (gridBottom - gridY - gap * (rows - 1)) / rows;
+  // Keep the same compact folder-card height even when empty folders are
+  // removed; the menu remains aligned with the reference instead of stretching
+  // the remaining cards and making their icons look distorted.
+  const cardH = S(81);
 
   groups.forEach((item, index) => {
     const col = index % columns;
