@@ -66,7 +66,7 @@ function isCountableMessage(message, dateKey, prefix) {
   return Boolean(content || data.msgType || data.propertyExt || data.attachment || data.attachments);
 }
 
-async function applyMessagesToGroup(threadId, messages, Threads, dateKey) {
+async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source = "live") {
   if (!threadId || !Array.isArray(messages) || !messages.length) return 0;
 
   return enqueueGroupWrite(threadId, async () => {
@@ -78,6 +78,12 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey) {
       thread.topchatDate = dateKey;
       thread.topchatCounts = {};
       thread.topchatSeenMessageIds = [];
+      thread.topchatHistoryDate = null;
+      thread.topchatHistoryComplete = false;
+    }
+    if (source === "history") {
+      thread.topchatHistoryDate = dateKey;
+      thread.topchatHistoryComplete = false;
     }
 
     const counts = thread.topchatCounts && typeof thread.topchatCounts === "object"
@@ -112,7 +118,7 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey) {
       }
     }
 
-    if (!added) return 0;
+    if (!added && source !== "history") return 0;
 
     thread.topchatCounts = counts;
     // Keep a wider daily dedupe window so history backfill can overlap with
@@ -144,9 +150,30 @@ async function recordHistoryMessages(messages, Threads) {
 
   let added = 0;
   for (const [threadId, groupMessages] of grouped) {
-    added += await applyMessagesToGroup(threadId, groupMessages, Threads, today);
+    added += await applyMessagesToGroup(threadId, groupMessages, Threads, today, "history");
   }
   return { groups: grouped.size, messages: added };
+}
+
+async function markHistoryCoverage(threadIds, Threads, dateKey, complete, pageCount, reason = "") {
+  const uniqueIds = [...new Set((threadIds || []).map(String).filter(Boolean))];
+  for (const threadId of uniqueIds) {
+    await enqueueGroupWrite(threadId, async () => {
+      const record = await Threads.getData(threadId);
+      const thread = record?.data || {};
+      if (thread.topchatDate !== dateKey) {
+        thread.topchatDate = dateKey;
+        thread.topchatCounts = {};
+        thread.topchatSeenMessageIds = [];
+      }
+      thread.topchatHistoryDate = dateKey;
+      thread.topchatHistoryComplete = Boolean(complete);
+      thread.topchatHistoryPages = Math.max(0, Number(pageCount) || 0);
+      thread.topchatHistoryReason = String(reason || "").slice(0, 40);
+      await Threads.setData(threadId, thread);
+    });
+  }
+  return uniqueIds.length;
 }
 
 module.exports.run = async function ({ event, Threads, isSelf }) {
@@ -157,11 +184,13 @@ module.exports.run = async function ({ event, Threads, isSelf }) {
 };
 
 module.exports.recordHistoryMessages = recordHistoryMessages;
+module.exports.markHistoryCoverage = markHistoryCoverage;
 
 module.exports._test = {
   rememberMessage,
   recordMessage,
   recordHistoryMessages,
+  markHistoryCoverage,
   applyMessagesToGroup,
   enqueueGroupWrite,
   isCountableMessage,
