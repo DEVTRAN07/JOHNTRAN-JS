@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { ThreadType } = require("zalo-client");
+const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
 
 let GIF_LIST = [];
 try { GIF_LIST = require("../../assets/autosend.json"); } catch { GIF_LIST = []; } // 64 gif imgur
@@ -54,8 +55,7 @@ async function downloadRandomGif() {
   try {
     if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
     const url = GIF_LIST[Math.floor(Math.random() * GIF_LIST.length)];
-    const http = require("../../core/http");
-    const { buffer } = await http.getBuffer(url, { timeout: GIF_TIMEOUT });
+    const { buffer } = await queuedGetBuffer(url, { timeout: GIF_TIMEOUT, retries: 1 });
     if (!buffer || buffer.length < 64) return null;
     const filePath = path.join(TEMP_DIR, `autosend_${Date.now()}.gif`);
     fs.writeFileSync(filePath, buffer);
