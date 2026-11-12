@@ -1,13 +1,16 @@
 const fs = require("fs");
 const path = require("path");
 const logger = require("../utils/logger");
+const { invalidate: invalidateCommandRegistry } = require("./runtime/commandRegistry");
+const { invalidateEventRegistry } = require("./runtime/eventRegistry");
 
 const COMMANDS_DIR = path.join(__dirname, "..", "plugins", "commands");
 const EVENTS_DIR = path.join(__dirname, "..", "plugins", "events");
 const DEBOUNCE_MS = 400;
 
-let watcher = null;
-let pending = new Map();
+let commandWatcher = null;
+let eventWatcher = null;
+const pending = new Map();
 
 function registerCommand(filePath, { silent = true } = {}) {
   const fileName = path.basename(filePath, ".js");
@@ -17,6 +20,7 @@ function registerCommand(filePath, { silent = true } = {}) {
     if (!plugin?.config?.name) throw new Error("plugin thiếu config.name");
     const name = plugin.config.name.toLowerCase();
     global.client.commands.set(name, plugin);
+    invalidateCommandRegistry(global.client.commands);
     if (!silent) logger.log(`[hot-reload] Đã nạp lệnh '${name}'`, "info");
     return name;
   } catch (error) {
@@ -33,6 +37,7 @@ function registerEvent(filePath, { silent = true } = {}) {
     if (!plugin?.config?.name) throw new Error("plugin thiếu config.name");
     const name = plugin.config.name.toLowerCase();
     global.client.events.set(name, plugin);
+    invalidateEventRegistry(global.client.events);
     if (!silent) logger.log(`[hot-reload] Đã nạp event '${name}'`, "info");
     return name;
   } catch (error) {
@@ -45,9 +50,10 @@ function handleChange(dir, type) {
   return (eventType, fileName) => {
     if (!fileName || !fileName.endsWith(".js")) return;
     const filePath = path.join(dir, fileName);
-    if (pending.has(fileName)) return;
-    pending.set(fileName, setTimeout(() => {
-      pending.delete(fileName);
+    const pendingKey = `${type}:${fileName}`;
+    if (pending.has(pendingKey)) return;
+    pending.set(pendingKey, setTimeout(() => {
+      pending.delete(pendingKey);
       if (fs.existsSync(filePath)) {
         if (type === "command") registerCommand(filePath, { silent: false });
         else registerEvent(filePath, { silent: false });
@@ -57,8 +63,13 @@ function handleChange(dir, type) {
         const cached = require.cache[resolved];
         const name = cached?.exports?.config?.name?.toLowerCase();
         if (name) {
-          if (type === "command") global.client.commands.delete(name);
-          else global.client.events.delete(name);
+          if (type === "command") {
+            global.client.commands.delete(name);
+            invalidateCommandRegistry(global.client.commands);
+          } else {
+            global.client.events.delete(name);
+            invalidateEventRegistry(global.client.events);
+          }
           logger.log(`[hot-reload] Đã gỡ '${name}' (file ${fileName} không còn tồn tại)`, "info");
         }
         delete require.cache[resolved];
@@ -68,26 +79,36 @@ function handleChange(dir, type) {
 }
 
 function start() {
-  if (watcher) return watcher;
+  if (commandWatcher || eventWatcher) return commandWatcher || eventWatcher;
   try {
-    watcher = fs.watch(COMMANDS_DIR, handleChange(COMMANDS_DIR, "command"));
-    // Thư mục events có thể không tồn tại (bot thuần lệnh) → bỏ qua, không chết watcher
-    if (fs.existsSync(EVENTS_DIR)) fs.watch(EVENTS_DIR, handleChange(EVENTS_DIR, "event"));
+    commandWatcher = fs.watch(COMMANDS_DIR, handleChange(COMMANDS_DIR, "command"));
+    // Keep a handle to both watchers so stop() cannot leak an event watcher.
+    if (fs.existsSync(EVENTS_DIR)) {
+      eventWatcher = fs.watch(EVENTS_DIR, handleChange(EVENTS_DIR, "event"));
+    }
     logger.log("[hot-reload] Đang theo dõi thay đổi plugin (sửa file là tự nạp lại)", "info");
   } catch (error) {
+    if (commandWatcher) commandWatcher.close();
+    if (eventWatcher) eventWatcher.close();
+    commandWatcher = null;
+    eventWatcher = null;
     logger.log(`[hot-reload] Không thể bật: ${error.message}`, "error");
   }
-  return watcher;
+  return commandWatcher || eventWatcher;
 }
 
 function stop() {
-  if (watcher) {
-    watcher.close();
-    watcher = null;
-    for (const timer of pending.values()) clearTimeout(timer);
-    pending.clear();
-    logger.log("[hot-reload] Đã dừng theo dõi", "warn");
+  let stopped = false;
+  for (const watcher of [commandWatcher, eventWatcher]) {
+    if (!watcher) continue;
+    try { watcher.close(); } catch {}
+    stopped = true;
   }
+  commandWatcher = null;
+  eventWatcher = null;
+  for (const timer of pending.values()) clearTimeout(timer);
+  pending.clear();
+  if (stopped) logger.log("[hot-reload] Đã dừng theo dõi", "warn");
 }
 
 function reloadAll() {
