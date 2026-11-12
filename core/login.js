@@ -269,36 +269,68 @@ async function loginWithQR() {
     }
 }
 
+function parseCookieFromEnv(rawCookie) {
+    if (rawCookie == null || !String(rawCookie).trim()) return null;
+
+    let cookie;
+    try {
+        cookie = JSON.parse(String(rawCookie).trim());
+    } catch {
+        throw new Error("JT_COOKIE_JSON không phải JSON hợp lệ. Hãy dán nguyên nội dung Cookie JSON.");
+    }
+
+    const isObject = cookie !== null && typeof cookie === "object";
+    if (!isObject || (Array.isArray(cookie) && cookie.length === 0) || (!Array.isArray(cookie) && Object.keys(cookie).length === 0)) {
+        throw new Error("JT_COOKIE_JSON phải là một mảng hoặc object Cookie không rỗng.");
+    }
+    return cookie;
+}
+
 async function loginWithCookie() {
     try {
         const zalo = createZaloClient();
         const accountPath = resolveAccountPath();
-        fs.mkdirSync(path.dirname(accountPath), { recursive: true });
-
         const accountData = getJsonData(accountPath) || {};
-        if (!accountData.imei || !accountData.userAgent) {
-            throw new Error("Missing required params");
+
+        // Render environment variables take priority; local account/cookie files remain supported.
+        const imei = String(process.env.JT_IMEI || accountData.imei || "").trim();
+        const userAgent = String(process.env.JT_USER_AGENT || accountData.userAgent || global.config?.device?.user_agent || "").trim();
+
+        if (!imei) {
+            throw new Error("Thiếu IMEI: hãy khai báo JT_IMEI hoặc cung cấp imei trong account.json.");
         }
-        const cookieFileName = accountData.cookie || "cookie.json";
-        const cookiePath = path.isAbsolute(cookieFileName)
-          ? cookieFileName
-          : path.join(path.dirname(accountPath), cookieFileName);
-        const cookie = getJsonData(cookiePath);
-        if (!cookie || (Array.isArray(cookie) && cookie.length === 0) || (typeof cookie === "object" && Object.keys(cookie).length === 0)) {
-            throw new Error("Missing required params");
+        if (!userAgent) {
+            throw new Error("Thiếu User-Agent: hãy khai báo JT_USER_AGENT hoặc cung cấp userAgent trong account.json.");
         }
 
-        const api = await zalo.login({
-            cookie: cookie,
-            imei: accountData.imei,
-            userAgent: accountData.userAgent
-        });
+        let cookie = parseCookieFromEnv(process.env.JT_COOKIE_JSON);
+        let cookieSource = "JT_COOKIE_JSON";
+
+        if (!cookie) {
+            const cookieFileName = accountData.cookie || "cookie.json";
+            const cookiePath = path.isAbsolute(cookieFileName)
+                ? cookieFileName
+                : path.join(path.dirname(accountPath), cookieFileName);
+            cookie = getJsonData(cookiePath);
+            cookieSource = path.basename(cookiePath);
+        }
+
+        if (!cookie || typeof cookie !== "object" ||
+            (Array.isArray(cookie) && cookie.length === 0) ||
+            (!Array.isArray(cookie) && Object.keys(cookie).length === 0)) {
+            throw new Error(`Không tìm thấy Cookie hợp lệ trong JT_COOKIE_JSON hoặc file cookie.json (nguồn đã kiểm tra: ${cookieSource}).`);
+        }
+
+        logger.log(`Đang xác thực Cookie (nguồn: ${cookieSource}); IMEI và User-Agent đã được nạp.`, "info");
+        const api = await zalo.login({ cookie, imei, userAgent });
 
         registerStickerApi(api);
         return api;
     } catch (error) {
-        logger.log(`Lỗi đăng nhập Zalo bằng Cookie: ${error.message || error}`, "error");
-        throw new Error();
+        const message = error?.message || String(error);
+        logger.log(`Lỗi đăng nhập Zalo bằng Cookie: ${message}`, "error");
+        // Preserve the real error for the caller without ever logging cookie contents.
+        throw error instanceof Error ? error : new Error(message);
     }
 }
 
