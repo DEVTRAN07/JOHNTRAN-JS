@@ -1,0 +1,53 @@
+"use strict";
+const fs = require("fs/promises");
+const os = require("os");
+const path = require("path");
+const { createCanvas } = require("canvas");
+
+async function renderQuestion(question, number = 1) {
+  const width = 900, height = 500;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, "#10172d");
+  gradient.addColorStop(1, "#263c64");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  for (let i = 0; i < 12; i++) ctx.fillRect(24 + i * 74, 0, 1, height);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#f8d77b";
+  ctx.font = "bold 30px sans-serif";
+  ctx.fillText("GAME ĐUỔI HÌNH BẮT CHỮ", width / 2, 62);
+  ctx.fillStyle = "#c6d6f5";
+  ctx.font = "20px sans-serif";
+  ctx.fillText(`CÂU HỎI #${number}  •  NHÌN GỢI Ý VÀ ĐOÁN TỪ`, width / 2, 105);
+  const clues = question.clues || [];
+  const gap = 28, tileWidth = Math.min(340, (width - 100 - gap * (clues.length - 1)) / clues.length);
+  const total = tileWidth * clues.length + gap * (clues.length - 1);
+  const startX = (width - total) / 2;
+  clues.forEach((clue, index) => {
+    const x = startX + index * (tileWidth + gap), y = 160;
+    ctx.fillStyle = index % 2 ? "#315d85" : "#7a4e78";
+    ctx.fillRect(x, y, tileWidth, 190);
+    ctx.strokeStyle = "#f2d17b";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x + 2, y + 2, tileWidth - 4, 186);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 38px sans-serif";
+    ctx.fillText(clue, x + tileWidth / 2, y + 108, tileWidth - 24);
+    ctx.fillStyle = "#f2d17b";
+    ctx.font = "16px sans-serif";
+    ctx.fillText(`HÌNH ${index + 1}`, x + tileWidth / 2, y + 155);
+  });
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "22px sans-serif";
+  ctx.fillText("Gõ đáp án trực tiếp vào khung chat", width / 2, 420);
+  ctx.fillStyle = "#a9bddf";
+  ctx.font = "17px sans-serif";
+  ctx.fillText("@Wuang  •  DHBC", width / 2, 462);
+  const file = path.join(os.tmpdir(), `dhbc-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+  await fs.writeFile(file, canvas.toBuffer("image/png"));
+  return file;
+}
+module.exports = { renderQuestion };
