@@ -29,7 +29,7 @@ jobs:
       - name: Trigger Render deploy
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          SERVICE_NAME: JOHNTRAN
+          SERVICE_NAME: JOHNTRAN-JS
         shell: bash
         run: |
           set -euo pipefail
