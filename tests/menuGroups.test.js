@@ -79,6 +79,7 @@ test("each live command is assigned to its intended folder", () => {
     ["admin", "Hệ thống", "admin"],
     ["reloadconfig", "Hệ thống", "admin"],
     ["restart", "Hệ thống", "admin"],
+    ["theme", "Hệ thống", "admin"],
     ["spam", "Hệ thống", "admin"],
     ["spamsticker", "Hệ thống", "admin"],
     ["command", "Hệ thống", "mybot"],

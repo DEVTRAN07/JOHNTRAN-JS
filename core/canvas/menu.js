@@ -6,6 +6,7 @@ const path = require("path");
 const { loadImage } = require("canvas");
 const avatarCache = require("./avatarCache");
 const theme = require("./theme");
+const menuPalette = require("./menuPalette");
 
 function rounded(ctx, x, y, w, h, r) {
   const radius = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -35,15 +36,13 @@ function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.restore();
 }
 
-function paintBackdrop(ctx, w, h, variant) {
-  const palette = variant === "folder"
-    ? ["#c68a9e", "#a75c76", "#dd9a80", "#6c8b91"]
-    : ["#bd7657", "#c58aa0", "#d49b70", "#327f8a"];
+function paintBackdrop(ctx, w, h, palette) {
+  const colors = palette.background;
   const base = ctx.createLinearGradient(0, 0, w, h);
-  base.addColorStop(0, palette[0]);
-  base.addColorStop(0.42, palette[1]);
-  base.addColorStop(0.7, palette[2]);
-  base.addColorStop(1, palette[3]);
+  base.addColorStop(0, colors[0]);
+  base.addColorStop(0.42, colors[1]);
+  base.addColorStop(0.7, colors[2]);
+  base.addColorStop(1, colors[3]);
   ctx.fillStyle = base;
   ctx.fillRect(0, 0, w, h);
 
@@ -54,13 +53,13 @@ function paintBackdrop(ctx, w, h, variant) {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, w, h);
   };
-  glow(w * 0.16, h * 0.05, w * 0.5, "rgba(255,190,190,.5)");
-  glow(w * 0.88, h * 0.16, w * 0.42, "rgba(28,178,190,.42)");
-  glow(w * 0.28, h * 0.98, w * 0.52, "rgba(235,126,47,.48)");
-  glow(w * 0.92, h * 0.9, w * 0.5, "rgba(255,194,122,.34)");
+  glow(w * 0.16, h * 0.05, w * 0.5, palette.glow[0]);
+  glow(w * 0.88, h * 0.16, w * 0.42, palette.glow[1]);
+  glow(w * 0.28, h * 0.98, w * 0.52, palette.glow[1]);
+  glow(w * 0.92, h * 0.9, w * 0.5, palette.glow[0]);
 }
 
-function drawOuterPanel(ctx, x, y, w, h, radius, colors) {
+function drawOuterPanel(ctx, x, y, w, h, radius, colors, borderColor) {
   ctx.save();
   rounded(ctx, x, y, w, h, radius);
   ctx.shadowColor = "rgba(0,0,0,.38)";
@@ -74,7 +73,7 @@ function drawOuterPanel(ctx, x, y, w, h, radius, colors) {
   ctx.restore();
 
   rounded(ctx, x, y, w, h, radius);
-  ctx.strokeStyle = "rgba(177,231,237,.52)";
+  ctx.strokeStyle = borderColor;
   ctx.lineWidth = Math.max(1, theme.S(1));
   ctx.stroke();
   rounded(ctx, x + theme.S(1), y + theme.S(1), w - theme.S(2), h - theme.S(2), Math.max(0, radius - theme.S(1)));
@@ -447,22 +446,23 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   const H = Math.round(W * 900 / 1280);
   const result = theme.newCanvas(W, H);
   const ctx = result.ctx;
+  const palette = menuPalette.getPalette();
 
-  paintBackdrop(ctx, W, H, "menu");
+  paintBackdrop(ctx, W, H, palette);
 
   const panelX = S(18);
   const panelY = S(17);
   const panelW = W - panelX * 2;
   const panelH = H - panelY * 2;
-  drawOuterPanel(ctx, panelX, panelY, panelW, panelH, S(18), ["#04566a", "#003f52"]);
+  drawOuterPanel(ctx, panelX, panelY, panelW, panelH, S(18), palette.panel, palette.border);
 
   const margin = S(32);
-  drawText(ctx, "Danh sách tính năng", margin, S(58), 24, "#f7fcff", true);
+  drawText(ctx, "Danh sách tính năng", margin, S(58), 24, palette.text, true);
   const time = new Intl.DateTimeFormat("vi-VN", {
     hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh"
   }).format(new Date());
-  drawClock(ctx, W - margin - S(57), S(45), S(14), "#d9f5ff");
-  drawText(ctx, time, W - margin, S(58), 19, "#d9f5ff", true, "right");
+  drawClock(ctx, W - margin - S(57), S(45), S(14), palette.accent);
+  drawText(ctx, time, W - margin, S(58), 19, palette.accent, true, "right");
 
   const groups = Array.isArray(commands) ? commands : [];
   const columns = 3;
@@ -487,13 +487,13 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
     ctx.shadowBlur = S(7);
     ctx.shadowOffsetY = S(3);
     const cardFill = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
-    cardFill.addColorStop(0, "#2b3447");
-    cardFill.addColorStop(1, "#252e40");
+    cardFill.addColorStop(0, palette.card[0]);
+    cardFill.addColorStop(1, palette.card[1]);
     ctx.fillStyle = cardFill;
     ctx.fill();
     ctx.restore();
     rounded(ctx, x, y, cardW, cardH, S(12));
-    ctx.strokeStyle = "rgba(199,220,230,.64)";
+    ctx.strokeStyle = palette.cardBorder;
     ctx.lineWidth = S(0.85);
     ctx.stroke();
     rounded(ctx, x + S(1), y + S(1), cardW - S(2), cardH - S(2), S(11));
@@ -508,10 +508,10 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
 
     const textX = x + S(57);
     const maxTextWidth = cardW - S(91);
-    drawText(ctx, item.name, textX, y + cardH / 2 - S(2), 20, "#f7f9fd", true, "left", maxTextWidth);
-    drawText(ctx, item.category || "", textX, y + cardH / 2 + S(13), 12.5, "#d4e0eb", false, "left", maxTextWidth);
+    drawText(ctx, item.name, textX, y + cardH / 2 - S(2), 20, palette.text, true, "left", maxTextWidth);
+    drawText(ctx, item.category || "", textX, y + cardH / 2 + S(13), 12.5, palette.muted, false, "left", maxTextWidth);
 
-    drawText(ctx, "›", x + cardW - S(10), y + cardH / 2 + S(5), 25, "#d6eefa", false, "center");
+    drawText(ctx, "›", x + cardW - S(10), y + cardH / 2 + S(5), 25, palette.accent, false, "center");
   });
 
   const footerX = margin;
@@ -524,13 +524,13 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   ctx.shadowBlur = S(12);
   ctx.shadowOffsetY = S(4);
   const footerFill = ctx.createLinearGradient(footerX, footerY, footerX, footerY + footerH);
-  footerFill.addColorStop(0, "#111b2b");
-  footerFill.addColorStop(1, "#0c1421");
+  footerFill.addColorStop(0, palette.footer[0]);
+  footerFill.addColorStop(1, palette.footer[1]);
   ctx.fillStyle = footerFill;
   ctx.fill();
   ctx.restore();
   rounded(ctx, footerX, footerY, footerW, footerH, S(17));
-  ctx.strokeStyle = "rgba(139,205,220,.58)";
+  ctx.strokeStyle = palette.border;
   ctx.lineWidth = S(0.9);
   ctx.stroke();
 
@@ -538,12 +538,12 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   const avatarX = footerX + S(11);
   const avatarY = footerY + (footerH - avatarSize) / 2;
   drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
-  drawText(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(12), footerY + S(36), 20, "#f7fbff", true);
+  drawText(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(12), footerY + S(36), 20, palette.text, true);
 
   const iconY = footerY + footerH / 2;
-  drawPaletteIcon(ctx, W - margin - S(96), iconY, S(15), "#d4f6ff");
-  drawBotIcon(ctx, W - margin - S(65), iconY, S(17), "#d4f6ff");
-  drawText(ctx, botVersion || "1.0.2", W - margin - S(10), footerY + S(36), 18, "#d4f6ff", true, "right");
+  drawPaletteIcon(ctx, W - margin - S(96), iconY, S(15), palette.accent);
+  drawBotIcon(ctx, W - margin - S(65), iconY, S(17), palette.accent);
+  drawText(ctx, botVersion || "1.0.2", W - margin - S(10), footerY + S(36), 18, palette.accent, true, "right");
 
   const filePath = path.join(os.tmpdir(), "johntran_menu_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) + ".png");
   fs.writeFileSync(filePath, result.canvas.toBuffer("image/png"));
@@ -559,14 +559,15 @@ async function renderFolderCard({
   const H = Math.round(W * 540 / 1280);
   const result = theme.newCanvas(W, H);
   const ctx = result.ctx;
+  const palette = menuPalette.getPalette();
 
-  paintBackdrop(ctx, W, H, "folder");
+  paintBackdrop(ctx, W, H, palette);
 
   const panelX = S(24);
   const panelY = S(24);
   const panelW = W - panelX * 2;
   const panelH = S(252);
-  drawOuterPanel(ctx, panelX, panelY, panelW, panelH, S(15), ["#71123f", "#5d1038"]);
+  drawOuterPanel(ctx, panelX, panelY, panelW, panelH, S(15), palette.panel, palette.border);
 
   const padX = panelX + S(23);
   const iconCenterX = padX + S(25);
@@ -575,34 +576,34 @@ async function renderFolderCard({
   drawMenuFolderIcon(ctx, slug, iconCenterX, iconCenterY, S(54));
 
   const titleX = padX + S(70);
-  drawText(ctx, "Chi tiết chức năng: " + (folderName || "Danh mục"), titleX, panelY + S(61), 22, "#fff8fb", true);
-  drawText(ctx, folderDescription || "Các chức năng hỗ trợ", padX, panelY + S(120), 20, "#fff8fb", true);
+  drawText(ctx, "Chi tiết chức năng: " + (folderName || "Danh mục"), titleX, panelY + S(61), 22, palette.text, true);
+  drawText(ctx, folderDescription || "Các chức năng hỗ trợ", padX, panelY + S(120), 20, palette.text, true);
 
   const infoX = padX;
   const infoY = panelY + S(149);
   const infoW = S(502);
   const infoH = S(42);
   rounded(ctx, infoX, infoY, infoW, infoH, S(12));
-  ctx.fillStyle = "rgba(255,255,255,.075)";
+  ctx.fillStyle = palette.infoFill;
   ctx.fill();
   rounded(ctx, infoX, infoY, infoW, infoH, S(12));
-  ctx.strokeStyle = "rgba(237,159,207,.55)";
+  ctx.strokeStyle = palette.infoBorder;
   ctx.lineWidth = S(1);
   ctx.stroke();
 
   ctx.beginPath();
   ctx.arc(infoX + S(23), infoY + infoH / 2, S(8), 0, Math.PI * 2);
-  ctx.strokeStyle = "#f17ab8";
+  ctx.strokeStyle = palette.accent;
   ctx.lineWidth = S(1.5);
   ctx.stroke();
-  drawText(ctx, "i", infoX + S(23), infoY + infoH / 2 + S(4), 11, "#f17ab8", true, "center");
+  drawText(ctx, "i", infoX + S(23), infoY + infoH / 2 + S(4), 11, palette.accent, true, "center");
   drawText(
     ctx,
     "Gõ tên lệnh hoặc tag bot để thực thi chức năng " + (folderName || ""),
     infoX + S(42),
     infoY + S(27),
     15.5,
-    "#fff8fc",
+    palette.text,
     true,
     "left",
     infoW - S(54)
@@ -614,9 +615,9 @@ async function renderFolderCard({
   await drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
 
   const footerY = panelY + panelH - S(18);
-  drawPaletteIcon(ctx, W - S(128), footerY, S(14), "#fbe7f4");
-  drawBotIcon(ctx, W - S(101), footerY, S(16), "#fbe7f4");
-  drawText(ctx, botVersion || "1.0.2", W - S(24), footerY + S(6), 18, "#fff3f9", true, "right");
+  drawPaletteIcon(ctx, W - S(128), footerY, S(14), palette.accent);
+  drawBotIcon(ctx, W - S(101), footerY, S(16), palette.accent);
+  drawText(ctx, botVersion || "1.0.2", W - S(24), footerY + S(6), 18, palette.accent, true, "right");
 
   const filePath = path.join(os.tmpdir(), "johntran_folder_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
   fs.writeFileSync(filePath, result.canvas.toBuffer("image/png"));
