@@ -4,7 +4,7 @@ FROM node:22-slim
 # yt-dlp NIGHTLY (bản thường xuyên fix chống chặn YouTube hơn bản ổn định)
 # + ffmpeg (xử lý video/nhạc) + thư viện cho canvas
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip \
+    curl python3 python3-pip \
     ffmpeg \
     libcairo2 \
     libpango-1.0-0 \
@@ -22,7 +22,7 @@ WORKDIR /app
 # copy package.json + vendor TRƯỚC để npm ci tìm thấy zalo-client (file:vendor/zalo-client)
 COPY package*.json ./
 COPY vendor ./vendor
-RUN npm ci --omit=dev || npm install --omit=dev
+RUN npm ci --omit=dev
 COPY . .
 
 # Koyeb/Render/Northflank inject PORT — health server + panel tự mở đúng port đó.
