@@ -56,6 +56,7 @@ privacy:
   allowed_hosts: # host/suffix được phép (vd: soundcloud.com khớp cả api-v2.soundcloud.com)
     - soundcloud.com
     - sndcdn.com
+    - soundcloud.cloud
     - api-v2.soundcloud.com
     - translate.google.com
     - www.tikwm.com
