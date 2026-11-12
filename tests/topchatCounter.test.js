@@ -5,121 +5,139 @@ const assert = require("node:assert/strict");
 const { ThreadType } = require("zalo-client");
 const counter = require("../plugins/events/topchatCounter");
 const topchat = require("../plugins/commands/topchat");
+const { vietnamDateKey } = require("../core/topchat/stats");
+
+function makeGroupMessage(threadId, uid, id, content, extra = {}) {
+  return {
+    type: ThreadType.Group,
+    threadId,
+    isSelf: false,
+    data: {
+      idTo: threadId,
+      uidFrom: uid,
+      dName: uid,
+      cliMsgId: id,
+      content,
+      msgType: extra.msgType || "text",
+      ts: String(extra.ts ?? Date.now()),
+      ...extra.data
+    }
+  };
+}
+
+function fakeThreads(initial = {}) {
+  const rows = new Map(Object.entries(initial).map(([key, data]) => [key, { threadId: key, data }]));
+  return {
+    rows,
+    async getData(threadId) {
+      return rows.get(String(threadId)) || { threadId: String(threadId), data: {} };
+    },
+    getCachedData(threadId) {
+      return rows.get(String(threadId)) || null;
+    },
+    async setData(threadId, data) {
+      rows.set(String(threadId), { threadId: String(threadId), data: { ...data } });
+    }
+  };
+}
 
 test("topchat counter records group text/media and ignores commands and duplicates", async () => {
   global.config = { prefix: "/" };
-  const rows = new Map();
-  const Threads = {
-    async getData(threadId) {
-      return { threadId, data: rows.get(threadId) || {} };
-    },
-    async setData(threadId, data) {
-      rows.set(threadId, { ...data });
-    }
-  };
+  const Threads = fakeThreads();
   const threadId = "topchat-counter-regression";
-  const ts = Date.now();
 
-  const textEvent = {
-    threadId,
-    type: ThreadType.Group,
-    isSelf: false,
-    data: {
-      uidFrom: "member-1",
-      dName: "Member One",
-      cliMsgId: "msg-text-1",
-      content: "hello",
-      msgType: "text",
-      ts: String(ts)
-    }
-  };
-
+  const textEvent = makeGroupMessage(threadId, "member-1", "msg-text-1", "hello");
   await counter.run({ event: textEvent, Threads, isSelf: false });
   await counter.run({ event: textEvent, Threads, isSelf: false });
 
-  const commandEvent = {
-    ...textEvent,
-    data: { ...textEvent.data, cliMsgId: "msg-command-1", content: "/menu" }
-  };
+  const commandEvent = makeGroupMessage(threadId, "member-1", "msg-command-1", "/menu");
   await counter.run({ event: commandEvent, Threads, isSelf: false });
 
-  const mediaEvent = {
-    ...textEvent,
-    data: {
-      uidFrom: "member-2",
-      dName: "Member Two",
-      cliMsgId: "msg-media-1",
-      content: "",
-      msgType: "photo",
-      ts: String(ts)
-    }
-  };
+  const mediaEvent = makeGroupMessage(threadId, "member-2", "msg-media-1", "", { msgType: "photo" });
   await counter.run({ event: mediaEvent, Threads, isSelf: false });
 
-  const saved = rows.get(threadId);
+  const saved = Threads.rows.get(threadId).data;
   assert.equal(saved.topchatCounts["member-1"].count, 1);
-  assert.equal(saved.topchatCounts["member-1"].name, "Member One");
+  assert.equal(saved.topchatCounts["member-1"].name, "member-1");
   assert.equal(saved.topchatCounts["member-2"].count, 1);
-  assert.equal(saved.topchatCounts["member-2"].name, "Member Two");
   assert.ok(saved.topchatSeenMessageIds.includes("msg-text-1"));
   assert.ok(saved.topchatSeenMessageIds.includes("msg-media-1"));
 });
 
-test("topchat history cache applies the latest seen IDs to cached raw messages", async () => {
-  const { historyCache, getCachedHistoryCounts } = topchat._test;
-  historyCache.clear();
-  let apiCalls = 0;
-  const api = {
-    async getGroupChatHistory() {
-      apiCalls++;
-      return {
-        groupMsgs: [
-          { data: { uidFrom: "u1", cliMsgId: "old-1", dName: "A", content: "hello", msgType: "text", ts: String(Date.now()) } },
-          { data: { uidFrom: "u1", cliMsgId: "old-2", dName: "A", content: "world", msgType: "text", ts: String(Date.now()) } }
-        ]
-      };
-    }
-  };
-  const date = require("../core/topchat/stats").vietnamDateKey();
-  const first = await getCachedHistoryCounts(api, "topchat-cache-regression", date, "/", []);
-  const second = await getCachedHistoryCounts(api, "topchat-cache-regression", date, "/", ["old-1"]);
+test("topchat imports all today's old group messages from WebSocket in one batch", async () => {
+  global.config = { prefix: "/" };
+  const Threads = fakeThreads();
+  const threadId = "topchat-ws-history-regression";
+  const today = vietnamDateKey();
+  const now = Date.now();
 
-  assert.equal(apiCalls, 1);
-  assert.equal(first.counts.u1.count, 2);
-  assert.equal(second.counts.u1.count, 1);
+  const messages = [
+    makeGroupMessage(threadId, "u1", "old-1", "xin chao", { ts: now - 60000 }),
+    makeGroupMessage(threadId, "u1", "old-2", "tin thu hai", { ts: now - 50000 }),
+    makeGroupMessage(threadId, "u2", "old-3", "", { msgType: "photo", ts: now - 40000 }),
+    makeGroupMessage(threadId, "u3", "yesterday", "hom qua", {
+      ts: now - 86400000
+    }),
+    makeGroupMessage(threadId, "u3", "command", "/menu", { ts: now - 30000 }),
+    {
+      ...makeGroupMessage(threadId, "bot", "self-msg", "bot noi", { ts: now - 20000 }),
+      isSelf: true
+    }
+  ];
+
+  const result = await counter.recordHistoryMessages(messages, Threads);
+  assert.deepEqual(result, { groups: 1, messages: 3 });
+
+  const saved = Threads.rows.get(threadId).data;
+  assert.equal(saved.topchatDate, today);
+  assert.equal(saved.topchatCounts.u1.count, 2);
+  assert.equal(saved.topchatCounts.u2.count, 1);
+  assert.equal(saved.topchatCounts.u3, undefined);
+  assert.equal(saved.topchatSeenMessageIds.length, 3);
 });
 
-test("topchat sends a cached realtime ranking without waiting for Zalo history", async () => {
+test("topchat merges historical and realtime messages without counting overlap twice", async () => {
+  global.config = { prefix: "/" };
+  const Threads = fakeThreads();
+  const threadId = "topchat-history-live-dedupe";
+  const oldMessage = makeGroupMessage(threadId, "u1", "overlap-1", "history message");
+  await counter.recordHistoryMessages([oldMessage], Threads);
+
+  // Same message may be seen again by the realtime event when WebSocket
+  // backfill overlaps with the live subscription.
+  await counter.run({ event: oldMessage, Threads, isSelf: false });
+  const newLive = makeGroupMessage(threadId, "u1", "live-2", "new live message");
+  await counter.run({ event: newLive, Threads, isSelf: false });
+
+  const saved = Threads.rows.get(threadId).data;
+  assert.equal(saved.topchatCounts.u1.count, 2);
+  assert.ok(saved.topchatSeenMessageIds.includes("overlap-1"));
+  assert.ok(saved.topchatSeenMessageIds.includes("live-2"));
+});
+
+test("topchat sends the daily ranking from persisted counters without REST history calls", async () => {
   const { performance } = require("node:perf_hooks");
   const command = require("../plugins/commands/topchat");
-  const date = require("../core/topchat/stats").vietnamDateKey();
+  const date = vietnamDateKey();
   const threadId = "topchat-fast-command-regression";
   const sent = [];
   const api = {
-    getGroupChatHistory() {
-      return new Promise(() => {});
-    },
     async sendMessage(payload) {
       sent.push(payload);
       return { ok: true };
     }
   };
-  const Threads = {
-    getCachedData() {
-      return {
-        threadId,
-        data: {
-          prefix: "/",
-          topchatDate: date,
-          topchatSeenMessageIds: [],
-          topchatCounts: {
-            "fast-u1": { name: "One", count: 12, avatar: "" },
-            "fast-u2": { name: "Two", count: 8, avatar: "" }
-          }
-        }
-      };
+  const Threads = fakeThreads({
+    [threadId]: {
+      prefix: "/",
+      topchatDate: date,
+      topchatSeenMessageIds: [],
+      topchatCounts: {
+        "fast-u1": { name: "One", count: 120, avatar: "" },
+        "fast-u2": { name: "Two", count: 80, avatar: "" }
+      }
     }
-  };
+  });
   const event = { threadId, type: ThreadType.Group, data: { uidFrom: "requester" } };
 
   const started = performance.now();
@@ -131,34 +149,16 @@ test("topchat sends a cached realtime ranking without waiting for Zalo history",
   assert.ok(elapsed < 1000, `topchat took ${elapsed.toFixed(1)}ms`);
 });
 
-test("topchat history timeout returns control to the command without waiting for Zalo", async () => {
-  const { historyCache, historyFlights, readHistoryWithinBudget } = topchat._test;
-  historyCache.clear();
-  historyFlights.clear();
-
-  const result = await readHistoryWithinBudget(
-    { getGroupChatHistory: () => new Promise(() => {}) },
-    "topchat-timeout-regression",
-    "2026-11-12",
-    "/",
-    [],
-    25
-  );
-  assert.equal(result, null);
+test("topchat ignores daily counters left over from a previous date", () => {
+  const today = vietnamDateKey();
+  const result = topchat._test.readDailyCounts({
+    topchatDate: "2000-01-01",
+    topchatCounts: { old: { name: "Old", count: 999 } }
+  });
+  assert.equal(result.today, today);
+  assert.deepEqual(result.counts, {});
 });
 
-
-test("topchat requests one Zalo history page using the default supported size", async () => {
-  const { readHistoryWithinBudget, HISTORY_LIMIT } = topchat._test;
-  const calls = [];
-  const api = {
-    async getGroupChatHistory(threadId, count) {
-      calls.push({ threadId, count });
-      return { groupMsgs: [] };
-    }
-  };
-  await readHistoryWithinBudget(api, "topchat-history-page-regression", "2026-11-12", "/", [], 100);
-
-  assert.equal(HISTORY_LIMIT, 50);
-  assert.deepEqual(calls, [{ threadId: "topchat-history-page-regression", count: 50 }]);
+test("topchat stores more than 500 message IDs to deduplicate full-day history", () => {
+  assert.equal(counter._test.MAX_STORED_IDS, 10000);
 });
