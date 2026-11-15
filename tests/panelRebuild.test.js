@@ -54,3 +54,8 @@ test("panel token is only persisted for the current browser session", () => {
   assert.match(js, /localStorage\.setItem\("jt_panel_url"/);
   assert.doesNotMatch(js, /localStorage\.setItem\(["']jt_panel_token/);
 });
+
+
+test("Render root URL opens the new control center and legacy status page has its own route", () => {
+  assert.match(server, /const STATIC_FILES = \{ "\/": "panel\.html", "\/panel": "panel\.html", "\/panel\.html": "panel\.html", "\/status": "index\.html"/);
+});
