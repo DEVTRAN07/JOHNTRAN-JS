@@ -246,6 +246,63 @@ async function handleRequest(req, res, url) {
     return json(200, { messages, historyApi });
   }
 
+  // Cấu hình lệnh theo nhóm được xử lý bên trong bot con, nơi có
+  // global.client.commands và controllerThreads trỏ đúng DB của bot đó.
+  if (route === "/group-commands") {
+    const gid = String(url.searchParams.get("gid") || "").trim();
+    if (!gid) return json(400, { error: "Thiếu Group ID" });
+
+    const commands = global.client?.commands;
+    if (!(commands instanceof Map)) {
+      return json(503, { error: "Danh sách lệnh của bot chưa sẵn sàng" });
+    }
+
+    const Threads = require("./controller/controllerThreads");
+    if (req.method === "GET") {
+      const thread = await Threads.getData(gid);
+      const all = [...new Set(Array.from(commands.entries()).map(([key, command]) =>
+        String(command?.config?.name || key).toLowerCase()
+      ))].sort((a, b) => a.localeCompare(b, "vi"));
+      const disabled = Array.isArray(thread.data?.disabled_commands)
+        ? thread.data.disabled_commands.map(value => String(value).toLowerCase())
+        : [];
+      return json(200, { gid, disabled, all });
+    }
+
+    if (req.method === "POST") {
+      let raw = "";
+      for await (const chunk of req) {
+        raw += chunk.toString("utf8");
+        if (raw.length > 65536) return json(413, { error: "Payload quá lớn" });
+      }
+      let body;
+      try { body = JSON.parse(raw || "{}"); }
+      catch { return json(400, { error: "JSON không hợp lệ" }); }
+
+      const command = String(body.command || "").trim().toLowerCase();
+      const exists = Array.from(commands.entries()).some(([key, value]) =>
+        String(key).toLowerCase() === command ||
+        String(value?.config?.name || "").toLowerCase() === command
+      );
+      if (!exists) return json(404, { error: `Lệnh '${command}' không tồn tại` });
+
+      const thread = await Threads.getData(gid);
+      const data = thread.data || {};
+      const disabled = Array.isArray(data.disabled_commands)
+        ? [...data.disabled_commands].map(value => String(value).toLowerCase())
+        : [];
+      const index = disabled.indexOf(command);
+      const enabled = body.enabled === true;
+      if (enabled && index >= 0) disabled.splice(index, 1);
+      if (!enabled && index < 0) disabled.push(command);
+      data.disabled_commands = disabled;
+      await Threads.setData(gid, data);
+      return json(200, { gid, command, enabled, disabled });
+    }
+
+    return json(405, { error: "Method không hỗ trợ" });
+  }
+
   // Danh sách nhóm bot cầm key (do người dùng đánh dấu trong panel)
   if (route === "/admin-groups") return json(200, { groups: readAdminGroups() });
 
