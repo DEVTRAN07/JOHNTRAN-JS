@@ -8,7 +8,11 @@ const AVATAR_FIELDS = [
   "largeAvatar", "large_avatar", "fullAvatar", "full_avatar",
   "imageUrl", "image_url", "src"
 ];
-const EXPLICIT_AVATAR_FIELDS = AVATAR_FIELDS.filter(key => !["url", "href", "src"].includes(key));
+const EXPLICIT_AVATAR_FIELDS = [
+  "avatar", "avatarUrl", "avatar_url", "avatarURL", "avatarUri", "avatar_uri",
+  "profilePicture", "profile_picture", "profilePictureUrl", "profile_picture_url",
+  "hdAvatar", "hd_avatar", "largeAvatar", "large_avatar", "fullAvatar", "full_avatar"
+];
 
 function isHttpUrl(value) {
   return typeof value === "string" && /^https?:\/\//i.test(value.trim());
