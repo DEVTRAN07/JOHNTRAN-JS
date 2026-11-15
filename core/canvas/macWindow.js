@@ -1,7 +1,16 @@
 "use strict";
 
 const { createCanvas } = require("canvas");
-const menuPalette = require("./menuPalette");
+
+// Stable app-wide frame. /theme is intentionally not read here: only the
+// menu and folder renderers pass their selected palette explicitly.
+const DEFAULT_FRAME_PALETTE = Object.freeze({
+  background: ["#08080a", "#17140d", "#302516", "#0b0907"],
+  panel: ["#3a2b12", "#1c170d"],
+  footer: ["#17140d", "#0d0b08"],
+  accent: "#d4af37",
+  border: "rgba(212,175,55,.62)"
+});
 
 function roundedRect(ctx, x, y, width, height, radius) {
   const r = Math.max(0, Math.min(radius, width / 2, height / 2));
@@ -14,8 +23,8 @@ function roundedRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
-function withMacWindow(content, title = "JOHN TRAN") {
-  const palette = menuPalette.getPalette();
+function withMacWindow(content, title = "JOHN TRAN", palette = DEFAULT_FRAME_PALETTE) {
+  const colors = palette || DEFAULT_FRAME_PALETTE;
   const scale = content.width / 750;
   const toolbarHeight = Math.round(44 * scale);
   const inset = Math.round(12 * scale);
@@ -37,10 +46,16 @@ function withMacWindow(content, title = "JOHN TRAN") {
   ctx.save();
   ctx.clip();
 
+  const background = Array.isArray(colors.background) ? colors.background : DEFAULT_FRAME_PALETTE.background;
+  const panel = Array.isArray(colors.panel) ? colors.panel : DEFAULT_FRAME_PALETTE.panel;
+  const footer = Array.isArray(colors.footer) ? colors.footer : DEFAULT_FRAME_PALETTE.footer;
+  const accent = colors.accent || DEFAULT_FRAME_PALETTE.accent;
+  const border = colors.border || DEFAULT_FRAME_PALETTE.border;
+
   const outer = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  outer.addColorStop(0, palette.background[0]);
-  outer.addColorStop(0.55, palette.panel[0]);
-  outer.addColorStop(1, palette.background[3]);
+  outer.addColorStop(0, background[0] || DEFAULT_FRAME_PALETTE.background[0]);
+  outer.addColorStop(0.55, panel[0] || DEFAULT_FRAME_PALETTE.panel[0]);
+  outer.addColorStop(1, background[3] || DEFAULT_FRAME_PALETTE.background[3]);
   ctx.fillStyle = outer;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -59,11 +74,11 @@ function withMacWindow(content, title = "JOHN TRAN") {
   ctx.restore();
 
   const toolbar = ctx.createLinearGradient(0, 0, 0, toolbarHeight);
-  toolbar.addColorStop(0, palette.footer[0]);
-  toolbar.addColorStop(1, palette.footer[1]);
+  toolbar.addColorStop(0, footer[0] || DEFAULT_FRAME_PALETTE.footer[0]);
+  toolbar.addColorStop(1, footer[1] || DEFAULT_FRAME_PALETTE.footer[1]);
   ctx.fillStyle = toolbar;
   ctx.fillRect(0, 0, canvas.width, toolbarHeight);
-  ctx.fillStyle = palette.accent;
+  ctx.fillStyle = accent;
   ctx.globalAlpha = 0.55;
   ctx.fillRect(0, toolbarHeight - Math.max(1, Math.round(scale)), canvas.width, Math.max(1, Math.round(scale)));
   ctx.globalAlpha = 1;
@@ -90,7 +105,7 @@ function withMacWindow(content, title = "JOHN TRAN") {
   ctx.fillText(String(title || "JOHN TRAN").slice(0, 48), canvas.width / 2, dotY);
   ctx.restore();
 
-  ctx.strokeStyle = palette.border;
+  ctx.strokeStyle = border;
   ctx.globalAlpha = 0.55;
   ctx.lineWidth = Math.max(1, scale);
   roundedRect(ctx, 0.5, 0.5, canvas.width - 1, canvas.height - 1, radius);
@@ -99,4 +114,4 @@ function withMacWindow(content, title = "JOHN TRAN") {
   return canvas;
 }
 
-module.exports = { withMacWindow };
+module.exports = { withMacWindow, DEFAULT_FRAME_PALETTE };
