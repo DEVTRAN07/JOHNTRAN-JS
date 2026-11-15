@@ -302,16 +302,26 @@ function startPanel({ manager, config }) {
         maybeSyncStore();
         try {
           const db = require("../utils/db");
-          const rows = db.allData("BotStats");
           const stats = {};
-          for (const row of rows) {
-            // JsonStore lưu idField "name"; Supabase chỉ có cột "id" — lấy
-            // key từ cả hai để cả local lẫn deploy đều đúng.
+          // Đọc cả store dùng chung lẫn store riêng của từng bot con.
+          // findBotStatsRow ưu tiên DB master và fallback an toàn sang
+          // bots/<name>/store.json, không mở JsonStore thứ hai trên cùng file.
+          for (const row of db.allData("BotStats") || []) {
             const key = row?.name || row?.id;
-            if (!key || key === "soundcloud_client_id") continue; // bỏ row config
+            if (!key || key === "soundcloud_client_id") continue;
             stats[key] = row.data || {};
           }
-          return sendJson(res, 200, { stats });
+          for (const bot of manager.list()) {
+            const row = findBotStatsRow(bot.name);
+            const data = row ? (row.data || row) : {};
+            stats[bot.name] = {
+              ...data,
+              updatedAt: data.updatedAt || row?.updatedAt || row?.updated_at || null,
+              loginState: data.loginState || enrichBot(bot).loginState || null,
+              processStatus: bot.processStatus || bot.status
+            };
+          }
+          return sendJson(res, 200, { stats, bots: manager.list().map(enrichBot) });
         } catch (error) {
           return sendJson(res, 500, { error: error.message });
         }
@@ -320,10 +330,19 @@ function startPanel({ manager, config }) {
       // ===== Quản lý lệnh =====
       if (pathname === "/api/commands" && req.method === "GET") {
         try {
-          // global.client chỉ tồn tại trong process BOT CON — panel (process cha)
-          // đọc trực tiếp config từ file lệnh để luôn hiển thị đúng.
+          // Dùng chính bộ phân loại được /menu sử dụng để Panel và Zalo
+          // luôn có cùng thư mục, không phụ thuộc category nội bộ cũ.
           const commands = loadCommandsFromFiles(config);
-          return sendJson(res, 200, { commands, total: commands.length });
+          const menu = require("../core/runtime/folderMenu");
+          const folders = menu.MENU_GROUPS.map(folder => {
+            const items = commands.filter(command =>
+              menu.menuGroupForCommand({ config: command }) === folder.slug
+            );
+            return { ...folder, count: items.length, commands: items };
+          }).filter(folder => folder.count > 0);
+          return sendJson(res, 200, {
+            commands, folders, total: commands.length, folderCount: folders.length
+          });
         } catch (error) {
           return sendJson(res, 500, { error: error.message });
         }
@@ -343,7 +362,7 @@ function startPanel({ manager, config }) {
 
       // ===== CHAT (Zalo thu nhỏ): proxy sang cầu nối localhost của bot =====
       if (pathname.startsWith("/api/chat")) {
-        const match = pathname.match(/^\/api\/chat\/([a-zA-Z0-9_-]+)\/(threads|messages|health|thread-info|user-info|action|admin-groups|toggle-admin-group)$/);
+        const match = pathname.match(/^\/api\/chat\/([a-zA-Z0-9_-]+)\/(threads|messages|health|thread-info|user-info|action|admin-groups|toggle-admin-group|group-commands)$/);
         const sendMatch = pathname.match(/^\/api\/chat\/([a-zA-Z0-9_-]+)\/send$/);
         const botName = match?.[1] || sendMatch?.[1];
         if (!botName) return sendJson(res, 400, { error: "Thiếu tên bot" });
@@ -354,7 +373,7 @@ function startPanel({ manager, config }) {
           return sendJson(res, 409, { error: `Bot "${botName}" chưa đăng nhập Zalo — đang chờ quét QR`, loginState: bot.loginState, requireLogin: true });
         }
 
-        const route = match?.[2] || "send"; // threads | messages | health | thread-info | action | send
+        const route = match?.[2] || "send"; // bot bridge route
         let target = `http://127.0.0.1:${bot.bridgePort}/${route}`;
         // GET (messages, thread-info) giữ nguyên query string
         if (req.method === "GET" && url.search) target += url.search;
