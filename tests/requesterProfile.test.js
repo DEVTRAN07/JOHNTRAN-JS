@@ -170,6 +170,43 @@ test("visual menu profile lookup returns a fast UID_0 profile and waits for avat
   }
 });
 
+test("getUserAvatar shares UID-safe profile lookup and cache", async () => {
+  const { getUserAvatar } = require("../core/runtime/requesterProfile");
+  const avatarCache = require("../core/canvas/avatarCache");
+  const originalWarmAvatar = avatarCache.warmAvatar;
+  const uid = "shared-avatar-cache-user";
+  const avatar = "https://example.test/shared-user-avatar.jpg";
+  let calls = 0;
+  avatarCache.warmAvatar = async () => null;
+  clearRequesterProfileCache();
+
+  try {
+    const api = {
+      async getUserInfo(requestedUid, size) {
+        calls++;
+        assert.equal(requestedUid, uid);
+        assert.equal(size, 240);
+        return {
+          changed_profiles: {
+            [requestedUid + "_0"]: {
+              userId: requestedUid,
+              displayName: "Cached User",
+              avatar
+            }
+          }
+        };
+      }
+    };
+
+    assert.equal(await getUserAvatar(api, uid, { waitMs: 200, skipAvatarWarm: true }), avatar);
+    assert.equal(await getUserAvatar(api, uid, { waitMs: 200, skipAvatarWarm: true }), avatar);
+    assert.equal(calls, 1, "second avatar lookup should use the shared UID cache");
+  } finally {
+    avatarCache.warmAvatar = originalWarmAvatar;
+    clearRequesterProfileCache();
+  }
+});
+
 test("requester avatar parser handles nested Zalo avatar records and uid arrays", () => {
   const { pickAvatarByUid, pickProfileByUid } = require("../core/runtime/requesterProfile");
   const uid = "nested-avatar-user";
