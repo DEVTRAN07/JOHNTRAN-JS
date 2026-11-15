@@ -5,6 +5,7 @@ const logger = require("../utils/logger");
 const { updateMessageCache, getMessageCache } = require("../utils/index");
 const { ThreadType } = require("zalo-client");
 const { createCipherReadyGate, requestOldMessagesThen } = require("./topchat/historyBootstrap");
+const { createReconnectFailureTracker } = require("./topchat/reconnectState");
 
 const Threads = require("./controller/controllerThreads");
 const panelBridge = require("./panelBridge");
@@ -410,7 +411,7 @@ function startListening(api) {
   // là bot im lặng vĩnh viễn nếu không reconnect =====
   let reconnectTimer = null;
   let reconnectAttempt = 0;
-  let connectFailStreak = 0;
+  const reconnectFailures = createReconnectFailureTracker(CONNECT_FAIL_LIMIT);
   let lastFrameAt = 0;
   let connectingSince = 0;
 
@@ -473,8 +474,7 @@ function startListening(api) {
 
   // Backoff chỉ reset khi kết nối THẬT (start() thành công chỉ là tạo ws object)
   listener.on("connected", () => {
-    reconnectAttempt = 0;
-    connectFailStreak = 0;
+    // WebSocket OPEN is not yet a usable Zalo session; wait for cipher_key.
     lastFrameAt = Date.now();
     connectingSince = 0;
     historyBootstrapGate.connected();
@@ -492,9 +492,9 @@ function startListening(api) {
     if (topchatHistorySync?.active) {
       void finishTopchatHistorySync(false, "connection-closed");
     }
-    connectFailStreak += 1;
-    if (connectFailStreak >= CONNECT_FAIL_LIMIT) {
-      logger.log(`Listener rớt ${connectFailStreak} lần liên tiếp không kết nối lại được — khởi động lại tiến trình để đăng nhập lại`, "error");
+    const failure = reconnectFailures.closed();
+    if (failure.exhausted) {
+      logger.log(`Listener rớt ${failure.count} lần liên tiếp không hoàn tất handshake — khởi động lại tiến trình để đăng nhập lại`, "error");
       process.exit(2); // supervisor tự dựng lại (index.js restart code 2 / botManager autoRestart)
     }
     scheduleReconnect(`code ${code}`);
@@ -511,6 +511,11 @@ function startListening(api) {
   listener.on("message", markAlive);
   listener.on("cipher_key", () => {
     markAlive();
+    // Only a completed Zalo handshake resets the consecutive-failure counter
+    // and exponential backoff. A socket that opens then immediately closes
+    // must still count as a failed connection attempt.
+    reconnectAttempt = 0;
+    reconnectFailures.markStable();
     historyBootstrapGate.cipherReady();
   });
 
