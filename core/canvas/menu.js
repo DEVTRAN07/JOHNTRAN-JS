@@ -1,8 +1,5 @@
 "use strict";
 
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
 const { loadImage } = require("canvas");
 const avatarCache = require("./avatarCache");
 const theme = require("./theme");
@@ -315,9 +312,7 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   drawBotIcon(ctx, W - margin - S(94), iconY, S(17), palette.accent);
   drawText(ctx, "v" + (botVersion || "1.0.2"), W - margin - S(10), footerY + S(36), 16, palette.accent, true, "right");
 
-  const filePath = path.join(os.tmpdir(), "johntran_menu_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) + ".png");
-  fs.writeFileSync(filePath, result.canvas.toBuffer("image/png"));
-  return filePath;
+  return theme.save(result.canvas, "menu");
 }
 
 const FOLDER_ICON_ALIASES = Object.freeze({ utility: "public", group: "manager", bot: "mybot", special: "hidden" });
@@ -397,9 +392,7 @@ async function renderFolderCard({
   drawBotIcon(ctx, W - S(140), footerY, S(16), palette.accent);
   drawText(ctx, "v" + (botVersion || "1.0.2"), W - S(24), footerY + S(6), 16, palette.accent, true, "right");
 
-  const filePath = path.join(os.tmpdir(), "johntran_folder_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
-  fs.writeFileSync(filePath, result.canvas.toBuffer("image/png"));
-  return filePath;
+  return theme.save(result.canvas, "menu_folder");
 }
 
 module.exports = { renderMenuGrid, renderFolderCard, _test: { presenceBadgePosition, resolveFolderIconSlug } };
