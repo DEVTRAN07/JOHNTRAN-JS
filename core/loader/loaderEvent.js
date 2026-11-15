@@ -24,6 +24,13 @@ async function loadEvents(dir = path.join(__dirname, "../..", "plugins", "events
 
     if (shouldRestart) continue;
 
+    // Event hot-reload phải đọc source mới thay vì giữ module trong require.cache.
+    try {
+      delete require.cache[require.resolve(filePath)];
+    } catch {
+      // File mới hoặc chưa từng được require.
+    }
+
     let event;
     try {
       event = require(filePath);
@@ -33,7 +40,7 @@ async function loadEvents(dir = path.join(__dirname, "../..", "plugins", "events
     }
 
     if (
-      !event.config ||
+      !event?.config ||
       !Array.isArray(event.config.event_type) ||
       typeof event.run !== "function"
     ) {
@@ -42,15 +49,19 @@ async function loadEvents(dir = path.join(__dirname, "../..", "plugins", "events
     }
 
     const eventName = event.config.name?.toLowerCase() || file.replace(/\.js$/, "");
-    global.client.events.set(eventName, event);
 
+    // Chỉ thay thế event đang chạy sau khi onLoad thành công. Nếu khởi tạo
+    // thất bại, bản cũ tiếp tục hoạt động thay vì để lại module lỗi trong Map.
     if (typeof event.onLoad === "function") {
       try {
         await event.onLoad({ api: global.api, Users, Threads });
       } catch (e) {
         logger.log(`Lỗi trong onLoad của event ${eventName}: ${e.message}`, "error");
+        continue;
       }
     }
+
+    global.client.events.set(eventName, event);
   }
 
   invalidateEventRegistry(global.client.events);
