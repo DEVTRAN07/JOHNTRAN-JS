@@ -1,6 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { isPanelRequestAuthorized } = require("../utils/tokenSecurity");
 
 const START_TIME = Date.now();
 
@@ -51,7 +52,10 @@ function metricsPayload() {
 function requestHandler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const sendJson = (status, payload) => {
-    res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+    res.writeHead(status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    });
     res.end(JSON.stringify(payload));
   };
 
@@ -64,8 +68,15 @@ function requestHandler(req, res) {
       return sendJson(200, { ...healthPayload(), status: global.api ? "ok" : "starting" });
     case "/ping":
       return sendJson(200, { pong: true });
-    case "/metrics":
+    case "/metrics": {
+      // Health stays public for uptime monitors; detailed operational metrics
+      // require the same Panel Bearer Token used by the management API.
+      const token = String(global.config?.panel?.token || process.env.JT_PANEL__TOKEN || "").trim();
+      if (!isPanelRequestAuthorized(req, token, "0.0.0.0")) {
+        return sendJson(401, { error: "Unauthorized: cần Authorization: Bearer <panel-token>" });
+      }
       return sendJson(200, metricsPayload());
+    }
     default:
       return sendJson(404, { error: "not found", endpoints: ["/health", "/ping", "/metrics"] });
   }
