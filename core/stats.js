@@ -50,7 +50,7 @@ async function getProfile(api) {
       const profile = info?.profile || {};
       const data = {
         uid: String(uid || profile.userId || ""),
-        displayName: profile.displayName || profile.zaloName || "",
+        displayName: profile.displayName || profile.display_name || profile.dName || profile.zaloName || profile.name || "",
         avatar: pickAvatar(profile),
         phoneNumber: profile.phoneNumber || "",
         status: profile.status || "",

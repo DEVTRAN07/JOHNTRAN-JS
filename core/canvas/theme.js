@@ -1,5 +1,5 @@
-// Shared JOHNTRAN canvas design system.
-// Every command canvas reads the same palette as /menu and /theme.
+// Shared JOHNTRAN Canvas design system for all non-menu cards.
+// /theme is isolated to /menu and its folder cards.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -202,19 +202,17 @@ function truncate(ctx, value, maxWidth) {
 async function paintBackground(ctx, width, height) {
   initFonts();
   ensureTheme();
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, PALETTE.bg0);
-  gradient.addColorStop(0.5, PALETTE.bg1);
-  gradient.addColorStop(1, PALETTE.bg0);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
 
-  // No wallpaper/photo is loaded. Keep the clean gradient, shade and color
-  // accents so all non-menu cards remain consistent and lightweight.
-  const shade = ctx.createLinearGradient(0, 0, 0, height);
-  shade.addColorStop(0, "rgba(8, 8, 10, .56)");
-  shade.addColorStop(1, THEME_STYLE.shade);
-  ctx.fillStyle = shade;
+  // One stable, wallpaper-free brand surface for every non-menu Canvas.
+  // Its default gold/black values deliberately match /menu's default look,
+  // but it does not read the saved /theme selection.
+  const colors = [PALETTE.bg0, PALETTE.bg1, PALETTE.bg2, "#0b0907"];
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, colors[0]);
+  gradient.addColorStop(0.42, colors[1]);
+  gradient.addColorStop(0.7, colors[2]);
+  gradient.addColorStop(1, colors[3]);
+  ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
   const glow = (cx, cy, radius, color) => {
@@ -225,13 +223,15 @@ async function paintBackground(ctx, width, height) {
     ctx.fillRect(0, 0, width, height);
   };
   const corners = THEME_STYLE.glowCorners || [];
-  glow(S(140), S(120), S(340), corners[0] || "rgba(212,175,55,.08)");
-  glow(width - S(140), S(120), S(340), corners[1] || "rgba(212,175,55,.04)");
+  glow(width * 0.16, height * 0.05, width * 0.5, corners[0] || "rgba(212,175,55,.10)");
+  glow(width * 0.88, height * 0.16, width * 0.42, corners[1] || "rgba(212,175,55,.04)");
+  glow(width * 0.28, height * 0.98, width * 0.52, corners[1] || "rgba(212,175,55,.04)");
+  glow(width * 0.92, height * 0.9, width * 0.5, corners[0] || "rgba(212,175,55,.10)");
 
   if (THEME_STYLE.frame) {
     ctx.save();
     ctx.strokeStyle = PALETTE.accent;
-    ctx.globalAlpha = 0.24;
+    ctx.globalAlpha = 0.20;
     ctx.lineWidth = Math.max(1, S(1));
     ctx.strokeRect(S(10), S(10), width - S(20), height - S(20));
     ctx.restore();
@@ -319,7 +319,9 @@ function save(canvas, prefix) {
     bot_groups: "Bot Groups",
     card: "JOHNTRAN"
   };
-  fs.writeFileSync(filePath, withMacWindow(canvas, titles[prefix] || "JOHN TRAN").toBuffer("image/png"));
+  const menuFrame = prefix === "menu" || prefix === "menu_folder";
+  const framePalette = menuFrame ? require("./menuPalette").getPalette() : undefined;
+  fs.writeFileSync(filePath, withMacWindow(canvas, titles[prefix] || "JOHN TRAN", framePalette).toBuffer("image/png"));
   return filePath;
 }
 

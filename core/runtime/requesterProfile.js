@@ -27,6 +27,9 @@ function pickProfileByUid(response, uid) {
     visited.add(current);
     inspected++;
 
+    const directId = String(current.userId ?? current.user_id ?? current.uid ?? current.id ?? "");
+    if (directId === String(uid) || directId.startsWith(String(uid) + "_")) return current;
+
     const profile = pickUser(current, String(uid));
     if (profile) return profile;
 
@@ -54,15 +57,25 @@ function warmAvatar(url) {
   return Promise.resolve(avatarCache.warmAvatar(url)).catch(() => null);
 }
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function settleWithin(value, timeoutMs) {
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result ?? null);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    Promise.resolve(value).then(finish, () => finish(null));
+  });
 }
 
 async function warmAvatarWithin(url, waitMs) {
   if (!url) return;
   const task = warmAvatar(url);
   if (waitMs > 0) {
-    await Promise.race([task, delay(waitMs)]);
+    await settleWithin(task, waitMs);
   }
 }
 
@@ -83,12 +96,11 @@ function fetchProfileInBackground(api, uid, fallback, options = {}) {
       const avatarRequest = typeof api.getAvatarUrlProfile === "function"
         ? Promise.resolve().then(() => api.getAvatarUrlProfile(uid, AVATAR_SIZE))
         : Promise.resolve(null);
-      const [profileResult, avatarResult] = await Promise.allSettled([
-        profileRequest,
-        avatarRequest
+      const fetchTimeoutMs = Math.min(3000, Math.max(250, Number(options.fetchTimeoutMs) || 1200));
+      const [response, avatarResponse] = await Promise.all([
+        settleWithin(profileRequest, fetchTimeoutMs),
+        settleWithin(avatarRequest, fetchTimeoutMs)
       ]);
-      const response = profileResult.status === "fulfilled" ? profileResult.value : null;
-      const avatarResponse = avatarResult.status === "fulfilled" ? avatarResult.value : null;
       const remoteProfile = pickProfileByUid(response, uid);
       const name = String(pickName(remoteProfile, fallback.requesterName)).slice(0, 32);
       const avatarUrl = pickAvatar(remoteProfile) ||
@@ -160,7 +172,7 @@ async function getRequesterProfile(api, event, options = {}) {
   // short bounded wait so the first card can include the requester's avatar.
   const request = fetchProfileInBackground(api, uid, fallback, { skipAvatarWarm });
   if (waitMs > 0 && request) {
-    const profile = await Promise.race([request, delay(waitMs).then(() => null)]);
+    const profile = await settleWithin(request, waitMs);
     if (profile) {
       if (!skipAvatarWarm) {
         if (avatarWaitMs > 0) await warmAvatarWithin(profile.requesterAvatarUrl, avatarWaitMs);
@@ -172,6 +184,15 @@ async function getRequesterProfile(api, event, options = {}) {
   return fallback;
 }
 
+async function getUserAvatar(api, uid, options = {}) {
+  const userId = String(uid || "").trim();
+  if (!userId) return "";
+  const profile = await getRequesterProfile(api, {
+    data: { uidFrom: userId }
+  }, options);
+  return String(profile?.requesterAvatarUrl || "");
+}
+
 function clearRequesterProfileCache() {
   profiles.clear();
   pending.clear();
@@ -179,6 +200,7 @@ function clearRequesterProfileCache() {
 
 module.exports = {
   getRequesterProfile,
+  getUserAvatar,
   clearRequesterProfileCache,
   PROFILE_TTL_MS,
   PROFILE_RETRY_TTL_MS,

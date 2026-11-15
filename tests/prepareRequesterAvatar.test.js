@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const avatarCache = require("../core/canvas/avatarCache");
-const { prepareRequesterAvatar, prepareCanvasAvatars, collectAvatarUrls, AVATAR_PRELOAD_TIMEOUT_MS, MAX_CARD_AVATARS } = require("../core/canvas/prepareRequesterAvatar");
+const { prepareRequesterAvatar, prepareCanvasAvatars, collectAvatarUrls, AVATAR_PRELOAD_TIMEOUT_MS, MAX_CARD_AVATARS, MAX_GROUP_AVATARS } = require("../core/canvas/prepareRequesterAvatar");
 
 test("menu worker preloads the caller avatar in its own cache", async () => {
   const original = avatarCache.warmAvatar;
@@ -52,9 +52,16 @@ test("Canvas worker preloads topchat, status and group avatars before render", a
         { avatar: "https://cdn.example/b.jpg" },
         { avatar: "https://cdn.example/c.jpg" },
         { avatar: "https://cdn.example/d.jpg" },
-        { avatar: "https://cdn.example/e.jpg" }
+        { avatar: "https://cdn.example/e.jpg" },
+        { avatar: "https://cdn.example/f.jpg" },
+        { avatar: "https://cdn.example/g.jpg" },
+        { avatar: "https://cdn.example/h.jpg" },
+        { avatar: "https://cdn.example/i.jpg" },
+        { avatar: "https://cdn.example/j.jpg" },
+        { avatar: "https://cdn.example/k.jpg" }
       ]
     });
+    assert.equal(MAX_CARD_AVATARS, 10);
     assert.equal(topchat.requested, MAX_CARD_AVATARS);
     assert.equal(topchat.loaded, MAX_CARD_AVATARS);
     assert.equal(calls.length, MAX_CARD_AVATARS);
@@ -66,9 +73,11 @@ test("Canvas worker preloads topchat, status and group avatars before render", a
 
     calls.length = 0;
     const groups = await prepareCanvasAvatars("bot-groups", {
-      groups: [{ avatar: "https://cdn.example/group.jpg" }]
+      botAvatar: "https://cdn.example/bot.jpg",
+      groups: Array.from({ length: 16 }, (_, index) => ({ avatar: "https://cdn.example/group-" + index + ".jpg" }))
     });
-    assert.deepEqual(groups, { requested: 1, loaded: 1 });
+    assert.equal(MAX_GROUP_AVATARS, 12);
+    assert.deepEqual(groups, { requested: MAX_GROUP_AVATARS + 1, loaded: MAX_GROUP_AVATARS + 1 });
   } finally {
     avatarCache.warmAvatar = original;
   }

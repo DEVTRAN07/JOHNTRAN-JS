@@ -29,12 +29,51 @@ test("menu color themes stay isolated from non-menu Canvas cards", t => {
   assert.equal(theme.PALETTE.bg0, "#08080a");
   const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
   const legacyProfile = fs.readFileSync(require.resolve("../core/canvas/profile"), "utf8");
-  assert.ok(!source.includes("menuPalette"));
+  const macWindow = fs.readFileSync(require.resolve("../core/canvas/macWindow"), "utf8");
+  assert.doesNotMatch(source, /^const menuPalette\s*=/m);
   assert.ok(!source.includes("BG_IMAGE"));
   assert.ok(!source.includes("theme.jpg"));
   assert.ok(!source.includes("loadImage"));
+  assert.ok(!macWindow.includes("menuPalette"));
+  assert.ok(!macWindow.includes("theme.jpg"));
+  assert.match(source, /const menuFrame = prefix === "menu" \|\| prefix === "menu_folder"/);
   assert.ok(!legacyProfile.includes("BG_IMAGE"));
   assert.ok(!legacyProfile.includes("theme.jpg"));
+  const topchat = fs.readFileSync(require.resolve("../core/canvas/topchat"), "utf8");
+  assert.ok(!topchat.includes("theme.jpg"));
+  assert.ok(!topchat.includes("BG_IMAGE"));
+});
+
+test("/theme changes menu frames but leaves other Canvas frames unchanged", async t => {
+  const originalGetPalette = menuPalette.getPalette;
+  const fakePalette = {
+    background: ["#123456", "#123456", "#123456", "#123456"],
+    panel: ["#123456", "#123456"],
+    footer: ["#123456", "#123456"],
+    accent: "#123456",
+    border: "#123456"
+  };
+  menuPalette.getPalette = () => fakePalette;
+  const canvas = createCanvas(theme.WIDTH, 80);
+  const statusPath = theme.save(canvas, "status");
+  const menuPath = theme.save(canvas, "menu");
+
+  async function readTopPixel(filePath) {
+    const image = await loadImage(fs.readFileSync(filePath));
+    const surface = createCanvas(image.width, image.height);
+    const ctx = surface.getContext("2d");
+    ctx.drawImage(image, 0, 0);
+    return Array.from(ctx.getImageData(Math.floor(image.width / 2), 5, 1, 1).data).slice(0, 3);
+  }
+
+  try {
+    assert.deepEqual(await readTopPixel(menuPath), [18, 52, 86]);
+    assert.notDeepEqual(await readTopPixel(statusPath), [18, 52, 86]);
+  } finally {
+    menuPalette.getPalette = originalGetPalette;
+    try { fs.unlinkSync(statusPath); } catch {}
+    try { fs.unlinkSync(menuPath); } catch {}
+  }
 });
 
 test("profile and generic cards render with the shared Mac window frame", async () => {

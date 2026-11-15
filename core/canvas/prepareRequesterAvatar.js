@@ -3,7 +3,8 @@
 const avatarCache = require("./avatarCache");
 
 const AVATAR_PRELOAD_TIMEOUT_MS = 550;
-const MAX_CARD_AVATARS = 4;
+const MAX_CARD_AVATARS = 10;
+const MAX_GROUP_AVATARS = 12;
 
 async function prepareRequesterAvatar(data) {
   const url = String(data?.requesterAvatarUrl || "").trim();
@@ -35,7 +36,7 @@ function collectAvatarUrls(type, data = {}) {
     return [
       data.botAvatar,
       ...(Array.isArray(data.groups) ? data.groups : [])
-        .slice(0, MAX_CARD_AVATARS)
+        .slice(0, MAX_GROUP_AVATARS)
         .map(item => item?.avatar)
     ];
   }
@@ -62,5 +63,6 @@ module.exports = {
   prepareCanvasAvatars,
   collectAvatarUrls,
   AVATAR_PRELOAD_TIMEOUT_MS,
-  MAX_CARD_AVATARS
+  MAX_CARD_AVATARS,
+  MAX_GROUP_AVATARS
 };
