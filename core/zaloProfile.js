@@ -57,7 +57,7 @@ async function fetchProfile(api, uid) {
   // Ask the dedicated profile-avatar endpoint as a fallback; keep name and
   // other profile fields from getUserInfo unchanged.
   if (user && typeof api.getAvatarUrlProfile === "function") {
-    const { pickAvatar, pickAvatarByUid } = require("./runtime/requesterProfile");
+    const { pickAvatar, pickAvatarByUid } = require("./runtime/avatarUrl");
     if (!pickAvatar(user)) {
       try {
         const avatarResponse = await api.getAvatarUrlProfile(String(uid), AVATAR_LARGE);
