@@ -58,8 +58,8 @@ test("/theme changes menu frames but leaves other Canvas frames unchanged", asyn
   const statusPath = theme.save(canvas, "status");
   const menuPath = theme.save(canvas, "menu");
 
-  function readTopPixel(filePath) {
-    const image = loadImage(fs.readFileSync(filePath));
+  async function readTopPixel(filePath) {
+    const image = await loadImage(fs.readFileSync(filePath));
     const surface = createCanvas(image.width, image.height);
     const ctx = surface.getContext("2d");
     ctx.drawImage(image, 0, 0);
@@ -67,8 +67,8 @@ test("/theme changes menu frames but leaves other Canvas frames unchanged", asyn
   }
 
   try {
-    assert.deepEqual(readTopPixel(menuPath), [18, 52, 86]);
-    assert.notDeepEqual(readTopPixel(statusPath), [18, 52, 86]);
+    assert.deepEqual(await readTopPixel(menuPath), [18, 52, 86]);
+    assert.notDeepEqual(await readTopPixel(statusPath), [18, 52, 86]);
   } finally {
     menuPalette.getPalette = originalGetPalette;
     try { fs.unlinkSync(statusPath); } catch {}
