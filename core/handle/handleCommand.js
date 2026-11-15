@@ -224,7 +224,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
     typeof prefix === "string" && prefix.length > 0 &&
     messageText.startsWith(prefix);
   const commandName = isCommandMessage
-    ? String(messageText.slice(prefix.length).trim().split(/\\s+/, 1)[0] || "unknown").toLowerCase()
+    ? String(messageText.slice(prefix.length).trim().split(/\s+/, 1)[0] || "unknown").toLowerCase()
     : "";
 
   try {
