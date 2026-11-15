@@ -31,3 +31,21 @@ test("message cache stores deletable group message identifiers and falls back to
     delete getMessageCache()[cliMsgId];
   }
 });
+
+
+test("message cache evicts oldest entries when its configured bound is exceeded", () => {
+  const { enforceMessageCacheLimit } = require("../utils/messageCache");
+  const cache = { oldest: { timestamp: 1 }, middle: { timestamp: 2 }, newest: { timestamp: 3 } };
+  const removed = enforceMessageCacheLimit(cache, 2);
+  assert.equal(removed, 1);
+  assert.equal(Object.hasOwn(cache, "oldest"), false);
+  assert.equal(Object.hasOwn(cache, "middle"), true);
+  assert.equal(Object.hasOwn(cache, "newest"), true);
+});
+
+test("message cache remains unchanged while under its configured bound", () => {
+  const { enforceMessageCacheLimit } = require("../utils/messageCache");
+  const cache = { a: {}, b: {} };
+  assert.equal(enforceMessageCacheLimit(cache, 2), 0);
+  assert.deepEqual(Object.keys(cache), ["a", "b"]);
+});
