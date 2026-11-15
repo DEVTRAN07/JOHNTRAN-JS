@@ -1,21 +1,100 @@
 "use strict";
 
+const fs = require("fs");
 const { ThreadType } = require("zalo-client");
+const stats = require("../../core/stats");
+const { renderCanvas } = require("../../core/canvas/workerRender");
+
+const GROUP_INFO_CONCURRENCY = 4;
 
 module.exports.config = {
   name: "bot",
   aliases: [],
-  version: "1.0.0",
+  version: "1.1.0",
   role: 2,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
-  description: "Bật hoặc tắt bot riêng cho nhóm hiện tại",
+  description: "Bật/tắt bot theo nhóm và xem danh sách nhóm đang bật",
   category: "Hệ thống",
   usage: "bot on|off|status",
   cooldowns: 1,
-  dependencies: {}
+  dependencies: { canvas: "" }
 };
 
-module.exports.run = async function ({ event, args, Threads, reply }) {
+async function collectEnabledGroups(api, Threads) {
+  if (typeof api?.getAllGroups !== "function") {
+    throw new Error("API Zalo không hỗ trợ lấy danh sách nhóm.");
+  }
+  if (typeof Threads?.getAll !== "function") {
+    throw new Error("Không đọc được dữ liệu thiết lập nhóm.");
+  }
+
+  const [groupResponse, storedThreads] = await Promise.all([
+    api.getAllGroups(),
+    Promise.resolve(Threads.getAll())
+  ]);
+  const allIds = Object.keys(groupResponse?.gridVerMap || {});
+  const settingsById = new Map(
+    (Array.isArray(storedThreads) ? storedThreads : []).map(row => [
+      String(row?.threadId || row?.id || ""),
+      row?.data || {}
+    ])
+  );
+
+  // No saved row means the group's default state is ON.
+  // Explicitly disabled groups are omitted from the result entirely.
+  const enabledIds = allIds.filter(gid => settingsById.get(String(gid))?.bot_enabled !== false);
+  const groups = [];
+
+  for (let offset = 0; offset < enabledIds.length; offset += GROUP_INFO_CONCURRENCY) {
+    const batch = enabledIds.slice(offset, offset + GROUP_INFO_CONCURRENCY);
+    const items = await Promise.all(batch.map(async gid => {
+      let info = stats.getCachedGroupInfo(gid);
+      if (!info) info = await stats.warmGroupInfo(api, gid);
+      const group = info?.gridInfoMap?.[gid] || {};
+      return {
+        gid: String(gid),
+        name: String(group.name || settingsById.get(String(gid))?.group_name || ("Nhóm " + String(gid).slice(-6))),
+        avatar: String(group.avt || group.fullAvt || ""),
+        totalMember: Number(group.totalMember) || 0
+      };
+    }));
+    groups.push(...items);
+  }
+
+  return {
+    groups,
+    totalGroups: allIds.length
+  };
+}
+
+async function sendStatusCard({ api, event, Threads }) {
+  let imagePath;
+  try {
+    const result = await collectEnabledGroups(api, Threads);
+    const profile = stats.getCachedProfile();
+    imagePath = await renderCanvas("bot-groups", {
+      botName: profile?.displayName || global.config?.name_bot || "JOHNTRAN",
+      groups: result.groups,
+      enabledCount: result.groups.length,
+      version: require("../../package.json").version
+    }, { timeout: 30000, poolSize: 2 });
+
+    return await api.sendMessage({
+      msg: "",
+      attachments: [imagePath],
+      ttlKind: "card"
+    }, event.threadId, event.type);
+  } finally {
+    if (imagePath) {
+      const timer = setTimeout(() => {
+        try { fs.rmSync(imagePath, { force: true }); } catch {}
+      }, 60000);
+      timer.unref?.();
+    }
+  }
+}
+
+module.exports.run = async function ({ api, event, args, Threads, reply }) {
   if (event?.type === ThreadType.User) {
     return reply.error("Lệnh này chỉ dùng trong nhóm.");
   }
@@ -28,18 +107,20 @@ module.exports.run = async function ({ event, args, Threads, reply }) {
     return reply.error(`Dùng: ${global.config.prefix}bot on|off|status`);
   }
 
+  if (action === "status") {
+    try {
+      return await sendStatusCard({ api, event, Threads });
+    } catch (error) {
+      console.error("[BOT_STATUS]", error?.stack || error);
+      return reply.error("Không thể tạo danh sách nhóm đang bật: " + (error?.message || "Lỗi"));
+    }
+  }
+
   const record = await Threads.getData(threadId);
   const data = record?.data || {};
   const currentlyEnabled = data.bot_enabled !== false;
-
-  if (action === "status") {
-    return reply.info(
-      `Bot trong nhóm hiện đang ${currentlyEnabled ? "BẬT ✅" : "TẮT ⏸️"}.`,
-      { title: "TRẠNG THÁI BOT NHÓM" }
-    );
-  }
-
   const enabled = action === "on";
+
   if (currentlyEnabled === enabled) {
     return reply.info(`Bot đã ${enabled ? "được bật" : "được tắt"} trong nhóm này.`);
   }
@@ -53,3 +134,5 @@ module.exports.run = async function ({ event, args, Threads, reply }) {
       : "Đã tắt bot trong nhóm này. Bot sẽ im lặng và bỏ qua lệnh, điều hướng, sự kiện tự động."
   );
 };
+
+module.exports._test = { collectEnabledGroups, GROUP_INFO_CONCURRENCY, sendStatusCard };
