@@ -191,7 +191,7 @@ const MENU_COMMAND_GROUPS = Object.freeze({
   anti: new Set(["anti", "autokick"]),
   manager: new Set(["adduser", "delmsg"]),
   admin: new Set(["adc", "admin", "reloadconfig", "restart", "spam", "spamsticker", "theme"]),
-  bot: new Set(["bot", "cmd", "command", "events", "jobs", "stats", "status"]),
+  bot: new Set(["bot", "cmd", "command", "events", "jobs", "stats", "status", "mybot"]),
   hidden: new Set(["girl", "hon", "noi", "vdgirl"])
 });
 
