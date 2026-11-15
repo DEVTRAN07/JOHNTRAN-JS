@@ -275,3 +275,30 @@ test("requester avatar parser unwraps nested avatar objects", () => {
     data: { user: { uid: "avatar-object-user", profilePicture: { href: avatar } } }
   }, "avatar-object-user"), avatar);
 });
+
+
+test("requester profile lookups cap concurrent remote requests during message bursts", async () => {
+  const { MAX_PENDING_PROFILES, getPendingProfileLookupCount } = require("../core/runtime/requesterProfile");
+  clearRequesterProfileCache();
+  let calls = 0;
+  const api = {
+    getUserInfo() {
+      calls++;
+      return Promise.reject(new Error("profile endpoint unavailable"));
+    }
+  };
+
+  try {
+    const lookups = Array.from({ length: MAX_PENDING_PROFILES + 40 }, (_, index) =>
+      getRequesterProfile(api, {
+        data: { uidFrom: "burst-profile-user-" + index, dName: "Member " + index }
+      })
+    );
+    await Promise.all(lookups);
+    assert.equal(getPendingProfileLookupCount(), MAX_PENDING_PROFILES);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls, MAX_PENDING_PROFILES);
+  } finally {
+    clearRequesterProfileCache();
+  }
+});

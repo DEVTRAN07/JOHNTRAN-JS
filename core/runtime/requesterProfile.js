@@ -7,6 +7,8 @@ const { pickAvatar, pickExplicitAvatar, pickAvatarByUid, uidMatches } = require(
 const PROFILE_TTL_MS = 5 * 60 * 1000;
 const PROFILE_RETRY_TTL_MS = 5 * 1000;
 const MAX_PROFILES = 1000;
+// Limit simultaneous Zalo profile/avatar requests during busy group bursts.
+const MAX_PENDING_PROFILES = 128;
 const AVATAR_SIZE = 240;
 const profiles = new Map();
 const pending = new Map();
@@ -88,6 +90,7 @@ function fetchProfileInBackground(api, uid, fallback, options = {}) {
     typeof api.getAvatarUrlProfile !== "function"
   )) return null;
   if (pending.has(uid)) return pending.get(uid);
+  if (pending.size >= MAX_PENDING_PROFILES) return null;
 
   const request = Promise.resolve()
     .then(async () => {
@@ -203,6 +206,10 @@ async function getUserAvatar(api, uid, options = {}) {
   return String(profile?.requesterAvatarUrl || "");
 }
 
+function getPendingProfileLookupCount() {
+  return pending.size;
+}
+
 function clearRequesterProfileCache() {
   profiles.clear();
   pending.clear();
@@ -216,6 +223,8 @@ module.exports = {
   PROFILE_RETRY_TTL_MS,
   AVATAR_SIZE,
   MAX_PROFILES,
+  MAX_PENDING_PROFILES,
+  getPendingProfileLookupCount,
   pickAvatar,
   pickAvatarByUid,
   pickProfileByUid
