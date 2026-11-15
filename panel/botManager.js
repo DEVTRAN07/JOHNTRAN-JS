@@ -261,6 +261,7 @@ class BotInstance {
   }
 
   toJSON() {
+    this.pruneRestartHistory();
     const processStatus = this.status;
     return {
       name: this.name,
