@@ -2,7 +2,7 @@
 
 const { pickUser } = require("../zaloProfile");
 const avatarCache = require("../canvas/avatarCache");
-const { pickAvatar, pickAvatarByUid } = require("./avatarUrl");
+const { pickAvatar, pickExplicitAvatar, pickAvatarByUid, uidMatches } = require("./avatarUrl");
 
 const PROFILE_TTL_MS = 5 * 60 * 1000;
 const PROFILE_RETRY_TTL_MS = 5 * 1000;
@@ -27,8 +27,11 @@ function pickProfileByUid(response, uid) {
     visited.add(current);
     inspected++;
 
-    const directId = String(current.userId ?? current.user_id ?? current.uid ?? current.id ?? "");
-    if (directId === String(uid) || directId.startsWith(String(uid) + "_")) return current;
+    const directId = current.userId ?? current.user_id ?? current.uid;
+    if (directId != null && String(directId)) {
+      if (uidMatches(directId, uid)) return current;
+      continue;
+    }
 
     const profile = pickUser(current, String(uid));
     if (profile) return profile;
@@ -146,7 +149,7 @@ async function getRequesterProfile(api, event, options = {}) {
   const uid = String(data.uidFrom || data.uid || event?.uidFrom || event?.senderID || event?.senderId || "");
   const fallback = {
     requesterName: String(data.dName || data.senderName || event?.senderName || "Người dùng").slice(0, 32),
-    requesterAvatarUrl: pickAvatar(data) || pickAvatar(event)
+    requesterAvatarUrl: pickExplicitAvatar(data) || pickExplicitAvatar(event)
   };
 
   if (!uid) return fallback;
@@ -154,12 +157,19 @@ async function getRequesterProfile(api, event, options = {}) {
   const cached = profiles.get(uid);
   if (cached) {
     touch(uid, cached);
+    let current = cached;
     if (cached.expiresAt <= Date.now()) {
-      void fetchProfileInBackground(api, uid, fallback, { skipAvatarWarm });
+      const refresh = fetchProfileInBackground(api, uid, fallback, { skipAvatarWarm });
+      // A stale entry should not prevent a bounded refresh from being used by
+      // visual commands such as /topchat. Fast commands still use their small
+      // wait budget; background refresh continues if that budget expires.
+      if (waitMs > 0 && refresh) {
+        current = await settleWithin(refresh, waitMs) || cached;
+      }
     }
     const result = {
-      requesterName: cached.requesterName || fallback.requesterName,
-      requesterAvatarUrl: cached.requesterAvatarUrl || fallback.requesterAvatarUrl
+      requesterName: current.requesterName || fallback.requesterName,
+      requesterAvatarUrl: current.requesterAvatarUrl || fallback.requesterAvatarUrl
     };
     if (!skipAvatarWarm) {
       if (avatarWaitMs > 0) await warmAvatarWithin(result.requesterAvatarUrl, avatarWaitMs);

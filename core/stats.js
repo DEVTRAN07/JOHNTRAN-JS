@@ -4,7 +4,7 @@
 // coalesce concurrent refreshes so slow Zalo APIs never stack up every tick.
 const cache = require("./cache");
 const logger = require("../utils/logger");
-const { pickAvatar } = require("./runtime/avatarUrl");
+const { pickAvatar, pickAvatarByUid } = require("./runtime/avatarUrl");
 
 const PROFILE_CACHE_TTL = 300000;
 const FRIENDS_CACHE_TTL = 300000;
@@ -16,6 +16,8 @@ let profileCache = null;
 let friendsCache = null;
 let groupsCache = null;
 let profileFlight = null;
+let profileAvatarFlight = null;
+let profileAvatarRetryAt = 0;
 let friendsFlight = null;
 let groupsFlight = null;
 let collectFlight = null;
@@ -29,6 +31,38 @@ function getCachedProfile() {
   return profileCache?.data || null;
 }
 
+function warmOwnProfileAvatar(api, uid) {
+  const userId = String(uid || "").trim();
+  if (!userId || !api || typeof api.getAvatarUrlProfile !== "function") return null;
+  if (profileAvatarFlight) return profileAvatarFlight;
+  if (profileAvatarRetryAt > Date.now()) return null;
+
+  profileAvatarRetryAt = Date.now() + 15000;
+  profileAvatarFlight = Promise.resolve()
+    .then(() => api.getAvatarUrlProfile(userId, 240))
+    .then(response => {
+      const avatar = pickAvatarByUid(response, userId);
+      if (!avatar) return "";
+      if (profileCache?.data?.uid === userId) {
+        profileCache = {
+          ...profileCache,
+          expiresAt: Date.now() + PROFILE_CACHE_TTL,
+          data: { ...profileCache.data, avatar }
+        };
+      }
+      profileAvatarRetryAt = 0;
+      return avatar;
+    })
+    .catch(error => {
+      logger.log("[stats] Không lấy được avatar tài khoản bot: " + (error?.message || error), "warn");
+      return "";
+    })
+    .finally(() => {
+      profileAvatarFlight = null;
+    });
+  return profileAvatarFlight;
+}
+
 function getCachedGroupInfo(gid) {
   return cache.caches.groupInfo.get(String(gid)) || null;
 }
@@ -38,7 +72,10 @@ function warmGroupInfo(api, gid) {
 }
 
 async function getProfile(api) {
-  if (fresh(profileCache)) return profileCache.data;
+  if (fresh(profileCache)) {
+    if (!profileCache.data.avatar) void warmOwnProfileAvatar(api, profileCache.data.uid);
+    return profileCache.data;
+  }
   if (profileFlight) return profileFlight;
 
   profileFlight = (async () => {
@@ -57,6 +94,7 @@ async function getProfile(api) {
         gender: profile.gender
       };
       profileCache = { expiresAt: Date.now() + PROFILE_CACHE_TTL, data };
+      if (!data.avatar) void warmOwnProfileAvatar(api, data.uid);
       return data;
     } catch (error) {
       logger.log(`[stats] Không lấy được hồ sơ: ${error.message}`, "warn");
@@ -187,6 +225,7 @@ async function collectStats(api) {
 
 function invalidate() {
   profileCache = null;
+  profileAvatarRetryAt = 0;
   friendsCache = null;
   groupsCache = null;
 }

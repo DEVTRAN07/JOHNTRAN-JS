@@ -44,6 +44,55 @@ test("fetchProfile falls back to Zalo's dedicated avatar endpoint when user info
   assert.deepEqual(avatarCalls, [["member-avatar-fallback", 240]]);
 });
 
+test("profile lookup rejects a lone profile for a different UID", async () => {
+  const { fetchProfile, pickUser } = require("../core/zaloProfile");
+  const targetUid = "target-user-001";
+  const otherUid = "target-user-0010";
+  const wrongAvatar = "https://cdn.example/wrong-person.jpg";
+  let avatarCalls = 0;
+  const raw = {
+    changed_profiles: {
+      [otherUid + "_0"]: {
+        userId: otherUid,
+        displayName: "Wrong Person",
+        avatar: wrongAvatar
+      }
+    }
+  };
+
+  assert.equal(pickUser(raw, targetUid), null);
+  const result = await fetchProfile({
+    getUserInfo: async () => raw,
+    getAvatarUrlProfile: async () => {
+      avatarCalls++;
+      return { [otherUid + "_0"]: { avatar: wrongAvatar } };
+    }
+  }, targetUid);
+
+  assert.equal(result.user, null);
+  assert.equal(avatarCalls, 0);
+});
+
+test("avatar URL lookup never falls back to another UID's avatar", () => {
+  const { pickAvatarByUid } = require("../core/runtime/avatarUrl");
+  const wanted = "wanted-member-123";
+  const wrong = "wanted-member-1234";
+  const wrongAvatar = "https://cdn.example/not-the-requested-user.jpg";
+
+  assert.equal(pickAvatarByUid({
+    data: { [wrong + "_0"]: { avatar: wrongAvatar } }
+  }, wanted), "");
+
+  assert.equal(pickAvatarByUid({
+    data: { [wanted + "_0"]: { avatar: "https://cdn.example/correct.jpg" } }
+  }, wanted), "https://cdn.example/correct.jpg");
+
+  // The dedicated single-user endpoint may return a direct avatar-only object.
+  assert.equal(pickAvatarByUid({
+    avatarUrl: "https://cdn.example/single-user-avatar.jpg"
+  }, wanted), "https://cdn.example/single-user-avatar.jpg");
+});
+
 test("fetchProfile does not call the dedicated avatar endpoint when profile already has an avatar", async () => {
   const { fetchProfile } = require("../core/zaloProfile");
   let avatarCalls = 0;
