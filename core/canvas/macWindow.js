@@ -17,7 +17,7 @@ function roundedRect(ctx, x, y, width, height, radius) {
 function withMacWindow(content, title = "JOHN TRAN") {
   const palette = menuPalette.getPalette();
   const scale = content.width / 750;
-  const toolbarHeight = Math.round(42 * scale);
+  const toolbarHeight = Math.round(44 * scale);
   const inset = Math.round(12 * scale);
   const contentWidth = content.width - inset * 2;
   const contentHeight = Math.round(content.height * contentWidth / content.width);
