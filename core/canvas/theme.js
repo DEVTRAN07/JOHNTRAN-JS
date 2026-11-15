@@ -1,99 +1,98 @@
-// ===== THEME DÙNG CHUNG CHO MỌI CANVAS (menu, thẻ lệnh, nhạc, panel...) =====
-// Mục tiêu: mọi ảnh bot gửi ra đều MỘT KIỂU — cùng nền, cùng font, cùng màu,
-// cùng cách bo góc/tạo bóng. Muốn đổi hình dáng chỉ sửa 1 file này.
+// Shared JOHNTRAN canvas design system.
+// Every command canvas reads the same palette as /menu and /theme.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createCanvas, registerFont, loadImage } = require("canvas");
 const { withMacWindow } = require("./macWindow");
+const menuPalette = require("./menuPalette");
 
-// Nền ảnh: assets/bg/theme.jpg (đổi file này là đổi nền toàn bộ ảnh của bot)
 const BG_IMAGE = path.join(__dirname, "..", "..", "assets", "bg", "theme.jpg");
-
-// ===== PRESET GIAO DIỆN =====
-// classic   : navy gradient + cyan/tím + kính mờ (kiểu phổ biến)
-// editorial : đen–nhũ vàng, viền hairline, góc gần vuông — KIỂU RIÊNG của
-//             bot, không trùng kiểu bot khác.
-// Đổi preset: canvas.theme trong config.yml.
-const PALETTE = {};   // resolveTheme() fill lúc module load
-const THEME_STYLE = {}; // kiểu vẽ (viền/bóng/góc...) theo preset
+const PALETTE = {};
+const THEME_STYLE = {};
 
 const BASE_PALETTE = {
-  bg0: "#080d18", bg1: "#10192a", bg2: "#17243a",
-  ink: "#f5f8ff", ink2: "#b7c5dd", mute: "#788ba8",
-  accent: "#65d8ff", accent2: "#9b8cff",
-  green: "#52dfb0", red: "#ff7189", gold: "#f6c76b"
+  bg0: "#08080a", bg1: "#17140d", bg2: "#302516",
+  ink: "#f6f2e7", ink2: "#bcb6a6", mute: "#7d7768",
+  accent: "#d4af37", accent2: "#ead58a",
+  green: "#8fbf9f", red: "#c4594e", gold: "#d4af37"
 };
 
 const BASE_STYLE = {
-  panelBg: "rgba(17, 27, 45, 0.88)",
-  panelBorderAlpha: 0.48,
-  panelLineWidth: 1.2,
-  panelRadius: 18,
-  btnRadius: 12,
-  frame: false,
-  glowCorners: ["rgba(56, 189, 248, .13)", "rgba(139, 117, 255, .12)"],
-  bgImageAlpha: 0.2,
-  shade: "rgba(7, 11, 20, .72)",
-  foil: false
+  panelBg: "rgba(22, 21, 18, 0.88)",
+  panelBorderAlpha: 0.42,
+  panelLineWidth: 1,
+  panelRadius: 14,
+  btnRadius: 10,
+  frame: true,
+  glowCorners: ["rgba(212, 175, 55, .10)", "rgba(212, 175, 55, .04)"],
+  bgImageAlpha: 0.12,
+  shade: "rgba(8, 8, 10, .78)",
+  foil: true
 };
 
 const PRESETS = {
-  classic: {},
-
-  editorial: {
-    PALETTE: {
-      bg0: "#08080a", bg1: "#101012", bg2: "#17171a",
-      ink: "#f6f2e7",      // trắng ấm
-      ink2: "#bcb6a6",
-      mute: "#7d7768",
-      accent: "#d4af37",   // nhũ vàng
-      accent2: "#c9cdd3",  // bạc (VIP cấp 2)
-      green: "#8fbf9f",
-      red: "#c4594e",      // đỏ son
-      gold: "#d4af37"
-    },
-    style: {
-      panelBg: "rgba(22, 21, 18, 0.86)",
-      panelBorderAlpha: 0.42,   // hairline vàng mờ
-      panelLineWidth: 1,
-      panelRadius: 0,           // góc VUÔNG — editorial sạch
-      btnRadius: 0,
-      frame: true,              // khung hairline vàng quanh cả ảnh
-      glowCorners: ["rgba(212, 175, 55, .10)", "rgba(212, 175, 55, .04)"],
-      bgImageAlpha: 0.12,
-      shade: "rgba(8, 8, 10, .78)",
-      foil: true                // vệt nhũ vàng dưới tiêu đề
-    }
-  }
+  classic: { style: { frame: false, panelRadius: 16, btnRadius: 12, foil: false } },
+  editorial: { style: {} }
 };
 
-function resolveTheme() {
-  const name = String(global.config?.canvas?.theme || "").trim();
-  const preset = PRESETS[name] || {};
-  Object.assign(PALETTE, BASE_PALETTE, preset.PALETTE || {});
-  Object.assign(THEME_STYLE, BASE_STYLE, preset.style || {});
-  THEME_STYLE.panelBorder = PALETTE.accent;
+function mixHex(hex, target, amount) {
+  const source = String(hex || "#d4af37").replace("#", "");
+  const destination = String(target || "#ffffff").replace("#", "");
+  const a = [0, 2, 4].map(index => parseInt(source.slice(index, index + 2), 16));
+  const b = [0, 2, 4].map(index => parseInt(destination.slice(index, index + 2), 16));
+  return "#" + a.map((value, index) =>
+    Math.round(value * (1 - amount) + b[index] * amount).toString(16).padStart(2, "0")
+  ).join("");
 }
 
-// Bot set global.config SAU khi require module nên phải resolve lại mỗi lần
-// render (chỉ đổi assignment khi preset đổi — rẻ).
-let _resolvedName = "__init__";
+function resolveTheme() {
+  const name = String(global.config?.canvas?.theme || "editorial").trim().toLowerCase();
+  const preset = PRESETS[name] || PRESETS.editorial;
+  const selected = menuPalette.getPalette();
+  const backgrounds = selected.background || [];
+  const palette = {
+    bg0: backgrounds[0] || BASE_PALETTE.bg0,
+    bg1: backgrounds[1] || BASE_PALETTE.bg1,
+    bg2: backgrounds[2] || BASE_PALETTE.bg2,
+    ink: BASE_PALETTE.ink,
+    ink2: BASE_PALETTE.ink2,
+    mute: BASE_PALETTE.mute,
+    accent: selected.accent || BASE_PALETTE.accent,
+    accent2: mixHex(selected.accent || BASE_PALETTE.accent, "#ffffff", 0.34),
+    green: BASE_PALETTE.green,
+    red: BASE_PALETTE.red,
+    gold: selected.accent || BASE_PALETTE.gold
+  };
+
+  Object.assign(PALETTE, BASE_PALETTE, palette);
+  Object.assign(THEME_STYLE, BASE_STYLE, preset.style || {});
+  THEME_STYLE.panelBorder = PALETTE.accent;
+  THEME_STYLE.glowCorners = selected.glow || BASE_STYLE.glowCorners;
+}
+
+let _resolvedSignature = "";
+function themeSignature() {
+  const selected = menuPalette.getThemeInfo();
+  return [
+    String(global.config?.canvas?.theme || "editorial"),
+    selected.name || "gold",
+    selected.customHex || ""
+  ].join("|");
+}
+
 function ensureTheme() {
-  const name = String(global.config?.canvas?.theme || "").trim();
-  if (name !== _resolvedName) {
-    _resolvedName = name;
+  const signature = themeSignature();
+  if (signature !== _resolvedSignature) {
+    _resolvedSignature = signature;
     resolveTheme();
   }
 }
+
 resolveTheme();
+_resolvedSignature = themeSignature();
 
-
-// ===== Glyph an toàn =====
-// node-canvas vẽ chữ bằng font JT (Arial/DejaVu) — KHÔNG có glyph emoji,
-// mọi emoji sẽ thành ô vuông/¶. Map emoji → ký hiệu có trong font.
 const GLYPH_FALLBACK = {
-  // Chữ small-caps Unicode: font canvas (Arial/DejaVu) THIẾU glyph → rơi chữ
   "ᴶᴼᴴᴺ ᵀᴿᴬᴺ": "JOHN TRAN",
   "ᴶᴼᴴᴺ": "JOHN", "ᵀᴿᴬᴺ": "TRAN",
   "⌨️": "»", "⌨": "»", "🔗": "»", "📄": "»", "📡": "#", "📺": "▶",
@@ -103,95 +102,75 @@ const GLYPH_FALLBACK = {
   "👤": "o", "👥": "oo", "🙂": "o",
   "🔥": "*", "⭐": "★", "🌟": "★", "🏆": "★", "👑": "♛",
   "🔎": "?", "🔍": "?", "❓": "?", "❔": "?",
-  "💡": "i", "ℹ️": "i",
-  "⏳": "...", "⏰": "◷", "⏱": "◷",
+  "💡": "i", "ℹ️": "i", "⏳": "...", "⏰": "◷", "⏱": "◷",
   "🎯": ">", "👉": ">", "▶️": "▶", "◀️": "◀",
-  "📌": "•", "📍": "•",
-  "💰": "$", "💵": "$",
-  "🎲": "?", "🃏": "?",
-  "💬": "◌", "🗨️": "◌",
-  "🖼️": "▣", "🖼": "▣",
-  "🌐": "@", "📎": "♦",
-  "🤖": "✦", "🧠": "✦",
-  "✅": "✓", "✔️": "✓",
-  "⚡": "⚡"
+  "📌": "•", "📍": "•", "💰": "$", "💵": "$",
+  "🎲": "?", "🃏": "?", "💬": "◌", "🗨️": "◌",
+  "🖼️": "▣", "🖼": "▣", "🌐": "@", "📎": "♦",
+  "🤖": "✦", "🧠": "✦", "✅": "✓", "✔️": "✓", "⚡": "!"
 };
-function sanitizeGlyphs(text) {
-  let out = String(text ?? "");
-  for (const [emoji, symbol] of Object.entries(GLYPH_FALLBACK)) {
-    if (out.includes(emoji)) out = out.split(emoji).join(symbol);
+
+function sanitizeGlyphs(value) {
+  let output = String(value ?? "");
+  for (const [emoji, replacement] of Object.entries(GLYPH_FALLBACK)) {
+    if (output.includes(emoji)) output = output.split(emoji).join(replacement);
   }
-  // XOÁ emoji còn lại (surrogate pairs + variation selectors) — tránh ô vuông
-  out = out.replace(/[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{2600}-\u{26CF}\u{2700}-\u{27BF}]/gu, "");
-  // Small-caps/superscript Unicode (thiếu glyph → rơi chữ trong tên bot)
-  out = out.replace(/[\u{1D00}-\u{1D7F}\u{2070}-\u{209F}]/gu, "");
-  return out;
+  return output
+    .replace(/[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{2600}-\u{26CF}\u{2700}-\u{27BF}]/gu, "")
+    .replace(/[\u{1D00}-\u{1D7F}\u{2070}-\u{209F}]/gu, "");
 }
 
-// ===== MÀU RANDOM cho nút điều hướng =====
-// Mỗi lần render chọn 1 bộ màu ngẫu nhiên (nhưng hài hoà) — bot không bị
-// đơn điệu, vẫn giữ nhũ vàng làm accent chính.
 const RANDOM_ACCENTS = [
-  ["#d4af37", "#fbbf24", "#c4594e"],   // vàng đồng — cam son — đỏ son
-  ["#d4af37", "#8fbf9f", "#5b8dd9"],   // vàng — xanh bạc hà — xanh dương
-  ["#c9cdd3", "#d4af37", "#b74134"],   // bạc — vàng — đỏ
-  ["#d4af37", "#9d7bd8", "#5fa8d3"],   // vàng — tím khói — xanh nhạt
-  ["#e0b84c", "#7fb069", "#c97b8a"],   // vàng nhẹ — xanh rừng — hồng đất
-  ["#d4af37", "#e07a5f", "#81b29a"]    // vàng — đất nung — xanh bãi cỏ
+  ["#d4af37", "#fbbf24", "#c4594e"],
+  ["#d4af37", "#8fbf9f", "#5b8dd9"],
+  ["#c9cdd3", "#d4af37", "#b74134"],
+  ["#d4af37", "#9d7bd8", "#5fa8d3"],
+  ["#e0b84c", "#7fb069", "#c97b8a"],
+  ["#d4af37", "#e07a5f", "#81b29a"]
 ];
+
 function randomAccent() {
-  const set = RANDOM_ACCENTS[Math.floor(Math.random() * RANDOM_ACCENTS.length)];
-  return { prev: set[0], out: set[1], next: set[2] };
+  ensureTheme();
+  return { prev: PALETTE.accent, out: PALETTE.ink2, next: PALETTE.accent2 };
 }
 
-// Vệt nhũ vàng dưới tiêu đề (dấu hiệu nhận diện của preset editorial)
-function foil(ctx, x, y, w) {
+function foil(ctx, x, y, width) {
   ensureTheme();
   if (!THEME_STYLE.foil) return;
-  const g = ctx.createLinearGradient(x, y, x + w, y);
-  g.addColorStop(0, PALETTE.accent);
-  g.addColorStop(0.55, "rgba(212, 175, 55, .35)");
-  g.addColorStop(1, "rgba(212, 175, 55, 0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(x, y, w, 3);
+  const gradient = ctx.createLinearGradient(x, y, x + width, y);
+  gradient.addColorStop(0, PALETTE.accent);
+  gradient.addColorStop(0.55, "rgba(212, 175, 55, .35)");
+  gradient.addColorStop(1, "rgba(212, 175, 55, 0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x, y, width, Math.max(1, S(2)));
 }
 
-// Label IN HOA giãn chữ (kiểu tạp chí)
-function label(ctx, str, x, y, { size = 15, color = PALETTE.accent, align = "left" } = {}) {
+function label(ctx, value, x, y, options = {}) {
   ensureTheme();
+  const size = options.size || 15;
+  const color = options.color || PALETTE.accent;
+  const align = options.align || "left";
   ctx.font = font(size, "JT-Bold");
   ctx.fillStyle = color;
   ctx.textAlign = align;
-  // Giãn chữ bằng HAIR SPACE (U+200A — có trong Arial/DejaVu) chèn giữa các
-  // chữ: 1 lần fillText, không vẽ từng chữ → không lệch glyph, cân giữa đúng.
-  const text = sanitizeGlyphs(str).toUpperCase().split("").join("\u200A");
-  ctx.fillText(text, x, y);
+  ctx.fillText(sanitizeGlyphs(String(value || "").toUpperCase().split("").join("\u200a")), x, y);
   ctx.textAlign = "left";
 }
 
-// ===== CỠ ẢNH =====
-// Mặc định 1280px (kích cỡ cũ, ảnh lớn rõ). Muốn Zalo gửi NGUYÊN BẢN không
-// resize thì set canvas.width: 750 trong config.yml (Zalo resize ảnh > ~720px).
-// Mọi kích thước trong canvas đều scale theo cỡ này nên đổi 1 chỗ là đổi hết.
 const WIDTH = Number(global.config?.canvas?.width) || 1280;
-const DESIGN_WIDTH = 750; // mọi số trong canvas viết cho cỡ 750
-const S = (px) => Math.round((px * WIDTH) / DESIGN_WIDTH);
-const font = (px, family = "JT") => `${S(px)}px ${family}`;
-
-// ===== Font (một kiểu cho mọi ảnh — nhưng NHIỀU family để chọn) =====
-// JT / JT-Bold  : chữ chính (sans)
-// JT-Display   : tiêu đề (serif/trang trọng)
-// JT-Round     : bo tròn thân thiện
-// JT-Mono      : số liệu, thời gian
+const DESIGN_WIDTH = 750;
+const S = px => Math.round((px * WIDTH) / DESIGN_WIDTH);
+const font = (px, family = "JT") => String(S(px)) + "px " + family;
 const FONT_FAMILIES = ["JT", "JT-Bold", "JT-Display", "JT-Display-Bold", "JT-Round", "JT-Round-Bold", "JT-Mono", "JT-Mono-Bold"];
 
 let fontsReady = false;
 function initFonts() {
   if (fontsReady) return;
   fontsReady = true;
-  const register = (p, family) => { try { if (fs.existsSync(p)) registerFont(p, { family }); } catch { /* bỏ qua */ } };
+  const register = (fontPath, family) => {
+    try { if (fs.existsSync(fontPath)) registerFont(fontPath, { family }); } catch { /* optional font */ }
+  };
   const platform = process.platform;
-
   if (platform === "darwin") {
     register("/System/Library/Fonts/Supplemental/Arial.ttf", "JT");
     register("/System/Library/Fonts/Supplemental/Arial Bold.ttf", "JT-Bold");
@@ -222,162 +201,161 @@ function initFonts() {
   }
 }
 
-// ===== Vẽ cơ bản dùng chung =====
-function roundRect(ctx, x, y, w, h, r) {
+function roundRect(ctx, x, y, w, h, radius) {
+  const r = Math.max(0, Math.min(radius, w / 2, h / 2));
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
   ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
 
-function truncate(ctx, text, maxWidth) {
-  let t = String(text ?? "");
-  if (ctx.measureText(t).width <= maxWidth) return t;
-  while (t.length > 1 && ctx.measureText(t + "…").width > maxWidth) t = t.slice(0, -1);
-  return t + "…";
+function truncate(ctx, value, maxWidth) {
+  let output = String(value ?? "");
+  if (!maxWidth || ctx.measureText(output).width <= maxWidth) return output;
+  while (output.length > 1 && ctx.measureText(output + "…").width > maxWidth) {
+    output = output.slice(0, -1);
+  }
+  return output + "…";
 }
 
-// Nền: ảnh theme.jpg + lớp tối + glow — NẰM Ở MỌI ẢNH
-async function paintBackground(ctx, w, h) {
+async function paintBackground(ctx, width, height) {
   initFonts();
   ensureTheme();
-  const gradient = ctx.createLinearGradient(0, 0, w, h);
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
   gradient.addColorStop(0, PALETTE.bg0);
   gradient.addColorStop(0.5, PALETTE.bg1);
   gradient.addColorStop(1, PALETTE.bg0);
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, width, height);
 
-  // Ảnh nền (phủ toàn bộ, giữ tỉ lệ)
   try {
     if (fs.existsSync(BG_IMAGE)) {
-      const img = await loadImage(fs.readFileSync(BG_IMAGE));
-      const scale = Math.max(w / img.width, h / img.height);
-      const dw = img.width * scale;
-      const dh = img.height * scale;
+      const image = await loadImage(fs.readFileSync(BG_IMAGE));
+      const scale = Math.max(width / image.width, height / image.height);
+      const drawWidth = image.width * scale;
+      const drawHeight = image.height * scale;
       ctx.save();
-      ctx.globalAlpha = THEME_STYLE.bgImageAlpha; // ảnh chỉ làm "cảm giác", chữ vẫn phải dễ đọc
-      ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+      ctx.globalAlpha = THEME_STYLE.bgImageAlpha;
+      ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
       ctx.restore();
     }
-  } catch { /* thiếu ảnh nền = nền gradient vẫn đẹp */ }
+  } catch { /* gradient fallback */ }
 
-  // Lớp tối phủ lên để chữ luôn rõ
-  const shade = ctx.createLinearGradient(0, 0, 0, h);
-  const shadeColor = THEME_STYLE.shade || "rgba(7, 10, 20, .7)";
-  shade.addColorStop(0, shadeColor.replace(/[\d.]+\s*\)$/, ".55)"));
+  const shade = ctx.createLinearGradient(0, 0, 0, height);
+  shade.addColorStop(0, "rgba(8, 8, 10, .56)");
   shade.addColorStop(1, THEME_STYLE.shade);
   ctx.fillStyle = shade;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, width, height);
 
-  // Glow 2 góc — dấu hiệu nhận diện theo preset
-  const glow = (cx, cy, r, color) => {
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, color);
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
+  const glow = (cx, cy, radius, color) => {
+    const effect = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    effect.addColorStop(0, color);
+    effect.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = effect;
+    ctx.fillRect(0, 0, width, height);
   };
-  const [glowA, glowB] = THEME_STYLE.glowCorners;
-  glow(S(140), S(120), S(340), glowA);
-  glow(w - S(140), S(120), S(340), glowB);
+  const corners = THEME_STYLE.glowCorners || [];
+  glow(S(140), S(120), S(340), corners[0] || "rgba(212,175,55,.08)");
+  glow(width - S(140), S(120), S(340), corners[1] || "rgba(212,175,55,.04)");
 
-  // Khung hairline quanh cả ảnh (editorial)
   if (THEME_STYLE.frame) {
     ctx.save();
     ctx.strokeStyle = PALETTE.accent;
-    ctx.globalAlpha = 0.28;
+    ctx.globalAlpha = 0.24;
     ctx.lineWidth = Math.max(1, S(1));
-    ctx.strokeRect(S(10), S(10), w - S(20), h - S(20));
-    ctx.globalAlpha = 0.14;
-    ctx.strokeRect(S(16), S(16), w - S(32), h - S(32));
+    ctx.strokeRect(S(10), S(10), width - S(20), height - S(20));
     ctx.restore();
   }
 }
 
-// Thẻ dùng chung (bo góc, nền mờ, viền sáng)
-function panel(ctx, x, y, w, h, r = THEME_STYLE.panelRadius, accent = THEME_STYLE.panelBorder) {
+function panel(ctx, x, y, width, height, radius = THEME_STYLE.panelRadius, accent = PALETTE.accent) {
   ensureTheme();
-  roundRect(ctx, x, y, w, h, r);
+  roundRect(ctx, x, y, width, height, radius);
   ctx.save();
-  ctx.shadowColor = "rgba(0, 0, 0, .28)";
-  ctx.shadowBlur = S(18);
-  ctx.shadowOffsetY = S(7);
-  const fill = ctx.createLinearGradient(x, y, x + w * 0.8, y + h);
-  fill.addColorStop(0, "rgba(255, 255, 255, .055)");
-  fill.addColorStop(1, THEME_STYLE.panelBg);
-  ctx.fillStyle = fill;
+  ctx.shadowColor = "rgba(0,0,0,.30)";
+  ctx.shadowBlur = S(16);
+  ctx.shadowOffsetY = S(6);
+  const gradient = ctx.createLinearGradient(x, y, x + width * 0.8, y + height);
+  gradient.addColorStop(0, "rgba(255,255,255,.055)");
+  gradient.addColorStop(1, THEME_STYLE.panelBg);
+  ctx.fillStyle = gradient;
   ctx.fill();
   ctx.restore();
 
-  roundRect(ctx, x, y, w, h, r);
+  roundRect(ctx, x, y, width, height, radius);
   ctx.strokeStyle = accent;
   ctx.globalAlpha = THEME_STYLE.panelBorderAlpha;
   ctx.lineWidth = THEME_STYLE.panelLineWidth;
   ctx.stroke();
   ctx.globalAlpha = 1;
-
-  roundRect(ctx, x + S(1), y + S(1), w - S(2), h - S(2), Math.max(0, r - S(1)));
-  ctx.strokeStyle = "rgba(255, 255, 255, .07)";
-  ctx.lineWidth = Math.max(1, S(1));
-  ctx.stroke();
 }
 
-// Nút dùng chung (PREV / NEXT / OUT...)
-function button(ctx, x, y, w, h, label, color) {
+function button(ctx, x, y, width, height, value, color) {
   ensureTheme();
-  ctx.fillStyle = `${color}2e`; // ~18% alpha
-  roundRect(ctx, x, y, w, h, S(THEME_STYLE.btnRadius));
+  ctx.fillStyle = color + "22";
+  roundRect(ctx, x, y, width, height, S(THEME_STYLE.btnRadius));
   ctx.fill();
   ctx.strokeStyle = color;
   ctx.globalAlpha = 0.6;
-  ctx.lineWidth = S(1.5);
+  ctx.lineWidth = S(1.3);
   ctx.stroke();
   ctx.globalAlpha = 1;
-  ctx.font = font(22, "JT-Bold");
+  ctx.font = font(13, "JT-Bold");
   ctx.fillStyle = color;
   ctx.textAlign = "center";
-  ctx.fillText(sanitizeGlyphs(label), x + w / 2, y + h / 2 + S(8));
+  ctx.fillText(sanitizeGlyphs(value), x + width / 2, y + height / 2 + S(4));
   ctx.textAlign = "left";
 }
 
-function text(ctx, str, x, y, { size = 20, family = "JT", color = PALETTE.ink2, align = "left", maxWidth } = {}) {
+function text(ctx, value, x, y, options = {}) {
+  ensureTheme();
+  const size = options.size || 20;
+  const family = options.family || "JT";
+  const color = options.color || PALETTE.ink2;
+  const align = options.align || "left";
   ctx.font = font(size, family);
   ctx.fillStyle = color;
   ctx.textAlign = align;
-  const safe = sanitizeGlyphs(str);
-  if (maxWidth) ctx.fillText(truncate(ctx, safe, maxWidth), x, y);
-  else ctx.fillText(safe, x, y);
+  const safe = sanitizeGlyphs(value);
+  ctx.fillText(options.maxWidth ? truncate(ctx, safe, options.maxWidth) : safe, x, y);
   ctx.textAlign = "left";
 }
 
-function newCanvas(w, h) {
-  const canvas = createCanvas(w, h);
+function newCanvas(width, height) {
+  const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
-  // Chất lượng render cao nhất: khử răng cưcj "best", ảnh nền nét, chữ không rỗ
   try {
     ctx.antialias = "best";
     ctx.quality = "best";
     ctx.patternQuality = "best";
     ctx.filter = "best";
     ctx.textDrawingMode = "default";
-  } catch { /* node-canvas cũ không hỗ trợ thì bỏ qua */ }
+  } catch { /* older node-canvas */ }
   return { canvas, ctx };
 }
 
 function save(canvas, prefix) {
-  const filePath = path.join(os.tmpdir(), `jt_${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.png`);
-  const title = ({
+  ensureTheme();
+  const filePath = path.join(os.tmpdir(), "jt_" + prefix + "_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".png");
+  const titles = {
     menu: "Menu",
     music_grid: "Music Search",
     music_now: "Now Playing",
+    topchat: "Top Chat",
+    status: "System Status",
+    profile_card: "Member Profile",
     card: "JOHN TRAN"
-  })[prefix] || "JOHN TRAN";
-  fs.writeFileSync(filePath, withMacWindow(canvas, title).toBuffer("image/png"));
+  };
+  fs.writeFileSync(filePath, withMacWindow(canvas, titles[prefix] || "JOHN TRAN").toBuffer("image/png"));
   return filePath;
 }
 
-module.exports = { PALETTE, WIDTH, S, font, FONT_FAMILIES, initFonts, roundRect, truncate, paintBackground, panel, button, text, newCanvas, save, foil, label, THEME_STYLE, randomAccent, RANDOM_ACCENTS, reload: resolveTheme };
+module.exports = {
+  PALETTE, WIDTH, S, font, FONT_FAMILIES, initFonts, roundRect, truncate,
+  paintBackground, panel, button, text, newCanvas, save, foil, label,
+  THEME_STYLE, randomAccent, RANDOM_ACCENTS,
+  reload: resolveTheme, ensureTheme, sanitizeGlyphs, mixHex
+};

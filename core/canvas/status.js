@@ -1,59 +1,170 @@
 "use strict";
-const fs=require("fs"),os=require("os"),path=require("path"),{createCanvas}=require("canvas"),avatarCache=require("./avatarCache");
-const W=1280,H=640;
-const C={ink:"#211b2a",muted:"#776b80",purple:"#9364b2",green:"#00b96b",blue:"#078dbb",orange:"#d48618",teal:"#009d7a",violet:"#9b4acb",panel:"#f0edef",line:"#17131c"};
-function rounded(c,x,y,w,h,r,fill,stroke=C.line,lw=1.7){c.beginPath();c.roundRect(x,y,w,h,r);c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=lw;c.stroke();}}
-function text(c,s,x,y,size,color=C.ink,weight="600",align="left"){c.font=weight+" "+size+"px Arial, sans-serif";c.fillStyle=color;c.textBaseline="alphabetic";c.textAlign=align;c.fillText(String(s??""),x,y);c.textAlign="left";}
-function fmt(n){if(!Number.isFinite(Number(n))||Number(n)<=0)return "N/A";let v=Number(n),u=["B","KB","GB","TB"];let i=0;while(v>=1024&&i<u.length-1){v/=1024;i++;}return v.toFixed(i?1:0)+" "+u[i];}
-function pct(n,d){return d>0?Math.max(0,Math.min(100,Math.round(n/d*100))):0;}
-function icon(c,type,x,y,color){
- c.save();c.translate(x,y);c.strokeStyle=color;c.fillStyle=color;c.lineWidth=3;c.lineCap="round";c.lineJoin="round";
- if(type==="power"){c.beginPath();c.arc(0,0,13,.25*Math.PI,2.75*Math.PI);c.stroke();c.beginPath();c.moveTo(0,-19);c.lineTo(0,-2);c.stroke();}
- else if(type==="clock"){c.beginPath();c.arc(0,0,14,0,Math.PI*2);c.stroke();c.beginPath();c.moveTo(0,-8);c.lineTo(0,1);c.lineTo(7,6);c.stroke();}
- else if(type==="monitor"){c.strokeRect(-14,-10,28,19);c.beginPath();c.moveTo(-7,14);c.lineTo(7,14);c.moveTo(0,9);c.lineTo(0,14);c.stroke();}
- else if(type==="up"||type==="down"){c.beginPath();c.moveTo(0,14);c.lineTo(0,-13);c.moveTo(-9,-4);c.lineTo(0,-13);c.lineTo(9,-4);c.stroke();if(type==="down")c.rotate(Math.PI);}
- else {c.beginPath();c.arc(0,0,11,0,Math.PI*2);c.stroke();}
- c.restore();
+
+const avatarCache = require("./avatarCache");
+const theme = require("./theme");
+
+function formatBytes(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return "N/A";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let amount = number;
+  let index = 0;
+  while (amount >= 1024 && index < units.length - 1) {
+    amount /= 1024;
+    index++;
+  }
+  return (index ? amount.toFixed(1) : amount.toFixed(0)) + " " + units[index];
 }
-function metricCard(c,x,y,w,label,value,p,color){
- rounded(c,x,y,w,112,23,C.panel);
- c.beginPath();c.arc(x+53,y+57,30,0,Math.PI*2);c.strokeStyle="#d9d3d9";c.lineWidth=9;c.stroke();
- c.beginPath();c.arc(x+53,y+57,30,-Math.PI/2,-Math.PI/2+Math.PI*2*p/100);c.strokeStyle=color;c.lineWidth=9;c.lineCap="butt";c.stroke();
- text(c,p+"%",x+30,y+64,21,color,"700");
- text(c,label,x+105,y+40,18,C.muted,"700");text(c,value,x+105,y+79,25,C.ink,"700");
+
+function percent(value, total) {
+  const current = Number(value);
+  const maximum = Number(total);
+  if (!Number.isFinite(current) || !Number.isFinite(maximum) || maximum <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round(current / maximum * 100)));
 }
-async function renderStatus(o){
- const d=o.device||{},g=o.group||{},canvas=createCanvas(W,H),c=canvas.getContext("2d");
- const bg=c.createLinearGradient(0,0,W,H);bg.addColorStop(0,"#f4c5b8");bg.addColorStop(.5,"#e6b9d1");bg.addColorStop(1,"#f3cbb4");c.fillStyle=bg;c.fillRect(0,0,W,H);
- c.save();c.shadowColor="rgba(38,20,36,.28)";c.shadowBlur=28;c.shadowOffsetY=12;rounded(c,36,36,1208,568,34,"#f8f6f7",C.line,1.6);c.restore();
- // Header: avatar thật, tên bot, nhóm hiện tại và phiên bản
- c.save();c.beginPath();c.arc(120,105,45,0,Math.PI*2);c.clip();
- const av=avatarCache.getAvatar(o.botAvatar);
- if(av){const s=Math.max(90/av.width,90/av.height);c.drawImage(av,120-av.width*s/2,105-av.height*s/2,av.width*s,av.height*s);}
- else{c.fillStyle="#d9e1e2";c.fillRect(75,60,90,90);text(c,"BOT",96,114,22,"#59636b","700");}
- c.restore();c.beginPath();c.arc(120,105,46,0,Math.PI*2);c.strokeStyle="#fff";c.lineWidth=4;c.stroke();c.beginPath();c.arc(151,137,12,0,Math.PI*2);c.fillStyle="#00c879";c.fill();c.strokeStyle="#fff";c.lineWidth=2;c.stroke();
- text(c,o.botName||"JOHNTRAN",188,104,39,C.ink,"700");
- text(c,"♟ Nhóm: "+(g.name||"Tin nhắn riêng")+" ▤",188,135,22,C.purple,"700");
- text(c,"◉",1040,83,27,C.muted,"700");text(c,"▣",1080,83,25,C.muted,"700");text(c,"v"+(o.version||""),1208,82,22,C.muted,"700","right");
- // Status + uptime (uptime card stays in the reference design; /upt command is separate)
- rounded(c,72,169,558,107,24,C.panel);rounded(c,650,169,558,107,24,C.panel);
- rounded(c,92,191,63,63,18,"#073d2c","#073d2c");icon(c,"power",123,222,C.green);
- text(c,"♧ TRẠNG THÁI NHÓM",172,207,19,C.muted,"700");
- const stateColor=g.enabled?C.green:"#d84b54";
- rounded(c,416,195,178,55,16,g.enabled?"#e5f7ed":"#fdebed",g.enabled?"#a9ddbe":"#f2b9be",1.4);
- text(c,g.enabled?"ĐANG BẬT":"ĐANG TẮT",505,229,22,stateColor,"700","center");
- rounded(c,670,191,63,63,18,"#102f3e","#102f3e");icon(c,"clock",701,222,C.blue);
- text(c,"◷ UPTIME HOẠT ĐỘNG",750,207,19,C.muted,"700");text(c,o.uptime||"N/A",750,251,34,C.blue,"700");
- // CPU / RAM / DISK
- metricCard(c,72,291,367,"⚙ VI XỬ LÝ (CPU)",(d.cpuCores||0)+" Cores · "+(Number(d.cpuPercent)||0).toFixed(1)+"%",Math.round(Number(d.cpuPercent)||0),C.orange);
- metricCard(c,456,291,367,"▣ BỘ NHỚ (RAM)",fmt(d.ramUsed)+" / "+fmt(d.ramTotal),pct(d.ramUsed,d.ramTotal),C.teal);
- metricCard(c,840,291,367,"▤ Ổ CỨNG (DISK)",d.diskTotal?fmt(d.diskUsed)+" / "+fmt(d.diskTotal):"N/A",pct(d.diskUsed,d.diskTotal),C.violet);
- // OS and network
- const lower=[{x:72,label:"HỆ ĐIỀU HÀNH",value:(d.platform==="win32"?"Windows":d.platform==="darwin"?"macOS":d.platform||"OS")+" "+(d.release||""),type:"monitor",color:"#5145b9"},{x:456,label:"TỐC ĐỘ TẢI LÊN",value:d.txKBs==null?"N/A":"↑ "+Number(d.txKBs).toFixed(1)+" KB/s",type:"up",color:C.blue},{x:840,label:"TỐC ĐỘ TẢI XUỐNG",value:d.rxKBs==null?"N/A":"↓ "+Number(d.rxKBs).toFixed(1)+" KB/s",type:"down",color:C.violet}];
- for(const a of lower){rounded(c,a.x,417,367,94,21,C.panel);rounded(c,a.x+16,438,53,53,15,"#202033","#202033");icon(c,a.type,a.x+42,464,a.color);text(c,a.label,a.x+83,452,17,C.muted,"700");text(c,a.value,a.x+83,487,25,a.color,"700");}
- // Footer help text as in the supplied reference
- rounded(c,72,527,1136,51,17,"#f4f1f3");text(c,"ⓘ",91,561,22,C.purple,"700");
- text(c,"Quản trị viên có thể dùng lệnh !off để tạm dừng hoặc !on để kích hoạt bot trong nhóm.",123,561,20,C.muted,"700");
- const file=path.join(os.tmpdir(),"johntran_status_"+Date.now()+".png");await fs.promises.writeFile(file,canvas.toBuffer("image/png"));return file;
+
+function drawAvatar(ctx, url, name, x, y, size) {
+  const S = theme.S;
+  const palette = theme.PALETTE;
+  const image = avatarCache.getAvatar(url);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+  ctx.clip();
+  if (image) {
+    const scale = Math.max(size / image.width, size / image.height);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height);
+  } else {
+    ctx.fillStyle = "rgba(212,175,55,.16)";
+    ctx.fillRect(x, y, size, size);
+    ctx.font = theme.font(18, "JT-Bold");
+    ctx.fillStyle = palette.accent;
+    ctx.textAlign = "center";
+    ctx.fillText(String(name || "J").trim().charAt(0).toUpperCase(), x + size / 2, y + size / 2 + S(6));
+  }
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2 + S(1), 0, Math.PI * 2);
+  ctx.strokeStyle = palette.accent;
+  ctx.lineWidth = S(1.5);
+  ctx.stroke();
 }
-module.exports={renderStatus};
+
+function drawMetric(ctx, x, y, width, label, value, ratio, accent) {
+  const S = theme.S;
+  const palette = theme.PALETTE;
+  theme.panel(ctx, x, y, width, S(94), S(12), palette.accent);
+  theme.label(ctx, label, x + S(14), y + S(23), { size: 10, color: palette.mute });
+  theme.text(ctx, value, x + S(14), y + S(51), {
+    size: 18, family: "JT-Bold", color: palette.ink, maxWidth: width - S(28)
+  });
+
+  const barX = x + S(14);
+  const barY = y + S(68);
+  const barWidth = width - S(28);
+  ctx.fillStyle = "rgba(255,255,255,.10)";
+  theme.roundRect(ctx, barX, barY, barWidth, S(5), S(3));
+  ctx.fill();
+  if (ratio !== null) {
+    ctx.fillStyle = accent || palette.accent;
+    theme.roundRect(ctx, barX, barY, Math.max(S(3), barWidth * ratio / 100), S(5), S(3));
+    ctx.fill();
+  }
+}
+
+function drawInfo(ctx, x, y, width, label, value) {
+  const S = theme.S;
+  const palette = theme.PALETTE;
+  theme.panel(ctx, x, y, width, S(72), S(11), "rgba(212,175,55,.35)");
+  theme.label(ctx, label, x + S(13), y + S(23), { size: 9, color: palette.mute });
+  theme.text(ctx, value || "N/A", x + S(13), y + S(49), {
+    size: 13, family: "JT-Bold", color: palette.ink2, maxWidth: width - S(26)
+  });
+}
+
+async function renderStatus(options = {}) {
+  theme.initFonts();
+  const S = theme.S;
+  const W = theme.WIDTH;
+  const device = options.device || {};
+  const group = options.group || {};
+  const pad = S(26);
+  const gap = S(10);
+  const columns = 3;
+  const cardWidth = (W - pad * 2 - gap * (columns - 1)) / columns;
+  const headerY = S(24);
+  const stateY = S(106);
+  const metricsY = S(226);
+  const infoY = S(353);
+  const footerY = S(454);
+  const height = S(506);
+  const { ctx, canvas } = theme.newCanvas(W, height);
+
+  await theme.paintBackground(ctx, W, height);
+  const palette = theme.PALETTE;
+
+  drawAvatar(ctx, options.botAvatar, options.botName, pad, headerY + S(2), S(52));
+  theme.label(ctx, "JOHN TRAN  /  SYSTEM OVERVIEW", pad + S(66), headerY + S(16), { size: 10 });
+  theme.text(ctx, options.botName || "JOHNTRAN", pad + S(66), headerY + S(43), {
+    size: 23, family: "JT-Display-Bold", color: palette.ink, maxWidth: W - pad * 2 - S(180)
+  });
+  theme.text(ctx, "v" + String(options.version || ""), W - pad, headerY + S(37), {
+    size: 13, family: "JT-Mono-Bold", color: palette.accent, align: "right"
+  });
+  theme.foil(ctx, pad, S(88), S(110));
+
+  const stateWidth = (W - pad * 2 - gap) / 2;
+  theme.panel(ctx, pad, stateY, stateWidth, S(92), S(12), group.enabled ? palette.green : palette.red);
+  theme.label(ctx, "TRẠNG THÁI TRONG NHÓM", pad + S(14), stateY + S(26), { size: 10, color: palette.mute });
+  theme.text(ctx, group.enabled ? "ĐANG HOẠT ĐỘNG" : "ĐANG TẠM DỪNG", pad + S(14), stateY + S(58), {
+    size: 17, family: "JT-Bold", color: group.enabled ? palette.green : palette.red
+  });
+  theme.text(ctx, String(group.name || "Tin nhắn riêng"), pad + S(14), stateY + S(78), {
+    size: 10, color: palette.ink2, maxWidth: stateWidth - S(28)
+  });
+
+  const uptimeX = pad + stateWidth + gap;
+  theme.panel(ctx, uptimeX, stateY, stateWidth, S(92), S(12), palette.accent);
+  theme.label(ctx, "THỜI GIAN BOT HOẠT ĐỘNG", uptimeX + S(14), stateY + S(26), { size: 10, color: palette.mute });
+  theme.text(ctx, options.uptime || "N/A", uptimeX + S(14), stateY + S(59), {
+    size: 19, family: "JT-Mono-Bold", color: palette.ink, maxWidth: stateWidth - S(28)
+  });
+
+  theme.label(ctx, "TÀI NGUYÊN THIẾT BỊ", pad, metricsY - S(9), { size: 11 });
+  const cpuPercent = percent(device.cpuPercent, 100);
+  const ramPercent = percent(device.ramUsed, device.ramTotal);
+  const diskPercent = percent(device.diskUsed, device.diskTotal);
+  const metricCards = [
+    ["CPU", (Number(device.cpuCores) || 0) + " cores  •  " + (Number(device.cpuPercent) || 0).toFixed(1) + "%", cpuPercent],
+    ["RAM", formatBytes(device.ramUsed) + " / " + formatBytes(device.ramTotal), ramPercent],
+    ["DISK", device.diskTotal ? formatBytes(device.diskUsed) + " / " + formatBytes(device.diskTotal) : "N/A", diskPercent]
+  ];
+  metricCards.forEach((item, index) => {
+    drawMetric(ctx, pad + index * (cardWidth + gap), metricsY + S(8), cardWidth, item[0], item[1], item[2], palette.accent);
+  });
+
+  theme.label(ctx, "THÔNG TIN HỆ THỐNG", pad, infoY - S(8), { size: 11 });
+  const platform = device.platform === "darwin" ? "macOS" : device.platform === "win32" ? "Windows" : (device.platform || "OS");
+  const infos = [
+    ["HỆ ĐIỀU HÀNH", platform + " " + String(device.release || "")],
+    ["TỐC ĐỘ UPLOAD", device.txKBs == null ? "N/A" : Number(device.txKBs).toFixed(1) + " KB/s"],
+    ["TỐC ĐỘ DOWNLOAD", device.rxKBs == null ? "N/A" : Number(device.rxKBs).toFixed(1) + " KB/s"]
+  ];
+  infos.forEach((item, index) => {
+    drawInfo(ctx, pad + index * (cardWidth + gap), infoY + S(8), cardWidth, item[0], item[1]);
+  });
+
+  theme.panel(ctx, pad, footerY, W - pad * 2, S(38), S(9), "rgba(212,175,55,.30)");
+  theme.text(ctx, "JOHNTRAN  •  THIẾT BỊ ĐANG CHẠY BOT", pad + S(13), footerY + S(24), {
+    size: 10, family: "JT-Mono", color: palette.mute
+  });
+  theme.text(ctx, "STATUS", W - pad - S(13), footerY + S(24), {
+    size: 10, family: "JT-Mono-Bold", color: palette.accent, align: "right"
+  });
+
+  return theme.save(canvas, "status");
+}
+
+module.exports = { renderStatus, _test: { formatBytes, percent, drawMetric, drawInfo } };

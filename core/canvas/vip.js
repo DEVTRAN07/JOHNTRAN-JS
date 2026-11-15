@@ -2,7 +2,6 @@
 // Mọi ảnh bot gửi ra đều CÙNG một kiểu: nền, font, bo góc, bóng (xem theme.js).
 // Kích thước viết theo cỡ 750 rồi scale theo theme.WIDTH (config canvas.width).
 const theme = require("./theme");
-const { THEMES } = require("./index");
 
 const WIDTH = theme.WIDTH;
 const PADDING = theme.S(30);
@@ -51,16 +50,14 @@ function measure(spec) {
 }
 
 async function renderVipCard(spec = {}) {
+  theme.ensureTheme();
   const palette = theme.PALETTE;
-  // Preset editorial: thẻ brand/music/ai dùng NHŨ VÀNG + BẠC (giữ nguyên
-  // success/error/warn vì đó là màu ngữ nghĩa).
-  const rawTheme = THEMES[spec.theme] || THEMES.brand;
-  const editorialRecolor = theme.THEME_STYLE.foil && !["success", "error", "warn"].includes(spec.theme);
-  const themeColors = editorialRecolor
-    ? { ...rawTheme, accent: palette.accent, accent2: palette.accent2 }
-    : rawTheme;
-  const accent = themeColors.accent || palette.accent;
-  const accent2 = themeColors.accent2 || palette.accent2;
+  // Use the same selected accent as /menu; semantic states retain their meaning.
+  const accent = spec.theme === "success" ? palette.green
+    : spec.theme === "error" ? palette.red
+      : spec.theme === "warn" ? palette.gold
+        : palette.accent;
+  const accent2 = palette.accent2 || accent;
 
   const { height } = measure(spec);
   const { ctx, canvas } = theme.newCanvas(WIDTH, height);
@@ -140,7 +137,7 @@ async function renderVipCard(spec = {}) {
   }
 
   // ===== Footer thương hiệu =====
-  theme.text(ctx, String(spec.footer || "ᴶᴼᴴᴺ ᵀᴿᴬᴺ"), WIDTH / 2, height - S(30), {
+  theme.text(ctx, String(spec.footer || "JOHN TRAN"), WIDTH / 2, height - S(30), {
     size: 15, family: "JT-Bold", color: palette.mute, align: "center"
   });
 

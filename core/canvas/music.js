@@ -32,7 +32,7 @@ async function renderSearchGrid(query, tracks, { page = 1, totalPages = 1, sourc
   theme.initFonts();
   const S = theme.S;
   const W = theme.WIDTH;
-  const { PALETTE, panel, button, text, label, foil, randomAccent } = theme;
+  const { PALETTE, panel, button, text, label, foil } = theme;
 
   // ===== Bố cục: 9 bài/trang, 3 cột =====
   const perPage = 9;
@@ -129,7 +129,7 @@ async function renderSearchGrid(query, tracks, { page = 1, totalPages = 1, sourc
 
   const footY = H - footerH + S(4);
   const btnW = (W - S(50) - S(20)) / 3;
-  const navColors = randomAccent();
+  const navColors = { prev: PALETTE.accent, out: PALETTE.ink2, next: PALETTE.accent2 };
   text(ctx, `Trang ${page}/${totalPages}`, W / 2, footY + S(24), { size: 20, family: "JT-Bold", color: PALETTE.ink, align: "center" });
   const btnY = footY + S(38);
   button(ctx, S(25), btnY, btnW, S(42), "◀ PREV", navColors.prev);

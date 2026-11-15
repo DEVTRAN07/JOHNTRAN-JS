@@ -1,142 +1,152 @@
 "use strict";
 
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
-const { createCanvas } = require("canvas");
-const { getAvatar } = require("./avatarCache");
-
-const WIDTH = 1000;
-const ROW_HEIGHT = 94;
-
-function rounded(ctx, x, y, w, h, r, fill, stroke) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
-  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke(); }
-}
-
-function fitText(ctx, text, maxWidth) {
-  let value = String(text || "");
-  while (value.length && ctx.measureText(value).width > maxWidth) value = value.slice(0, -1);
-  return value.length < String(text || "").length ? value.slice(0, -1) + "…" : value;
-}
+const avatarCache = require("./avatarCache");
+const theme = require("./theme");
 
 function drawAvatar(ctx, item, x, y, size) {
+  const S = theme.S;
+  const image = avatarCache.getAvatar(item.avatar);
   ctx.save();
   ctx.beginPath();
   ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
   ctx.clip();
 
-  // Never await remote avatar downloads while rendering a ranking card.
-  // getAvatar returns a cached Canvas image synchronously and warms misses
-  // in the background; a placeholder keeps the card responsive on cold cache.
-  const image = getAvatar(item.avatar);
   if (image) {
     const scale = Math.max(size / image.width, size / image.height);
-    const w = image.width * scale, h = image.height * scale;
-    ctx.drawImage(image, x + (size - w) / 2, y + (size - h) / 2, w, h);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height);
   } else {
-    ctx.fillStyle = "#dce4e7";
+    ctx.fillStyle = "rgba(212,175,55,.16)";
     ctx.fillRect(x, y, size, size);
-    ctx.fillStyle = "#64748b";
-    ctx.font = "bold 28px Arial";
+    ctx.font = theme.font(20, "JT-Bold");
+    ctx.fillStyle = theme.PALETTE.accent;
     ctx.textAlign = "center";
-    ctx.fillText(String(item.name || "?").trim().charAt(0).toUpperCase(), x + size / 2, y + size / 2 + 10);
+    const initial = String(item.name || "?").trim().charAt(0).toUpperCase();
+    ctx.fillText(theme.sanitizeGlyphs(initial), x + size / 2, y + size / 2 + S(7));
   }
-
   ctx.restore();
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 4;
+
   ctx.beginPath();
-  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+  ctx.arc(x + size / 2, y + size / 2, size / 2 + S(1), 0, Math.PI * 2);
+  ctx.strokeStyle = theme.PALETTE.accent;
+  ctx.lineWidth = S(1.5);
   ctx.stroke();
 }
 
-async function renderTopChat({ title, subtitle, ranking }) {
-  const rows = Array.isArray(ranking) ? ranking.slice(0, 10) : [];
-  const height = 470 + rows.length * ROW_HEIGHT;
-  const canvas = createCanvas(WIDTH, height);
-  const ctx = canvas.getContext("2d");
+function drawPodiumCard(ctx, item, index, x, y, width, height) {
+  const S = theme.S;
+  const palette = theme.PALETTE;
+  theme.panel(ctx, x, y, width, height, S(13), palette.accent);
+  theme.label(ctx, "TOP " + String(index + 1).padStart(2, "0"), x + S(14), y + S(22), {
+    size: 10,
+    color: palette.accent
+  });
 
-  const bg = ctx.createLinearGradient(0, 0, WIDTH, height);
-  bg.addColorStop(0, "#fffaf4");
-  bg.addColorStop(1, "#eef3f8");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, WIDTH, height);
-  rounded(ctx, 22, 22, WIDTH - 44, height - 44, 28, "#ffffff", "#20252b");
-
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#24201d";
-  ctx.font = "bold 42px Arial";
-  ctx.fillText("☆", 54, 95);
-  ctx.fillText(title || "TOP CHAT HÔM NAY", 112, 95);
-  ctx.fillStyle = "#d99a19";
-  ctx.font = "bold 24px Arial";
-  ctx.fillText("🏆 " + (subtitle || "VINH DANH TOP 3"), 60, 145);
-
-  const podium = [rows[1], rows[0], rows[2]].filter(Boolean);
-  const centers = [235, 500, 765];
-  const podiumY = [210, 180, 210];
-  for (let i = 0; i < podium.length; i++) {
-    const item = podium[i];
-    const x = centers[i];
-    const y = podiumY[i];
-    const medal = ["🥈", "🥇", "🥉"][i];
-    rounded(ctx, x - 105, y, 210, 190, 18, "#17191e", "#8c6b4c");
-    ctx.textAlign = "center";
-    ctx.font = "bold 30px Arial";
-    ctx.fillStyle = "#f5c451";
-    ctx.fillText(medal, x, y + 34);
-    drawAvatar(ctx, item, x - 38, y + 48, 76);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 20px Arial";
-    ctx.fillText(fitText(ctx, item.name, 180), x, y + 151);
-    ctx.font = "17px Arial";
-    ctx.fillStyle = "#e7e7e7";
-    ctx.fillText(item.count + " tin", x, y + 177);
-  }
-
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#27211c";
-  ctx.font = "bold 27px Arial";
-  ctx.fillText("▥  BẢNG XẾP HẠNG HÔM NAY", 58, 455);
-
-  for (let i = 0; i < rows.length; i++) {
-    const item = rows[i];
-    const y = 480 + i * ROW_HEIGHT;
-    const fills = ["#c9f8e8", "#e9edf2", "#f3e1d5"];
-    const strokes = ["#00a47b", "#8294a6", "#9b6a45"];
-    const fill = i < 3 ? fills[i] : "#f1f1f1";
-    const stroke = i < 3 ? strokes[i] : "#30343b";
-    rounded(ctx, 48, y, WIDTH - 96, 78, 18, fill, stroke);
-
-    ctx.fillStyle = i === 0 ? "#d49a00" : i === 1 ? "#8294a6" : i === 2 ? "#c17a35" : "#d49a00";
-    ctx.font = "bold 27px Arial";
-    ctx.fillText(String(i + 1) + ".", 68, y + 48);
-
-    drawAvatar(ctx, item, 116, y + 12, 54);
-    ctx.textAlign = "left";
-    ctx.fillStyle = "#28221e";
-    ctx.font = "bold 23px Arial";
-    ctx.fillText(fitText(ctx, item.name, 470), 188, y + 34);
-    ctx.fillStyle = "#817267";
-    ctx.font = "17px Arial";
-    ctx.fillText(i === 0 ? "Hạng: Vàng" : i === 1 ? "Hạng: Bạc" : i === 2 ? "Hạng: Đồng" : "Hạng: Thành viên", 188, y + 59);
-
-    rounded(ctx, 790, y + 19, 90, 40, 20, i === 0 ? "#f2a000" : i === 1 ? "#91a5b9" : i === 2 ? "#bd5c00" : "#75808c");
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "center";
-    ctx.font = "bold 19px Arial";
-    ctx.fillText(item.count + " tin", 835, y + 46);
-  }
-
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_topchat_"));
-  const output = path.join(tmpDir, "topchat.png");
-  fs.writeFileSync(output, canvas.toBuffer("image/png"));
-  const timer = setTimeout(() => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} }, 120000);
-  timer.unref?.();
-  return output;
+  const avatarSize = S(48);
+  drawAvatar(ctx, item, x + S(14), y + S(34), avatarSize);
+  theme.text(ctx, item.name || "Thành viên", x + S(72), y + S(55), {
+    size: 15,
+    family: "JT-Bold",
+    color: palette.ink,
+    maxWidth: width - S(84)
+  });
+  theme.text(ctx, (Number(item.count) || 0).toLocaleString("vi-VN") + " tin nhắn", x + S(72), y + S(79), {
+    size: 12,
+    family: "JT-Mono",
+    color: palette.ink2,
+    maxWidth: width - S(84)
+  });
 }
 
-module.exports = { renderTopChat };
+function drawRankRow(ctx, item, rank, x, y, width, height) {
+  const S = theme.S;
+  const palette = theme.PALETTE;
+  theme.panel(ctx, x, y, width, height, S(10), "rgba(212,175,55,.38)");
+
+  theme.text(ctx, String(rank + 1).padStart(2, "0"), x + S(15), y + S(37), {
+    size: 16,
+    family: "JT-Mono-Bold",
+    color: palette.accent
+  });
+  const avatarSize = S(34);
+  drawAvatar(ctx, item, x + S(58), y + S(9), avatarSize);
+  theme.text(ctx, item.name || "Thành viên", x + S(106), y + S(31), {
+    size: 14,
+    family: "JT-Bold",
+    color: palette.ink,
+    maxWidth: width - S(220)
+  });
+  theme.text(ctx, (Number(item.count) || 0).toLocaleString("vi-VN") + " tin", x + width - S(18), y + S(32), {
+    size: 13,
+    family: "JT-Mono-Bold",
+    color: palette.accent,
+    align: "right"
+  });
+}
+
+async function renderTopChat(options = {}) {
+  theme.initFonts();
+  const S = theme.S;
+  const W = theme.WIDTH;
+  const rows = Array.isArray(options.ranking) ? options.ranking.slice(0, 10) : [];
+  const podium = rows.slice(0, 3);
+  const remaining = rows.slice(3);
+  const pad = S(26);
+  const gap = S(10);
+  const podiumHeight = S(94);
+  const rowHeight = S(52);
+  const headerBottom = S(112);
+  const podiumY = headerBottom + S(18);
+  const rankTitleY = podiumY + podiumHeight + S(36);
+  const rankStartY = rankTitleY + S(22);
+  const footerY = rankStartY + remaining.length * (rowHeight + S(8)) + S(18);
+  const height = Math.max(S(330), footerY + S(55));
+  const { ctx, canvas } = theme.newCanvas(W, height);
+
+  await theme.paintBackground(ctx, W, height);
+  const palette = theme.PALETTE;
+
+  theme.label(ctx, "JOHN TRAN  /  THỐNG KÊ NHÓM", pad, S(34), { size: 12 });
+  theme.text(ctx, options.title || "TOP CHAT HÔM NAY", pad, S(72), {
+    size: 30,
+    family: "JT-Display-Bold",
+    color: palette.ink,
+    maxWidth: W - pad * 2
+  });
+  theme.foil(ctx, pad, S(84), S(116));
+  theme.text(ctx, options.subtitle || "BẢNG XẾP HẠNG TIN NHẮN TRONG NGÀY", pad, S(105), {
+    size: 12,
+    family: "JT-Mono",
+    color: palette.ink2,
+    maxWidth: W - pad * 2
+  });
+
+  if (podium.length) {
+    const cardWidth = (W - pad * 2 - gap * (podium.length - 1)) / podium.length;
+    podium.forEach((item, index) => {
+      drawPodiumCard(ctx, item, index, pad + index * (cardWidth + gap), podiumY, cardWidth, podiumHeight);
+    });
+  } else {
+    theme.panel(ctx, pad, podiumY, W - pad * 2, podiumHeight, S(13), palette.accent);
+    theme.text(ctx, "Chưa có dữ liệu xếp hạng", W / 2, podiumY + S(52), {
+      size: 16, family: "JT-Bold", color: palette.ink2, align: "center"
+    });
+  }
+
+  if (remaining.length) {
+    theme.label(ctx, "THÀNH VIÊN TIẾP THEO", pad, rankTitleY, { size: 11, color: palette.accent });
+    remaining.forEach((item, index) => {
+      drawRankRow(ctx, item, index + 3, pad, rankStartY + index * (rowHeight + S(8)), W - pad * 2, rowHeight);
+    });
+  }
+
+  theme.label(ctx, "JOHNTRAN  •  TOP CHAT DAILY", W - pad, footerY + S(24), {
+    size: 9,
+    color: palette.mute,
+    align: "right"
+  });
+  return theme.save(canvas, "topchat");
+}
+
+module.exports = { renderTopChat, _test: { drawAvatar, drawPodiumCard, drawRankRow } };
