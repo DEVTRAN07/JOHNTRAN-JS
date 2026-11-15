@@ -26,6 +26,16 @@ const WATCHDOG_INTERVAL = 30000;
 // 30 phút không có frame nào MỚI coi là half-open (nhóm im lặng vài phút là bình thường)
 const WATCHDOG_STALE_MS = 1800000;
 
+// Prevent accidental duplicate listener registration when startup paths race
+// or a caller invokes startListening twice with the same SDK API instance.
+const registeredApis = new WeakSet();
+function claimListenerRegistration(api) {
+  if (!api || (typeof api !== "object" && typeof api !== "function")) return false;
+  if (registeredApis.has(api)) return false;
+  registeredApis.add(api);
+  return true;
+}
+
 function shouldReplayOldMessage(message, reconnectSince) {
   const rawTimestamp = Number(message?.data?.ts);
   if (!Number.isFinite(rawTimestamp) || rawTimestamp <= 0) return false;
@@ -36,6 +46,11 @@ function shouldReplayOldMessage(message, reconnectSince) {
 function startListening(api) {
   if (!api?.listener?.on || !api.listener.start) {
     logger.log("API listener không hợp lệ.", "error");
+    return;
+  }
+
+  if (!claimListenerRegistration(api)) {
+    logger.log("Bỏ qua yêu cầu đăng ký listener trùng cho cùng API instance.", "warn");
     return;
   }
 
@@ -535,3 +550,4 @@ function startListening(api) {
 
 module.exports = startListening;
 module.exports.shouldReplayOldMessage = shouldReplayOldMessage;
+module.exports.claimListenerRegistration = claimListenerRegistration;

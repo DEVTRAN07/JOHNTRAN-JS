@@ -57,3 +57,13 @@ test("registry cache can be invalidated after hot reload", () => {
   assert.notEqual(after, before);
   assert.equal(after.eventHandlers.get("reaction")[0].name, "new");
 });
+
+
+test("listener registration can be claimed only once per API instance", () => {
+  const { claimListenerRegistration } = require("../core/listen");
+  const api = {};
+  assert.equal(claimListenerRegistration(api), true);
+  assert.equal(claimListenerRegistration(api), false);
+  assert.equal(claimListenerRegistration({}), true);
+  assert.equal(claimListenerRegistration(null), false);
+});
