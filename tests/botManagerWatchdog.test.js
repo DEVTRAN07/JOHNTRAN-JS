@@ -114,8 +114,9 @@ test("watchdog uses a rolling crash window and spawn errors are recoverable", as
     assert.equal(bot.restarts, 2);
     assert.equal(bot.toJSON().flapping, true, "two crashes exceed the configured window limit");
 
-    await sleep(55);
+    await sleep(65);
     assert.equal(bot.toJSON().flapping, false, "flapping clears after old crashes leave the rolling window");
+    assert.equal(children.length, 3, "the watchdog should resume after its cooldown expires");
   } finally {
     await bot.stop();
     cleanup(name);
