@@ -36,7 +36,7 @@ function currentGroup(api, event, Threads, threadData) {
   // Warm the group name in the background; the status card never waits on Zalo.
   if (!isPrivate && !cachedGroup && typeof api?.getGroupInfo === "function") {
     // The wrapped API method already owns the group-info cache.
-    void Promise.resolve(api.getGroupInfo(id)).catch(() => {});
+    void Promise.resolve().then(() => api.getGroupInfo(id)).catch(() => {});
   }
 
   return { name, id, enabled };
