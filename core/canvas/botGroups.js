@@ -89,18 +89,20 @@ async function renderBotGroups(options = {}) {
   const palette = theme.PALETTE;
 
   theme.label(ctx, "JOHNTRAN  /  GROUP CONTROL", pad, S(38), { size: 11 });
+  drawAvatar(ctx, { name: options.botName || "JOHNTRAN", avatar: options.botAvatar || "" },
+    W - pad - S(45), S(48), S(42));
   theme.text(ctx, "CÁC NHÓM ĐANG BẬT", pad, S(82), {
     size: 29,
     family: "JT-Display-Bold",
     color: palette.ink,
-    maxWidth: W - pad * 2
+    maxWidth: W - pad * 2 - S(58)
   });
   theme.foil(ctx, pad, S(96), S(128));
   theme.text(ctx, options.botName || "JOHNTRAN", pad, S(121), {
     size: 13,
     family: "JT-Bold",
     color: palette.ink2,
-    maxWidth: W - pad * 2
+    maxWidth: W - pad * 2 - S(58)
   });
 
   theme.panel(ctx, pad, S(137), W - pad * 2, S(31), S(8), palette.green);
