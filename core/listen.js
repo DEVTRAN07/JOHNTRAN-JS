@@ -107,8 +107,8 @@ function startListening(api) {
     // (selfListen: true → uidFrom bị rewrite thành uid bot = admin, cần flag rõ ràng)
     const allowSelfCommand = global.config.allow_self_command === true;
     const canRunCommand = !event.isSelf || allowSelfCommand;
-    const commandParts = typeof content === "string" ? content.trim().split(/\\s+/) : [];
-    const isBotEnableCommand = commandParts[0] === `${prefix}bot` && String(commandParts[1] || "").toLowerCase() === "on";
+    const commandParts = typeof content === "string" ? content.trim().split(/\s+/) : [];
+    const isBotEnableCommand = String(commandParts[0] || "").toLowerCase() === `${String(prefix).toLowerCase()}bot` && String(commandParts[1] || "").toLowerCase() === "on";
 
     // Khi nhóm đã OFF: không chạy event, điều hướng hay bất kỳ lệnh nào khác.
     // Chỉ /bot on được đi qua để khôi phục hoạt động từ Zalo.
