@@ -57,7 +57,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   const folderMenuRuntime = require("../runtime/folderMenu");
   const menuGroupShortcut = folderMenuRuntime.resolveMenuGroup(global.client.commands, UIDUsage, commandName);
   // Nhóm OFF phải im lặng hoàn toàn. Chỉ cho phép /bot on để chủ bot mở lại.
-  if (threadInfo?.bot_enabled === false && !(commandName === "bot" && String(args[0] || "").toLowerCase() === "on")) return;
+  if (threadInfo?.bot_enabled === false && !(commandName === "bot" && ["on", "status"].includes(String(args[0] || "").toLowerCase()))) return;
   // A bare category shortcut opens its card. Commands with the same name
   // (for example /anti and /admin) still execute normally when arguments exist.
   if (!command || (menuGroupShortcut && args.length === 0)) {

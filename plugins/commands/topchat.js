@@ -5,6 +5,7 @@ const { ThreadType } = require("zalo-client");
 const { vietnamDateKey, buildRanking } = require("../../core/topchat/stats");
 const topchatCounter = require("../events/topchatCounter");
 const { renderCanvas } = require("../../core/canvas/workerRender");
+const requesterProfile = require("../../core/runtime/requesterProfile");
 
 module.exports.config = {
   name: "topchat",
@@ -25,6 +26,100 @@ function readDailyCounts(thread) {
   const counts = thread.topchatCounts && typeof thread.topchatCounts === "object"
     ? thread.topchatCounts : {};
   return { today, counts };
+}
+
+const AVATAR_LOOKUP_TIMEOUT_MS = 500;
+const AVATAR_LOOKUP_CONCURRENCY = 4;
+
+function withTimeout(value, timeoutMs) {
+  return new Promise(resolve => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(null);
+    }, timeoutMs);
+    timer.unref?.();
+    Promise.resolve(value).then(result => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    }, () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(null);
+    });
+  });
+}
+
+async function resolveMemberAvatar(api, uid) {
+  const profileRequest = typeof api?.getUserInfo === "function"
+    ? withTimeout(Promise.resolve().then(() => api.getUserInfo(uid, 240)), AVATAR_LOOKUP_TIMEOUT_MS)
+    : Promise.resolve(null);
+  const avatarRequest = typeof api?.getAvatarUrlProfile === "function"
+    ? withTimeout(Promise.resolve().then(() => api.getAvatarUrlProfile(uid, 240)), AVATAR_LOOKUP_TIMEOUT_MS)
+    : Promise.resolve(null);
+  const [profileResult, avatarResult] = await Promise.all([profileRequest, avatarRequest]);
+  const profile = requesterProfile.pickProfileByUid(profileResult, uid);
+  return requesterProfile.pickAvatar(profile) ||
+    requesterProfile.pickAvatarByUid(avatarResult, uid) ||
+    requesterProfile.pickAvatar(profileResult) ||
+    "";
+}
+
+async function hydrateRankingAvatars(api, ranking) {
+  const items = Array.isArray(ranking) ? ranking : [];
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      const item = items[index];
+      if (item.avatar || !item.uid || item.uid === "0") continue;
+      item.avatar = await resolveMemberAvatar(api, String(item.uid));
+    }
+  };
+  await Promise.all(Array.from(
+    { length: Math.min(AVATAR_LOOKUP_CONCURRENCY, items.length) },
+    () => worker()
+  ));
+  return items;
+}
+
+async function persistRankingAvatars(Threads, threadId, thread, ranking) {
+  if (typeof Threads?.setData !== "function") return false;
+  const counts = { ...(thread?.topchatCounts || {}) };
+  let changed = false;
+  for (const item of ranking || []) {
+    if (!item?.avatar || !item.uid) continue;
+    const previous = counts[item.uid] || {};
+    if (previous.avatar === item.avatar) continue;
+    counts[item.uid] = { ...previous, avatar: item.avatar };
+    changed = true;
+  }
+  if (!changed) return false;
+  await Threads.setData(threadId, { ...(thread || {}), topchatCounts: counts });
+  return true;
+}
+
+async function sendTopchatCard(api, event, data) {
+  let imagePath;
+  try {
+    imagePath = await renderCanvas("topchat", data, { timeout: 30000, poolSize: 2 });
+    return await api.sendMessage({
+      msg: "",
+      attachments: [imagePath],
+      ttlKind: "card"
+    }, event.threadId, event.type);
+  } finally {
+    if (imagePath) {
+      const timer = setTimeout(() => {
+        try { fs.rmSync(imagePath, { force: true }); } catch {}
+      }, 60000);
+      timer.unref?.();
+    }
+  }
 }
 
 function emptyRankingMessage(thread, today, listenerDiagnostics = {}) {
@@ -78,14 +173,6 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
     (total, member) => total + Math.max(0, Number(member?.count) || 0), 0
   );
 
-  if (!ranking.length) {
-    const listenerDiagnostics = topchatCounter.getRuntimeDiagnostics(threadId);
-    const message = emptyRankingMessage(thread, today, listenerDiagnostics);
-    return reply?.info
-      ? reply.info(message)
-      : api.sendMessage({ msg: message }, event.threadId, event.type);
-  }
-
   const historyComplete = thread.topchatHistoryDate === today &&
     thread.topchatHistoryComplete === true;
   const historyLabel = historyComplete
@@ -94,27 +181,48 @@ module.exports.run = async function ({ api, event, Threads, reply }) {
       ? "LỊCH SỬ CHƯA ĐẦY ĐỦ"
       : "ĐANG ĐỒNG BỘ LỊCH SỬ";
 
-  let imagePath;
+  if (!ranking.length) {
+    const listenerDiagnostics = topchatCounter.getRuntimeDiagnostics(threadId);
+    const message = emptyRankingMessage(thread, today, listenerDiagnostics);
+    try {
+      return await sendTopchatCard(api, event, {
+        title: "TOP CHAT HÔM NAY",
+        subtitle: `${historyLabel} · ${today} · CHƯA CÓ TIN NHẮN`,
+        ranking: [],
+        totalMessages: 0,
+        emptyMessage: message
+      });
+    } catch (error) {
+      console.error("[TOPCHAT]", error?.stack || error);
+      return reply?.info ? reply.info(message) : api.sendMessage({ msg: message }, event.threadId, event.type);
+    }
+  }
+
   try {
-    imagePath = await renderCanvas("topchat", {
+    await hydrateRankingAvatars(api, ranking);
+    await persistRankingAvatars(Threads, threadId, thread, ranking);
+    return await sendTopchatCard(api, event, {
       title: "TOP CHAT HÔM NAY",
       subtitle: `${historyLabel} · ${today} · ${totalMessages} TIN NHẮN`,
       ranking,
+      totalMessages,
       totalMembers: ranking.length
-    }, { timeout: 30000, poolSize: 2 });
-    return await api.sendMessage({ msg: "", attachments: [imagePath] }, event.threadId, event.type);
+    });
   } catch (error) {
     console.error("[TOPCHAT]", error?.stack || error);
     const lines = ranking.map((item, index) => `${index + 1}. ${item.name} — ${item.count} tin`);
     return api.sendMessage({
       msg: `📊 TOP CHAT HÔM NAY · ${today}\nTổng ${totalMessages} tin nhắn\n${lines.join("\n")}`
     }, event.threadId, event.type);
-  } finally {
-    if (imagePath) {
-      const timer = setTimeout(() => { try { fs.rmSync(imagePath, { force: true }); } catch {} }, 60000);
-      timer.unref?.();
-    }
   }
 };
 
-module.exports._test = { readDailyCounts, emptyRankingMessage };
+module.exports._test = {
+  readDailyCounts,
+  emptyRankingMessage,
+  hydrateRankingAvatars,
+  resolveMemberAvatar,
+  persistRankingAvatars,
+  AVATAR_LOOKUP_TIMEOUT_MS,
+  AVATAR_LOOKUP_CONCURRENCY
+};

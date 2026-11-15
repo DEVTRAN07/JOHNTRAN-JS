@@ -28,6 +28,14 @@ test("messageTimestamp accepts seconds, milliseconds and ISO strings", () => {
   assert.equal(messageTimestamp("2026-11-12T00:00:00Z"), Date.parse("2026-11-12T00:00:00Z"));
 });
 
+test("topchat reads avatar URLs from Zalo object and array payload shapes", () => {
+  const { avatarUrl } = require("../core/topchat/stats");
+  assert.equal(avatarUrl({ avatar: { avatarUrl: "https://cdn.example/object.jpg" } }),
+    "https://cdn.example/object.jpg");
+  assert.equal(avatarUrl({ avatar: [{ href: "https://cdn.example/array.jpg" }] }),
+    "https://cdn.example/array.jpg");
+});
+
 test("aggregateMessages counts text and media, skips commands, self and other dates", () => {
   const date = "2026-11-12";
   const messages = [

@@ -3,6 +3,7 @@
 const avatarCache = require("./avatarCache");
 
 const AVATAR_PRELOAD_TIMEOUT_MS = 550;
+const MAX_CARD_AVATARS = 4;
 
 async function prepareRequesterAvatar(data) {
   const url = String(data?.requesterAvatarUrl || "").trim();
@@ -14,9 +15,52 @@ async function prepareRequesterAvatar(data) {
     });
     return Boolean(image);
   } catch {
-    // If Zalo's CDN is unavailable, the card still renders initials.
     return false;
   }
 }
 
-module.exports = { prepareRequesterAvatar, AVATAR_PRELOAD_TIMEOUT_MS };
+function collectAvatarUrls(type, data = {}) {
+  if (type === "menu" || type === "menu-folder") {
+    return [data.requesterAvatarUrl];
+  }
+  if (type === "status") {
+    return [data.botAvatar];
+  }
+  if (type === "topchat") {
+    return (Array.isArray(data.ranking) ? data.ranking : [])
+      .slice(0, MAX_CARD_AVATARS)
+      .map(item => item?.avatar);
+  }
+  if (type === "bot-groups") {
+    return [
+      data.botAvatar,
+      ...(Array.isArray(data.groups) ? data.groups : [])
+        .slice(0, MAX_CARD_AVATARS)
+        .map(item => item?.avatar)
+    ];
+  }
+  return [];
+}
+
+async function prepareCanvasAvatars(type, data = {}) {
+  const urls = [...new Set(collectAvatarUrls(type, data)
+    .map(url => String(url || "").trim())
+    .filter(url => /^https?:\/\//i.test(url)))];
+
+  if (!urls.length) return { requested: 0, loaded: 0 };
+  const results = await Promise.all(urls.map(url => prepareRequesterAvatar({
+    requesterAvatarUrl: url
+  })));
+  return {
+    requested: urls.length,
+    loaded: results.filter(Boolean).length
+  };
+}
+
+module.exports = {
+  prepareRequesterAvatar,
+  prepareCanvasAvatars,
+  collectAvatarUrls,
+  AVATAR_PRELOAD_TIMEOUT_MS,
+  MAX_CARD_AVATARS
+};

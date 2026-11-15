@@ -159,6 +159,39 @@ test("topchat sends the daily ranking from persisted counters without REST histo
   assert.ok(elapsed < 1000, `topchat took ${elapsed.toFixed(1)}ms`);
 });
 
+test("topchat fills missing participant avatars from Zalo profile endpoints", async () => {
+  const ranking = [
+    { uid: "member-avatar-1", name: "One", count: 10, avatar: "" },
+    { uid: "member-avatar-2", name: "Two", count: 5, avatar: "https://cdn.example/existing.png" }
+  ];
+  const api = {
+    async getAvatarUrlProfile(uid) {
+      return { data: { [uid + "_0"]: { avatarUrl: "https://cdn.example/" + uid + ".jpg" } } };
+    },
+    async getUserInfo() { return null; }
+  };
+  const result = await topchat._test.hydrateRankingAvatars(api, ranking);
+  assert.equal(result[0].avatar, "https://cdn.example/member-avatar-1.jpg");
+  assert.equal(result[1].avatar, "https://cdn.example/existing.png");
+});
+
+test("topchat persists newly resolved participant avatars for later calls", async () => {
+  const Threads = fakeThreads({
+    "topchat-avatar-persist": {
+      topchatCounts: { u1: { count: 3, name: "Member", avatar: "" } },
+      otherSetting: true
+    }
+  });
+  const thread = Threads.rows.get("topchat-avatar-persist").data;
+  const changed = await topchat._test.persistRankingAvatars(Threads, "topchat-avatar-persist", thread, [
+    { uid: "u1", avatar: "https://cdn.example/u1.jpg" }
+  ]);
+  const saved = Threads.rows.get("topchat-avatar-persist").data;
+  assert.equal(changed, true);
+  assert.equal(saved.topchatCounts.u1.avatar, "https://cdn.example/u1.jpg");
+  assert.equal(saved.otherSetting, true);
+});
+
 test("topchat ignores daily counters left over from a previous date", () => {
   const today = vietnamDateKey();
   const result = topchat._test.readDailyCounts({
@@ -323,25 +356,19 @@ test("topchat counts official Zalo GroupMessage events when the live frame omits
   assert.equal(saved.topchatCounts["member-model"].name, "Member Model");
 });
 
-test("topchat does not call the unsupported REST history endpoint when local counters are empty", async () => {
+test("topchat without ranking sends the clean Canvas empty-state card", async () => {
+  const fs = require("node:fs");
   const threadId = "topchat-no-rest-history-fallback";
   const Threads = fakeThreads({ [threadId]: { prefix: "/" } });
   let historyApiCalls = 0;
-  let infoMessage = "";
+  const sent = [];
   const api = {
     async getGroupChatHistory() {
       historyApiCalls++;
-      const error = new Error("Request failed with status code 404");
-      error.response = { status: 404 };
-      throw error;
+      throw new Error("history endpoint must not be called");
     },
-    async sendMessage() {
-      throw new Error("Topchat without ranking should use reply.info");
-    }
-  };
-  const reply = {
-    async info(message) {
-      infoMessage = message;
+    async sendMessage(payload) {
+      sent.push(payload);
       return { ok: true };
     }
   };
@@ -350,12 +377,17 @@ test("topchat does not call the unsupported REST history endpoint when local cou
     api,
     event: { threadId, type: ThreadType.Group, data: { uidFrom: "requester" } },
     Threads,
-    reply
+    reply: { info: () => { throw new Error("empty state should be a Canvas card"); } }
   });
 
   assert.equal(historyApiCalls, 0, "unsupported REST endpoint must not be requested");
-  assert.match(infoMessage, /realtime/i);
-  assert.doesNotMatch(infoMessage, /404|Request failed/i);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].msg, "");
+  assert.equal(sent[0].ttlKind, "card");
+  assert.equal(sent[0].attachments.length, 1);
+  const png = fs.readFileSync(sent[0].attachments[0]);
+  assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  assert.ok(png.length > 1000);
 });
 
 test("topchat persists realtime diagnostics even when every incoming group message is filtered", async () => {

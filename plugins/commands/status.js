@@ -35,7 +35,8 @@ function currentGroup(api, event, Threads, threadData) {
 
   // Warm the group name in the background; the status card never waits on Zalo.
   if (!isPrivate && !cachedGroup && typeof api?.getGroupInfo === "function") {
-    void stats.warmGroupInfo(api, id).catch(() => {});
+    // The wrapped API method already owns the group-info cache.
+    void Promise.resolve().then(() => api.getGroupInfo(id)).catch(() => {});
   }
 
   return { name, id, enabled };
@@ -53,12 +54,9 @@ function formatUptime(seconds) {
 module.exports.run = async function ({ api, event, Threads, threadData, reply }) {
   let imagePath;
   try {
-    // Use the last known bot profile immediately. A missing/stale profile is
-    // refreshed in the background instead of blocking the user's status query.
-    let profile = stats.getCachedProfile();
-    if (!profile) {
-      void stats.getProfile(api).catch(() => {});
-    }
+    // getProfile returns the warm cache immediately; on a cold start or stale
+    // cache it resolves the Zalo profile so the status card can include the bot avatar.
+    const profile = await stats.getProfile(api);
 
     const device = collectDeviceMetrics();
     const group = currentGroup(api, event, Threads, threadData);

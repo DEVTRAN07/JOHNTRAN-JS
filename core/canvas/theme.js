@@ -3,11 +3,9 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { createCanvas, registerFont, loadImage } = require("canvas");
+const { createCanvas, registerFont } = require("canvas");
 const { withMacWindow } = require("./macWindow");
-const menuPalette = require("./menuPalette");
-
-const BG_IMAGE = path.join(__dirname, "..", "..", "assets", "bg", "theme.jpg");
+const BASE_CANVAS_THEME = "editorial";
 const PALETTE = {};
 const THEME_STYLE = {};
 
@@ -26,7 +24,6 @@ const BASE_STYLE = {
   btnRadius: 10,
   frame: true,
   glowCorners: ["rgba(212, 175, 55, .10)", "rgba(212, 175, 55, .04)"],
-  bgImageAlpha: 0.12,
   shade: "rgba(8, 8, 10, .78)",
   foil: true
 };
@@ -47,38 +44,19 @@ function mixHex(hex, target, amount) {
 }
 
 function resolveTheme() {
-  const name = String(global.config?.canvas?.theme || "editorial").trim().toLowerCase();
+  const name = String(global.config?.canvas?.theme || BASE_CANVAS_THEME).trim().toLowerCase();
   const preset = PRESETS[name] || PRESETS.editorial;
-  const selected = menuPalette.getPalette();
-  const backgrounds = selected.background || [];
-  const palette = {
-    bg0: backgrounds[0] || BASE_PALETTE.bg0,
-    bg1: backgrounds[1] || BASE_PALETTE.bg1,
-    bg2: backgrounds[2] || BASE_PALETTE.bg2,
-    ink: BASE_PALETTE.ink,
-    ink2: BASE_PALETTE.ink2,
-    mute: BASE_PALETTE.mute,
-    accent: selected.accent || BASE_PALETTE.accent,
-    accent2: mixHex(selected.accent || BASE_PALETTE.accent, "#ffffff", 0.34),
-    green: BASE_PALETTE.green,
-    red: BASE_PALETTE.red,
-    gold: selected.accent || BASE_PALETTE.gold
-  };
 
-  Object.assign(PALETTE, BASE_PALETTE, palette);
+  // /theme owns only the /menu and folder-card palette. Other Canvas cards
+  // keep this stable application palette and never inherit menu color changes.
+  Object.assign(PALETTE, BASE_PALETTE);
   Object.assign(THEME_STYLE, BASE_STYLE, preset.style || {});
   THEME_STYLE.panelBorder = PALETTE.accent;
-  THEME_STYLE.glowCorners = selected.glow || BASE_STYLE.glowCorners;
 }
 
 let _resolvedSignature = "";
 function themeSignature() {
-  const selected = menuPalette.getThemeInfo();
-  return [
-    String(global.config?.canvas?.theme || "editorial"),
-    selected.name || "gold",
-    selected.customHex || ""
-  ].join("|");
+  return String(global.config?.canvas?.theme || BASE_CANVAS_THEME);
 }
 
 function ensureTheme() {
@@ -231,19 +209,8 @@ async function paintBackground(ctx, width, height) {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
-  try {
-    if (fs.existsSync(BG_IMAGE)) {
-      const image = await loadImage(fs.readFileSync(BG_IMAGE));
-      const scale = Math.max(width / image.width, height / image.height);
-      const drawWidth = image.width * scale;
-      const drawHeight = image.height * scale;
-      ctx.save();
-      ctx.globalAlpha = THEME_STYLE.bgImageAlpha;
-      ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
-      ctx.restore();
-    }
-  } catch { /* gradient fallback */ }
-
+  // No wallpaper/photo is loaded. Keep the clean gradient, shade and color
+  // accents so all non-menu cards remain consistent and lightweight.
   const shade = ctx.createLinearGradient(0, 0, 0, height);
   shade.addColorStop(0, "rgba(8, 8, 10, .56)");
   shade.addColorStop(1, THEME_STYLE.shade);
@@ -349,6 +316,7 @@ function save(canvas, prefix) {
     status: "System Status",
     profile_card: "Member Profile",
     generic_card: "JOHNTRAN",
+    bot_groups: "Bot Groups",
     card: "JOHNTRAN"
   };
   fs.writeFileSync(filePath, withMacWindow(canvas, titles[prefix] || "JOHN TRAN").toBuffer("image/png"));

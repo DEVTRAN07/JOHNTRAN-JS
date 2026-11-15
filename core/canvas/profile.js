@@ -1,5 +1,5 @@
-// ===== RENDERER HỒ SƠ BẢN 3.0 (getavt / cardzalo) =====
-// Thiết kế mới hoàn toàn: ảnh nền nổi rõ + kính mờ + avatar viền gradient.
+// ===== RENDERER HỒ SƠ BẢN 3.0 (legacy profile helper) =====
+// Nền gradient sạch, không dùng wallpaper/theme image.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -8,7 +8,6 @@ const { withMacWindow } = require("./macWindow");
 
 const WIDTH = 750;
 const PAD = 40;
-const BG_IMAGE = path.join(__dirname, "..", "..", "assets", "bg", "theme.jpg");
 
 const SKINS = {
   zalo:     { name: "ZALO",     a: "#0068ff", b: "#00d4ff", icon: "🟦" },
@@ -90,16 +89,6 @@ async function paintBase(ctx, skin, w, h, avatar) {
   base.addColorStop(1, "#080b16");
   ctx.fillStyle = base;
   ctx.fillRect(0, 0, w, h);
-
-  // ảnh nền chính (rõ)
-  const bg = await loadImg(BG_IMAGE);
-  if (bg) {
-    const s = Math.max(w / bg.width, h / bg.height);
-    ctx.save();
-    ctx.globalAlpha = 0.55;
-    ctx.drawImage(bg, (w - bg.width * s) / 2, (h - bg.height * s) / 2, bg.width * s, bg.height * s);
-    ctx.restore();
-  }
 
   // gradient màu loại phủ lên
   const tint = ctx.createLinearGradient(0, 0, w, h);

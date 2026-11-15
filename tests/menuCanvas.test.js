@@ -51,6 +51,12 @@ test("menu does not treat /menu <command> as a command-info shortcut", async () 
   }
 });
 
+test("main menu resolves the canonical /bot slug to the bot category artwork", () => {
+  const source = fs.readFileSync(require.resolve("../core/canvas/menu"), "utf8");
+  assert.ok(source.includes("resolveFolderIconSlug(item.slug, item.name)"));
+  assert.ok(source.includes('bot: "mybot"'));
+});
+
 test("menu clock measures the time label and leaves a fixed visual gap", () => {
   const source = fs.readFileSync(require.resolve("../core/canvas/menu"), "utf8");
   assert.match(source, /const timeWidth = ctx\.measureText\(time\)\.width/);

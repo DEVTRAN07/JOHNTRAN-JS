@@ -82,6 +82,24 @@ test("canvas worker renders a valid topchat PNG", async () => {
   }
 });
 
+test("canvas worker renders an enabled bot groups card", async () => {
+  const outputPath = await renderCanvas("bot-groups", {
+    botName: "JOHNTRAN Test",
+    enabledCount: 2,
+    groups: [
+      { gid: "g1", name: "Nhóm đang bật A", avatar: "", totalMember: 20 },
+      { gid: "g2", name: "Nhóm đang bật B", avatar: "", totalMember: 12 }
+    ]
+  }, { timeout: 20000, poolSize: 1 });
+  try {
+    const png = fs.readFileSync(outputPath);
+    assert.ok(png.length > 1000);
+    assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  } finally {
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+});
+
 test("canvas worker renders the status card off the main thread", async () => {
   const outputPath = await renderCanvas("status", {
     botName: "JOHNTRAN",

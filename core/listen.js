@@ -108,11 +108,11 @@ function startListening(api) {
     const allowSelfCommand = global.config.allow_self_command === true;
     const canRunCommand = !event.isSelf || allowSelfCommand;
     const commandParts = typeof content === "string" ? content.trim().split(/\s+/) : [];
-    const isBotEnableCommand = String(commandParts[0] || "").toLowerCase() === `${String(prefix).toLowerCase()}bot` && String(commandParts[1] || "").toLowerCase() === "on";
+    const isBotControlCommand = String(commandParts[0] || "").toLowerCase() === `${String(prefix).toLowerCase()}bot` && ["on", "status"].includes(String(commandParts[1] || "").toLowerCase());
 
     // Khi nhóm đã OFF: không chạy event, điều hướng hay bất kỳ lệnh nào khác.
-    // Chỉ /bot on được đi qua để khôi phục hoạt động từ Zalo.
-    if (threadInfo?.bot_enabled === false && !(canRunCommand && isBotEnableCommand)) return;
+    // Chỉ /bot on và /bot status được đi qua khi nhóm OFF.
+    if (threadInfo?.bot_enabled === false && !(canRunCommand && isBotControlCommand)) return;
 
     const dispatchMessageEvents = () => {
       if (threadInfo?.bot_enabled === false) return;
