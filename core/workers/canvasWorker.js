@@ -37,6 +37,10 @@ async function renderToPath(type, data) {
       const { renderStatus } = require("../canvas/status");
       return renderStatus(data || {});
     }
+    case "bot-groups": {
+      const { renderBotGroups } = require("../canvas/botGroups");
+      return renderBotGroups(data || {});
+    }
     case "topchat": {
       const { renderTopChat } = require("../canvas/topchat");
       return renderTopChat(data || {});
