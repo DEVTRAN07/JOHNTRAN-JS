@@ -94,6 +94,7 @@ test("system view exposes database and individual bot health", () => {
 });
 
 test("group command proxy preserves the gid query string for POST updates", () => {
+  const bridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
   assert.match(server, /if \(url\.search\) target \+= url\.search/);
   assert.match(server, /if \(req\.method === "POST"\) \{\s*req\.pipe\(proxyReq\)/);
   assert.match(bridge, /const gid = String\(url\.searchParams\.get\("gid"\)/);
