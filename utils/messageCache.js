@@ -12,6 +12,17 @@ if (!fs.existsSync(messageCachePath)) {
 let messageCacheMem = null;
 let cacheFlushTimer = null;
 const CACHE_FLUSH_DELAY = 5000;
+const MAX_MESSAGE_CACHE_ENTRIES = 50000;
+const MESSAGE_CACHE_EVICTION_BATCH = 2500;
+
+function enforceMessageCacheLimit(cache, maxEntries = MAX_MESSAGE_CACHE_ENTRIES) {
+    if (!cache || typeof cache !== 'object') return 0;
+    const keys = Object.keys(cache);
+    if (keys.length <= maxEntries) return 0;
+    const removeCount = Math.max(keys.length - maxEntries, Math.min(MESSAGE_CACHE_EVICTION_BATCH, Math.ceil(maxEntries * 0.05)));
+    for (const key of keys.slice(0, removeCount)) delete cache[key];
+    return removeCount;
+}
 
 function loadMessageCacheFromDisk() {
     try {
@@ -107,7 +118,11 @@ function updateMessageCache(data) {
             threadId: data.threadId || messageData.idTo,
             type: data.type ?? messageData.type
         };
+        // Refresh insertion order for recently updated IDs, then enforce a hard
+        // memory bound. Eviction affects only this auxiliary cache, not Zalo data.
+        delete messageCache[String(clientId)];
         messageCache[String(clientId)] = filtered;
+        enforceMessageCacheLimit(messageCache);
         scheduleCacheFlush();
     } catch (e) {
         logger.log("Lỗi khi update messageCache: " + e.message, "error");
@@ -122,5 +137,7 @@ module.exports = {
     scheduleCacheFlush,
     cleanOldMessages,
     getMessageCache,
-    updateMessageCache
+    updateMessageCache,
+    enforceMessageCacheLimit,
+    MAX_MESSAGE_CACHE_ENTRIES
 };
