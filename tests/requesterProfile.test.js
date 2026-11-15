@@ -207,6 +207,24 @@ test("getUserAvatar shares UID-safe profile lookup and cache", async () => {
   }
 });
 
+test("requester fallback accepts a nested URL only under an explicit avatar field", async () => {
+  clearRequesterProfileCache();
+  try {
+    const result = await getRequesterProfile({}, {
+      data: {
+        uidFrom: "nested-avatar-event-user",
+        dName: "Avatar Event User",
+        avatar: { url: "https://cdn.example/real-sender-avatar.jpg" },
+        content: { url: "https://cdn.example/message-photo.jpg" }
+      }
+    });
+
+    assert.equal(result.requesterAvatarUrl, "https://cdn.example/real-sender-avatar.jpg");
+  } finally {
+    clearRequesterProfileCache();
+  }
+});
+
 test("requester fallback does not mistake an attached message URL for a user avatar", async () => {
   clearRequesterProfileCache();
   try {
