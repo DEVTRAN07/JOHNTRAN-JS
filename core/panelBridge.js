@@ -266,7 +266,7 @@ async function handleRequest(req, res, url) {
       const disabled = Array.isArray(thread.data?.disabled_commands)
         ? thread.data.disabled_commands.map(value => String(value).toLowerCase())
         : [];
-      return json(200, { gid, disabled, all });
+      return json(200, { gid, disabled, all, botEnabled: thread.data?.bot_enabled !== false });
     }
 
     if (req.method === "POST") {
@@ -279,6 +279,15 @@ async function handleRequest(req, res, url) {
       try { body = JSON.parse(raw || "{}"); }
       catch { return json(400, { error: "JSON không hợp lệ" }); }
 
+      const thread = await Threads.getData(gid);
+      const data = thread.data || {};
+      if (Object.prototype.hasOwnProperty.call(body, "botEnabled")) {
+        if (typeof body.botEnabled !== "boolean") return json(400, { error: "botEnabled phải là true hoặc false" });
+        data.bot_enabled = body.botEnabled;
+        await Threads.setData(gid, data);
+        return json(200, { gid, botEnabled: data.bot_enabled });
+      }
+
       const command = String(body.command || "").trim().toLowerCase();
       const exists = Array.from(commands.entries()).some(([key, value]) =>
         String(key).toLowerCase() === command ||
@@ -286,8 +295,6 @@ async function handleRequest(req, res, url) {
       );
       if (!exists) return json(404, { error: `Lệnh '${command}' không tồn tại` });
 
-      const thread = await Threads.getData(gid);
-      const data = thread.data || {};
       const disabled = Array.isArray(data.disabled_commands)
         ? [...data.disabled_commands].map(value => String(value).toLowerCase())
         : [];
