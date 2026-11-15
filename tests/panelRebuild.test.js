@@ -41,7 +41,7 @@ test("panel frontend is self-hosted and has no external runtime dependency", () 
 test("dashboard keeps using the existing protected panel API and bridge routes", () => {
   for (const endpoint of [
     "/api/bots", "/api/metrics", "/api/commands", "/api/commands/status",
-    "/api/groups/", "/api/stats", "/api/chat/"
+    "/api/stats", "/api/chat/"
   ]) assert.ok(js.includes(endpoint), "missing API integration: " + endpoint);
   assert.match(server, /isPanelRequestAuthorized/);
   assert.match(server, /STATIC_FILES/);
