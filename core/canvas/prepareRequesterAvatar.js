@@ -32,9 +32,12 @@ function collectAvatarUrls(type, data = {}) {
       .map(item => item?.avatar);
   }
   if (type === "bot-groups") {
-    return (Array.isArray(data.groups) ? data.groups : [])
-      .slice(0, MAX_CARD_AVATARS)
-      .map(item => item?.avatar);
+    return [
+      data.botAvatar,
+      ...(Array.isArray(data.groups) ? data.groups : [])
+        .slice(0, MAX_CARD_AVATARS)
+        .map(item => item?.avatar)
+    ];
   }
   return [];
 }
