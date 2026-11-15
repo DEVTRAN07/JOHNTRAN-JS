@@ -61,3 +61,27 @@ test("collectStats coalesces parallel refreshes and caches remote profile/friend
   assert.equal(allGroupCalls, 1);
   stats.invalidate();
 });
+
+
+test("stats normalize Zalo avatar objects for bot, friends and groups", async () => {
+  stats.invalidate();
+  const api = {
+    async getOwnId() { return "bot-avatar-shape"; },
+    async fetchAccountInfo() {
+      return { profile: { userId: "bot-avatar-shape", displayName: "Bot", avatar: { url: "https://cdn.example/bot.jpg" } } };
+    },
+    async getAllFriends() {
+      return [{ userId: "friend-avatar-shape", displayName: "Friend", avatar: { avatarUrl: "https://cdn.example/friend.jpg" } }];
+    },
+    async getAllGroups() { return { gridVerMap: { "group-avatar-shape": 1 } }; },
+    async getGroupInfo(gid) {
+      return { gridInfoMap: { [gid]: { name: "Group", avt: { url: "https://cdn.example/group.jpg" } } } };
+    }
+  };
+
+  const result = await stats.collectStats(api);
+  assert.equal(result.profile.avatar, "https://cdn.example/bot.jpg");
+  assert.equal(result.friends.list[0].avatar, "https://cdn.example/friend.jpg");
+  assert.equal(result.groups.list[0].avatar, "https://cdn.example/group.jpg");
+  stats.invalidate();
+});
