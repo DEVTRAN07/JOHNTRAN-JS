@@ -278,8 +278,7 @@ test("requester avatar parser unwraps nested avatar objects", () => {
 
 
 test("requester profile lookups cap concurrent remote requests during message bursts", async () => {
-  const { MAX_PENDING_PROFILES } = require("../core/runtime/requesterProfile");
-  const { pending } = require("../core/runtime/requesterProfile");
+  const { MAX_PENDING_PROFILES, getPendingProfileLookupCount } = require("../core/runtime/requesterProfile");
   clearRequesterProfileCache();
   let calls = 0;
   const api = {
@@ -296,7 +295,7 @@ test("requester profile lookups cap concurrent remote requests during message bu
       })
     );
     await Promise.all(lookups);
-    assert.equal(pending.size, MAX_PENDING_PROFILES);
+    assert.equal(getPendingProfileLookupCount(), MAX_PENDING_PROFILES);
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(calls, MAX_PENDING_PROFILES);
   } finally {
