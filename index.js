@@ -2,6 +2,7 @@ const { spawn } = require("child_process");
 const logger = require("./utils/logger");
 const semver = require("semver");
 const configSystem = require("./core/config");
+const { getRestartPlan } = require("./core/runtime/restartPolicy");
 
 (async () => {
     await logger.printBanner();
@@ -64,10 +65,38 @@ const configSystem = require("./core/config");
     // ===== CHẾ ĐỘ BOT ĐƠN: master giám sát 1 tiến trình JohnTran.js =====
     let child = null;
     let shuttingDown = false;
+    let restartTimer = null;
+    let restartHistory = [];
+
+    function scheduleRestart(delayMs, reason) {
+        if (shuttingDown || restartTimer) return false;
+        logger.log(`${reason} — thử chạy lại sau ${Math.ceil(delayMs / 1000)}s`, "warn");
+        restartTimer = setTimeout(() => {
+            restartTimer = null;
+            if (!shuttingDown) startProject();
+        }, Math.max(0, delayMs));
+        return true;
+    }
+
+    function scheduleCrashRecovery(reason) {
+        const plan = getRestartPlan(restartHistory, Date.now());
+        restartHistory = plan.timestamps;
+        if (plan.cooldown) {
+            logger.log(
+                `Supervisor tạm hoãn vì có ${plan.attempts} lần lỗi trong 10 phút; chờ cửa sổ giới hạn được làm mới`,
+                "error"
+            );
+        }
+        scheduleRestart(plan.delayMs, reason);
+    }
 
     function shutdown(signal) {
         if (shuttingDown) return;
         shuttingDown = true;
+        if (restartTimer) {
+            clearTimeout(restartTimer);
+            restartTimer = null;
+        }
         logger.log("Đang dừng bot con...", "warn");
 
         if (!child) return process.exit(0);
@@ -90,26 +119,46 @@ const configSystem = require("./core/config");
     process.once("SIGINT", () => shutdown("SIGINT"));
 
     function startProject() {
-        if (shuttingDown) return;
+        if (shuttingDown || child) return;
 
-        const currentChild = spawn(process.execPath, ["JohnTran.js"], {
-            cwd: __dirname,
-            stdio: "inherit",
-            env: { ...process.env, JT_PANEL_CHILD: "0" }
-        });
+        let currentChild;
+        try {
+            currentChild = spawn(process.execPath, ["JohnTran.js"], {
+                cwd: __dirname,
+                stdio: "inherit",
+                env: { ...process.env, JT_PANEL_CHILD: "0" }
+            });
+        } catch (error) {
+            scheduleCrashRecovery(`Không thể tạo tiến trình bot con: ${error.message || error}`);
+            return;
+        }
         child = currentChild;
 
-        currentChild.on("error", (error) => {
-            logger.log(`Không thể khởi động bot con: ${error.message}`, "error");
-            process.exit(1);
+        currentChild.once("error", (error) => {
+            // Lỗi spawn thường được theo sau bởi close; để close handler thống nhất
+            // việc tính backoff và quyết định thử lại.
+            logger.log(`Không thể khởi động bot con: ${error.message || error}`, "error");
         });
 
-        currentChild.on("close", (code) => {
+        currentChild.once("close", (code, signal) => {
             if (child === currentChild) child = null;
-            if (!shuttingDown && code === 2) {
-                logger.log(`Khởi động lại...`, "warn");
-                startProject();
+            if (shuttingDown) return;
+
+            if (code === 0 && !signal) {
+                logger.log("Bot con đã thoát bình thường; supervisor không tự khởi động lại", "info");
+                return;
             }
+
+            // Mã 2 được dùng khi plugin cần restart sau khi cài dependency.
+            if (code === 2 && !signal) {
+                scheduleRestart(250, "Bot yêu cầu khởi động lại sau cập nhật dependency");
+                return;
+            }
+
+            const reason = signal
+                ? `Bot con thoát bất thường do signal ${signal}`
+                : `Bot con thoát với code ${code}`;
+            scheduleCrashRecovery(reason);
         });
     }
 
