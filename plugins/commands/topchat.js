@@ -31,36 +31,12 @@ function readDailyCounts(thread) {
 const AVATAR_LOOKUP_TIMEOUT_MS = 700;
 const AVATAR_LOOKUP_CONCURRENCY = 6;
 
-function withTimeout(value, timeoutMs) {
-  return new Promise(resolve => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      resolve(null);
-    }, timeoutMs);
-    timer.unref?.();
-    Promise.resolve(value).then(result => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(result);
-    }, () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(null);
-    });
-  });
-}
-
 async function resolveMemberAvatar(api, uid) {
   // Share the same UID-safe lookup/cache as /menu, and wait only a bounded
   // amount of time. The Canvas worker then preloads the resulting image URL.
   return requesterProfile.getUserAvatar(api, String(uid), {
     waitMs: AVATAR_LOOKUP_TIMEOUT_MS,
-    fetchTimeoutMs: 1600,
-    avatarWaitMs: 120
+    fetchTimeoutMs: AVATAR_LOOKUP_TIMEOUT_MS - 50
   });
 }
 
