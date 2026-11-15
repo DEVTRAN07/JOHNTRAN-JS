@@ -37,6 +37,10 @@ function claimListenerRegistration(api) {
   return true;
 }
 
+function shouldExecuteMessageCommand(options = {}) {
+  return options.skipCommandExecution !== true;
+}
+
 function shouldReplayOldMessage(message, reconnectSince) {
   const rawTimestamp = Number(message?.data?.ts);
   if (!Number.isFinite(rawTimestamp) || rawTimestamp <= 0) return false;
@@ -68,7 +72,7 @@ function startListening(api) {
   };
 
   // ===== Xử lý 1 tin nhắn (dùng chung cho realtime và backfill sau reconnect) =====
-  const onMessage = async (event) => {
+  const onMessage = async (event, options = {}) => {
     // allow_private_command: false → bỏ qua HOÀN TOÀN tin riêng (cả lệnh lẫn auto-reply)
     if (event.type === ThreadType.User && global.config.allow_private_command === false) {
       return;
@@ -87,6 +91,10 @@ function startListening(api) {
     try {
       panelBridge.recordIncoming(event);
     } catch { /* bỏ qua */ }
+
+    // Backfill only records missed messages; historical commands/events must
+    // never be executed again after reconnect.
+    if (!shouldExecuteMessageCommand(options)) return;
 
     // Prefetch the sender profile in the background. The lookup is single-flight
     // and TTL-cached, so repeated messages do not trigger repeated Zalo requests.
@@ -197,7 +205,7 @@ function startListening(api) {
     }
   };
 
-  const handleIncoming = (event) => {
+  const handleIncoming = (event, options = {}) => {
     // Observe the raw SDK event before duplicate/self filters so /topchat can
     // distinguish "listener received nothing" from "self/duplicate was skipped".
     const topchatCounter = require("../plugins/events/topchatCounter");
@@ -215,7 +223,7 @@ function startListening(api) {
       });
     }
 
-    Promise.resolve(onMessage(event)).catch((err) => {
+    Promise.resolve(onMessage(event, options)).catch((err) => {
       logger.log(`Lỗi listener message: ${err.message}`, "error");
     });
   };
@@ -383,7 +391,7 @@ function startListening(api) {
         if (!message?.isSelf) updateMessageCache(message);
         continue;
       }
-      handleIncoming(message);
+      handleIncoming(message, { skipCommandExecution: true });
     }
   });
 
@@ -556,3 +564,4 @@ function startListening(api) {
 module.exports = startListening;
 module.exports.shouldReplayOldMessage = shouldReplayOldMessage;
 module.exports.claimListenerRegistration = claimListenerRegistration;
+module.exports.shouldExecuteMessageCommand = shouldExecuteMessageCommand;
