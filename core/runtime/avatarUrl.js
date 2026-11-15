@@ -1,10 +1,22 @@
 "use strict";
 
-// Lightweight URL extraction shared by realtime listeners, stats and Canvas.
-// Keep this module free of network, Canvas and database imports.
+// Lightweight, UID-aware avatar extraction shared across commands and Canvas.
+const AVATAR_FIELDS = [
+  "url", "href", "avatar", "avatarUrl", "avatar_url", "avatarURL", "avatarUri", "avatar_uri",
+  "photoUrl", "photo_url", "profilePicture", "profile_picture",
+  "profilePictureUrl", "profile_picture_url", "hdAvatar", "hd_avatar",
+  "largeAvatar", "large_avatar", "fullAvatar", "full_avatar",
+  "imageUrl", "image_url", "src"
+];
+const EXPLICIT_AVATAR_FIELDS = AVATAR_FIELDS.filter(key => !["url", "href", "src"].includes(key));
+
+function isHttpUrl(value) {
+  return typeof value === "string" && /^https?:\/\//i.test(value.trim());
+}
+
 function pickAvatar(value, depth = 0) {
   if (!value || depth > 5) return "";
-  if (typeof value === "string") return /^https?:\/\//i.test(value.trim()) ? value.trim() : "";
+  if (isHttpUrl(value)) return value.trim();
   if (Array.isArray(value)) {
     for (const item of value) {
       const avatar = pickAvatar(item, depth + 1);
@@ -14,17 +26,9 @@ function pickAvatar(value, depth = 0) {
   }
   if (typeof value !== "object") return "";
 
-  const fields = [
-    "url", "href", "avatar", "avatarUrl", "avatar_url", "photoUrl",
-    "photo_url", "profilePicture", "profile_picture", "hdAvatar",
-    "hd_avatar", "largeAvatar", "large_avatar", "fullAvatar",
-    "full_avatar", "avatarURL", "imageUrl", "image_url", "src"
-  ];
-  for (const key of fields) {
+  for (const key of AVATAR_FIELDS) {
     const candidate = value[key];
-    if (typeof candidate === "string" && /^https?:\/\//i.test(candidate.trim())) {
-      return candidate.trim();
-    }
+    if (isHttpUrl(candidate)) return candidate.trim();
     if (candidate && typeof candidate === "object") {
       const nested = pickAvatar(candidate, depth + 1);
       if (nested) return nested;
@@ -33,62 +37,118 @@ function pickAvatar(value, depth = 0) {
   return "";
 }
 
-function pickAvatarByUid(response, uid) {
-  if (!response || typeof response !== "object") {
-    return typeof response === "string" && /^https?:\/\//i.test(response) ? response : "";
+// Event payloads may include media URLs; only inspect fields explicitly
+// associated with a person's profile, never generic url/href/src properties.
+function pickExplicitAvatar(value, depth = 0) {
+  if (!value || depth > 4 || typeof value !== "object") return "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const result = pickExplicitAvatar(item, depth + 1);
+      if (result) return result;
+    }
+    return "";
   }
 
-  const userId = String(uid);
-  const expectedIds = new Set([userId, userId + "_0"]);
+  for (const key of EXPLICIT_AVATAR_FIELDS) {
+    const candidate = value[key];
+    if (isHttpUrl(candidate)) return candidate.trim();
+    if (candidate && typeof candidate === "object") {
+      const nested = pickExplicitAvatar(candidate, depth + 1);
+      if (nested) return nested;
+    }
+  }
+
+  for (const key of ["profile", "user", "sender", "author", "userProfile", "user_profile"]) {
+    const nested = value[key];
+    if (nested && typeof nested === "object") {
+      const result = pickExplicitAvatar(nested, depth + 1);
+      if (result) return result;
+    }
+  }
+  return "";
+}
+
+function uidMatches(candidate, uid) {
+  const id = String(candidate || "");
+  const target = String(uid || "");
+  return Boolean(target && (
+    id === target ||
+    id === target + "_0" ||
+    id.startsWith(target + "_")
+  ));
+}
+
+function isUidRecordKey(key) {
+  const value = String(key || "");
+  return /^\d{5,}$/.test(value) || /.+_0$/.test(value);
+}
+
+function pickAvatarByUid(response, uid) {
+  const target = String(uid || "").trim();
+  if (!target || response == null) return "";
+  if (isHttpUrl(response)) return response.trim();
+  if (typeof response !== "object") return "";
+
   const queue = [response];
   const visited = new Set();
   let inspected = 0;
+  let sawUidScopedRecord = false;
 
-  while (queue.length && inspected < 120) {
+  while (queue.length && inspected < 160) {
     const current = queue.shift();
     if (!current || typeof current !== "object" || visited.has(current)) continue;
     visited.add(current);
     inspected++;
 
     if (Array.isArray(current)) {
-      const matched = current.find(item => {
-        if (!item || typeof item !== "object") return false;
-        const id = String(item.userId ?? item.user_id ?? item.uid ?? item.id ?? "");
-        return expectedIds.has(id) || id.startsWith(userId + "_");
-      });
-      if (matched) {
-        const avatar = pickAvatar(matched);
-        if (avatar) return avatar;
-        queue.unshift(matched);
-      } else if (current.length === 1) {
-        queue.push(current[0]);
+      const identified = current.filter(item =>
+        item && typeof item === "object" &&
+        (item.userId != null || item.user_id != null || item.uid != null)
+      );
+      if (identified.length) {
+        sawUidScopedRecord = true;
+        const match = identified.find(item => uidMatches(
+          item.userId ?? item.user_id ?? item.uid, target
+        ));
+        if (match) return pickAvatar(match);
+      } else {
+        for (const item of current) {
+          if (item && typeof item === "object") queue.push(item);
+        }
       }
       continue;
     }
 
-    for (const key of expectedIds) {
-      if (Object.prototype.hasOwnProperty.call(current, key)) {
-        const avatar = pickAvatar(current[key]);
+    const recordId = current.userId ?? current.user_id ?? current.uid;
+    if (recordId != null && String(recordId)) {
+      sawUidScopedRecord = true;
+      if (uidMatches(recordId, target)) return pickAvatar(current);
+      // Never read an avatar from an explicitly different user's record.
+      continue;
+    }
+
+    const entries = Object.entries(current);
+    const uidEntries = entries.filter(([key, value]) =>
+      value && typeof value === "object" && isUidRecordKey(key)
+    );
+    if (uidEntries.length) {
+      sawUidScopedRecord = true;
+      const match = uidEntries.find(([key]) => uidMatches(key, target));
+      if (match) {
+        const avatar = pickAvatar(match[1]);
         if (avatar) return avatar;
-        queue.unshift(current[key]);
+        queue.unshift(match[1]);
       }
     }
-
-    const recordId = String(current.userId ?? current.user_id ?? current.uid ?? current.id ?? "");
-    if (recordId && (expectedIds.has(recordId) || recordId.startsWith(userId + "_"))) {
-      const avatar = pickAvatar(current);
-      if (avatar) return avatar;
-    }
-
-    const direct = pickAvatar(current);
-    if (direct) return direct;
 
     for (const value of Object.values(current)) {
       if (value && typeof value === "object") queue.push(value);
     }
   }
 
-  return "";
+  // Single-user avatar endpoints can return only { avatarUrl: "..." }.
+  // Accept unkeyed data only when no UID-scoped records were present.
+  return sawUidScopedRecord ? "" : pickAvatar(response);
 }
 
-module.exports = { pickAvatar, pickAvatarByUid };
+module.exports = { pickAvatar, pickExplicitAvatar, pickAvatarByUid, uidMatches };
