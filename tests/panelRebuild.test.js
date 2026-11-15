@@ -92,3 +92,9 @@ test("system view exposes database and individual bot health", () => {
   assert.match(js, /consecutiveFailures/);
   assert.match(js, /systemBotList/);
 });
+
+test("group command proxy preserves the gid query string for POST updates", () => {
+  assert.match(server, /if \(url\.search\) target \+= url\.search/);
+  assert.match(server, /if \(req\.method === "POST"\) \{\s*req\.pipe\(proxyReq\)/);
+  assert.match(bridge, /const gid = String\(url\.searchParams\.get\("gid"\)/);
+});
