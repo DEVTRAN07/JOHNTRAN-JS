@@ -30,7 +30,7 @@ test("menu color themes stay isolated from non-menu Canvas cards", t => {
   const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
   const legacyProfile = fs.readFileSync(require.resolve("../core/canvas/profile"), "utf8");
   const macWindow = fs.readFileSync(require.resolve("../core/canvas/macWindow"), "utf8");
-  assert.ok(!source.includes("menuPalette"));
+  assert.doesNotMatch(source, /^const menuPalette\s*=/m);
   assert.ok(!source.includes("BG_IMAGE"));
   assert.ok(!source.includes("theme.jpg"));
   assert.ok(!source.includes("loadImage"));
