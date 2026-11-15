@@ -57,13 +57,6 @@ function warmAvatar(url) {
   return Promise.resolve(avatarCache.warmAvatar(url)).catch(() => null);
 }
 
-function delay(ms) {
-  return new Promise(resolve => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref?.();
-  });
-}
-
 function settleWithin(value, timeoutMs) {
   return new Promise(resolve => {
     let settled = false;
@@ -74,7 +67,6 @@ function settleWithin(value, timeoutMs) {
       resolve(result ?? null);
     };
     const timer = setTimeout(() => finish(null), timeoutMs);
-    timer.unref?.();
     Promise.resolve(value).then(finish, () => finish(null));
   });
 }
@@ -83,7 +75,7 @@ async function warmAvatarWithin(url, waitMs) {
   if (!url) return;
   const task = warmAvatar(url);
   if (waitMs > 0) {
-    await Promise.race([task, delay(waitMs)]);
+    await settleWithin(task, waitMs);
   }
 }
 
@@ -180,7 +172,7 @@ async function getRequesterProfile(api, event, options = {}) {
   // short bounded wait so the first card can include the requester's avatar.
   const request = fetchProfileInBackground(api, uid, fallback, { skipAvatarWarm });
   if (waitMs > 0 && request) {
-    const profile = await Promise.race([request, delay(waitMs).then(() => null)]);
+    const profile = await settleWithin(request, waitMs);
     if (profile) {
       if (!skipAvatarWarm) {
         if (avatarWaitMs > 0) await warmAvatarWithin(profile.requesterAvatarUrl, avatarWaitMs);
