@@ -36,7 +36,13 @@ function loadMessageCacheFromDisk() {
 }
 
 function readMessageJson() {
-    if (messageCacheMem === null) messageCacheMem = loadMessageCacheFromDisk();
+    if (messageCacheMem === null) {
+        messageCacheMem = loadMessageCacheFromDisk();
+        // Old deployments may already have persisted an oversized cache.
+        // Enforce the cap immediately on startup/first read, not only when a
+        // new message arrives, then persist the trimmed auxiliary cache.
+        if (enforceMessageCacheLimit(messageCacheMem) > 0) scheduleCacheFlush();
+    }
     return messageCacheMem;
 }
 
@@ -86,6 +92,7 @@ function cleanOldMessages() {
             delete messageCache[key];
         }
     });
+    enforceMessageCacheLimit(messageCache);
     flushMessageCache();
 }
 
