@@ -8,6 +8,7 @@ const pendingGroups = new Map();
 const runtimeDiagnostics = new Map();
 const MAX_RUNTIME_DIAGNOSTIC_GROUPS = 1000;
 const MAX_SEEN_PER_GROUP = 10000;
+const MAX_SEEN_GROUPS = 1000;
 const MAX_STORED_IDS = 10000;
 const DEFAULT_FLUSH_DELAY_MS = 750;
 const FLUSH_DELAY_MS = Math.max(100, Math.min(10000,
@@ -83,7 +84,18 @@ function rememberMessage(threadId, data) {
   const messageId = String(data?.cliMsgId || data?.msgId || "");
   if (!messageId) return true;
   let seen = seenMessages.get(threadId);
-  if (!seen) { seen = new Set(); seenMessages.set(threadId, seen); }
+  if (seen) {
+    // LRU refresh: active groups retain their dedupe window.
+    seenMessages.delete(threadId);
+    seenMessages.set(threadId, seen);
+  } else {
+    // Bound memory when the bot serves many transient groups over time.
+    while (seenMessages.size >= MAX_SEEN_GROUPS) {
+      seenMessages.delete(seenMessages.keys().next().value);
+    }
+    seen = new Set();
+    seenMessages.set(threadId, seen);
+  }
   if (seen.has(messageId)) return false;
   seen.add(messageId);
   if (seen.size > MAX_SEEN_PER_GROUP) seen.delete(seen.values().next().value);
@@ -336,5 +348,5 @@ module.exports._test = {
   rememberMessage, recordMessage, recordHistoryMessages, markHistoryCoverage, isGroupMessage,
   applyMessagesToGroup, flushGroup, flushAll, enqueueGroupWrite, isCountableMessage,
   writeQueues, seenMessages, pendingGroups, runtimeDiagnostics,
-  observeIncomingEvent, getRuntimeDiagnostics, MAX_STORED_IDS, FLUSH_DELAY_MS
+  observeIncomingEvent, getRuntimeDiagnostics, MAX_STORED_IDS, MAX_SEEN_GROUPS, FLUSH_DELAY_MS
 };
