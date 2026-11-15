@@ -49,7 +49,7 @@ function withMacWindow(content, title = "JOHN TRAN") {
   const cardWidth = contentWidth + Math.max(2, Math.round(4 * scale));
   const cardHeight = contentHeight + Math.max(2, Math.round(4 * scale));
   roundedRect(ctx, cardX, cardY, cardWidth, cardHeight, Math.round(14 * scale));
-  ctx.fillStyle = "#08080a";
+  ctx.fillStyle = "#08090d";
   ctx.fill();
 
   roundedRect(ctx, inset, toolbarHeight + inset, contentWidth, contentHeight, Math.round(11 * scale));
