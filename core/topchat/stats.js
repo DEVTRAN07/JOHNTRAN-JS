@@ -1,5 +1,7 @@
 "use strict";
 
+const { pickAvatar } = require("../runtime/requesterProfile");
+
 const TIME_ZONE = "Asia/Ho_Chi_Minh";
 
 function vietnamDateKey(value = new Date()) {
@@ -47,10 +49,10 @@ function messageTimestamp(value) {
 }
 
 function avatarUrl(data) {
-  const value = data?.avatar || data?.avatarUrl || data?.profile?.avatar;
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) return value[0]?.url || "";
-  return value?.url || "";
+  return pickAvatar(data?.avatar) ||
+    pickAvatar(data?.avatarUrl) ||
+    pickAvatar(data?.profile?.avatar) ||
+    pickAvatar(data?.profile);
 }
 
 function isCommand(data, prefix = "/") {
