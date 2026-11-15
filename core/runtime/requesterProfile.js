@@ -27,6 +27,9 @@ function pickProfileByUid(response, uid) {
     visited.add(current);
     inspected++;
 
+    const directId = String(current.userId ?? current.user_id ?? current.uid ?? current.id ?? "");
+    if (directId === String(uid) || directId.startsWith(String(uid) + "_")) return current;
+
     const profile = pickUser(current, String(uid));
     if (profile) return profile;
 
@@ -83,12 +86,15 @@ function fetchProfileInBackground(api, uid, fallback, options = {}) {
       const avatarRequest = typeof api.getAvatarUrlProfile === "function"
         ? Promise.resolve().then(() => api.getAvatarUrlProfile(uid, AVATAR_SIZE))
         : Promise.resolve(null);
-      const [profileResult, avatarResult] = await Promise.allSettled([
-        profileRequest,
-        avatarRequest
+      const fetchTimeoutMs = Math.min(3000, Math.max(250, Number(options.fetchTimeoutMs) || 1200));
+      const settleWithin = promise => Promise.race([
+        Promise.resolve(promise).catch(() => null),
+        delay(fetchTimeoutMs).then(() => null)
       ]);
-      const response = profileResult.status === "fulfilled" ? profileResult.value : null;
-      const avatarResponse = avatarResult.status === "fulfilled" ? avatarResult.value : null;
+      const [response, avatarResponse] = await Promise.all([
+        settleWithin(profileRequest),
+        settleWithin(avatarRequest)
+      ]);
       const remoteProfile = pickProfileByUid(response, uid);
       const name = String(pickName(remoteProfile, fallback.requesterName)).slice(0, 32);
       const avatarUrl = pickAvatar(remoteProfile) ||
@@ -172,6 +178,15 @@ async function getRequesterProfile(api, event, options = {}) {
   return fallback;
 }
 
+async function getUserAvatar(api, uid, options = {}) {
+  const userId = String(uid || "").trim();
+  if (!userId) return "";
+  const profile = await getRequesterProfile(api, {
+    data: { uidFrom: userId }
+  }, options);
+  return String(profile?.requesterAvatarUrl || "");
+}
+
 function clearRequesterProfileCache() {
   profiles.clear();
   pending.clear();
@@ -179,6 +194,7 @@ function clearRequesterProfileCache() {
 
 module.exports = {
   getRequesterProfile,
+  getUserAvatar,
   clearRequesterProfileCache,
   PROFILE_TTL_MS,
   PROFILE_RETRY_TTL_MS,
