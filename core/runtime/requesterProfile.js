@@ -2,6 +2,7 @@
 
 const { pickUser } = require("../zaloProfile");
 const avatarCache = require("../canvas/avatarCache");
+const { pickAvatar, pickAvatarByUid } = require("./avatarUrl");
 
 const PROFILE_TTL_MS = 5 * 60 * 1000;
 const PROFILE_RETRY_TTL_MS = 5 * 1000;
@@ -10,103 +11,10 @@ const AVATAR_SIZE = 240;
 const profiles = new Map();
 const pending = new Map();
 
-function pickAvatar(value, depth = 0) {
-  if (!value || depth > 5) return "";
-  if (typeof value === "string") return /^https?:\/\//i.test(value.trim()) ? value.trim() : "";
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const avatar = pickAvatar(item, depth + 1);
-      if (avatar) return avatar;
-    }
-    return "";
-  }
-  if (typeof value !== "object") return "";
-
-  const fields = [
-    "url", "href", "avatar", "avatarUrl", "avatar_url", "photoUrl",
-    "photo_url", "profilePicture", "profile_picture", "hdAvatar",
-    "hd_avatar", "largeAvatar", "large_avatar", "fullAvatar",
-    "full_avatar", "avatarURL", "imageUrl", "image_url", "src"
-  ];
-  for (const key of fields) {
-    const candidate = value[key];
-    if (typeof candidate === "string" && /^https?:\/\//i.test(candidate.trim())) {
-      return candidate.trim();
-    }
-    if (candidate && typeof candidate === "object") {
-      const nested = pickAvatar(candidate, depth + 1);
-      if (nested) return nested;
-    }
-  }
-  return "";
-}
-
 function pickName(value, fallback) {
   if (!value || typeof value !== "object") return fallback;
   return value.displayName || value.display_name || value.dName ||
     value.fullName || value.full_name || value.name || fallback;
-}
-
-function pickAvatarByUid(response, uid) {
-  if (!response || typeof response !== "object") {
-    return typeof response === "string" && /^https?:\/\//i.test(response) ? response : "";
-  }
-
-  const userId = String(uid);
-  const expectedIds = new Set([userId, userId + "_0"]);
-  const queue = [response];
-  const visited = new Set();
-  let inspected = 0;
-
-  while (queue.length && inspected < 120) {
-    const current = queue.shift();
-    if (!current || typeof current !== "object" || visited.has(current)) continue;
-    visited.add(current);
-    inspected++;
-
-    if (Array.isArray(current)) {
-      const matched = current.find(item => {
-        if (!item || typeof item !== "object") return false;
-        const id = String(item.userId ?? item.user_id ?? item.uid ?? item.id ?? "");
-        return expectedIds.has(id) || id.startsWith(userId + "_");
-      });
-      if (matched) {
-        const avatar = pickAvatar(matched);
-        if (avatar) return avatar;
-        queue.unshift(matched);
-      } else if (current.length === 1) {
-        queue.push(current[0]);
-      }
-      continue;
-    }
-
-    // Some Zalo builds return { data: { "<uid>_0": { avatarUrl } } },
-    // others wrap the same map inside result/profiles/avatars.
-    for (const key of expectedIds) {
-      if (Object.prototype.hasOwnProperty.call(current, key)) {
-        const avatar = pickAvatar(current[key]);
-        if (avatar) return avatar;
-        queue.unshift(current[key]);
-      }
-    }
-
-    const recordId = String(current.userId ?? current.user_id ?? current.uid ?? current.id ?? "");
-    if (recordId && (expectedIds.has(recordId) || recordId.startsWith(userId + "_"))) {
-      const avatar = pickAvatar(current);
-      if (avatar) return avatar;
-    }
-
-    // The endpoint is queried for one UID at a time, so a direct URL on the
-    // response envelope is safe; nested collections are inspected below.
-    const direct = pickAvatar(current);
-    if (direct) return direct;
-
-    for (const value of Object.values(current)) {
-      if (value && typeof value === "object") queue.push(value);
-    }
-  }
-
-  return "";
 }
 
 function pickProfileByUid(response, uid) {
