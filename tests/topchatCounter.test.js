@@ -469,3 +469,25 @@ test("topchat listener diagnostics are isolated per group and identify user mess
   assert.equal(counter.getRuntimeDiagnostics(groupB).private, 1);
   assert.equal(counter.getRuntimeDiagnostics(groupB).lastMessageType, "text");
 });
+
+
+test("topchat bounds per-group in-memory deduplication cache with LRU eviction", () => {
+  const cache = counter._test.seenMessages;
+  const original = new Map(cache);
+  try {
+    cache.clear();
+    for (let index = 0; index < counter._test.MAX_SEEN_GROUPS; index++) {
+      assert.equal(counter._test.rememberMessage("group-" + index, { msgId: "m-" + index }), true);
+    }
+    // Refresh the oldest group so the next insertion evicts group-1 instead.
+    assert.equal(counter._test.rememberMessage("group-0", { msgId: "m-new" }), true);
+    assert.equal(counter._test.rememberMessage("overflow-group", { msgId: "overflow" }), true);
+    assert.equal(cache.size, counter._test.MAX_SEEN_GROUPS);
+    assert.equal(cache.has("group-0"), true);
+    assert.equal(cache.has("group-1"), false);
+    assert.equal(cache.has("overflow-group"), true);
+  } finally {
+    cache.clear();
+    for (const [key, value] of original) cache.set(key, value);
+  }
+});
