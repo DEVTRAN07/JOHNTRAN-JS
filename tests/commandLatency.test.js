@@ -13,6 +13,7 @@ test("command latency includes an unknown-command response before dispatch", asy
   global.client = { commands: new Map(), cooldowns: new Map() };
 
   const before = metrics.getLatencyStats().count;
+  const previousPipelineCount = metrics.getCommandLatencyStats(100).find(item => item.command === "not-a-real-command")?.count || 0;
   const api = {
     async sendMessage() {
       return { message: { msgId: 77, cliMsgId: 77 } };
@@ -27,7 +28,9 @@ test("command latency includes an unknown-command response before dispatch", asy
   try {
     await handleCommand("/not-a-real-command", event, api, {}, "/", { data: {} });
     const after = metrics.getLatencyStats().count;
+    const pipelineCount = metrics.getCommandLatencyStats(100).find(item => item.command === "not-a-real-command")?.count || 0;
     assert.equal(after, before + 1);
+    assert.equal(pipelineCount, previousPipelineCount + 1, "unknown-command early returns must be included in end-to-end command latency");
   } finally {
     if (previousConfig === undefined) delete global.config;
     else global.config = previousConfig;
