@@ -1,5 +1,5 @@
-// Shared JOHNTRAN canvas design system.
-// Every command canvas reads the same palette as /menu and /theme.
+// Shared JOHNTRAN Canvas design system for all non-menu cards.
+// /theme is isolated to /menu and its folder cards.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
