@@ -29,12 +29,19 @@ test("menu color themes stay isolated from non-menu Canvas cards", t => {
   assert.equal(theme.PALETTE.bg0, "#08080a");
   const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
   const legacyProfile = fs.readFileSync(require.resolve("../core/canvas/profile"), "utf8");
+  const macWindow = fs.readFileSync(require.resolve("../core/canvas/macWindow"), "utf8");
   assert.ok(!source.includes("menuPalette"));
   assert.ok(!source.includes("BG_IMAGE"));
   assert.ok(!source.includes("theme.jpg"));
   assert.ok(!source.includes("loadImage"));
+  assert.ok(!macWindow.includes("menuPalette"));
+  assert.ok(!macWindow.includes("theme.jpg"));
+  assert.match(source, /const menuFrame = prefix === "menu" \|\| prefix === "menu_folder"/);
   assert.ok(!legacyProfile.includes("BG_IMAGE"));
   assert.ok(!legacyProfile.includes("theme.jpg"));
+  const topchat = fs.readFileSync(require.resolve("../core/canvas/topchat"), "utf8");
+  assert.ok(!topchat.includes("theme.jpg"));
+  assert.ok(!topchat.includes("BG_IMAGE"));
 });
 
 test("profile and generic cards render with the shared Mac window frame", async () => {
