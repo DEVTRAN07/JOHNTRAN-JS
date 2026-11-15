@@ -342,12 +342,14 @@ function save(canvas, prefix) {
   const filePath = path.join(os.tmpdir(), "jt_" + prefix + "_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".png");
   const titles = {
     menu: "Menu",
+    menu_folder: "Folder Details",
     music_grid: "Music Search",
     music_now: "Now Playing",
     topchat: "Top Chat",
     status: "System Status",
     profile_card: "Member Profile",
-    card: "JOHN TRAN"
+    generic_card: "JOHNTRAN",
+    card: "JOHNTRAN"
   };
   fs.writeFileSync(filePath, withMacWindow(canvas, titles[prefix] || "JOHN TRAN").toBuffer("image/png"));
   return filePath;
