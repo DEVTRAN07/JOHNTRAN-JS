@@ -1,6 +1,6 @@
 "use strict";
 
-const { pickAvatar } = require("../runtime/requesterProfile");
+const { pickAvatar } = require("../runtime/avatarUrl");
 
 const TIME_ZONE = "Asia/Ho_Chi_Minh";
 
