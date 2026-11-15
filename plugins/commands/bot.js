@@ -71,9 +71,10 @@ async function sendStatusCard({ api, event, Threads }) {
   let imagePath;
   try {
     const result = await collectEnabledGroups(api, Threads);
-    const profile = stats.getCachedProfile();
+    const profile = stats.getCachedProfile() || await stats.getProfile(api);
     imagePath = await renderCanvas("bot-groups", {
       botName: profile?.displayName || global.config?.name_bot || "JOHNTRAN",
+      botAvatar: profile?.avatar || "",
       groups: result.groups,
       enabledCount: result.groups.length,
       version: require("../../package.json").version
