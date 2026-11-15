@@ -74,6 +74,32 @@ test("/bot status lists only enabled groups (missing setting defaults to ON)", a
   assert.ok(!calls.includes("status-off-b"), "disabled groups are not loaded for the Canvas card");
 });
 
+test("/bot status works with wrapApi's built-in group cache without nested cache deadlock", async () => {
+  const { wrapApi } = require("../core/message");
+  const cache = require("../core/cache");
+  const gid = "bot-status-wrapped-cache-regression";
+  cache.caches.groupInfo.delete(gid);
+  let groupInfoCalls = 0;
+  const rawApi = {
+    getAllGroups: async () => ({ gridVerMap: { [gid]: 1 } }),
+    getGroupInfo: async id => {
+      groupInfoCalls++;
+      return { gridInfoMap: { [id]: { name: "Wrapped cache group", avt: "", totalMember: 4 } } };
+    }
+  };
+  const wrappedApi = wrapApi(rawApi, gid, ThreadType.Group, "bot");
+  try {
+    const result = await Promise.race([
+      command._test.collectEnabledGroups(wrappedApi, { getAll: () => [] }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("nested group cache deadlock")), 1000))
+    ]);
+    assert.deepEqual(result.groups.map(group => group.gid), [gid]);
+    assert.equal(groupInfoCalls, 1);
+  } finally {
+    cache.caches.groupInfo.delete(gid);
+  }
+});
+
 test("/bot status sends a Canvas image without a text caption", async () => {
   const sent = [];
   const ctx = createContext(true);
