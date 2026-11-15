@@ -99,6 +99,26 @@ test("command pipeline latency reports recent percentiles without storing sample
 });
 
 
+test("metrics keep end-to-end and handler-only command latency separate", () => {
+  const backend = createFakeDb();
+  const metrics = createMetricsStore(backend, { flushDelayMs: 60000 });
+
+  metrics.trackCommandLatency("menu", 240);
+  metrics.trackCommandLatency("menu", 310);
+  metrics.trackCommandExecutionLatency("menu", 55);
+  metrics.trackCommandExecutionLatency("menu", 80);
+
+  const pipeline = metrics.getCommandLatencyStats(5)[0];
+  const handler = metrics.getCommandExecutionLatencyStats(5)[0];
+  assert.equal(pipeline.command, "menu");
+  assert.equal(pipeline.p95Ms, 310);
+  assert.equal(handler.command, "menu");
+  assert.equal(handler.p95Ms, 80);
+  assert.notEqual(pipeline.p95Ms, handler.p95Ms);
+  assert.equal(backend.writes.length, 0);
+  metrics.dispose();
+});
+
 test("metrics use Asia/Ho_Chi_Minh day boundary rather than UTC midnight", () => {
   const metricsModule = require("../core/metrics");
   assert.equal(metricsModule.todayKey(Date.parse("2026-11-12T16:59:59.999Z")), "2026-11-12");
