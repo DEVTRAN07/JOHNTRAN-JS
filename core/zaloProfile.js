@@ -53,6 +53,22 @@ async function fetchProfile(api, uid) {
   }
   const user = pickUser(raw, String(uid));
 
+  // getUserInfo on some Zalo builds has profile data but no usable avatar URL.
+  // Ask the dedicated profile-avatar endpoint as a fallback; keep name and
+  // other profile fields from getUserInfo unchanged.
+  if (user && typeof api.getAvatarUrlProfile === "function") {
+    const { pickAvatar, pickAvatarByUid } = require("./runtime/requesterProfile");
+    if (!pickAvatar(user)) {
+      try {
+        const avatarResponse = await api.getAvatarUrlProfile(String(uid), AVATAR_LARGE);
+        const avatarUrl = pickAvatarByUid(avatarResponse, String(uid)) || pickAvatar(avatarResponse);
+        if (avatarUrl) user.avatar = avatarUrl;
+      } catch {
+        // Avatar is optional: preserve the profile and let the card draw initials.
+      }
+    }
+  }
+
   // Không đọc được user → log nguyên văn shape để biết Zalo thật trả gì
   if (!user) {
     const cp = raw?.changed_profiles;
