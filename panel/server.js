@@ -507,7 +507,9 @@ function startPanel({ manager, config }) {
 
       sendJson(res, 404, { error: "Không tìm thấy endpoint" });
     } catch (error) {
-      sendJson(res, 500, { error: error.message });
+      sendJson(res, Number.isInteger(error?.statusCode) ? error.statusCode : 500, {
+        error: error?.statusCode === 413 ? "Payload quá lớn" : error.message
+      });
     }
   });
 
@@ -521,16 +523,49 @@ function startPanel({ manager, config }) {
 }
 
 const MAX_LOG = 300;
+const MAX_BODY_BYTES = 1024 * 1024;
 
-async function readBody(req) {
+async function readBody(req, maxBytes = MAX_BODY_BYTES) {
+  const limit = Number.isFinite(maxBytes) && maxBytes > 0 ? maxBytes : MAX_BODY_BYTES;
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString("utf8");
-  return raw ? JSON.parse(raw) : {};
+  let totalBytes = 0;
+  let exceededLimit = false;
+
+  // Continue draining the request after the limit is crossed, but never retain
+  // additional payload data in memory.
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > limit) {
+      exceededLimit = true;
+      continue;
+    }
+    if (!exceededLimit) chunks.push(buffer);
+  }
+
+  if (exceededLimit) {
+    const error = new Error("Payload quá lớn");
+    error.statusCode = 413;
+    throw error;
+  }
+
+  const raw = Buffer.concat(chunks, totalBytes).toString("utf8");
+  if (!raw.trim()) return {};
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const error = new Error("JSON không hợp lệ");
+    error.statusCode = 400;
+    throw error;
+  }
 }
 
 function sendJson(res, status, data) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
   res.end(JSON.stringify(data));
 }
 
@@ -556,4 +591,4 @@ function serveStatic(pathname, res) {
   return true;
 }
 
-module.exports = { startPanel };
+module.exports = { startPanel, readBody, MAX_BODY_BYTES };
