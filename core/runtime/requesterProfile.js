@@ -157,12 +157,19 @@ async function getRequesterProfile(api, event, options = {}) {
   const cached = profiles.get(uid);
   if (cached) {
     touch(uid, cached);
+    let current = cached;
     if (cached.expiresAt <= Date.now()) {
-      void fetchProfileInBackground(api, uid, fallback, { skipAvatarWarm });
+      const refresh = fetchProfileInBackground(api, uid, fallback, { skipAvatarWarm });
+      // A stale entry should not prevent a bounded refresh from being used by
+      // visual commands such as /topchat. Fast commands still use their small
+      // wait budget; background refresh continues if that budget expires.
+      if (waitMs > 0 && refresh) {
+        current = await settleWithin(refresh, waitMs) || cached;
+      }
     }
     const result = {
-      requesterName: cached.requesterName || fallback.requesterName,
-      requesterAvatarUrl: cached.requesterAvatarUrl || fallback.requesterAvatarUrl
+      requesterName: current.requesterName || fallback.requesterName,
+      requesterAvatarUrl: current.requesterAvatarUrl || fallback.requesterAvatarUrl
     };
     if (!skipAvatarWarm) {
       if (avatarWaitMs > 0) await warmAvatarWithin(result.requesterAvatarUrl, avatarWaitMs);
