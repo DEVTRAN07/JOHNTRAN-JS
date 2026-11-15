@@ -93,6 +93,37 @@ test("system view exposes database and individual bot health", () => {
   assert.match(js, /systemBotList/);
 });
 
+test("group settings expose a master bot switch and real bot/group identities", () => {
+  for (const id of ["groupIdentityGrid", "groupBotIdentity", "selectedGroupIdentity", "groupBotToggleRow", "groupBotEnabled", "groupBotToggleLabel"]) {
+    assert.ok(html.includes('id="' + id + '"'), "missing group control: " + id);
+  }
+  assert.match(js, /botEnabled: enabled/);
+  assert.match(js, /data\.botEnabled !== false/);
+  assert.match(js, /botProfile\?\.displayName/);
+  assert.match(js, /group\.avatar \|\| group\.avt/);
+  assert.match(server, /out\.displayName/);
+  assert.match(server, /out\.avatar/);
+});
+
+test("group-level bot switch is persisted in the selected bot process and OFF is silent", () => {
+  const bridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
+  const listener = fs.readFileSync(path.join(root, "core/listen.js"), "utf8");
+  const handler = fs.readFileSync(path.join(root, "core/handle/handleCommand.js"), "utf8");
+  assert.match(bridge, /botEnabled: thread\.data\?\.bot_enabled !== false/);
+  assert.match(bridge, /data\.bot_enabled = body\.botEnabled/);
+  assert.match(bridge, /Threads\.setData\(gid, data\)/);
+  assert.match(listener, /threadInfo\?\.bot_enabled === false/);
+  assert.match(listener, /isBotEnableCommand/);
+  assert.match(handler, /threadInfo\?\.bot_enabled === false/);
+  assert.match(handler, /commandName === "bot".*=== "on"/);
+});
+
+test("bot menu folder uses /bot and keeps /mybot as a backward-compatible route", () => {
+  const folderMenu = require("../core/runtime/folderMenu");
+  assert.equal(folderMenu.MENU_GROUPS.find(folder => folder.name === "Bot")?.slug, "bot");
+  assert.equal(folderMenu.resolveMenuGroup(new Map(), "owner", "bot")?.slug || "bot", "bot");
+  assert.equal(folderMenu.menuGroupForCommand({ config: { name: "bot", category: "Hệ thống" } }), "bot");
+});
 test("group command proxy preserves the gid query string for POST updates", () => {
   const bridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
   assert.match(server, /if \(url\.search\) target \+= url\.search/);
