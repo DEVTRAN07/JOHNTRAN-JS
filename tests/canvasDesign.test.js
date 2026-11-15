@@ -28,10 +28,13 @@ test("menu color themes stay isolated from non-menu Canvas cards", t => {
   assert.equal(theme.PALETTE.accent, "#d4af37");
   assert.equal(theme.PALETTE.bg0, "#08080a");
   const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
+  const legacyProfile = fs.readFileSync(require.resolve("../core/canvas/profile"), "utf8");
   assert.ok(!source.includes("menuPalette"));
   assert.ok(!source.includes("BG_IMAGE"));
   assert.ok(!source.includes("theme.jpg"));
   assert.ok(!source.includes("loadImage"));
+  assert.ok(!legacyProfile.includes("BG_IMAGE"));
+  assert.ok(!legacyProfile.includes("theme.jpg"));
 });
 
 test("profile and generic cards render with the shared Mac window frame", async () => {
