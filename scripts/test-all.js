@@ -64,12 +64,29 @@ async function runCmd(name, args = [], eventOverride = {}) {
   // Lệnh restart/admin có thể gọi process.exit → chặn khi test
   const realExit = process.exit;
   process.exit = ((code) => { record(`(bỏ qua process.exit ${code} từ /${name})`, true, ""); });
+  let timeout;
   try {
-    await cmd.run({ api: wrapped, event: ev, args, Threads: require(path.join(ROOT, "core/controller/controllerThreads")), reply: wrapped.__reply, Users: require(path.join(ROOT, "core/controller/controllerUsers")) });
+    // Fail with the command name rather than letting one unresolved external
+    // request or Canvas worker stall the entire integration suite for 10 min.
+    await Promise.race([
+      cmd.run({
+        api: wrapped,
+        event: ev,
+        args,
+        Threads: require(path.join(ROOT, "core/controller/controllerThreads")),
+        reply: wrapped.__reply,
+        Users: require(path.join(ROOT, "core/controller/controllerUsers"))
+      }),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`integration timeout > 20000ms for /${name}`)), 20000);
+        timeout.unref?.();
+      })
+    ]);
     return { ok: sent.length > 0 || reactions.length > 0 || cardCount > 0, detail: `${sent.length} phản hồi` };
   } catch (e) {
-    return { ok: false, detail: e.message.slice(0, 60) };
+    return { ok: false, detail: e.message.slice(0, 100) };
   } finally {
+    clearTimeout(timeout);
     process.exit = realExit;
   }
 }
@@ -107,6 +124,7 @@ async function runCmd(name, args = [], eventOverride = {}) {
   const cmds = [...global.client.commands.keys()].sort();
   for (const name of cmds) {
     reset();
+    console.log(`[test-all] Bắt đầu kiểm tra /${name}`);
     const r = await runCmd(name, []);
     record(`Lệnh /${name}`, r.ok, r.detail);
   }
@@ -134,6 +152,7 @@ async function runCmd(name, args = [], eventOverride = {}) {
   ];
   for (const [name, args] of withArgs) {
     reset();
+    console.log(`[test-all] Bắt đầu kiểm tra /${name} ${args.join(" ")}`.trim());
     const r = await runCmd(name, args);
     const isNet = NETWORK_CMDS.has(name);
     record(`Args /${name} ${args.join(" ")}`.trim(), isNet ? true : r.ok, isNet ? `network — ${r.detail}` : r.detail);
