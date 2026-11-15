@@ -43,7 +43,7 @@ async function renderSearchGrid(query, tracks, { page = 1, totalPages = 1, sourc
   const gapY = S(16);
   const cardW = (W - S(50) - gapX * (cols - 1)) / cols;
   const art = S(190);              // artwork lớn ở trên
-  const cardH = art + S(98);       // art + title area + tag
+  const cardH = art + S(114);      // art + title, artist, and separated statistics tag
   const headerH = S(104);
   const footerH = S(126);
   const H = headerH + rows * cardH + Math.max(0, rows - 1) * gapY + footerH;
@@ -152,7 +152,7 @@ async function renderNowPlaying(track, sourceLabel) {
   const { PALETTE, panel, text } = theme;
 
   const coverSize = S(300);
-  const H = S(470);
+  const H = S(590);
   const { ctx, canvas } = theme.newCanvas(W, H);
   await theme.paintBackground(ctx, W, H);
 
