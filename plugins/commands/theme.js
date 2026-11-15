@@ -45,7 +45,8 @@ module.exports.run = async function ({ api, event, args = [] }) {
       "✅ ĐÃ ĐỔI THEME THÀNH CÔNG",
       "Giao diện: " + selected.label,
       "Màu nhấn: " + selected.accent,
-      "Màu mới đã áp dụng đồng nhất cho /menu và tất cả thư mục.",
+      "Màu mới chỉ áp dụng cho /menu và các thẻ thư mục.",
+      "Các Canvas khác giữ giao diện mặc định, không dùng ảnh nền theme.",
       "Dữ liệu theme được lưu lại sau khi bot khởi động lại."
     ].join("\n");
     return api.sendMessage({ msg: message }, threadId, type);
