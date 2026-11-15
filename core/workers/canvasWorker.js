@@ -16,13 +16,10 @@ async function renderToPath(type, data) {
     throw new Error("Canvas worker cannot load application config: " + configError.message);
   }
 
-  const requesterAvatarUrl = String(data?.requesterAvatarUrl || "").trim();
-  if ((type === "menu" || type === "menu-folder") && /^https?:\/\//i.test(requesterAvatarUrl)) {
-    // Worker caches are isolated from the main thread. Only load the helper
-    // when a real URL exists; empty profile data must keep the menu fast path.
-    const { prepareRequesterAvatar } = require("../canvas/prepareRequesterAvatar");
-    await prepareRequesterAvatar({ requesterAvatarUrl });
-  }
+  // Worker image caches are process-local. Preload avatars before drawing
+  // each card; otherwise the first render only sees the fallback initials.
+  const { prepareCanvasAvatars } = require("../canvas/prepareRequesterAvatar");
+  await prepareCanvasAvatars(type, data || {});
 
   switch (type) {
     case "menu": {
