@@ -267,7 +267,7 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
     ctx.lineWidth = S(0.8);
     ctx.stroke();
 
-    const slug = String(item.slug || item.name || "").toLowerCase();
+    const slug = resolveFolderIconSlug(item.slug, item.name);
     const iconSize = S(38);
     const iconX = x + S(29);
     drawCategoryIcon(ctx, slug, iconX, y + cardH / 2, iconSize);
