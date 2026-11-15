@@ -37,6 +37,10 @@ function claimListenerRegistration(api) {
   return true;
 }
 
+function shouldExecuteMessageCommand(options = {}) {
+  return options.skipCommandExecution !== true;
+}
+
 function shouldReplayOldMessage(message, reconnectSince) {
   const rawTimestamp = Number(message?.data?.ts);
   if (!Number.isFinite(rawTimestamp) || rawTimestamp <= 0) return false;
@@ -90,7 +94,7 @@ function startListening(api) {
 
     // Backfill only records missed messages; historical commands/events must
     // never be executed again after reconnect.
-    if (options.skipCommandExecution === true) return;
+    if (!shouldExecuteMessageCommand(options)) return;
 
     // Prefetch the sender profile in the background. The lookup is single-flight
     // and TTL-cached, so repeated messages do not trigger repeated Zalo requests.
@@ -560,3 +564,4 @@ function startListening(api) {
 module.exports = startListening;
 module.exports.shouldReplayOldMessage = shouldReplayOldMessage;
 module.exports.claimListenerRegistration = claimListenerRegistration;
+module.exports.shouldExecuteMessageCommand = shouldExecuteMessageCommand;
