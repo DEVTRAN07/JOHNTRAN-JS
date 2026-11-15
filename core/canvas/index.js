@@ -89,7 +89,23 @@ function renderCard(spec = {}) {
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
 
-  theme.panel(ctx, padding, S(18), contentWidth, height - S(36), S(14), palette.accent);
+  const faceX = padding;
+  const faceY = S(18);
+  const faceWidth = contentWidth;
+  const faceHeight = height - S(36);
+  theme.roundRect(ctx, faceX, faceY, faceWidth, faceHeight, S(14));
+  const faceFill = ctx.createLinearGradient(faceX, faceY, faceX + faceWidth, faceY + faceHeight);
+  faceFill.addColorStop(0, palette.bg0);
+  faceFill.addColorStop(0.52, palette.bg1);
+  faceFill.addColorStop(1, palette.bg0);
+  ctx.fillStyle = faceFill;
+  ctx.fill();
+  theme.roundRect(ctx, faceX, faceY, faceWidth, faceHeight, S(14));
+  ctx.strokeStyle = palette.accent;
+  ctx.globalAlpha = 0.58;
+  ctx.lineWidth = Math.max(1, S(1));
+  ctx.stroke();
+  ctx.globalAlpha = 1;
   let y = S(60);
 
   theme.label(ctx, String(spec.chip || "JOHN TRAN") + "  /  " + String(spec.brand || global.config?.name_bot || "JOHN TRAN"), padding + S(20), y, {

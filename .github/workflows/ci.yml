@@ -24,6 +24,17 @@ jobs:
       - run: npm test
       - run: node scripts/test-commands.js
       - run: node scripts/test-all.js
+      - name: Render actual canvas previews
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'feature/unified-canvas')
+        run: node scripts/render-canvas-previews.js
+      - name: Upload canvas preview images
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'feature/unified-canvas')
+        uses: actions/upload-artifact@v4
+        with:
+          name: johntran-canvas-previews
+          path: artifacts/canvas-preview/
+          if-no-files-found: error
+          retention-days: 7
 
   deploy:
     name: Deploy to Render
