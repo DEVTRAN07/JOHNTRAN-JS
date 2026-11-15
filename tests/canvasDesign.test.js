@@ -44,6 +44,20 @@ test("profile and generic cards render with the shared Mac window frame", async 
     assert.equal(genericImage.width, theme.WIDTH);
     assert.ok(profileImage.height > 300);
     assert.ok(genericImage.height > 300);
+
+    const genericCanvas = createCanvas(genericImage.width, genericImage.height);
+    const genericContext = genericCanvas.getContext("2d");
+    genericContext.drawImage(genericImage, 0, 0);
+    const centerPixel = genericContext.getImageData(
+      Math.floor(genericImage.width / 2),
+      Math.floor(genericImage.height / 2),
+      1,
+      1
+    ).data;
+    assert.ok(
+      Math.max(centerPixel[0], centerPixel[1], centerPixel[2]) < 45,
+      "generic card face must use the shared dark surface, not a light gray fill"
+    );
   } finally {
     try { fs.unlinkSync(profilePath); } catch {}
     try { fs.unlinkSync(genericPath); } catch {}
