@@ -380,6 +380,7 @@ function renderGroupIdentities(botProfile, group) {
   grid.hidden = !botProfile && !group;
 }
 function updateGroupBotToggle(enabled) {
+  $("groupBotToggleRow").hidden = false;
   const toggle = $("groupBotEnabled");
   if (toggle) toggle.checked = enabled;
   $("groupBotToggleLabel").textContent = enabled ? "BOT ĐANG BẬT" : "BOT ĐANG TẮT";
@@ -401,12 +402,14 @@ async function loadGroupOptions() {
   ).join("") : '<option value="">Chưa có bot</option>';
   botSelect.value = selectedBot;
   if (!selectedBot) {
+    $("groupBotToggleRow").hidden = true;
     groupSelect.innerHTML = '<option value="">Chưa có bot</option>';
     $("groupIdentityGrid").hidden = true;
     $("groupCommandList").innerHTML = '<div class="empty-state">Chưa có bot trong registry.</div>';
     $("groupHint").textContent = "Tạo bot trong mục Tổng quan trước.";
     return;
   }
+  $("groupBotToggleRow").hidden = true;
   groupSelect.innerHTML = '<option value="">Đang tải nhóm Zalo…</option>';
   $("groupCommandList").innerHTML = '<div class="empty-state">Đang tải danh sách nhóm…</div>';
   try {
@@ -424,6 +427,7 @@ async function loadGroupOptions() {
     ).join("") : '<option value="">Bot chưa có nhóm</option>';
     groupSelect.value = selectedGid;
     if (!selectedGid) {
+      $("groupBotToggleRow").hidden = true;
       renderGroupIdentities(state.groupBotProfile, null);
       $("selectedGroupIdentity").innerHTML = '<div class="empty-state">Tài khoản này chưa có nhóm để cấu hình.</div>';
       $("groupCommandList").innerHTML = '<div class="empty-state">Tài khoản này chưa có nhóm để cấu hình.</div>';
