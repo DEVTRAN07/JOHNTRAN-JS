@@ -44,7 +44,7 @@ test("dashboard keeps using the existing protected panel API and bridge routes",
   ]) assert.ok(js.includes(endpoint), "missing API integration: " + endpoint);
   assert.match(server, /isPanelRequestAuthorized/);
   assert.match(server, /STATIC_FILES/);
-  assert.match(server, /panel\.css\|js/);
+  assert.ok(server.includes("panel\\.(css|js)"));
   assert.doesNotMatch(server, /DASHBOARD_HTML/);
 });
 
