@@ -349,8 +349,8 @@ function startPanel({ manager, config }) {
 
         const route = match?.[2] || "send"; // bot bridge route
         let target = `http://127.0.0.1:${bot.bridgePort}/${route}`;
-        // GET (messages, thread-info) giữ nguyên query string
-        if (req.method === "GET" && url.search) target += url.search;
+        // Giữ query string cho cả GET lẫn POST (gid là bắt buộc khi sửa lệnh nhóm).
+        if (url.search) target += url.search;
 
         const proxyReq = http.request(target, {
           method: req.method,
