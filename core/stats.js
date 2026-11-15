@@ -4,7 +4,7 @@
 // coalesce concurrent refreshes so slow Zalo APIs never stack up every tick.
 const cache = require("./cache");
 const logger = require("../utils/logger");
-const { pickAvatar } = require("./runtime/requesterProfile");
+const { pickAvatar } = require("./runtime/avatarUrl");
 
 const PROFILE_CACHE_TTL = 300000;
 const FRIENDS_CACHE_TTL = 300000;
