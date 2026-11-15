@@ -4,6 +4,7 @@
 // coalesce concurrent refreshes so slow Zalo APIs never stack up every tick.
 const cache = require("./cache");
 const logger = require("../utils/logger");
+const { pickAvatar } = require("./runtime/requesterProfile");
 
 const PROFILE_CACHE_TTL = 300000;
 const FRIENDS_CACHE_TTL = 300000;
@@ -50,7 +51,7 @@ async function getProfile(api) {
       const data = {
         uid: String(uid || profile.userId || ""),
         displayName: profile.displayName || profile.zaloName || "",
-        avatar: profile.avatar || "",
+        avatar: pickAvatar(profile),
         phoneNumber: profile.phoneNumber || "",
         status: profile.status || "",
         gender: profile.gender
@@ -82,7 +83,7 @@ async function getFriends(api) {
         list: friends.slice(0, MAX_LIST).map((friend) => ({
           uid: String(friend.userId || ""),
           displayName: friend.displayName || "",
-          avatar: friend.avatar || ""
+          avatar: pickAvatar(friend)
         }))
       };
       friendsCache = { expiresAt: Date.now() + FRIENDS_CACHE_TTL, data };
@@ -132,7 +133,7 @@ async function getGroups(api) {
             gid: String(gid),
             name: group.name || "",
             totalMember: group.totalMember || 0,
-            avatar: group.avt || group.fullAvt || ""
+            avatar: pickAvatar(group.avt) || pickAvatar(group.fullAvt) || "",
           });
         }
       }
