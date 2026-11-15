@@ -115,3 +115,29 @@ select:focus,input:focus,textarea:focus{border-color:rgba(215,182,106,.45);outli
 @media(max-width:900px){.sidebar{width:220px}.main{margin-left:220px;width:calc(100% - 220px)}.metric-grid{grid-template-columns:repeat(2,1fr)}.chat-workspace{grid-template-columns:235px minmax(0,1fr)}.overview-bottom,.profile-layout{grid-template-columns:1fr}.profile-card{grid-row:auto}.system-grid{grid-template-columns:1fr}.system-wide{grid-column:auto}}
 @media(max-width:680px){.sidebar{width:260px;transform:translateX(-102%);transition:transform .22s;box-shadow:var(--shadow)}.sidebar.open{transform:none}.main{width:100%;margin:0}.topbar{height:70px;padding:0 15px}.topbar h1{font-size:15px}.mobile-menu{display:grid;width:32px;height:32px;place-items:center;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--text)}.top-actions{gap:6px}.clock{display:none}.connection-pill{padding:7px 8px;font-size:9px}.view{padding:23px 14px 40px}.page-intro{align-items:flex-start;flex-direction:column;margin-bottom:19px}.page-intro h2{font-size:23px}.intro-actions{width:100%;justify-content:space-between}.metric-grid{gap:8px}.metric{min-height:95px;padding:13px}.metric b{font-size:22px}.bot-row{grid-template-columns:1fr;gap:10px}.bot-actions{grid-column:auto}.auto-restart{grid-column:auto}.bot-stats{justify-content:space-between}.overview-bottom{grid-template-columns:1fr}.chat-workspace{height:calc(100vh - 205px);min-height:520px;grid-template-columns:1fr}.thread-pane{border-right:0}.chat-workspace:not(.thread-open) .conversation-pane{display:none}.chat-workspace.thread-open .thread-pane{display:none}.chat-workspace.thread-open{grid-template-columns:1fr}.conversation-pane{min-height:0}.message-row{max-width:92%}.filter-row{flex-wrap:wrap}.filter-row .search-wrap{flex-basis:100%}.filter-row select{flex:1;min-width:0}.command-grid,.status-list{grid-template-columns:1fr}.command-summary{gap:6px}.summary-chip{padding:10px}.summary-chip span{font-size:8px}.summary-chip b{font-size:13px}.group-form{flex-direction:column}.profile-toolbar{flex-wrap:wrap}.profile-updated{width:100%;margin-left:0}.connection-banner{margin:12px 14px 0;flex-wrap:wrap}.settings-drawer{padding:20px}.modal-backdrop{padding:10px}.modal-head{padding:14px}.modal-content{padding:14px}.composer-foot small:first-child{max-width:70%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+
+/* Live data sections: mirror /menu folders and make management usable on narrow screens. */
+.command-folder-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 22px}
+.command-folder{min-width:0;display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.018);text-align:left;cursor:pointer;transition:border-color .16s,background .16s}
+.command-folder:hover{border-color:rgba(215,182,106,.35);background:rgba(215,182,106,.035)}
+.command-folder.active{border-color:rgba(215,182,106,.5);background:rgba(215,182,106,.09);box-shadow:inset 0 0 0 1px rgba(215,182,106,.08)}
+.folder-icon{width:32px;height:32px;display:grid;place-items:center;border-radius:9px;background:rgba(215,182,106,.09);font-size:17px;flex-shrink:0}
+.folder-copy{min-width:0;display:grid;gap:4px;flex:1}
+.folder-copy b{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.folder-copy small{font-size:9px;color:var(--muted-2)}
+.folder-arrow{font-size:16px;color:var(--muted-2)}
+.command-folder-heading{margin-top:3px}
+.group-form{align-items:end;flex-wrap:wrap}
+.group-form label{display:grid;gap:6px;flex:1;min-width:190px;font-size:9px;letter-spacing:1px;color:var(--muted-2);font-weight:800}
+.group-form select{width:100%;min-height:37px}
+.group-form button{flex-shrink:0}
+.system-bot-list{display:grid;gap:8px}
+.system-bot-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.system-bot-row>div{display:grid;gap:4px;min-width:0}
+.system-bot-row b{font-size:10px}
+.system-bot-row small{font-size:9px;color:var(--muted-2)}
+.system-bot-row .status-label{white-space:nowrap}
+@media(max-width:1120px){.command-folder-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){.command-folder-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.command-folder-grid{grid-template-columns:1fr}.group-form{display:grid}.group-form label{min-width:0}.group-form button{width:100%}.system-bot-row{align-items:flex-start;flex-direction:column}}
