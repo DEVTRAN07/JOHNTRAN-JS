@@ -1,108 +1,42 @@
+"use strict";
+
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { createCanvas, registerFont } = require("canvas");
+const { createCanvas } = require("canvas");
 const { withMacWindow } = require("./macWindow");
+const theme = require("./theme");
 
-const FONT_CANDIDATES = {
-  darwin: [
-    ["/System/Library/Fonts/Supplemental/Arial.ttf", "Arial"],
-    ["/System/Library/Fonts/Supplemental/Arial Bold.ttf", "Arial-Bold"],
-    ["/System/Library/Fonts/AppleSDGothicNeo.ttc", "AppleSDGothicNeo"],
-    ["/System/Library/Fonts/Apple Color Emoji.ttc", "Emoji"]
-  ],
-  linux: [
-    ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "DejaVu Sans"],
-    ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "DejaVu Sans Bold"],
-    ["/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf", "Noto Sans"],
-    ["/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf", "Noto Sans Bold"],
-    ["/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf", "Emoji"]
-  ],
-  win32: [
-    ["C:\\Windows\\Fonts\\arial.ttf", "Arial"],
-    ["C:\\Windows\\Fonts\\arialbd.ttf", "Arial Bold"],
-    ["C:\\Windows\\Fonts\\segoeui.ttf", "Segoe UI"],
-    ["C:\\Windows\\Fonts\\seguiemj.ttf", "Segoe UI Emoji"]
-  ]
-};
-
+// Kept for backwards compatibility with older callers that import THEMES.
 const THEMES = {
-  brand:   { bg: "#0b0e14", bg2: "#131a26", accent: "#00d9ff", accent2: "#7c5cff", text: "#eef2f8", sub: "#8b98ad", border: "#1f2a3a", chip: "#13202e" },
-  success: { bg: "#08130d", bg2: "#0e2015", accent: "#22c55e", accent2: "#16a34a", text: "#eafff2", sub: "#7fb894", border: "#173324", chip: "#10281a" },
-  error:   { bg: "#160a0c", bg2: "#231016", accent: "#f43f5e", accent2: "#e11d48", text: "#fff0f3", sub: "#c98d99", border: "#3a1a22", chip: "#2a1219" },
-  warn:    { bg: "#161206", bg2: "#221a0c", accent: "#f59e0b", accent2: "#d97706", text: "#fff8ea", sub: "#c8a86a", border: "#3a2c12", chip: "#2a1f0e" },
-  music:   { bg: "#0a0f1e", bg2: "#101a33", accent: "#00d9ff", accent2: "#ff5ca8", text: "#eaf2ff", sub: "#8ba3c7", border: "#1c2742", chip: "#111d33" },
-  ai:      { bg: "#0d0a18", bg2: "#18112b", accent: "#a78bfa", accent2: "#6366f1", text: "#f3efff", sub: "#9d92c4", border: "#271f42", chip: "#1a1430" }
+  brand: { accent: "#d4af37" },
+  success: { accent: "#8fbf9f" },
+  error: { accent: "#c4594e" },
+  warn: { accent: "#d4af37" },
+  music: { accent: "#d4af37" },
+  ai: { accent: "#d4af37" }
 };
 
-const EMOJI_FALLBACK = {
-  "🎵": "♪", "🎧": "♫", "❤️": "❤", "✅": "✔", "❌": "✘", "⚠️": "!",
-  "⏳": "...", "🚫": "×", "💡": "i", "🔎": "?", "📡": "#", "🎯": ">",
-  "🤖": "AI", "🖼️": "[img]", "⏱": "⏱", "♪": "♪", "♫": "♫", "🔍": "?",
-  "📺": "▶", "🌐": "@", "👁‍🗨": "◉", "👉": ">", "📎": "♦", "😽": "♥",
-  "💬": "☰", "⏰": "◷", "🏆": "★", "💰": "$", "🎲": "?", "🃏": "?"
-};
-
-let fontsReady = false;
-let hasEmojiFont = false;
-let baseFont = "Arial";
-
-function initFonts() {
-  if (fontsReady) return;
-  fontsReady = true;
-  const platform = os.platform();
-  const candidates = FONT_CANDIDATES[platform] || FONT_CANDIDATES.linux;
-
-  for (const [fontPath, family] of candidates) {
-    try {
-      if (!fs.existsSync(fontPath)) continue;
-      registerFont(fontPath, { family });
-      if (family === "Emoji") hasEmojiFont = true;
-      if (platform !== "win32" && baseFont === "Arial" && family !== "Emoji") baseFont = family;
-      if (platform === "win32" && baseFont === "Arial") baseFont = family;
-    } catch { /* bỏ qua font lỗi */ }
-  }
+function sanitize(value) {
+  return theme.sanitizeGlyphs(value);
 }
 
-function sanitize(text) {
-  let output = String(text ?? "");
-  if (!hasEmojiFont) {
-    for (const [emoji, symbol] of Object.entries(EMOJI_FALLBACK)) {
-      output = output.split(emoji).join(symbol);
-    }
-    // xoá emoji còn lại (surrogate pairs) để tránh ô vuông
-    output = output.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F1E6}-\u{1F1FF}]/gu, "");
-  }
-  return output;
-}
-
-function roundRect(ctx, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + width, y, x + width, y + height, r);
-  ctx.arcTo(x + width, y + height, x, y + height, r);
-  ctx.arcTo(x, y + height, x, y, r);
-  ctx.arcTo(x, y, x + width, y, r);
-  ctx.closePath();
-}
-
-function wrapText(ctx, text, maxWidth) {
+function wrapText(ctx, value, maxWidth) {
   const lines = [];
-  for (const paragraph of String(text).split("\n")) {
+  for (const paragraph of String(value ?? "").split("\n")) {
     const words = paragraph.split(/\s+/).filter(Boolean);
-    if (words.length === 0) {
+    if (!words.length) {
       lines.push("");
       continue;
     }
     let current = "";
     for (const word of words) {
-      const test = current ? `${current} ${word}` : word;
-      if (ctx.measureText(test).width > maxWidth && current) {
+      const next = current ? current + " " + word : word;
+      if (current && ctx.measureText(next).width > maxWidth) {
         lines.push(current);
         current = word;
       } else {
-        current = test;
+        current = next;
       }
     }
     if (current) lines.push(current);
@@ -110,140 +44,112 @@ function wrapText(ctx, text, maxWidth) {
   return lines;
 }
 
-function measureContent(spec) {
-  const lineHeight = 34;
-  const padding = 56;
-  const width = 1000;
+function measureContent(spec = {}) {
+  theme.initFonts();
+  theme.ensureTheme();
+  const S = theme.S;
+  const width = theme.WIDTH;
+  const padding = S(32);
   const contentWidth = width - padding * 2;
+  const ctx = createCanvas(width, 8).getContext("2d");
+  let height = S(115);
 
-  initFonts();
-  const canvas = createCanvas(width, 10);
-  const ctx = canvas.getContext("2d");
-
-  let height = 200; // header
-  ctx.font = `26px ${baseFont}`;
+  ctx.font = theme.font(31, "JT-Display-Bold");
+  const titleLines = wrapText(ctx, sanitize(spec.title || "Thông báo"), contentWidth);
+  height += Math.max(1, titleLines.length) * S(39);
 
   if (spec.subtitle) {
-    const lines = wrapText(ctx, sanitize(spec.subtitle), contentWidth);
-    height += lines.length * 36 + 10;
+    ctx.font = theme.font(16, "JT");
+    height += wrapText(ctx, sanitize(spec.subtitle), contentWidth).length * S(25) + S(12);
   }
 
   const sections = Array.isArray(spec.sections) ? spec.sections : [];
   for (const section of sections) {
-    if (section.title) {
-      ctx.font = `bold 24px ${baseFont}`;
-      height += 60;
-    }
-    ctx.font = `26px ${baseFont}`;
-    const lines = (section.lines || []).flatMap((line) => wrapText(ctx, sanitize(line), contentWidth - 30));
-    height += lines.length * lineHeight + 24;
+    height += S(22);
+    if (section.title) height += S(30);
+    ctx.font = theme.font(15, "JT");
+    const lines = (Array.isArray(section.lines) ? section.lines : [])
+      .flatMap(line => wrapText(ctx, sanitize(line), contentWidth - S(28)));
+    height += Math.max(1, lines.length) * S(23) + S(20);
   }
-
-  if (spec.footer) {
-    ctx.font = `22px ${baseFont}`;
-    height += 56;
-  }
-
-  height += 70; // padding bottom
-  return { width, height };
+  if (spec.footer) height += S(42);
+  return { width, height: Math.max(height + S(28), S(240)), padding, contentWidth };
 }
 
 function renderCard(spec = {}) {
-  initFonts();
-  const theme = THEMES[spec.theme] || THEMES.brand;
-  const brand = spec.brand || global.config?.name_bot || "JOHN TRAN";
-  const { width, height } = measureContent(spec);
-  const padding = 56;
-  const contentWidth = width - padding * 2;
+  const { width, height, padding, contentWidth } = measureContent(spec);
+  const S = theme.S;
+  const palette = theme.PALETTE;
+  const { ctx, canvas } = theme.newCanvas(width, height);
 
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext("2d");
-
-  // background
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, theme.bg);
-  gradient.addColorStop(1, theme.bg2);
-  ctx.fillStyle = gradient;
+  const background = ctx.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, palette.bg0);
+  background.addColorStop(0.52, palette.bg1);
+  background.addColorStop(1, palette.bg0);
+  ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
 
-  // border
-  ctx.strokeStyle = theme.border;
-  ctx.lineWidth = 2;
-  roundRect(ctx, 10, 10, width - 20, height - 20, 24);
-  ctx.stroke();
+  theme.panel(ctx, padding, S(18), contentWidth, height - S(36), S(14), palette.accent);
+  let y = S(60);
 
-  let y = 84;
+  theme.label(ctx, String(spec.chip || "JOHN TRAN") + "  /  " + String(spec.brand || global.config?.name_bot || "JOHN TRAN"), padding + S(20), y, {
+    size: 11,
+    color: palette.accent
+  });
+  y += S(44);
 
-  // header chip
-  ctx.font = `bold 24px ${baseFont}`;
-  const chipText = sanitize(`${spec.chip || "JOHN TRAN"} • ${brand}`);
-  const chipWidth = Math.min(ctx.measureText(chipText).width + 48, contentWidth);
-  ctx.fillStyle = theme.chip;
-  roundRect(ctx, padding, y - 40, chipWidth, 52, 12);
-  ctx.fill();
-  ctx.fillStyle = theme.accent;
-  ctx.textBaseline = "middle";
-  ctx.fillText(chipText, padding + 24, y - 14);
-
-  // title
-  ctx.font = `bold 52px ${baseFont}`;
-  ctx.fillStyle = theme.text;
-  const titleLines = wrapText(ctx, sanitize(spec.title || "Thông báo"), contentWidth);
+  ctx.font = theme.font(31, "JT-Display-Bold");
+  const titleLines = wrapText(ctx, sanitize(spec.title || "Thông báo"), contentWidth - S(40));
   for (const line of titleLines) {
-    ctx.fillText(line, padding, y + 12);
-    y += 62;
+    theme.text(ctx, line, padding + S(20), y, {
+      size: 31, family: "JT-Display-Bold", color: palette.ink, maxWidth: contentWidth - S(40)
+    });
+    y += S(39);
   }
 
-  // subtitle
   if (spec.subtitle) {
-    ctx.font = `26px ${baseFont}`;
-    ctx.fillStyle = theme.sub;
-    const lines = wrapText(ctx, sanitize(spec.subtitle), contentWidth);
-    for (const line of lines) {
-      ctx.fillText(line, padding, y + 6);
-      y += 36;
+    y += S(4);
+    ctx.font = theme.font(16, "JT");
+    for (const line of wrapText(ctx, sanitize(spec.subtitle), contentWidth - S(40))) {
+      theme.text(ctx, line, padding + S(20), y, {
+        size: 16, color: palette.ink2, maxWidth: contentWidth - S(40)
+      });
+      y += S(25);
     }
   }
 
-  // sections
-  for (const section of Array.isArray(spec.sections) ? spec.sections : []) {
-    y += 18;
+  const sections = Array.isArray(spec.sections) ? spec.sections : [];
+  for (const section of sections) {
+    y += S(14);
+    theme.panel(ctx, padding + S(16), y - S(12), contentWidth - S(32), S(35), S(8), "rgba(212,175,55,.32)");
     if (section.title) {
-      ctx.font = `bold 24px ${baseFont}`;
-      ctx.fillStyle = theme.accent2;
-      ctx.fillText(sanitize(section.title.toUpperCase()), padding, y);
-      y += 42;
+      theme.label(ctx, String(section.title), padding + S(29), y + S(10), { size: 10 });
+      y += S(32);
     }
-    ctx.font = `26px ${baseFont}`;
-    const lines = (section.lines || []).flatMap((line) => wrapText(ctx, sanitize(line), contentWidth - 30));
+    const lines = (Array.isArray(section.lines) ? section.lines : [])
+      .flatMap(line => wrapText(ctx, sanitize(line), contentWidth - S(70)));
     for (const line of lines) {
-      ctx.fillStyle = theme.text;
-      ctx.fillText(line, padding + 30, y);
-      y += 34;
+      theme.text(ctx, line, padding + S(32), y + S(17), {
+        size: 14, color: palette.ink2, maxWidth: contentWidth - S(64)
+      });
+      y += S(23);
     }
-    y += 10;
+    y += S(7);
   }
 
-  // footer
   if (spec.footer) {
-    ctx.font = `22px ${baseFont}`;
-    ctx.fillStyle = theme.sub;
-    const lines = wrapText(ctx, sanitize(spec.footer), contentWidth);
-    let footerY = height - 48;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      ctx.fillText(lines[i], padding, footerY);
-      footerY -= 28;
-    }
+    theme.text(ctx, sanitize(spec.footer), width - padding - S(18), height - S(28), {
+      size: 10, family: "JT-Mono", color: palette.mute, align: "right", maxWidth: contentWidth - S(36)
+    });
   }
-
   return canvas;
 }
 
-function renderCardToFile(spec, filePath) {
+function renderCardToFile(spec = {}, filePath) {
   const canvas = renderCard(spec);
-  const outPath = filePath || path.join(os.tmpdir(), `jt_card_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.png`);
-  fs.writeFileSync(outPath, withMacWindow(canvas, spec?.title || spec?.chip || "JOHN TRAN").toBuffer("image/png"));
-  return outPath;
+  const outputPath = filePath || path.join(os.tmpdir(), "jt_card_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
+  fs.writeFileSync(outputPath, withMacWindow(canvas, spec.title || spec.chip || "JOHN TRAN").toBuffer("image/png"));
+  return outputPath;
 }
 
-module.exports = { renderCard, renderCardToFile, sanitize, THEMES };
+module.exports = { renderCard, renderCardToFile, sanitize, THEMES, _test: { measureContent, wrapText } };
