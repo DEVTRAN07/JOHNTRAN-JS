@@ -73,7 +73,7 @@ async function dispatchCommand({
   } catch (error) {
     logger.log(`Lỗi pipeline lệnh '${commandName}': ${error.message}`, "error");
   } finally {
-    metrics?.trackCommandLatency?.(commandName, performance.now() - commandStartedAt);
+    metrics?.trackCommandExecutionLatency?.(commandName, performance.now() - commandStartedAt);
   }
 }
 
