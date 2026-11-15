@@ -6,6 +6,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { renderCanvas } = require("../core/canvas/workerRender");
+const workerPool = require("../core/workerPool");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUTPUT = path.resolve(process.env.CANVAS_PREVIEW_DIR || path.join(ROOT, "artifacts", "canvas-preview"));
@@ -262,7 +263,12 @@ async function main() {
   console.log("[CANVAS_PREVIEW] Rendered " + files.length + " PNG previews to " + OUTPUT);
 }
 
-main().catch(error => {
-  console.error("[CANVAS_PREVIEW] " + (error.stack || error));
-  process.exitCode = 1;
-});
+main()
+  .catch(error => {
+    console.error("[CANVAS_PREVIEW] " + (error.stack || error));
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    try { await workerPool.shutdown(); }
+    catch (error) { console.error("[CANVAS_PREVIEW] Worker shutdown failed: " + error.message); }
+  });
