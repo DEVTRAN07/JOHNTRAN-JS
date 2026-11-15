@@ -114,6 +114,7 @@ test("group-level bot switch is persisted in the selected bot process and OFF is
   assert.match(bridge, /Threads\.setData\(gid, data\)/);
   assert.match(listener, /threadInfo\?\.bot_enabled === false/);
   assert.match(listener, /isBotEnableCommand/);
+  assert.match(fs.readFileSync(path.join(root, "core/handle/handleEvent.js"), "utf8"), /thread\?\.data\?\.bot_enabled === false/);
   assert.match(handler, /threadInfo\?\.bot_enabled === false/);
   assert.match(handler, /commandName === "bot".*=== "on"/);
 });
@@ -121,7 +122,9 @@ test("group-level bot switch is persisted in the selected bot process and OFF is
 test("bot menu folder uses /bot and keeps /mybot as a backward-compatible route", () => {
   const folderMenu = require("../core/runtime/folderMenu");
   assert.equal(folderMenu.MENU_GROUPS.find(folder => folder.name === "Bot")?.slug, "bot");
-  assert.equal(folderMenu.resolveMenuGroup(new Map(), "owner", "bot")?.slug || "bot", "bot");
+  const botCommands = new Map([["bot", { config: { name: "bot", category: "Hệ thống" } }]]);
+  assert.equal(folderMenu.resolveMenuGroup(botCommands, "owner", "bot")?.slug, "bot");
+  assert.equal(folderMenu.resolveMenuGroup(botCommands, "owner", "mybot")?.slug, "bot");
   assert.equal(folderMenu.menuGroupForCommand({ config: { name: "bot", category: "Hệ thống" } }), "bot");
 });
 test("group command proxy preserves the gid query string for POST updates", () => {
