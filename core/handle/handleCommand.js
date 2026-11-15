@@ -56,9 +56,8 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   const command = resolveCommand(global.client.commands, commandName);
   const folderMenuRuntime = require("../runtime/folderMenu");
   const menuGroupShortcut = folderMenuRuntime.resolveMenuGroup(global.client.commands, UIDUsage, commandName);
-  if (threadInfo?.bot_enabled === false && !["mybot", "status", "menu"].includes(commandName)) {
-    return wrappedApi.sendMessage({ msg: "⏸️ Bot đang tắt trong nhóm này. Quản trị viên dùng /mybot on để bật lại." }, threadId, type);
-  }
+  // Nhóm OFF phải im lặng hoàn toàn. Chỉ cho phép /bot on để chủ bot mở lại.
+  if (threadInfo?.bot_enabled === false && !(commandName === "bot" && String(args[0] || "").toLowerCase() === "on")) return;
   // A bare category shortcut opens its card. Commands with the same name
   // (for example /anti and /admin) still execute normally when arguments exist.
   if (!command || (menuGroupShortcut && args.length === 0)) {
@@ -127,7 +126,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
 
   // Lệnh bị tắt trong nhóm này (quản lý từ panel)
   const disabledCommands = threadInfo?.disabled_commands;
-  if (Array.isArray(disabledCommands) && disabledCommands.includes(commandName)) {
+  if (commandName !== "bot" && Array.isArray(disabledCommands) && disabledCommands.includes(commandName)) {
     if (wrappedApi && threadId && type) {
       await wrappedApi.sendMessage({ msg: `🚫 Lệnh '${commandName}' đã bị tắt trong nhóm này.` }, threadId, type);
     }
