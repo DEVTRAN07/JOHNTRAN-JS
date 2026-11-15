@@ -8,7 +8,7 @@ module.exports.config = {
   version: "1.0.0",
   role: 2,
   author: "JOHNTRAN",
-  description: "Đổi màu menu và toàn bộ thư mục",
+  description: "Chỉnh màu /menu và các thẻ thư mục, không dùng ảnh nền",
   category: "Hệ thống",
   usage: "theme [preset|#RRGGBB|reset]",
   cooldowns: 2,
