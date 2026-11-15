@@ -28,8 +28,8 @@ function readDailyCounts(thread) {
   return { today, counts };
 }
 
-const AVATAR_LOOKUP_TIMEOUT_MS = 500;
-const AVATAR_LOOKUP_CONCURRENCY = 4;
+const AVATAR_LOOKUP_TIMEOUT_MS = 700;
+const AVATAR_LOOKUP_CONCURRENCY = 6;
 
 function withTimeout(value, timeoutMs) {
   return new Promise(resolve => {
@@ -55,18 +55,13 @@ function withTimeout(value, timeoutMs) {
 }
 
 async function resolveMemberAvatar(api, uid) {
-  const profileRequest = typeof api?.getUserInfo === "function"
-    ? withTimeout(Promise.resolve().then(() => api.getUserInfo(uid, 240)), AVATAR_LOOKUP_TIMEOUT_MS)
-    : Promise.resolve(null);
-  const avatarRequest = typeof api?.getAvatarUrlProfile === "function"
-    ? withTimeout(Promise.resolve().then(() => api.getAvatarUrlProfile(uid, 240)), AVATAR_LOOKUP_TIMEOUT_MS)
-    : Promise.resolve(null);
-  const [profileResult, avatarResult] = await Promise.all([profileRequest, avatarRequest]);
-  const profile = requesterProfile.pickProfileByUid(profileResult, uid);
-  return requesterProfile.pickAvatar(profile) ||
-    requesterProfile.pickAvatarByUid(avatarResult, uid) ||
-    requesterProfile.pickAvatar(profileResult) ||
-    "";
+  // Share the same UID-safe lookup/cache as /menu, and wait only a bounded
+  // amount of time. The Canvas worker then preloads the resulting image URL.
+  return requesterProfile.getUserAvatar(api, String(uid), {
+    waitMs: AVATAR_LOOKUP_TIMEOUT_MS,
+    fetchTimeoutMs: 1600,
+    avatarWaitMs: 120
+  });
 }
 
 async function hydrateRankingAvatars(api, ranking) {
