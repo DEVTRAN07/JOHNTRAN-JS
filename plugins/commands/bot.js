@@ -49,7 +49,10 @@ async function collectEnabledGroups(api, Threads) {
     const batch = enabledIds.slice(offset, offset + GROUP_INFO_CONCURRENCY);
     const items = await Promise.all(batch.map(async gid => {
       let info = stats.getCachedGroupInfo(gid);
-      if (!info) info = await stats.warmGroupInfo(api, gid);
+      // wrapApi.getGroupInfo already has its own single-flight cache.
+      // Do not wrap it again with stats.warmGroupInfo or the two cache
+      // promises can recursively await each other on the same group key.
+      if (!info && typeof api?.getGroupInfo === "function") info = await api.getGroupInfo(gid);
       const group = info?.gridInfoMap?.[gid] || {};
       return {
         gid: String(gid),
