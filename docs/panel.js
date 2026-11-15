@@ -280,7 +280,7 @@ async function showQr(name) {
         const blob = await response.blob();
         if (state.qrObjectUrl) URL.revokeObjectURL(state.qrObjectUrl);
         state.qrObjectUrl = URL.createObjectURL(blob);
-        $("modalContent").innerHTML = '<div class="qr-view"><img src="' + state.qrObjectUrl + '" alt="QR đăng nhập Zalo"><b>Quét mã QR bằng ứng dụng Zalo</b><p>' + $escape(botStatus(bot || {}).0 || bot?.status || "Đang chờ đăng nhập") + '</p></div>';
+        $("modalContent").innerHTML = '<div class="qr-view"><img src="' + state.qrObjectUrl + '" alt="QR đăng nhập Zalo"><b>Quét mã QR bằng ứng dụng Zalo</b><p>' + $escape(bot?.loginState || bot?.status || "Đang chờ đăng nhập") + '</p></div>';
       } else {
         const data = await response.json().catch(() => ({}));
         const waiting = bot && ["starting","qr_pending","qr_scanned","waiting_login","cookie_login"].includes(bot.loginState || bot.status);
@@ -691,7 +691,7 @@ function bindEvents() {
     state.token=$("panelToken").value.trim();
     localStorage.setItem("jt_panel_url",state.api);
     if(state.token)sessionStorage.setItem("jt_panel_token",state.token);else sessionStorage.removeItem("jt_panel_token");
-    closeSettings();refreshOverview().then(ok=>{if(ok)toast("Đã kết nối Panel","success");else openSettings();});
+    closeSettings();refreshOverview().then(async ok=>{if(ok){toast("Đã kết nối Panel","success");await loadCommands();}else openSettings();});
   });
   $("clearToken").addEventListener("click",()=>{
     state.token="";sessionStorage.removeItem("jt_panel_token");$("panelToken").value="";
