@@ -206,6 +206,10 @@ async function getUserAvatar(api, uid, options = {}) {
   return String(profile?.requesterAvatarUrl || "");
 }
 
+function getPendingProfileLookupCount() {
+  return pending.size;
+}
+
 function clearRequesterProfileCache() {
   profiles.clear();
   pending.clear();
@@ -220,6 +224,7 @@ module.exports = {
   AVATAR_SIZE,
   MAX_PROFILES,
   MAX_PENDING_PROFILES,
+  getPendingProfileLookupCount,
   pickAvatar,
   pickAvatarByUid,
   pickProfileByUid
