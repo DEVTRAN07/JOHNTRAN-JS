@@ -27,7 +27,7 @@ test("menu shows only populated folders in the reference order", () => {
   const groups = menu.collectMenuGroups(commands, "root");
   assert.deepEqual(groups.map(group => group.slug), [
     "info", "public", "music", "game", "tools",
-    "anti", "manager", "admin", "mybot", "hidden"
+    "anti", "manager", "admin", "bot", "hidden"
   ]);
   assert.ok(groups.every(group => group.count > 0));
   assert.ok(!groups.some(group => group.slug === "test"));
@@ -50,7 +50,7 @@ test("menu folders use clear English display names", () => {
   assert.equal(names.game, "Game");
   assert.equal(names.anti, "Anti");
   assert.equal(names.admin, "Admin");
-  assert.equal(names.mybot, "Bot");
+  assert.equal(names.bot, "Bot");
   assert.equal(names.hidden, "Special");
   assert.ok(!groups.some(group => group.slug === "test"));
 });
@@ -82,12 +82,13 @@ test("each live command is assigned to its intended folder", () => {
     ["theme", "Hệ thống", "admin"],
     ["spam", "Hệ thống", "admin"],
     ["spamsticker", "Hệ thống", "admin"],
-    ["command", "Hệ thống", "mybot"],
-    ["events", "Hệ thống", "mybot"],
-    ["jobs", "Hệ thống", "mybot"],
-    ["stats", "Hệ thống", "mybot"],
-    ["status", "MyBot", "mybot"],
-    ["mybot", "MyBot", "mybot"],
+    ["bot", "Hệ thống", "bot"],
+    ["command", "Hệ thống", "bot"],
+    ["events", "Hệ thống", "bot"],
+    ["jobs", "Hệ thống", "bot"],
+    ["stats", "Hệ thống", "bot"],
+    ["status", "MyBot", "bot"],
+    ["mybot", "MyBot", "bot"],
     ["girl", "Giải trí", "hidden"],
     ["hon", "Hành động", "hidden"],
     ["noi", "AI", "hidden"],
