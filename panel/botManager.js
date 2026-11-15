@@ -107,8 +107,8 @@ class BotInstance {
     return true;
   }
 
-  scheduleRestart() {
-    if (this.restartTimer || this.stoppedByUser || !this.autoRestart || this.flapping) return false;
+  scheduleRestart(delayMs = this.restartDelayMs, { allowFlapping = false } = {}) {
+    if (this.restartTimer || this.stoppedByUser || !this.autoRestart || (this.flapping && !allowFlapping)) return false;
 
     this.restarting = true;
     const timer = setTimeout(() => {
@@ -125,7 +125,7 @@ class BotInstance {
         this.pushLog(`[watchdog] Không thể tự khởi động lại: ${error.message || error}`);
         logger.log(`Không thể tự khởi động lại bot '${this.name}': ${error.message || error}`, "error");
       }
-    }, this.restartDelayMs);
+    }, Math.max(0, delayMs));
     this.restartTimer = timer;
     return true;
   }
@@ -217,8 +217,14 @@ class BotInstance {
       if (this.autoRestart && restartCount <= this.maxRestartsInWindow) {
         this.scheduleRestart();
       } else if (this.autoRestart) {
-        this.pushLog("[watchdog] Tự khởi động lại tạm dừng do bot crash quá nhiều trong 10 phút — cần kiểm tra");
-        logger.log(`Watchdog tạm dừng bot '${this.name}': ${restartCount} lần thoát trong ${Math.round(this.restartWindowMs / 60000)} phút`, "error");
+        const oldestCrashAt = this.restartHistory[0] || Date.now();
+        const cooldownMs = Math.max(
+          this.restartDelayMs,
+          oldestCrashAt + this.restartWindowMs - Date.now() + 1
+        );
+        this.pushLog("[watchdog] Bot crash liên tục; tạm nghỉ đến khi cửa sổ giới hạn được làm mới");
+        logger.log(`Watchdog tạm hoãn bot '${this.name}': ${restartCount} lần thoát trong ${Math.round(this.restartWindowMs / 60000)} phút; sẽ tự thử lại sau ${Math.ceil(cooldownMs / 1000)}s`, "error");
+        this.scheduleRestart(cooldownMs, { allowFlapping: true });
       }
     });
 
