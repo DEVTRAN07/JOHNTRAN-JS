@@ -7,6 +7,7 @@ function createContext() {
   const reactions = [];
   const errors = [];
   const tracked = [];
+  const executionLatencies = [];
   const logs = [];
   const api = {
     __reply: {
@@ -16,9 +17,12 @@ function createContext() {
     }
   };
   return {
-    api, reactions, errors, tracked, logs,
+    api, reactions, errors, tracked, executionLatencies, logs,
     logger: { log: (...args) => logs.push(args) },
-    metrics: { track: (...args) => tracked.push(args) },
+    metrics: {
+      track: (...args) => tracked.push(args),
+      trackCommandExecutionLatency: (...args) => executionLatencies.push(args)
+    },
     Reactions: { LIKE: "like", PRAY: "working", OK: "ok", CRY: "cry" }
   };
 }
@@ -40,6 +44,9 @@ test("dispatcher preserves the command plugin context and success reactions", as
   assert.equal(received.userData.name, "A");
   assert.deepEqual(ctx.reactions, ["working", "ok"]);
   assert.deepEqual(ctx.tracked, [["command", { command: "hello" }]]);
+  assert.equal(ctx.executionLatencies.length, 1);
+  assert.equal(ctx.executionLatencies[0][0], "hello");
+  assert.ok(ctx.executionLatencies[0][1] >= 0);
   assert.equal(ctx.errors.length, 0);
 });
 
@@ -59,5 +66,8 @@ test("dispatcher isolates command failures and reports failure reaction", async 
     ["command", { command: "broken" }],
     ["error", { command: "broken" }]
   ]);
+  assert.equal(ctx.executionLatencies.length, 1);
+  assert.equal(ctx.executionLatencies[0][0], "broken");
+  assert.ok(ctx.executionLatencies[0][1] >= 0);
   assert.match(ctx.logs[0][0], /broken/);
 });

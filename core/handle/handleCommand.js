@@ -223,13 +223,20 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   const isCommandMessage = typeof messageText === "string" &&
     typeof prefix === "string" && prefix.length > 0 &&
     messageText.startsWith(prefix);
+  const commandName = isCommandMessage
+    ? String(messageText.slice(prefix.length).trim().split(/\s+/, 1)[0] || "unknown").toLowerCase()
+    : "";
 
   try {
     return await runCommandPipeline(messageText, event, api, threadInfo, prefix, threadData);
   } finally {
-    // Include the complete lifecycle, even when permission/cooldown checks or
-    // unknown/disabled command paths return before dispatchCommand().
-    if (isCommandMessage) metrics.trackLatency?.(performance.now() - startedAt);
+    // End-to-end latency includes parse/lookup, permissions, cooldowns, data
+    // loading, command.run() and awaited replies, including early-return paths.
+    if (isCommandMessage) {
+      const elapsed = performance.now() - startedAt;
+      metrics.trackLatency?.(elapsed);
+      metrics.trackCommandLatency?.(commandName, elapsed);
+    }
   }
 }
 

@@ -46,6 +46,7 @@ function createMetricsStore(backend, options = {}) {
   const dirtyDays = new Set();
   const recentLatencies = [];
   const commandLatencies = new Map();
+  const commandExecutionLatencies = new Map();
   const MAX_COMMAND_LATENCY_KEYS = 100;
   const MAX_COMMAND_LATENCY_SAMPLES = 100;
   let latencyCount = 0;
@@ -163,25 +164,26 @@ function createMetricsStore(backend, options = {}) {
     };
   }
 
-  function trackCommandLatency(commandName, durationMs) {
+  function recordCommandSamples(target, commandName, durationMs) {
     const name = String(commandName || "unknown").toLowerCase().slice(0, 64);
     const value = Number(durationMs);
     if (!Number.isFinite(value) || value < 0) return;
-    if (!commandLatencies.has(name)) {
-      if (commandLatencies.size >= MAX_COMMAND_LATENCY_KEYS) {
-        const oldest = commandLatencies.keys().next().value;
-        if (oldest !== undefined) commandLatencies.delete(oldest);
+    if (!target.has(name)) {
+      if (target.size >= MAX_COMMAND_LATENCY_KEYS) {
+        const oldest = target.keys().next().value;
+        if (oldest !== undefined) target.delete(oldest);
       }
-      commandLatencies.set(name, []);
+      target.set(name, []);
     }
-    const samples = commandLatencies.get(name);
+    const samples = target.get(name);
     samples.push(value);
     if (samples.length > MAX_COMMAND_LATENCY_SAMPLES) samples.shift();
   }
 
-  function getCommandLatencyStats(limit = 5) {
-    return [...commandLatencies.entries()]
+  function summarizeCommandSamples(source, limit = 5) {
+    return [...source.entries()]
       .map(([command, samples]) => {
+        if (!samples.length) return null;
         const sorted = [...samples].sort((a, b) => a - b);
         const percentile = ratio => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
         const avgMs = samples.reduce((sum, value) => sum + value, 0) / samples.length;
@@ -194,8 +196,27 @@ function createMetricsStore(backend, options = {}) {
           maxMs: Number(Math.max(...samples).toFixed(2))
         };
       })
+      .filter(Boolean)
       .sort((a, b) => b.p95Ms - a.p95Ms || b.avgMs - a.avgMs)
       .slice(0, Math.max(0, Number(limit) || 0));
+  }
+
+  // End-to-end time: parsing, permissions, cooldown, data loading, handler and reply.
+  function trackCommandLatency(commandName, durationMs) {
+    recordCommandSamples(commandLatencies, commandName, durationMs);
+  }
+
+  // Handler-only time: the command plugin's run() and its awaited work.
+  function trackCommandExecutionLatency(commandName, durationMs) {
+    recordCommandSamples(commandExecutionLatencies, commandName, durationMs);
+  }
+
+  function getCommandLatencyStats(limit = 5) {
+    return summarizeCommandSamples(commandLatencies, limit);
+  }
+
+  function getCommandExecutionLatencyStats(limit = 5) {
+    return summarizeCommandSamples(commandExecutionLatencies, limit);
   }
 
   function topCommands(day = todayKey(now()), limit = 5) {
@@ -213,7 +234,7 @@ function createMetricsStore(backend, options = {}) {
     return flush();
   }
 
-  return { track, trackLatency, trackCommandLatency, getCommandLatencyStats, getLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
+  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
 }
 
 const metricsStore = createMetricsStore(db, {

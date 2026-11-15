@@ -24,6 +24,7 @@ module.exports.run = async ({ reply }) => {
   const top = metrics.topCommands();
   const latency = metrics.getLatencyStats?.();
   const slowCommands = metrics.getCommandLatencyStats?.(5) || [];
+  const slowHandlers = metrics.getCommandExecutionLatencyStats?.(5) || [];
 
   const topLines = top.length
     ? top.map(([name, count], index) => `${index + 1}. ${name}: ${count} lần`)
@@ -34,6 +35,9 @@ module.exports.run = async ({ reply }) => {
   );
   const slowCommandLines = slowCommands.length
     ? slowCommands.map(item => `${item.command}: P95 ${item.p95Ms} ms · TB ${item.avgMs} ms`)
+    : ["Chưa đủ dữ liệu"];
+  const slowHandlerLines = slowHandlers.length
+    ? slowHandlers.map(item => `${item.command}: P95 ${item.p95Ms} ms · TB ${item.avgMs} ms`)
     : ["Chưa đủ dữ liệu"];
 
   const lines = [
@@ -51,8 +55,10 @@ module.exports.run = async ({ reply }) => {
     latency
       ? `P50: ${latency.p50Ms} ms  •  P95: ${latency.p95Ms} ms  •  Gần nhất: ${latency.lastMs} ms`
       : "Chưa có dữ liệu",
-    "🐢 LỆNH CÓ ĐỘ TRỄ CAO",
+    "🐢 LỆNH CHẬM (TOÀN BỘ ĐƯỜNG XỬ LÝ)",
     ...slowCommandLines,
+    "⚙️ HANDLER CHẬM (CHỈ PHẦN COMMAND.RUN)",
+    ...slowHandlerLines,
     "",
     "🧠 CACHE",
     ...cacheLines,
