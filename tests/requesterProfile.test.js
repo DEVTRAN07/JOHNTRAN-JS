@@ -207,6 +207,25 @@ test("getUserAvatar shares UID-safe profile lookup and cache", async () => {
   }
 });
 
+test("requester fallback does not mistake an attached message URL for a user avatar", async () => {
+  clearRequesterProfileCache();
+  try {
+    const result = await getRequesterProfile({}, {
+      data: {
+        uidFrom: "message-sender-uid",
+        dName: "Message Sender",
+        content: { url: "https://cdn.example/message-attachment.jpg" },
+        attachment: { href: "https://cdn.example/attachment-preview.jpg" }
+      }
+    });
+
+    assert.equal(result.requesterName, "Message Sender");
+    assert.equal(result.requesterAvatarUrl, "");
+  } finally {
+    clearRequesterProfileCache();
+  }
+});
+
 test("requester avatar parser handles nested Zalo avatar records and uid arrays", () => {
   const { pickAvatarByUid, pickProfileByUid } = require("../core/runtime/requesterProfile");
   const uid = "nested-avatar-user";
