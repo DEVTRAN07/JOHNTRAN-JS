@@ -11,12 +11,27 @@ const { renderCardToFile } = require("../core/canvas");
 const menuCanvas = require("../core/canvas/menu");
 const musicCanvas = require("../core/canvas/music");
 
-test("all shared canvas colors follow the selected /menu theme", () => {
+test("menu color themes stay isolated from non-menu Canvas cards", t => {
   theme.reload();
-  const selected = menuPalette.getPalette();
-  assert.equal(theme.PALETTE.accent, selected.accent);
-  assert.equal(theme.PALETTE.bg0, selected.background[0]);
-  assert.equal(theme.PALETTE.bg1, selected.background[1]);
+  const originalAccent = theme.PALETTE.accent;
+  const originalBackground = theme.PALETTE.bg0;
+  const directory = fs.mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "johntran-menu-only-theme-"));
+  const file = require("node:path").join(directory, "menu-theme.json");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  menuPalette.setTheme("purple", file);
+  theme.ensureTheme();
+
+  assert.equal(menuPalette.getThemeInfo(file).name, "purple");
+  assert.equal(theme.PALETTE.accent, originalAccent);
+  assert.equal(theme.PALETTE.bg0, originalBackground);
+  assert.equal(theme.PALETTE.accent, "#d4af37");
+  assert.equal(theme.PALETTE.bg0, "#08080a");
+  const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
+  assert.ok(!source.includes("menuPalette"));
+  assert.ok(!source.includes("BG_IMAGE"));
+  assert.ok(!source.includes("theme.jpg"));
+  assert.ok(!source.includes("loadImage"));
 });
 
 test("profile and generic cards render with the shared Mac window frame", async () => {
