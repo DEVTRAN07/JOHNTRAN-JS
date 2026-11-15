@@ -53,7 +53,9 @@ function pickExplicitAvatar(value, depth = 0) {
     const candidate = value[key];
     if (isHttpUrl(candidate)) return candidate.trim();
     if (candidate && typeof candidate === "object") {
-      const nested = pickExplicitAvatar(candidate, depth + 1);
+      // Once inside an explicitly named avatar field, generic URL properties
+      // such as { url: "..." } are safe to interpret as the actual avatar.
+      const nested = pickAvatar(candidate, depth + 1);
       if (nested) return nested;
     }
   }
