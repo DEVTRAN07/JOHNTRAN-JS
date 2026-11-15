@@ -70,11 +70,19 @@
   <div class="surface group-config">
     <div class="section-heading compact"><div><span class="eyebrow">TARGET GROUP</span><h3>Tài khoản và nhóm Zalo</h3></div></div>
     <form class="group-form" id="groupForm">
-      <label>BOT ĐANG QUẢN LÝ<select id="groupBotSelect"><option value="">Đang tải bot…</option></select></label>
+      <label>TÀI KHOẢN BOT<select id="groupBotSelect"><option value="">Đang tải bot…</option></select></label>
       <label>NHÓM ZALO<select id="groupSelect"><option value="">Chọn bot trước</option></select></label>
       <button class="button button-primary" type="submit">Tải cấu hình</button>
     </form>
+    <div class="group-identity-grid" id="groupIdentityGrid" hidden>
+      <div class="group-identity-card" id="groupBotIdentity"></div>
+      <div class="group-identity-card" id="selectedGroupIdentity"></div>
+    </div>
     <div class="group-hint" id="groupHint">Danh sách nhóm được lấy từ tài khoản Zalo đã đăng nhập của bot được chọn.</div>
+    <div class="group-bot-toggle" id="groupBotToggleRow" hidden>
+      <div><small>TRẠNG THÁI BOT TRONG NHÓM</small><b id="groupBotToggleLabel">BOT ĐANG BẬT</b><span id="groupBotToggleHint">Bot sẽ phản hồi lệnh và xử lý sự kiện tự động.</span></div>
+      <label class="switch"><input type="checkbox" id="groupBotEnabled" checked><span></span></label>
+    </div>
     <div class="group-command-list" id="groupCommandList"><div class="empty-state">Chưa chọn nhóm.</div></div>
   </div>
 </section>

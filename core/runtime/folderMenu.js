@@ -176,7 +176,7 @@ const MENU_GROUPS = Object.freeze([
   { name: "Anti", slug: "anti", icon: "🛡️", description: "Bảo vệ nhóm và chống spam" },
   { name: "Group", slug: "manager", icon: "👥", description: "Quản lý thành viên và tin nhắn" },
   { name: "Admin", slug: "admin", icon: "👑", description: "Lệnh dành cho quản trị viên" },
-  { name: "Bot", slug: "mybot", icon: "🤖", description: "Theo dõi và điều khiển hoạt động bot" },
+  { name: "Bot", slug: "bot", icon: "🤖", description: "Theo dõi và điều khiển hoạt động bot" },
   { name: "Special", slug: "hidden", icon: "🔒", description: "Các lệnh đặc biệt, không hiển thị công khai" },
   { name: "Test", slug: "test", icon: "🧪", description: "Các lệnh đang thử nghiệm" }
 ]);
@@ -191,7 +191,7 @@ const MENU_COMMAND_GROUPS = Object.freeze({
   anti: new Set(["anti", "autokick"]),
   manager: new Set(["adduser", "delmsg"]),
   admin: new Set(["adc", "admin", "reloadconfig", "restart", "spam", "spamsticker", "theme"]),
-  mybot: new Set(["cmd", "command", "events", "jobs", "stats", "status", "mybot"]),
+  bot: new Set(["bot", "cmd", "command", "events", "jobs", "stats", "status", "mybot"]),
   hidden: new Set(["girl", "hon", "noi", "vdgirl"])
 });
 
@@ -220,7 +220,7 @@ function menuGroupForCommand(command) {
   }
   if (category === "hethong") {
     const name = String(config.name || "").toLowerCase();
-    if (["cmd", "events", "jobs", "stats", "status", "mybot"].includes(name)) return "mybot";
+    if (["bot", "cmd", "command", "events", "jobs", "stats", "status"].includes(name)) return "bot";
     return "admin";
   }
   if (config.test === true || ["test", "thunghiem", "kiemthu", "testing"].includes(category)) return "test";
@@ -256,7 +256,7 @@ function resolveMenuGroup(commands, userId, value) {
   const legacyNames = {
     info: ["info"], public: ["public"], music: ["music"], game: ["game"],
     tools: ["tools"], anti: ["anti"], manager: ["manager"], admin: ["admin"],
-    mybot: ["mybot"], hidden: ["hidden"], test: ["test"]
+    bot: ["bot", "mybot"], hidden: ["hidden"], test: ["test"]
   };
   const group = MENU_GROUPS.find(item =>
     normalizeFolder(item.name) === key ||

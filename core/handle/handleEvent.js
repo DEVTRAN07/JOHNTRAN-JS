@@ -8,6 +8,13 @@ const { dispatchEvent } = require("../runtime/eventRegistry");
 const { createEventContext } = require("../runtime/eventContext");
 
 function handleEvent(eventType, eventData, api, isSelf = false) {
+  // Safety net: suppress every event source when this group has disabled the bot.
+  // Use the synchronous hot cache so the event path never waits for a database round-trip.
+  if (eventData?.type === ThreadType.Group && eventData?.threadId) {
+    const thread = Threads.getCachedData?.(eventData.threadId);
+    if (thread?.data?.bot_enabled === false) return;
+  }
+
   return dispatchEvent({
     events: global.client?.events,
     commands: global.client?.commands,

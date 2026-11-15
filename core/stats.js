@@ -132,7 +132,7 @@ async function getGroups(api) {
             gid: String(gid),
             name: group.name || "",
             totalMember: group.totalMember || 0,
-            avatar: group.avt || ""
+            avatar: group.avt || group.fullAvt || ""
           });
         }
       }
