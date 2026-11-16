@@ -848,7 +848,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
       "🛟 Từ dự phòng: " + stats.fallbackWords + "\n" +
       "📦 Tổng mục từ đang có trong cache: " + stats.totalCached + "\n" +
       "🌐 Nguồn tra cứu: " + stats.source + "\n" +
-      (stats.apiCached < stats.apiPoolLimit ? "🔄 API đang được nạp thêm ở chế độ nền.\\n" : "") +
+      (stats.apiCached < stats.apiPoolLimit ? "🔄 API đang được nạp thêm ở chế độ nền.\n" : "") +
       "ℹ️ Đây là số từ đang nạp trong bộ nhớ, không phải tổng quy mô toàn bộ từ điển API."
     );
   }
