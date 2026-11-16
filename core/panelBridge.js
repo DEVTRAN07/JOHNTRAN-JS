@@ -266,7 +266,7 @@ async function handleRequest(req, res, url) {
       const disabled = Array.isArray(thread.data?.disabled_commands)
         ? thread.data.disabled_commands.map(value => String(value).toLowerCase())
         : [];
-      return json(200, { gid, disabled, all, botEnabled: thread.data?.bot_enabled !== false });
+      return json(200, { gid, disabled, all, botEnabled: thread.data?.bot_enabled === true });
     }
 
     if (req.method === "POST") {
