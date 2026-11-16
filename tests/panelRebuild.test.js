@@ -145,8 +145,10 @@ test("group config routes check database readiness before creating any default-O
 test("existing group settings keep the fast write path while explicit bot toggles await durable storage", () => {
   assert.match(controllerThreads, /setData: \(threadId, data\) =>/);
   assert.match(controllerThreads, /setDataAndWait: async \(threadId, data\) =>/);
-  assert.match(panelBridge, /Threads\.setDataAndWait\(gid, data\)/);
-  assert.match(fs.readFileSync(path.join(root, "plugins/commands/bot.js"), "utf8"), /setDataAndWait \|\| Threads\.setData/);
+  assert.match(panelBridge, /Threads\.setBotEnabled\(gid, body\.botEnabled\)/);
+  assert.match(controllerThreads, /setBotEnabled: async \(threadId, enabled\)/);
+  assert.match(controllerThreads, /bot_enabled: wasEnabled \|\| requestedEnabled/);
+  assert.match(fs.readFileSync(path.join(root, "plugins/commands/bot.js"), "utf8"), /Threads\.setBotEnabled\(threadId, enabled\)/);
 });
 
 test("dashboard keeps using the existing protected panel API and bridge routes", () => {
@@ -222,7 +224,7 @@ test("group-level bot switch is persisted in the selected bot process and OFF is
   const handler = fs.readFileSync(path.join(root, "core/handle/handleCommand.js"), "utf8");
   assert.match(bridge, /botEnabled: thread\.data\?\.bot_enabled === true/);
   assert.match(bridge, /data\.bot_enabled = body\.botEnabled/);
-  assert.match(bridge, /Threads\.setData\(gid, data\)/);
+  assert.match(bridge, /Threads\.setBotEnabled\(gid, body\.botEnabled\)/);
   assert.match(listener, /groupBotEnabled/);
   assert.match(listener, /isAllowedBotControlMessage/);
   assert.match(fs.readFileSync(path.join(root, "core/handle/handleEvent.js"), "utf8"), /isGroupBotEnabled/);
