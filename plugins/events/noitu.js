@@ -38,6 +38,10 @@ module.exports.run = async function ({ api, event, Users, isSelf }) {
   const uid = String(event?.data?.uidFrom || "");
   const threadId = String(event?.threadId || "");
   if (!uid || !threadId) return;
+  // One board game per group: Caro owns incoming numeric/quick-control messages while active.
+  const caro = require("../../core/runtime/services/games/caroService");
+  if (caro.get(threadId)) return;
+
   const session = game.get(threadId);
   if (!session || session.turnUid !== uid) return;
 
