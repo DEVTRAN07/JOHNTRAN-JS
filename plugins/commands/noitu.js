@@ -93,6 +93,8 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   if (!action || action === "help") return sendGuide(api, event, prefix);
 
   if (action === "start" || action === "go") {
+    const caro = require("../../core/runtime/services/games/caroService");
+    if (caro.get(threadId)) return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Nối Từ.");
     const name = String(event?.data?.dName || event?.data?.name || "Người chơi");
     const result = game.start(threadId, uid, name);
     if (!result.ok) return send(api, event, "⚠️ Nhóm đang có ván Nối Từ. Gõ join để vào lượt.");
