@@ -152,6 +152,18 @@ class SupabaseStore {
         anySuccess = true;
         const next = {};
         for (const row of data || []) next[String(row.id)] = { ...row, data: row.data || {} };
+
+        // A remote snapshot can be older than a local write still in flight
+        // or waiting in retryQueue. Never let periodic sync roll that setting
+        // back in the in-memory mirror.
+        const pendingPrefix = `${dbTable}:`;
+        for (const [writeKey] of this.writeVersions) {
+          if (!writeKey.startsWith(pendingPrefix)) continue;
+          const id = writeKey.slice(pendingPrefix.length);
+          const localRecord = this.mirror[storeTable]?.[id];
+          if (localRecord) next[id] = localRecord;
+          else delete next[id]; // Preserve a pending local delete as well.
+        }
         this.mirror[storeTable] = next;
       }
       if (firstError && !anySuccess) {
@@ -201,10 +213,12 @@ class SupabaseStore {
     return tracked;
   }
 
-  push(dbTable, op, payload) {
+  push(dbTable, op, payload, { wait = false } = {}) {
     const id = String(payload?.id ?? "");
     if (!id) {
-      console.log(`[supabase] Bỏ qua ${op}: thiếu record id cho ${dbTable}`);
+      const error = new Error(`Thiếu record id cho ${dbTable}`);
+      console.log(`[supabase] Bỏ qua ${op}: ${error.message}`);
+      if (wait) return Promise.reject(error);
       return;
     }
 
@@ -214,18 +228,26 @@ class SupabaseStore {
     // A newer mutation supersedes an older failed retry for this record.
     this.retryQueue.delete(key);
 
-    this.enqueueWrite(key, () => this.executeWrite(dbTable, op, payload)).then(() => {
+    const write = this.enqueueWrite(key, () => this.executeWrite(dbTable, op, payload)).then(() => {
       if (this.writeVersions.get(key) === version) this.writeVersions.delete(key);
+      return true;
     }, (error) => {
       // Ignore stale failures that completed after a newer mutation.
-      if (this.writeVersions.get(key) !== version) return;
+      if (this.writeVersions.get(key) !== version) return false;
 
       const classified = this.classifyError(error);
       if (classified === "network") this.logFailure(`Ghi ${op} thất bại, xếp retry: ${error.message}`, classified);
       else console.log(`[supabase] Ghi ${op} thất bại, xếp retry: ${error.message}`);
       this.retryQueue.set(key, { key, dbTable, op, payload, version, failedAt: Date.now() });
       this.metrics.retries += 1;
+      if (wait) throw error;
+      return false;
     });
+
+    if (wait) return write;
+    // Preserve the legacy fire-and-forget contract for ordinary hot-path writes.
+    write.catch(() => {});
+    return undefined;
   }
 
   async flushRetry() {
@@ -294,6 +316,15 @@ class SupabaseStore {
     if (!this.mirror[tableName]) this.mirror[tableName] = {};
     this.mirror[tableName][key] = payload;
     this.push(table, "upsert", payload);
+    return payload;
+  }
+
+  async setAndWait(tableName, idField, id, dataObj, extra = {}) {
+    const table = this.tableFor(tableName); const key = String(id);
+    const payload = { id: key, data: dataObj, ...extra, updated_at: new Date().toISOString() };
+    if (!this.mirror[tableName]) this.mirror[tableName] = {};
+    this.mirror[tableName][key] = payload;
+    await this.push(table, "upsert", payload, { wait: true });
     return payload;
   }
   delete(tableName, idField, id) {
