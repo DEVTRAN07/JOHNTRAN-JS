@@ -93,7 +93,7 @@ function renderEventSettings(data = {}) {
   const events = Array.isArray(data.events) ? data.events.slice(0, 12) : [];
   const hosts = Array.isArray(data.hosts) ? data.hosts.slice(0, 24) : [];
   const rows = mode === "hosts" ? Math.max(1, hosts.length) : Math.max(1, events.length);
-  const bodyHeight = S(mode === "hosts" ? 132 + rows * 37 : 135 + rows * 62);
+  const bodyHeight = S(mode === "hosts" ? 182 + rows * 37 : 178 + rows * 68);
   const result = theme.newCanvas(W, bodyHeight);
   const ctx = result.ctx;
   drawBackdrop(ctx, W, bodyHeight, palette);

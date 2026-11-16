@@ -40,7 +40,7 @@ function statusText(thread, prefix) {
 }
 
 async function sendStatusCard({ api, event, reply, thread }) {
-  const fallback = statusText(thread, global.config.prefix);
+  const fallback = statusText(thread, (global.config?.prefix || "/"));
   let imagePath;
   try {
     imagePath = await renderCanvas("events", {
