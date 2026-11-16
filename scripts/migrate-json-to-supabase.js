@@ -70,7 +70,7 @@ async function migrateJsonToSupabase({
   sourceFile = process.env.JT_DB_FILE || path.join(process.cwd(), "data", "store.json"),
   client = null,
   supabaseUrl = process.env.SUPABASE_URL || "",
-  serviceKey = process.env.SUPABASE_SERVICE_KEY || "",
+  serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY || "",
   dryRun = true,
   batchSize = 100,
   log = () => {}
@@ -89,7 +89,7 @@ async function migrateJsonToSupabase({
 
   if (!dryRun && !client) {
     if (!supabaseUrl || !serviceKey) {
-      throw new Error("Cần SUPABASE_URL và SUPABASE_SERVICE_KEY để import. Không dùng anon/publishable key.");
+      throw new Error("Cần SUPABASE_URL và SUPABASE_SECRET_KEY (hoặc SUPABASE_SERVICE_KEY cũ) để import. Không dùng anon/publishable key.");
     }
     const { createClient } = require("@supabase/supabase-js");
     client = createClient(supabaseUrl, serviceKey, {
