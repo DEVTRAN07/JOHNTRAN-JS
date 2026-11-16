@@ -183,6 +183,18 @@ try {
   logger.log(`Chưa đồng bộ được database: ${error.message}`, "warn");
 }
 
+// Warm all known group settings before the message listener starts. The
+// controller keeps a bounded process-lifetime snapshot so an idle group's
+// explicit ON state is not lost when the short hot cache expires.
+try {
+  const threadController = require("./core/controller/controllerThreads");
+  const groupSettings = threadController.getAll();
+  const enabledGroups = groupSettings.filter(row => row?.data?.bot_enabled === true).length;
+  logger.log(`Đã nạp trạng thái bot của ${groupSettings.length} nhóm (${enabledGroups} đang bật)`, "info");
+} catch (error) {
+  logger.log(`Không thể nạp trước trạng thái nhóm: ${error.message || error}`, "warn");
+}
+
 await loaderCommand();
 await loaderEvent();
 
