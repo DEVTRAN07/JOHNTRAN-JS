@@ -54,7 +54,7 @@ test("error journal redacts credentials before retaining or persisting a message
   assert.match(snapshotText, /\*\*\*/);
 });
 
-test("identical warnings and errors are deduplicated within the configured window", () => {
+test("identical warnings and errors are deduplicated within the configured window", async () => {
   let clock = 1000;
   const journal = makeJournal("dedupe", { now: () => clock, dedupeWindowMs: 60000 });
   journal.recordError("same failure", { source: "command", commandName: "stk" });
@@ -69,6 +69,7 @@ test("identical warnings and errors are deduplicated within the configured windo
   clock += 61000;
   journal.recordError("same failure", { source: "command", commandName: "stk" });
   assert.equal(journal.snapshot().summary.unique, 2);
+  await journal.flush();
 });
 
 test("error journal rotates bounded JSONL files and reads the latest entries", async () => {
@@ -93,7 +94,7 @@ test("error journal rotates bounded JSONL files and reads the latest entries", a
   assert.equal(journal.snapshot().summary.unique, 100);
 });
 
-test("error journal bounds its in-memory recent ring", () => {
+test("error journal bounds its in-memory recent ring", async () => {
   const journal = makeJournal("bounded", { maxRecent: 10 });
   for (let i = 0; i < 25; i++) journal.recordWarning("warning-" + i);
   const snapshot = journal.snapshot(100);
@@ -101,6 +102,7 @@ test("error journal bounds its in-memory recent ring", () => {
   assert.equal(snapshot.events.length, 10);
   assert.equal(snapshot.summary.unique, 10);
   assert.equal(snapshot.summary.warnings, 10);
+  await journal.flush();
 });
 
 
