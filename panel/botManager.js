@@ -133,6 +133,7 @@ class BotInstance {
     this.restartTimer = null;
     this.restarting = false;
     this.restartHistory = [];
+    this.restartAttempt = 0;
     this.nextRestartAt = null;
     this.lastExitAt = null;
     this.lastExitReason = null;
@@ -307,8 +308,8 @@ class BotInstance {
       const restartCount = this.pruneRestartHistory();
 
       if (this.autoRestart && restartCount <= this.maxRestartsInWindow) {
-        const attempt = Math.max(1, restartCount);
-        const delay = Math.min(this.restartDelayMs * (2 ** (attempt - 1)), this.maxRestartDelayMs);
+        this.restartAttempt = Math.min(10, this.restartAttempt + 1);
+        const delay = Math.min(this.restartDelayMs * (2 ** (this.restartAttempt - 1)), this.maxRestartDelayMs);
         this.scheduleRestart(delay);
       } else if (this.autoRestart) {
         const oldestCrashAt = this.restartHistory[0] || Date.now();
@@ -316,6 +317,7 @@ class BotInstance {
           this.restartDelayMs,
           oldestCrashAt + this.restartWindowMs - Date.now() + 1
         );
+        this.restartAttempt = 0;
         this.pushLog("[watchdog] Bot crash liên tục; tạm nghỉ đến khi cửa sổ giới hạn được làm mới");
         logger.log(`Watchdog tạm hoãn bot '${this.name}': ${restartCount} lần thoát trong ${Math.round(this.restartWindowMs / 60000)} phút; sẽ tự thử lại sau ${Math.ceil(cooldownMs / 1000)}s`, "error", { source: "bot-watchdog", bot: this.name });
         this.scheduleRestart(cooldownMs, { allowFlapping: true });
@@ -357,6 +359,7 @@ class BotInstance {
   async restart() {
     logger.log(`Có yêu cầu restart thủ công bot '${this.name}'.`, "warn", { source: "bot-restart-manual", bot: this.name });
     await this.stop();
+    this.restartAttempt = 0;
     this.stoppedByUser = false;
     return this.start();
   }
@@ -375,6 +378,7 @@ class BotInstance {
       restarts: this.restarts,
       flapping: this.flapping,
       restartCountInWindow: this.restartHistory.length,
+      restartAttempt: this.restartAttempt,
       nextRestartAt: this.nextRestartAt,
       lastExitAt: this.lastExitAt,
       lastExitReason: this.lastExitReason,
