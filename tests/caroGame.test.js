@@ -198,12 +198,17 @@ test("Caro board recall keeps failed IDs so the next update can retry", async ()
   assert.equal(await caroCommand._test.recallPreviousBoard(failingApi, threadId, 1), false);
   assert.equal(attempts, 1);
 
+  const nextBoard = { msgId: 405, cliMsgId: "caro-image-next" };
+  caroCommand._test.rememberBoardResponse(threadId, { attachment: [nextBoard] });
   const successfulApi = {
     async undo(payload) {
-      assert.deepEqual(payload, target);
+      assert.ok(
+        [target, nextBoard].some(item => item.msgId === payload.msgId && item.cliMsgId === payload.cliMsgId),
+        "retry should include both the failed old card and the current card"
+      );
       attempts += 1;
     }
   };
   assert.equal(await caroCommand._test.recallPreviousBoard(successfulApi, threadId, 1), true);
-  assert.equal(attempts, 2);
+  assert.equal(attempts, 3);
 });
