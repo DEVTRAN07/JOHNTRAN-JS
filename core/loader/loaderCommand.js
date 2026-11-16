@@ -7,6 +7,7 @@ const Threads = require("../runtime/services/threadService");
 
 const { invalidate: invalidateCommandRegistry } = require("../runtime/commandRegistry");
 const { invalidateEventRegistry } = require("../runtime/eventRegistry");
+const { invalidateMenuGroupIndex } = require("../runtime/folderMenu");
 
 async function loadCommands(commandName = null, options = {}) {
   const dir = options.dir || path.join(__dirname, "../..", "plugins", "commands");
@@ -109,6 +110,7 @@ async function loadCommands(commandName = null, options = {}) {
   // Rebuild alias index lazily after initial load or hot reload.
   invalidateCommandRegistry(global.client.commands);
   invalidateEventRegistry(global.client.events);
+  invalidateMenuGroupIndex(global.client.commands);
 
   if (errors.length) {
     log.log(
