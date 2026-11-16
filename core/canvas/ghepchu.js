@@ -205,11 +205,6 @@ function drawFallbackTemplate(ctx) {
   // Player-side identity panel; avatar and player name are drawn per session.
   ctx.beginPath();ctx.arc(120,450,48,0,Math.PI*2);
   ctx.strokeStyle="#efbd35";ctx.lineWidth=4;ctx.stroke();
-  drawText(ctx,"NGƯỜI CHƠI",120,565,{
-    size:15,color:"#ecf7ff",weight:"800",align:"center"
-  });
-  roundedRect(ctx,47,548,146,36,18);
-  ctx.fillStyle="#3b9fe9";ctx.fill();
 
   // Brand/version pill at the bottom, replaced with live version data.
   roundedRect(ctx,498,722,286,42,21);
@@ -325,6 +320,16 @@ function drawAvatar(ctx, data = {}) {
     align: "center",
     maxWidth: 170,
     shadow: true
+  });
+  roundedRect(ctx, 47, 548, 146, 36, 18);
+  ctx.fillStyle = "#3b9fe9";
+  ctx.fill();
+  drawText(ctx, "NGƯỜI CHƠI", x, 566, {
+    size: 15,
+    color: "#ecf7ff",
+    weight: "800",
+    align: "center",
+    baseline: "middle"
   });
 }
 
