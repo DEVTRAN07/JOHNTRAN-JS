@@ -330,6 +330,26 @@ function createErrorJournal(options = {}) {
 const journal = createErrorJournal();
 journal.loadRecent();
 
+// Observe fatal runtime failures without changing Node's default crash/restart
+// behavior. The journal is a side channel, not a mechanism to swallow crashes.
+if (typeof process.on === "function") {
+  process.on("uncaughtExceptionMonitor", (error, origin) => {
+    journal.recordError(error?.stack || error?.message || error, {
+      source: "process-crash",
+      eventName: origin || "uncaughtException",
+      code: error?.code
+    });
+  });
+  process.on("warning", warning => {
+    journal.recordWarning(warning?.stack || warning?.message || warning, {
+      source: "node-warning",
+      eventName: warning?.name || "warning",
+      code: warning?.code
+    });
+  });
+  process.once("beforeExit", () => { void journal.flush(); });
+}
+
 module.exports = {
   ...journal,
   createErrorJournal,
