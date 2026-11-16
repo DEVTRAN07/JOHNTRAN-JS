@@ -80,6 +80,7 @@ test("Supabase migration dry-run only counts JSON rows and does not require cred
     assert.equal(summary.planned, 5);
     assert.equal(summary.inserted, 0);
     assert.equal(summary.skippedExisting, 0);
+    assert.equal(summary.backupFile, null, "dry-run must not create a backup or write files");
   } finally {
     fs.rmSync(fixture.directory, { recursive: true, force: true });
   }
@@ -99,6 +100,8 @@ test("Supabase migration imports missing rows across every table without overwri
     });
 
     assert.equal(summary.total, 5);
+    assert.ok(summary.backupFile && fs.existsSync(summary.backupFile), "real import must create a backup before writing");
+    assert.deepEqual(fs.readFileSync(summary.backupFile), fs.readFileSync(fixture.sourceFile));
     assert.equal(summary.inserted, 4);
     assert.equal(summary.skippedExisting, 1);
     assert.ok(client.upserts.every(item => item.options.ignoreDuplicates === true));
