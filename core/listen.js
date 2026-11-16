@@ -177,7 +177,7 @@ function startListening(api) {
     // Plain-text answers for nt go / nt gc are consumed here, directly in
     // the live listener path, before general message events can reply to them.
     // The game handler returns true only for a player in an active session.
-    if (!event.isSelf && !event?.isSelf) {
+    if ((!event.isSelf && !event?.isSelf) || global.config.allow_self_command === true) {
       try {
         const noituCommand = require("../plugins/commands/noitu");
         if (typeof noituCommand?.handleEvent === "function") {
