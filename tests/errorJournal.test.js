@@ -70,6 +70,10 @@ test("identical warnings and errors are deduplicated within the configured windo
   journal.recordError("same failure", { source: "command", commandName: "stk" });
   assert.equal(journal.snapshot().summary.unique, 2);
   await journal.flush();
+
+  const persisted = readJournalFiles(journal.filePath, 10);
+  assert.equal(persisted.length, 2, "persistent reader merges repeated snapshots under the same event ID");
+  assert.equal(persisted.find(item => item.count === 2)?.count, 2);
 });
 
 test("error journal rotates bounded JSONL files and reads the latest entries", async () => {
@@ -113,4 +117,19 @@ test("private user conversations never store sender IDs as group IDs", () => {
     groupId: "private-user-uid-123"
   });
   assert.equal(normalized.groupId, "");
+});
+
+
+test("fatal process errors are synchronously persisted without waiting for the event loop", () => {
+  const journal = makeJournal("fatal-sync");
+  const entry = journal.recordFatalSync("fatal sample", {
+    source: "process-crash",
+    eventName: "uncaughtException",
+    code: "ERR_TEST"
+  });
+  assert.equal(entry.source, "process-crash");
+  const persisted = readJournalFile(journal.filePath, 10);
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0].message, "fatal sample");
+  assert.equal(persisted[0].code, "ERR_TEST");
 });
