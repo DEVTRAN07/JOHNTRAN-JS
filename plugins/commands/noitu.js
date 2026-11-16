@@ -253,10 +253,10 @@ async function handleQuickNoituText({ api, event, eventType, isSelf = false, Use
   await send(api, event, message + " Trừ 5 giây · Còn " + Math.ceil(result.remainingMs / 1000) + " giây.");
   return true;
 }
-function help(prefix) {
+function help(prefix, enabled = true) {
   return [
     "@Wuang 📖 NỐI TỪ TIẾNG VIỆT - ĐẠI CHIẾN TỪ VỰNG",
-    "💤 Trạng thái: 🟢 BẬT",
+    "💤 Trạng thái: " + (enabled ? "🟢 BẬT" : "🔴 TẮT"),
     "",
     "🕹️ Chế độ chơi:",
     `➜ ${prefix}nt go : Đấu Solo với Bot (thắng bot +5⭐)`,
@@ -282,18 +282,18 @@ function help(prefix) {
     `👉 Gõ ${prefix}nt go hoặc ${prefix}nt gc để chơi ngay!`
   ].join("\n");
 }
-async function sendGuide(api, event, prefix) {
+async function sendGuide(api, event, prefix, enabled = true) {
   let imagePath;
   try {
     imagePath = await renderCanvas("noitu-guide", {}, { timeout: 20000, poolSize: 1 });
     return await api.sendMessage({
-      msg: help(prefix),
+      msg: help(prefix, enabled),
       attachments: [imagePath],
       ttlKind: "card"
     }, event.threadId, event.type);
   } catch (error) {
     console.error("[NOITU_GUIDE]", error?.stack || error);
-    return send(api, event, help(prefix));
+    return send(api, event, help(prefix, enabled));
   } finally {
     if (imagePath) {
       const timer = setTimeout(() => {
@@ -795,7 +795,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   const prefix = global.config?.prefix || "/";
   if (!uid || !threadId) return;
   const action = String(args[0] || "").trim().toLowerCase();
-  if (!action || action === "help") return sendGuide(api, event, prefix);
+  if (!action || action === "help") return sendGuide(api, event, prefix, isNoituEnabled(Threads || defaultThreads, threadId));
 
   if (action === "on" || action === "off") {
     if (!isAdmin(uid)) return send(api, event, "⛔ Chỉ Admin bot mới được bật/tắt Nối Từ.");
@@ -984,7 +984,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
       "\n\n" + lines.join("\n")
     );
   }
-  return sendGuide(api, event, prefix);
+  return sendGuide(api, event, prefix, isNoituEnabled(Threads || defaultThreads, threadId));
 };
 module.exports.handleEvent = handleActiveGameText;
 module.exports._test = { help, leaderboard, resetNoituScores, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn, isNoituEnabled, setNoituEnabled, stopNoituGames, checkNoituWord, currentMonthKey };
