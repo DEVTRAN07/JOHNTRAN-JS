@@ -371,7 +371,9 @@ test("Panel health reports managed child login state instead of the intentionall
   const healthEnd = server.indexOf('\n      }', healthRoute);
   const healthSource = server.slice(healthRoute, healthEnd);
   assert.match(healthSource, /await maybeSyncStore\(\)/);
-  assert.match(healthSource, /manager\.list\(\)\.map\(enrichBot\)/);
+  assert.match(healthSource, /Promise\.all\(manager\.list\(\)\.map\(bot => enrichBotLive\(bot, bridgeToken\)\)\)/);
+  assert.match(server, /async function enrichBotLive\(bot, bridgeToken = ""\)/);
+  assert.match(server, /const health = await probeBridgeHealth\(out, bridgeToken\)/);
   assert.match(healthSource, /botSummary/);
   assert.match(healthSource, /const loggedIn = botSummary \? botSummary\.loggedIn > 0/);
   assert.match(healthSource, /status: manager \? "ok"/);
