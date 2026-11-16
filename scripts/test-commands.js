@@ -66,7 +66,9 @@ async function runCommand(commandName, { args = [], withArgs = null } = {}) {
   const handleCommand = require(path.join(ROOT, "core/handle/handleCommand"));
   const event = makeEvent();
   const prefix = global.config.prefix;
-  await handleCommand(`${prefix}${commandName} ${callArgs.join(" ")}`.trim(), event, api, {}, prefix);
+  // The command harness exercises plugins inside an explicitly enabled group.
+  // Real groups without this persisted flag are intentionally OFF by default.
+  await handleCommand(`${prefix}${commandName} ${callArgs.join(" ")}`.trim(), event, api, { bot_enabled: true }, prefix);
   return api.__state;
 }
 
