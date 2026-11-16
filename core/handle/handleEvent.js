@@ -8,13 +8,49 @@ const { dispatchEvent } = require("../runtime/eventRegistry");
 const { createEventContext } = require("../runtime/eventContext");
 const { isEnabled: isGroupBotEnabled } = require("../runtime/groupBotState");
 
-function handleEvent(eventType, eventData, api, isSelf = false) {
+async function handleEvent(eventType, eventData, api, isSelf = false) {
   // Safety net: suppress every event source when this group has disabled the bot.
   // Use the synchronous hot cache so the event path never waits for a database round-trip.
   if (eventData?.type === ThreadType.Group && eventData?.threadId) {
     const thread = Threads.getCachedData?.(eventData.threadId);
     // Fail closed: an uncached/missing setting remains OFF until /bot on.
     if (!isGroupBotEnabled(thread)) return;
+  }
+
+  // Active mini-games get first refusal on plain-text answers. Only a user
+  // enrolled in the matching session can consume a message; unrelated group
+  // conversations continue through the regular event plugins unchanged.
+  if (eventType === "message" && !isSelf && !eventData?.isSelf) {
+    const noituCommand = global.client?.commands?.get?.("noitu");
+    if (typeof noituCommand?.handleEvent === "function") {
+      try {
+        const context = createEventContext({
+          api,
+          eventData,
+          name: "noitu",
+          eventType,
+          ThreadType,
+          wrapForEvent
+        });
+        const consumed = await noituCommand.handleEvent({
+          api: context.api,
+          event: eventData,
+          eventType,
+          isSelf,
+          reply: context.reply,
+          Users,
+          Threads,
+          replyData: context.replyData,
+          threadType: context.threadType
+        });
+        if (consumed === true) return { consumed: true, eventModules: 0, commandModules: 0 };
+      } catch (error) {
+        logger.log("Lỗi xử lý câu trả lời game: " + (error?.message || error), "error", {
+          source: "game-message-consumer",
+          groupId: eventData?.threadId
+        });
+      }
+    }
   }
 
   return dispatchEvent({
