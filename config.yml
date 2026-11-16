@@ -7,6 +7,8 @@ save_cookie: true # tư động lưu lại cookie sau khi đăng nhập bắng q
 
 # cấu hình bot
 prefix: "/"
+# Mỗi group mặc định TẮT bot; chủ bot dùng /bot on để kích hoạt riêng từng group.
+# /bot on và /bot status vẫn hoạt động khi group đang tắt.
 name_bot: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ"
 # sử dụng lệnh /id để lấy id
 # chú ý: mỗi acc chạy bot get info sẽ ra 1 id khác nhau nên nếu đổi acc chạy bot phải đổi id (do zalỏ lưu data ở local)
