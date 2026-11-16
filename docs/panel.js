@@ -872,7 +872,7 @@ async function loadSystem() {
       ["Event loop P95", Number(processHealth.eventLoop?.p95Ms || 0).toFixed(1) + " ms"],
       ["Job queue", number(jobGlobal.active || 0) + " chạy · " + number(jobGlobal.pending || 0) + "/" + number(jobGlobal.maxPending || 0) + " chờ"],
       ["Worker queue", workerPending + " chờ · " + Object.values(workerPools).filter(pool => pool.circuitOpen).length + " pool đang nghỉ"],
-      ["Supabase retry", number(recoveryMaster.database?.retryQueueSize || 0) + " bản ghi · " + number(recoveryMaster.database?.consecutiveFailures || 0) + " lỗi sync liên tiếp"],
+      ["Supabase retry", number(recoveryMaster.database?.retryQueueSize || 0) + " bản ghi · " + number(recoveryMaster.database?.consecutiveFailures || 0) + " lỗi sync · backoff " + (recoveryMaster.database?.nextSyncDelayMs ? Math.ceil(recoveryMaster.database.nextSyncDelayMs / 1000) + "s" : "—")],
       ["Listener", listenerHealth ? (recoveryStatusLabels[listenerHealth.status] || listenerHealth.status) + " · lần thử " + number(listenerHealth.attempt || 0) : "Chưa có snapshot"],
       ["Bot con", number(recovery?.counts?.healthyBots || 0) + " ổn định · " + number(recovery?.counts?.degradedBots || 0) + " suy giảm · " + number(recovery?.counts?.unavailableBots || 0) + " chưa kết nối"]
     ];
