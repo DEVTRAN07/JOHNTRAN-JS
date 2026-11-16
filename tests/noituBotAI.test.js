@@ -29,3 +29,42 @@ test("AI avoids phrases already used in the current match", () => {
   const reply = ai.chooseReply({ currentPhrase: phrase, used }, () => 0);
   assert.equal(reply, null);
 });
+ 
+
+test("AI falls back to cached Vietnamese dictionary suggestions when local reply is missing", async () => {
+  const dictionary = require("../core/runtime/services/games/ghepchuService");
+  dictionary.clearDictionaryCache();
+  const requests = [];
+  const session = {
+    currentPhrase: engine.parsePhrase("sinh ngọc"),
+    used: new Set(["sinh ngoc"])
+  };
+  const reply = await ai.findDynamicReply(session, {
+    timeoutMs: 650,
+    random: () => 0,
+    getJson: async (url, options) => {
+      requests.push({ url, timeout: options.timeout });
+      if (url.includes("/suggest?")) {
+        return { data: { suggestions: ["ngọc trai", "ngọc quý", "mặt trời"] } };
+      }
+      throw new Error("AI suggestions should not need a second lookup request");
+    }
+  });
+  assert.ok(reply);
+  assert.equal(reply.first, session.currentPhrase.last);
+  assert.match(reply.display, /^ngọc /);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].timeout, 650);
+  dictionary.clearDictionaryCache();
+});
+
+test("AI dynamic dictionary fallback returns null for unrelated or used suggestions", async () => {
+  const session = {
+    currentPhrase: engine.parsePhrase("sinh ngọc"),
+    used: new Set(["sinh ngoc", "ngoc trai"])
+  };
+  const reply = await ai.findDynamicReply(session, {
+    getJson: async () => ({ data: { suggestions: ["mặt trời", "ngọc trai"] } })
+  });
+  assert.equal(reply, null);
+});
