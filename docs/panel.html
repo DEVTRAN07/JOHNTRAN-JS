@@ -3,20 +3,23 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0a0b0e"><meta name="color-scheme" content="dark">
-<title>JOHNTRAN · Control Center</title><link rel="stylesheet" href="panel.css">
+<title>JOHNTRAN · Control Center V4</title><link rel="stylesheet" href="panel.css"><link rel="stylesheet" href="panel.v4.css">
 </head>
 <body>
 <div class="shell">
 <aside class="sidebar" id="sidebar">
   <a class="brand" href="/panel"><span class="brand-mark">JT</span><span class="brand-copy"><b>JOHNTRAN</b><small>CONTROL CENTER</small></span></a>
   <div class="side-label">WORKSPACE</div>
-  <nav class="nav">
+  <nav class="nav" aria-label="Workspace">
     <button class="nav-item active" data-view="overview"><span class="nav-icon">◫</span><span>Tổng quan</span><kbd>01</kbd></button>
     <button class="nav-item" data-view="chat"><span class="nav-icon">◌</span><span>Zalo Chat</span><kbd>02</kbd></button>
-    <button class="nav-item" data-view="commands"><span class="nav-icon">⌘</span><span>Quản lý lệnh</span><kbd>03</kbd></button>
-    <button class="nav-item" data-view="groups"><span class="nav-icon">◉</span><span>Thiết lập nhóm</span><kbd>04</kbd></button>
+    <button class="nav-item" data-view="commands"><span class="nav-icon">⌘</span><span>Danh mục lệnh</span><kbd>03</kbd></button>
+    <button class="nav-item" data-view="groups"><span class="nav-icon">◎</span><span>Quản lý nhóm</span><kbd>04</kbd></button>
+  </nav>
+  <div class="side-label" style="margin-top:25px">SYSTEM</div>
+  <nav class="nav" aria-label="System">
     <button class="nav-item" data-view="profile"><span class="nav-icon">▣</span><span>Hồ sơ & dữ liệu</span><kbd>05</kbd></button>
-    <button class="nav-item" data-view="system"><span class="nav-icon">⌁</span><span>Hệ thống</span><kbd>06</kbd></button>
+    <button class="nav-item" data-view="system"><span class="nav-icon">⌁</span><span>Giám sát hệ thống</span><kbd>06</kbd></button>
   </nav>
   <div class="sidebar-bottom">
     <div class="host-chip"><span class="live-dot" id="sideDot"></span><span><b id="sideConnection">Chưa kết nối</b><small id="sideHost">Panel host</small></span></div>
@@ -35,6 +38,23 @@
 
 <section class="view active" id="view-overview">
   <div class="page-intro"><div><div class="eyebrow">LIVE OPERATIONS</div><h2>Chào mừng trở lại.</h2><p>Theo dõi bot, phiên Zalo và hoạt động máy chủ tại một nơi.</p></div><div class="intro-actions"><span class="last-sync" id="lastSync">Chưa đồng bộ</span><button class="button button-primary" id="createBotShortcut">＋ Tạo bot con</button></div></div>
+  <section class="control-hero" aria-label="JOHNTRAN Control Center">
+    <div class="control-hero-copy">
+      <div class="control-hero-kicker"><i></i> YOUR BOT, YOUR CONTROL</div>
+      <h3>Kiểm soát mọi thứ.<br><em>Phản hồi tức thì.</em></h3>
+      <p>Quản lý tiến trình, hội thoại Zalo, danh mục lệnh và cấu hình nhóm trong cùng một không gian.</p>
+      <div class="control-hero-actions">
+        <button class="control-hero-primary" type="button" data-view="groups">Quản lý nhóm&nbsp; ↗</button>
+        <button class="control-hero-secondary" type="button" data-view="commands">Khám phá lệnh&nbsp; →</button>
+      </div>
+    </div>
+    <div class="control-hero-art" aria-hidden="true">
+      <div class="control-hero-ring"></div><div class="control-hero-ring ring-b"></div>
+      <div class="control-hero-mark"><span>JT</span></div>
+      <div class="control-hero-status"><i></i> Panel Control Center</div>
+      <div class="control-hero-version">JOHNTRAN · V4</div>
+    </div>
+  </section>
   <div class="metric-grid" id="metricsGrid"><div class="metric"><span>BOT ĐANG CHẠY</span><b>—</b><small>Đang tải dữ liệu</small></div><div class="metric"><span>LỆNH HÔM NAY</span><b>—</b><small>Thống kê trong ngày</small></div><div class="metric"><span>LỖI HÔM NAY</span><b>—</b><small>Thống kê trong ngày</small></div><div class="metric"><span>RAM HOST</span><b>—</b><small>Tiến trình master</small></div></div>
   <div class="section-heading"><div><span class="eyebrow">PROCESS CONTROL</span><h3>Bot & tiến trình</h3></div><button class="text-button" id="reloadBots">Cập nhật danh sách ↻</button></div>
   <div class="bot-list" id="botList"><div class="empty-state">Đang tải danh sách bot…</div></div>
@@ -66,7 +86,12 @@
 </section>
 
 <section class="view" id="view-groups">
-  <div class="page-intro"><div><div class="eyebrow">GROUP CONFIGURATION</div><h2>Thiết lập theo nhóm</h2><p>Chọn bot, chọn nhóm từ danh sách Zalo và bật/tắt từng lệnh riêng.</p></div><button class="button button-quiet" id="reloadGroupChoices">↻ Làm mới nhóm</button></div>
+  <div class="page-intro"><div><div class="eyebrow">GROUP CONFIGURATION</div><h2>Quản lý nhóm</h2><p>Chọn tài khoản Zalo, nhóm và quản lý quyền phản hồi của bot theo từng nhóm.</p></div><button class="button button-quiet" id="reloadGroupChoices">↻ Làm mới nhóm</button></div>
+  <div class="policy-banner" role="note" aria-label="Chính sách bot mặc định tắt">
+    <div class="policy-banner-icon">◇</div>
+    <div class="policy-banner-copy"><b>Default OFF is enabled</b><p>Bot chỉ xử lý lệnh và sự kiện khi nhóm có <code>bot_enabled: true</code>. Khi đang tắt, <code>/bot on</code> và <code>/bot status</code> vẫn được phép sử dụng.</p></div>
+    <span class="policy-banner-tag">SAFE MODE</span>
+  </div>
   <div class="surface group-config">
     <div class="section-heading compact"><div><span class="eyebrow">TARGET GROUP</span><h3>Tài khoản và nhóm Zalo</h3></div></div>
     <form class="group-form" id="groupForm">
