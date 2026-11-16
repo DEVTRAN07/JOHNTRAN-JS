@@ -29,6 +29,27 @@ function createHarness(name, options = {}) {
   return { bot, children };
 }
 
+test("child bridge-ready IPC updates the managed bot to the actual local port", async () => {
+  const name = "__test_bridge_ready_ipc__";
+  const { bot, children } = createHarness(name);
+
+  try {
+    bot.start();
+    assert.equal(bot.bridgePort, 0, "non-main test instance starts without a reserved port");
+
+    children[0].emit("message", { type: "jt:panel-bridge-ready", port: 0 });
+    assert.equal(bot.bridgePort, 0, "invalid bridge ports must be ignored");
+
+    children[0].emit("message", { type: "jt:panel-bridge-ready", port: 3917 });
+    assert.equal(bot.toJSON().bridgePort, 3917,
+      "Panel must proxy to the actual port selected by the child bridge");
+    assert.ok(bot.logs.some(line => line.includes("3917")));
+  } finally {
+    await bot.stop();
+    cleanup(name);
+  }
+});
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
