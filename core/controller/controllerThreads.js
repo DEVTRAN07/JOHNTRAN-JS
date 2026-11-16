@@ -1,4 +1,4 @@
-const { getData, saveData, hasData, delData, allData } = require("../runtime/adapters/database");
+const { getData, saveData, saveDataAndWait, hasData, delData, allData } = require("../runtime/adapters/database");
 const logger = require("../../utils/logger");
 const { threadCache } = require("../cache");
 
@@ -81,7 +81,11 @@ module.exports = {
   setData: (threadId, data) => {
     const key = String(threadId);
     const record = normalizeThreadRecord({ id: key, threadId: key, data: data || {} }, key);
-    const pending = saveData("Threads", "threadId", threadId, record.data);
+    // Group enable/disable is a user-facing safety setting: wait for the
+    // selected storage backend to acknowledge persistence before replying OK.
+    const pending = typeof saveDataAndWait === "function"
+      ? saveDataAndWait("Threads", "threadId", key, record.data)
+      : saveData("Threads", "threadId", key, record.data);
     // Keep cache envelope identical to the normalized getData() shape.
     threadCache.set(key, record);
     return pending;
