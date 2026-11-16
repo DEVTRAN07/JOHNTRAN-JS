@@ -72,9 +72,18 @@ function getTimestamp() {
   return `[${now.toFormat("HH:mm:ss")}]`;
 }
 
-function log(data, option) {
+function log(data, option, context = {}) {
     const time = getTimestamp();
     const safeData = redact(String(data));
+    if (option === "error" || option === "warn") {
+        try {
+            const journal = require("../core/runtime/errorJournal");
+            if (option === "error") journal.recordError(safeData, context);
+            else journal.recordWarning(safeData, context);
+        } catch {
+            // Logging must never interrupt the message listener or a command.
+        }
+    }
     switch (option) {
         case "warn":
             console.log(chalk.bold.hex("#FFD700")(time + ' » ') + safeData);
@@ -96,6 +105,8 @@ function log(data, option) {
 module.exports = {
     log,
     logDebug: (data) => log(data, "debug"),
+    logError: (data, context = {}) => log(data, "error", context),
+    logWarn: (data, context = {}) => log(data, "warn", context),
     redact,
     printBanner,
     printReplaceable,
