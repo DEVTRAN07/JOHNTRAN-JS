@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { after, test } = require("node:test");
-const { createErrorJournal, readJournalFile, normalizeContext } = require("../core/runtime/errorJournal");
+const { createErrorJournal, readJournalFile, readJournalFiles, normalizeContext } = require("../core/runtime/errorJournal");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-error-journal-"));
 const files = [];
@@ -86,8 +86,10 @@ test("error journal rotates bounded JSONL files and reads the latest entries", a
   assert.ok(fs.statSync(journal.filePath).size <= 65536);
   const latest = readJournalFile(journal.filePath, 20);
   const rotated = readJournalFile(journal.filePath + ".1", 100);
+  const history = readJournalFiles(journal.filePath, 100);
   assert.ok(latest.length > 0);
   assert.ok(rotated.length > 0);
+  assert.equal(history.length, 100, "Panel can read events from the active file and rotated archives");
   assert.equal(journal.snapshot().summary.unique, 100);
 });
 
