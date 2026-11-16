@@ -293,12 +293,14 @@ test("structured error monitor is protected and aggregates master plus child bot
   const supabase = fs.readFileSync(path.join(root, "core/storage/supabase.js"), "utf8");
 
   assert.match(server, /pathname === "\/api\/errors"/);
-  assert.match(server, /readJournalFile\(botPaths\(bot\.name\)\.errorLogFile/);
+  assert.match(server, /readJournalFiles\(botPaths\(bot\.name\)\.errorLogFile/);
   assert.match(errorJournal, /MAX_FILE_BYTES/);
   assert.match(errorJournal, /rotateIfNeeded/);
   assert.match(errorJournal, /DEDUPE_WINDOW_MS/);
   assert.match(errorJournal, /uncaughtExceptionMonitor/);
   assert.match(loggerSource, /journal\.recordError/);
+  assert.match(errorJournal, /SUPABASE_SERVICE_KEY/);
+  assert.match(errorJournal, /set-cookie|authorization/);
   assert.match(botManager, /JT_ERROR_LOG_FILE: paths\.errorLogFile/);
   assert.match(botManager, /bot-restart-auto/);
   assert.match(botManager, /bot-restart-manual/);
