@@ -49,7 +49,7 @@ function resolveDefaultFile() {
 }
 
 function normalizeContext(context = {}) {
-  const isGroup = context.isGroup === true || context.groupId != null;
+  const isGroup = context.isGroup === true || (context.isGroup !== false && context.groupId != null);
   const groupId = isGroup
     ? safeLabel(context.groupId ?? context.threadId, "", 128)
     : "";
