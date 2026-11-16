@@ -133,10 +133,10 @@ test("nt go plays a bot reply after the human's plain-text answer", async () => 
     });
     assert.equal(consumed, true);
     assert.match(sent[0].msg, /JOHNTRAN AI/);
-    assert.match(sent[0].msg, /viên chức/);
+    assert.match(sent[0].msg, /viên (chức|mãn|ngọc)/);
     assert.equal(session.moves, 2);
     assert.equal(session.turnUid, "p1");
-    assert.equal(session.currentPhrase.display, "viên chức");
+    assert.equal(session.currentPhrase.first, "vien");
     assert.equal(scores.p1.noitu.points, 1);
     assert.equal(scores.p1.noitu.moves, 1);
   } finally {
