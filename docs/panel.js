@@ -9,7 +9,9 @@ const state = {
   chatData: { friends: { list: [] }, groups: { list: [] } },
   adminGroups: [], selectedThread: null, messages: [],
   threadFilter: "all", chatStyle: { b:false, i:false, u:false, s:false, color:"", font:"" },
-  timers: { refresh:null, messages:null, threads:null, logs:null, qr:null },
+  groupFilter: "all", groupSort: "name-asc", groupStatusFlight: false,
+  failedGroupAvatarUrls: new Set(),
+  timers: { refresh:null, messages:null, threads:null, logs:null, qr:null, groupStatus:null, groupSearch:null },
   modalKind: "", modalBot: "", mutedThreads: readMuted()
 };
 
@@ -134,7 +136,10 @@ function showView(name) {
     startThreadPolling();
   } else stopThreadPolling();
   if (name === "commands") loadCommands();
-  if (name === "groups") loadGroupOptions();
+  if (name === "groups") {
+    loadGroupOptions();
+    startGroupStatusPolling();
+  } else stopGroupStatusPolling();
   if (name === "profile") loadProfiles();
   if (name === "system") loadSystem();
   if (name === "overview") refreshOverview();
@@ -396,11 +401,14 @@ function renderGroupCards(emptyMessage = "") {
   const groups = Array.isArray(state.groupList) ? state.groupList : [];
   const selectedGid = String($("groupSelect")?.value || state.activeGroup || "");
   const query = String($("groupSearch")?.value || "").trim().toLocaleLowerCase("vi");
-  const enabledCount = groups.filter(group => group.botEnabled === true).length;
-  const counter = $("groupCardCount");
-  if (counter) counter.textContent = groups.length + " nhóm · " + enabledCount + " đang bật";
+  const filter = state.groupFilter || "all";
+  const sort = $("groupSort")?.value || state.groupSort || "name-asc";
+  state.groupSort = sort;
 
+  const enabledCount = groups.filter(group => group.botEnabled === true).length;
   if (!groups.length) {
+    const counter = $("groupCardCount");
+    if (counter) counter.textContent = "0 nhóm";
     grid.innerHTML = '<div class="group-card-empty">' +
       $escape(emptyMessage || "Chưa có nhóm Zalo. Hãy kiểm tra bot đã đăng nhập và đang chạy.") +
       '</div>';
@@ -408,24 +416,48 @@ function renderGroupCards(emptyMessage = "") {
   }
 
   const filtered = groups.filter(group => {
+    const enabled = group.botEnabled === true;
+    if (filter === "on" && !enabled) return false;
+    if (filter === "off" && enabled) return false;
     const name = String(group.name || "").toLocaleLowerCase("vi");
     const gid = String(group.gid || "").toLocaleLowerCase("vi");
     return !query || name.includes(query) || gid.includes(query);
   });
+
+  const collator = new Intl.Collator("vi", { numeric:true, sensitivity:"base" });
+  filtered.sort((a, b) => {
+    const aMembers = Number(a.totalMember || a.memberCount) || 0;
+    const bMembers = Number(b.totalMember || b.memberCount) || 0;
+    if (sort === "members-desc") return bMembers - aMembers || collator.compare(a.name || a.gid, b.name || b.gid);
+    if (sort === "members-asc") return aMembers - bMembers || collator.compare(a.name || a.gid, b.name || b.gid);
+    if (sort === "status-on-first") {
+      const status = Number(b.botEnabled === true) - Number(a.botEnabled === true);
+      if (status) return status;
+    }
+    return collator.compare(a.name || a.gid, b.name || b.gid);
+  });
+
+  const counter = $("groupCardCount");
+  if (counter) counter.textContent = groups.length + " nhóm · " + enabledCount + " đang bật · " + filtered.length + " đang hiển thị";
+
   if (!filtered.length) {
-    grid.innerHTML = '<div class="group-card-empty">Không tìm thấy nhóm phù hợp với “' +
-      $escape(query) + '”.</div>';
+    const message = filter === "on" ? "Chưa có nhóm nào đang bật bot." :
+      filter === "off" ? "Không có nhóm nào đang tắt bot phù hợp." :
+      "Không tìm thấy nhóm phù hợp với “" + query + "”.";
+    grid.innerHTML = '<div class="group-card-empty">' + $escape(message) + '</div>';
     return;
   }
 
   grid.innerHTML = filtered.map(group => {
     const gid = String(group.gid || "");
     const name = String(group.name || gid || "Nhóm Zalo");
-    const avatarUrl = safeImage(group.avatar || group.avt || "");
-    const avatar = avatarUrl
-      ? '<span class="group-card-avatar"><img src="' + avatarUrl + '" alt="" loading="lazy"></span>'
+    const avatarRaw = String(group.avatar || group.avt || "");
+    const avatarUrl = safeImage(avatarRaw);
+    const hasAvatar = Boolean(avatarUrl && !state.failedGroupAvatarUrls.has(avatarRaw));
+    const avatar = hasAvatar
+      ? '<span class="group-card-avatar"><img src="' + avatarUrl + '" alt="" loading="lazy" decoding="async" fetchpriority="low" data-avatar-key="' + $escape(avatarRaw) + '" data-avatar-fallback="' + $escape(initials(name)) + '"></span>'
       : '<span class="group-card-avatar">' + $escape(initials(name)) + '</span>';
-    const members = number(group.totalMember || group.memberCount);
+    const members = Number(group.totalMember || group.memberCount) || 0;
     const memberLabel = members > 0 ? members.toLocaleString("vi-VN") + " thành viên" : "Chưa rõ thành viên";
     const enabled = group.botEnabled === true;
     const selected = gid === selectedGid;
@@ -442,6 +474,71 @@ function renderGroupCards(emptyMessage = "") {
     '</button>';
   }).join("");
 }
+
+function syncGroupCardStatuses() {
+  if (state.groupFilter !== "all" || state.groupSort === "status-on-first") {
+    renderGroupCards();
+    return;
+  }
+
+  const groupsById = new Map((state.groupList || []).map(group => [String(group.gid || ""), group]));
+  document.querySelectorAll("#groupCardGrid [data-group-id]").forEach(card => {
+    const group = groupsById.get(String(card.dataset.groupId || ""));
+    if (!group) return;
+    const enabled = group.botEnabled === true;
+    const status = card.querySelector(".group-card-status");
+    if (!status) return;
+    status.className = "group-card-status " + (enabled ? "is-on" : "is-off");
+    status.textContent = enabled ? "BOT ĐANG BẬT" : "BOT ĐANG TẮT";
+  });
+  const total = (state.groupList || []).length;
+  const enabled = (state.groupList || []).filter(group => group.botEnabled === true).length;
+  const counter = $("groupCardCount");
+  if (counter) counter.textContent = total + " nhóm · " + enabled + " đang bật · " +
+    document.querySelectorAll("#groupCardGrid [data-group-id]").length + " đang hiển thị";
+}
+
+async function refreshGroupBotStates({ silent = true } = {}) {
+  const bot = $("groupBotSelect")?.value || state.selectedGroupBot;
+  if (!bot || !Array.isArray(state.groupList) || !state.groupList.length || state.groupStatusFlight) return false;
+
+  state.groupStatusFlight = true;
+  try {
+    const data = await api("/api/chat/" + enc(bot) + "/group-status");
+    if (bot !== state.selectedGroupBot || bot !== ($("groupBotSelect")?.value || state.selectedGroupBot)) return false;
+    const stateById = new Map((Array.isArray(data.groups) ? data.groups : [])
+      .map(item => [String(item.gid || ""), item.botEnabled === true]));
+    for (const group of state.groupList) {
+      group.botEnabled = stateById.get(String(group.gid || "")) === true;
+    }
+    syncGroupCardStatuses();
+
+    const selectedGid = String($("groupSelect")?.value || state.activeGroup || "");
+    const selectedGroup = state.groupList.find(group => String(group.gid) === selectedGid);
+    if (selectedGroup && !$("groupBotToggleRow").hidden) updateGroupBotToggle(selectedGroup.botEnabled === true);
+    return true;
+  } catch (error) {
+    if (!silent) toast("Không đồng bộ được trạng thái nhóm: " + error.message, "error");
+    return false;
+  } finally {
+    state.groupStatusFlight = false;
+  }
+}
+
+function startGroupStatusPolling() {
+  stopGroupStatusPolling();
+  state.timers.groupStatus = setInterval(() => {
+    if (state.view === "groups" && document.visibilityState === "visible") {
+      refreshGroupBotStates({ silent:true });
+    }
+  }, 15000);
+}
+
+function stopGroupStatusPolling() {
+  if (state.timers.groupStatus) clearInterval(state.timers.groupStatus);
+  state.timers.groupStatus = null;
+}
+
 async function loadGroupOptions() {
   const bots = state.bots || [];
   const botSelect = $("groupBotSelect");
@@ -538,7 +635,7 @@ async function setGroupBotEnabled(enabled, checkbox) {
     updateGroupBotToggle(data.botEnabled === true);
     const selectedGroup = state.groupList.find(group => String(group.gid) === String(gid));
     if (selectedGroup) selectedGroup.botEnabled = data.botEnabled === true;
-    renderGroupCards();
+    syncGroupCardStatuses();
     toast(enabled ? "Đã bật bot cho nhóm." : "Đã tắt bot cho nhóm; bot sẽ im lặng.", "success");
   } catch (error) {
     updateGroupBotToggle(!enabled);
@@ -887,6 +984,17 @@ function bindEvents() {
       renderCommands();
       return;
     }
+    const groupFilter = event.target.closest("[data-group-filter]");
+    if (groupFilter) {
+      state.groupFilter = groupFilter.dataset.groupFilter || "all";
+      document.querySelectorAll("[data-group-filter]").forEach(button => {
+        const active = button === groupFilter;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      renderGroupCards();
+      return;
+    }
     const groupCard = event.target.closest("[data-group-id]");
     if (groupCard) {
       const gid = String(groupCard.dataset.groupId || "");
@@ -928,6 +1036,17 @@ function bindEvents() {
       return;
     }
   });
+  document.addEventListener("load", event => {
+    if (event.target?.matches?.(".group-card-avatar img")) event.target.classList.add("loaded");
+  }, true);
+  document.addEventListener("error", event => {
+    const image = event.target;
+    if (!image?.matches?.(".group-card-avatar img")) return;
+    const avatar = image.closest(".group-card-avatar");
+    const key = image.dataset.avatarKey || image.src;
+    if (key) state.failedGroupAvatarUrls.add(key);
+    if (avatar) avatar.textContent = image.dataset.avatarFallback || "?";
+  }, true);
   document.addEventListener("change", event => {
     const el=event.target;
     if (el.matches('[data-action="auto-restart"]')) setAutoRestart(el.dataset.bot,el.checked);
@@ -936,13 +1055,17 @@ function bindEvents() {
     if (el.id==="profileBotSelect") loadProfileData(el.value);
     if (el.id==="groupBotSelect") {state.selectedGroupBot=el.value;state.activeGroup="";loadGroupOptions();}
     if (el.id==="groupSelect") { renderGroupCards(); loadGroupCommands(); }
+    if (el.id==="groupSort") { state.groupSort=el.value || "name-asc"; renderGroupCards(); }
     if (el.id==="chatFontSize") state.chatStyle.font=el.value;
     if (el.id==="chatBotSelect") {closeThread();loadThreads();}
   });
   document.addEventListener("input",event=>{
     if(event.target.id==="threadSearch")renderThreads();
     if(event.target.id==="commandSearch")renderCommands();
-    if(event.target.id==="groupSearch")renderGroupCards();
+    if(event.target.id==="groupSearch") {
+      clearTimeout(state.timers.groupSearch);
+      state.timers.groupSearch = setTimeout(() => renderGroupCards(), 120);
+    }
   });
   $("settingsForm").addEventListener("submit",event=>{
     event.preventDefault();
