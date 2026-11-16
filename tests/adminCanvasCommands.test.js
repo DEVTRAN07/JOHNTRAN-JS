@@ -93,6 +93,7 @@ test("/admin permission toggles remain quick text replies, not Canvas", async ()
   const thread = { admin_only: false };
   global.config = { name_bot: "JOHNTRAN" };
   global.users = { admin: [], support: [] };
+  const callsBeforeToggle = calls.length;
   await adminCommand.run({
     args: ["adminonly"],
     event: { threadId: "admin-toggle", type: 1, data: {} },
@@ -105,7 +106,7 @@ test("/admin permission toggles remain quick text replies, not Canvas", async ()
   });
 
   assert.equal(thread.admin_only, true);
-  assert.equal(calls.some(item => item.type === "admin"), false);
+  assert.equal(calls.length, callsBeforeToggle, "permission toggle should not render a Canvas card");
 });
 
 test("admin Canvas renderer is registered in the worker", () => {
