@@ -75,7 +75,7 @@ test("group avatars are lazy-loaded and failed images degrade to initials withou
 });
 
 test("group toggles wait for durable storage and pending Supabase writes survive stale sync", () => {
-  assert.match(controllerThreads, /saveDataAndWait\\("Threads", "threadId", key, record\\.data\\)/);
+  assert.match(controllerThreads, /saveDataAndWait\("Threads", "threadId", key, record\.data\)/);
   assert.match(databaseAdapter, /saveDataAndWait/);
   assert.match(databaseFacade, /async saveDataAndWait/);
   assert.match(supabaseStore, /async setAndWait/);
@@ -88,9 +88,9 @@ test("bulk group actions are explicit, confirmed and rate-limited", () => {
   }
   assert.match(html, /data-group-bulk-action="on"/);
   assert.match(html, /data-group-bulk-action="off"/);
-  assert.match(js, /state\\.selectedGroupIds/);
-  assert.match(js, /window\\.confirm\\(/);
-  assert.match(js, /offset \\+= 4/);
+  assert.match(js, /state\.selectedGroupIds/);
+  assert.match(js, /window\.confirm\(/);
+  assert.match(js, /offset \+= 4/);
   assert.match(js, /groupBulkFlight/);
   assert.match(v4css, /group-bulk-bar/);
   assert.match(v4css, /group-card-select/);
@@ -98,16 +98,16 @@ test("bulk group actions are explicit, confirmed and rate-limited", () => {
 
 test("unavailable group storage is shown as UNKNOWN, never falsely as OFF", () => {
   assert.match(panelBridge, /botEnabled: null/);
-  assert.match(panelBridge, /await ensureThreadStoreReady\\(\\)/);
+  assert.match(panelBridge, /await ensureThreadStoreReady\(\)/);
   assert.match(js, /CHƯA XÁC MINH/);
-  assert.match(js, /typeof group\\.botEnabled !== "boolean"/);
+  assert.match(js, /typeof group\.botEnabled !== "boolean"/);
 });
 
 test("existing group settings keep the fast write path while explicit bot toggles await durable storage", () => {
-  assert.match(controllerThreads, /setData: \\(threadId, data\\) =>/);
-  assert.match(controllerThreads, /setDataAndWait: async \\(threadId, data\\) =>/);
-  assert.match(panelBridge, /Threads\\.setDataAndWait\\(gid, data\\)/);
-  assert.match(fs.readFileSync(path.join(root, "plugins/commands/bot.js"), "utf8"), /setDataAndWait \\|\\| Threads\\.setData/);
+  assert.match(controllerThreads, /setData: \(threadId, data\) =>/);
+  assert.match(controllerThreads, /setDataAndWait: async \(threadId, data\) =>/);
+  assert.match(panelBridge, /Threads\.setDataAndWait\(gid, data\)/);
+  assert.match(fs.readFileSync(path.join(root, "plugins/commands/bot.js"), "utf8"), /setDataAndWait \|\| Threads\.setData/);
 });
 
 test("dashboard keeps using the existing protected panel API and bridge routes", () => {
