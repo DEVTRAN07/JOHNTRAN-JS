@@ -1053,7 +1053,12 @@ async function loadSystem() {
 
     $("systemBotList").innerHTML = state.bots.length ? state.bots.map(bot => {
       const [label,cls] = botStatus(bot);
-      return '<div class="system-bot-row"><div><b>'+$escape(getBotDisplayName(bot))+'</b><small>'+$escape("ID "+bot.name+" · "+(bot.pid ? "PID "+bot.pid : "Chưa có PID"))+' · '+$escape(fmtUptime(bot.uptimeMs))+'</small></div><span class="status-label '+$escape(cls)+'"><i class="dot"></i>'+$escape(label)+'</span></div>';
+      const identity = getBotDisplayName(bot);
+      const processInfo = (bot.pid ? "PID " + bot.pid : "Chưa có PID") + " · " + fmtUptime(bot.uptimeMs);
+      return '<div class="system-bot-row"><div class="system-bot-identity">' +
+        avatarHtml(bot.avatar, identity, "avatar-large") +
+        '<div><b>'+$escape(identity)+'</b><small>'+$escape(processInfo)+'</small></div></div>' +
+        '<span class="status-label '+$escape(cls)+'"><i class="dot"></i>'+$escape(label)+'</span></div>';
     }).join("") : '<div class="empty-state">Không có bot trong registry.</div>';
 
     const cache = m.cache || {};
