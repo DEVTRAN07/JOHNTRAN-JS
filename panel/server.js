@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { botPaths, getStorageLayout } = require("./botManager");
-const { assertPanelToken, isPanelRequestAuthorized } = require("../utils/tokenSecurity");
+const { assertPanelToken, isPanelRequestAuthorized, resolvePanelToken } = require("../utils/tokenSecurity");
 const { installMonitoring, httpMetricsMiddleware, register } = require("../core/monitoring");
 let dbUtils, storeDb;
 try { dbUtils = require("../utils/db"); storeDb = dbUtils.db || dbUtils; } catch { dbUtils = null; storeDb = null; }
@@ -136,7 +136,7 @@ function enrichBot(bot) {
 }
 
 function startPanel({ manager, config }) {
-  const token = String(config?.panel?.token || process.env.JT_PANEL__TOKEN || "").trim();
+  const token = resolvePanelToken(config, process.env);
   const port = Number(process.env.PORT) || Number(config?.panel?.port) || 3000;
   const host = config?.panel?.host || "0.0.0.0";
   assertPanelToken(token, host);
