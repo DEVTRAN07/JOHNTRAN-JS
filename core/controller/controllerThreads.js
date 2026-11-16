@@ -78,7 +78,11 @@ module.exports = {
     // Supabase starts with an empty mirror while its first snapshot is loading.
     // Never create a default-OFF record during that window.
     const status = getStoreStatus();
-    if (status?.ok === false) return null;
+    const storageDegraded = status?.ok === false;
+    // A transient sync/connection error must not turn a previously enabled
+    // group OFF just because its five-minute LRU entry expired. The cache
+    // represents the last known committed state; reads remain available while
+    // writes continue to fail closed until storage recovers.
     const cached = threadCache.get(key);
     if (cached !== undefined) {
       return cached && typeof cached.then !== "function"
@@ -87,12 +91,16 @@ module.exports = {
     }
 
     // JSON/Supabase adapters expose an in-memory mirror. Read it synchronously
-    // on the message hot path; remote persistence remains background work.
+    // on the message hot path, including during a later transient outage.
     try {
       let record;
       if (hasData("Threads", "threadId", key)) {
         record = normalizeThreadRecord(getData("Threads", "threadId", key), key);
       } else {
+        // Do not synthesize default-OFF rows when the first snapshot has not
+        // loaded or storage is degraded; only an existing last-known record
+        // may continue to authorize active group processing.
+        if (storageDegraded) return null;
         const data = {
           ban: false,
           admin_only: false,
