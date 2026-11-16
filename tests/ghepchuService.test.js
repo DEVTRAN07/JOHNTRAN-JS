@@ -164,3 +164,19 @@ test("round automatically becomes finished after its deadline", async () => {
   assert.equal(session.status, "finished");
   assert.equal(game.remainingSeconds(session, 91001), 0);
 });
+
+
+test("term lookup supports a single Vietnamese word for nt check", async () => {
+  const entry = await game.lookupVietnameseTerm("xin", { getJson: mockDictionary });
+  assert.equal(entry.answer, "xin");
+  assert.equal(entry.definition, "Nghĩa tiếng Việt của xin");
+  assert.equal(entry.dictionarySource, "Test Dictionary");
+});
+
+test("dictionary statistics clearly report only loaded cache and fallback words", () => {
+  const stats = game.getDictionaryStats();
+  assert.equal(stats.fallbackWords, game.FALLBACK_WORD_BANK.length);
+  assert.equal(stats.apiCached, 0);
+  assert.ok(stats.totalCached >= stats.fallbackWords);
+  assert.equal(stats.source, "dict.minhqnd.com");
+});
