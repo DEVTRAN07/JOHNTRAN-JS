@@ -4,6 +4,7 @@ const fs = require("fs");
 const { ThreadType } = require("zalo-client");
 const stats = require("../../core/stats");
 const { renderCanvas } = require("../../core/canvas/workerRender");
+const { isEnabled: isGroupBotEnabled } = require("../../core/runtime/groupBotState");
 
 const GROUP_INFO_CONCURRENCY = 4;
 
@@ -40,9 +41,9 @@ async function collectEnabledGroups(api, Threads) {
     ])
   );
 
-  // No saved row means the group's default state is ON.
-  // Explicitly disabled groups are omitted from the result entirely.
-  const enabledIds = allIds.filter(gid => settingsById.get(String(gid))?.bot_enabled !== false);
+  // A group appears as active only after an explicit /bot on.
+  // Missing legacy settings are OFF and are omitted from this card.
+  const enabledIds = allIds.filter(gid => isGroupBotEnabled(settingsById.get(String(gid))));
   const groups = [];
 
   for (let offset = 0; offset < enabledIds.length; offset += GROUP_INFO_CONCURRENCY) {
@@ -122,7 +123,7 @@ module.exports.run = async function ({ api, event, args, Threads, reply }) {
 
   const record = await Threads.getData(threadId);
   const data = record?.data || {};
-  const currentlyEnabled = data.bot_enabled !== false;
+  const currentlyEnabled = isGroupBotEnabled(data);
   const enabled = action === "on";
 
   if (currentlyEnabled === enabled) {
