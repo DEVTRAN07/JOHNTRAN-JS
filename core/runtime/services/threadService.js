@@ -19,6 +19,12 @@ function createThreadService(controller) {
         ? controller.setDataAndWait(...args)
         : controller.setData(...args);
     },
+    setBotEnabled(...args) {
+      if (typeof controller.setBotEnabled !== "function") {
+        throw new Error("Controller không hỗ trợ cập nhật trạng thái bot theo nhóm");
+      }
+      return controller.setBotEnabled(...args);
+    },
     delData(...args) { return controller.delData(...args); },
     createData(...args) { return controller.createData(...args); }
   };
