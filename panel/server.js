@@ -265,6 +265,54 @@ function startPanel({ manager, config }) {
         }
       }
 
+      if (pathname === "/api/errors" && req.method === "GET") {
+        try {
+          const journal = require("../core/runtime/errorJournal");
+          const master = journal.snapshot(100);
+          const botReports = manager.list().map((bot) => ({
+            name: bot.name,
+            processStatus: bot.processStatus || bot.status,
+            restarts: Number(bot.restarts) || 0,
+            flapping: bot.flapping === true,
+            events: journal.readJournalFile(botPaths(bot.name).errorLogFile, 60)
+          }));
+          const events = [
+            ...(master.events || []),
+            ...botReports.flatMap(bot => bot.events.map(event => ({
+              ...event,
+              bot: event.bot || bot.name
+            })))
+          ].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)).slice(0, 150);
+
+          const summary = {
+            total: events.reduce((total, event) => total + (Number(event.count) || 1), 0),
+            unique: events.length,
+            errors: events.filter(event => event.level === "error").reduce((total, event) => total + (Number(event.count) || 1), 0),
+            warnings: events.filter(event => event.level === "warn").reduce((total, event) => total + (Number(event.count) || 1), 0),
+            deduplicated: events.reduce((total, event) => total + Math.max(0, (Number(event.count) || 1) - 1), 0),
+            byBot: {}, bySource: {}, byCommand: {}, byGroup: {}
+          };
+          for (const event of events) {
+            const count = Number(event.count) || 1;
+            const botName = event.bot || "unknown";
+            summary.byBot[botName] = (summary.byBot[botName] || 0) + count;
+            summary.bySource[event.source || "runtime"] = (summary.bySource[event.source || "runtime"] || 0) + count;
+            if (event.command) summary.byCommand[event.command] = (summary.byCommand[event.command] || 0) + count;
+            if (event.groupId) summary.byGroup[event.groupId] = (summary.byGroup[event.groupId] || 0) + count;
+          }
+
+          return sendJson(res, 200, {
+            generatedAt: new Date().toISOString(),
+            summary,
+            events,
+            bots: botReports.map(({ name, processStatus, restarts, flapping }) => ({ name, processStatus, restarts, flapping })),
+            persistence: master.persistence
+          });
+        } catch (error) {
+          return sendJson(res, 500, { error: "Không đọc được nhật ký lỗi: " + error.message });
+        }
+      }
+
       if (pathname === "/api/metrics" && req.method === "GET") {
         maybeSyncStore();
         try {
