@@ -358,7 +358,8 @@ test("Render production configuration places bot registry and child data on the 
 
 test("production deployment verifier never sends messages or mutates bot configuration", () => {
   const verifier = fs.readFileSync(path.join(root, "scripts/verify-deployment.js"), "utf8");
-  assert.match(packageJson, /verify:deployment/);
+  const packageData = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  assert.ok(packageData.scripts["verify:deployment"]);
   assert.match(verifier, /method: "GET"/);
   assert.doesNotMatch(verifier, /\/api\/chat\/.*\/send/);
   assert.doesNotMatch(verifier, /method: "POST"/);
