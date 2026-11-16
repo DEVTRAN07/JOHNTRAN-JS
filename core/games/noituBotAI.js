@@ -65,7 +65,7 @@ function chooseReply(session, random = Math.random) {
 
 async function findDynamicReply(session, options = {}) {
   const display = String(session?.currentPhrase?.display || "");
-  const prefix = display.trim().split(/\\s+/).at(-1);
+  const prefix = display.trim().split(/\s+/).at(-1);
   if (!prefix) return null;
 
   const required = engine.normalizeSyllable(prefix);
