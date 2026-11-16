@@ -18,12 +18,13 @@ if (!forceJson && SUPABASE_URL && SUPABASE_KEY) {
 } else {
   if (forceJson && (SUPABASE_URL || SUPABASE_KEY)) {
     logger.log("Database: forced JSON store (JT_DB_DRIVER/SUPABASE_DISABLE) mặc dù Supabase env có sẵn", "warn");
-    if (process.env.RENDER) {
-      logger.log("CẢNH BÁO: JSON store trên Render là ephemeral — dữ liệu mất khi redeploy/restart.", "warn");
-    }
   }
   const dbFile = process.env.JT_DB_FILE || path.join(__dirname, "..", "data", "store.json");
   db = new JsonStore(dbFile, ["Users", "Threads", "Metrics", "BotStats"]);
+  logger.log(`Database: JSON store (${dbFile})`, "info");
+  if (process.env.RENDER) {
+    logger.log("CẢNH BÁO: JSON store trên Render có thể mất dữ liệu khi redeploy/restart nếu không gắn Persistent Disk. Dùng Supabase hoặc Persistent Disk để giữ cấu hình bot_enabled.", "warn");
+  }
 }
 
 /**
