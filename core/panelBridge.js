@@ -292,6 +292,11 @@ async function handleRequest(req, res, url) {
   // Cấu hình lệnh theo nhóm được xử lý bên trong bot con, nơi có
   // global.client.commands và controllerThreads trỏ đúng DB của bot đó.
   if (route === "/group-commands") {
+    try {
+      await ensureThreadStoreReady();
+    } catch (error) {
+      return json(503, { error: "Database nhóm chưa sẵn sàng: " + error.message });
+    }
     const gid = String(url.searchParams.get("gid") || "").trim();
     if (!gid) return json(400, { error: "Thiếu Group ID" });
 
