@@ -158,7 +158,9 @@ module.exports = {
     const key = String(threadId);
     await ensureStoreReady();
     const cached = threadCache.get(key);
-    if (cached !== undefined) return normalizeThreadRecord(await cached, key);
+    if (cached !== undefined) {
+      return rememberThreadRecord(await cached, key);
+    }
 
     const existing = hasData("Threads", "threadId", threadId);
     if (!existing) {
@@ -173,8 +175,10 @@ module.exports = {
     }
 
     const record = normalizeThreadRecord(await getData("Threads", "threadId", threadId), key);
-    threadCache.set(key, record);
-    return record;
+    // Every successful cold read becomes the process' last-known state too.
+    // Do not rely only on startup getAll(): commands may cold-load a group
+    // before its first realtime event reaches the synchronous hot path.
+    return rememberThreadRecord(record, key);
   },
 
   setData: (threadId, data) => {
