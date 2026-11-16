@@ -12,33 +12,31 @@ function normalizeThreadRecord(record, threadId) {
   return { ...(record || {}), id: record?.id || key, threadId: key, data };
 }
 
-function preserveBotEnabled(threadId, inputData) {
+function getExistingRecord(threadId) {
   const key = String(threadId);
-  const input = inputData && typeof inputData === "object" ? inputData : {};
-
-  // Explicit boolean writes are authoritative: only an explicit false
-  // (for example /bot off or the Panel toggle) can turn an enabled group OFF.
-  if (Object.prototype.hasOwnProperty.call(input, "bot_enabled")) {
-    return { ...input, bot_enabled: input.bot_enabled === true };
-  }
-
-  // Older commands sometimes persist a partial settings object. Preserve
-  // the current group switch instead of interpreting an omitted field as OFF.
-  let existing = null;
   try {
     if (hasData("Threads", "threadId", key)) {
-      existing = getData("Threads", "threadId", key);
+      const existing = getData("Threads", "threadId", key);
+      if (existing && typeof existing.then !== "function") return existing;
     }
   } catch {}
 
-  if (!existing) {
-    const cached = threadCache.get(key);
-    if (cached && typeof cached.then !== "function") existing = cached;
-  }
+  const cached = threadCache.get(key);
+  return cached && typeof cached.then !== "function" ? cached : null;
+}
 
+function preserveBotEnabled(threadId, inputData) {
+  const input = inputData && typeof inputData === "object" ? inputData : {};
+  const existing = getExistingRecord(threadId);
+  const wasEnabled = existing?.data?.bot_enabled === true;
+  const requestedEnabled = input.bot_enabled === true;
+
+  // ON is sticky: ordinary settings writes (including stale full snapshots
+  // carrying false) may never switch an enabled group OFF. Only setBotEnabled
+  // is allowed to perform an intentional OFF operation.
   return {
     ...input,
-    bot_enabled: existing?.data?.bot_enabled === true
+    bot_enabled: wasEnabled || requestedEnabled
   };
 }
 
@@ -167,6 +165,25 @@ module.exports = {
       : saveData("Threads", "threadId", key, record.data);
     threadCache.set(key, record);
     await pending;
+    return record;
+  },
+
+  // Dedicated, durable group switch. Ordinary feature settings writes cannot
+  // turn a previously enabled group OFF; only this explicit operation can.
+  setBotEnabled: async (threadId, enabled) => {
+    const key = String(threadId);
+    await ensureStoreReady();
+    const current = getExistingRecord(key);
+    const data = {
+      ...(current?.data && typeof current.data === "object" ? current.data : {}),
+      bot_enabled: enabled === true
+    };
+    const record = normalizeThreadRecord({ id: key, threadId: key, data }, key);
+    const pending = typeof saveDataAndWait === "function"
+      ? saveDataAndWait("Threads", "threadId", key, record.data)
+      : saveData("Threads", "threadId", key, record.data);
+    await pending;
+    threadCache.set(key, record);
     return record;
   },
 
