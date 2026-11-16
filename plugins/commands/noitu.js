@@ -314,7 +314,7 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
       const current = game.get(threadId)?.players?.get(result.currentUid);
       await send(api, event, "⏳ Đang đến lượt " + (current?.name || "người chơi khác") + ". Chờ chút nhé!");
     } else if (result.code === "WRONG_LINK") {
-      const needed = session.currentPhrase?.display?.trim().split(/\\s+/).at(-1) || result.expected;
+      const needed = session.currentPhrase?.display?.trim().split(/\s+/).at(-1) || result.expected;
       await send(api, event, "❌ Chưa nối đúng. Cụm từ cần bắt đầu bằng: " + needed + ".");
     } else if (result.code === "DUPLICATE") {
       await send(api, event, "🔁 Cụm từ này đã được dùng rồi. Nghĩ cụm khác nhé!");
