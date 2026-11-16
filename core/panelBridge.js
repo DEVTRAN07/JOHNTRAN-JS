@@ -222,6 +222,27 @@ async function handleRequest(req, res, url) {
 
   if (route === "/health") return json(200, { ok: true, pid: process.pid });
 
+  // Storage diagnostics chỉ đọc, không tiết lộ URL/key hay thông tin xác thực.
+  if (route === "/storage-status") {
+    if (req.method !== "GET") return json(405, { error: "Method không hỗ trợ" });
+    try {
+      const database = require("./runtime/adapters/database");
+      const storage = database?.db?.getStatus?.() || {
+        driver: "unknown",
+        ok: false,
+        ready: false,
+        message: "Database backend không cung cấp trạng thái kiểm tra"
+      };
+      return json(200, {
+        bot: process.env.JT_BOT_NAME || global.config?.name_bot || "bot",
+        storage,
+        checkedAt: Date.now()
+      });
+    } catch (error) {
+      return json(503, { error: "Không kiểm tra được storage: " + error.message });
+    }
+  }
+
   // Trạng thái bật/tắt nhóm rất nhẹ: chỉ đọc DB của bot con, không gọi lại Zalo API.
   if (route === "/group-status") {
     if (req.method !== "GET") return json(405, { error: "Method không hỗ trợ" });
