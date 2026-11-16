@@ -313,6 +313,90 @@ function startPanel({ manager, config }) {
         }
       }
 
+      if (pathname === "/api/recovery" && req.method === "GET") {
+        try {
+          const recovery = require("../core/runtime/recovery");
+          let databaseStatus = null;
+          try {
+            databaseStatus = storeDb && typeof storeDb.getStatus === "function" ? storeDb.getStatus() : null;
+          } catch { databaseStatus = null; }
+
+          const master = recovery.collectRecoverySnapshot({ databaseStatus });
+          const bots = manager.list();
+          const childReports = await Promise.all(bots.map(async (item) => {
+            const bot = enrichBot(item);
+            const base = {
+              name: bot.name,
+              processStatus: bot.processStatus || bot.status,
+              loginState: bot.loginState || null,
+              restarts: Number(bot.restarts) || 0,
+              flapping: bot.flapping === true
+            };
+            if (!item.bridgePort || bot.loginState !== "logged_in") {
+              return { ...base, available: false, reason: bot.loginState !== "logged_in" ? "Bot chưa đăng nhập Zalo." : "Chưa có bridge port." };
+            }
+
+            return new Promise((resolve) => {
+              const proxy = http.request({
+                hostname: "127.0.0.1",
+                port: item.bridgePort,
+                path: "/health",
+                method: "GET",
+                headers: { "x-bridge-token": bridgeToken },
+                agent: false
+              }, (childRes) => {
+                let raw = "";
+                childRes.on("data", chunk => {
+                  if (raw.length < 256 * 1024) raw += chunk.toString("utf8");
+                });
+                childRes.on("end", () => {
+                  try {
+                    const payload = JSON.parse(raw || "{}");
+                    resolve({
+                      ...base,
+                      available: childRes.statusCode === 200 && payload.ok === true,
+                      recovery: payload.recovery || null,
+                      pid: Number(payload.pid) || null
+                    });
+                  } catch {
+                    resolve({ ...base, available: false, reason: "Bridge trả dữ liệu không hợp lệ." });
+                  }
+                });
+              });
+              proxy.setTimeout(1200, () => proxy.destroy(new Error("timeout")));
+              proxy.on("error", () => resolve({ ...base, available: false, reason: "Không kết nối được health bridge." }));
+              proxy.end();
+            });
+          }));
+
+          const childAlerts = childReports.flatMap(bot =>
+            (bot.recovery?.alerts || []).map(alert => ({ ...alert, bot: bot.name }))
+          );
+          const alerts = [
+            ...(master.alerts || []),
+            ...childAlerts
+          ].slice(0, 100);
+          const critical = alerts.some(alert => alert.severity === "critical");
+          const warning = alerts.some(alert => alert.severity === "warning");
+          return sendJson(res, 200, {
+            status: critical ? "critical" : warning ? "degraded" : master.status,
+            checkedAt: new Date().toISOString(),
+            master,
+            bots: childReports,
+            alerts,
+            counts: {
+              healthyBots: childReports.filter(bot => bot.available && bot.recovery?.status === "healthy").length,
+              degradedBots: childReports.filter(bot => bot.available && bot.recovery?.status !== "healthy").length,
+              unavailableBots: childReports.filter(bot => !bot.available).length,
+              criticalAlerts: alerts.filter(alert => alert.severity === "critical").length,
+              warningAlerts: alerts.filter(alert => alert.severity === "warning").length
+            }
+          });
+        } catch (error) {
+          return sendJson(res, 500, { error: "Không lấy được trạng thái phục hồi: " + error.message });
+        }
+      }
+
       if (pathname === "/api/metrics" && req.method === "GET") {
         maybeSyncStore();
         try {
