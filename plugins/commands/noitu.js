@@ -93,8 +93,8 @@ function ghepChuCardData(session) {
     requesterAvatarUrl: session.requesterAvatarUrl,
     letters: session.puzzle?.letters || [],
     clue: session.puzzle?.clue || "",
-    version: botVersion,
-    botName: global.config?.name_bot || "JOHNTRAN"
+    version: "1.0.2",
+    botName: global.config?.name_bot || "CHÍ TÂM"
   };
 }
 
@@ -191,8 +191,8 @@ async function startGhepChu({ api, event }) {
   );
 }
 
-async function handleGhepChuText({ api, event, isSelf = false }) {
-  if (isSelf || event?.isSelf) return;
+async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
+  if ((eventType && eventType !== "message") || isSelf || event?.isSelf) return;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
   if (!threadId || !uid) return;
