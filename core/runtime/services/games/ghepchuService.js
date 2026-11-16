@@ -60,6 +60,7 @@ const PREFIXES = Object.freeze([
 const sessions = new Map();
 const suggestionCache = new Map();
 const lookupCache = new Map();
+const termLookupCache = new Map();
 const apiWordPool = new Map();
 let refreshPromise = null;
 
@@ -269,6 +270,59 @@ async function refreshApiWordPool(options = {}) {
   return refreshPromise;
 }
 
+async function lookupVietnameseTerm(term, options = {}) {
+  const key = normalizePhrase(term);
+  if (!key) return null;
+  const now = Number(options.now) || Date.now();
+  const cached = termLookupCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.entry;
+
+  const url = API_BASE + "/lookup?word=" + encodeURIComponent(key) +
+    "&lang=vi&def_lang=vi";
+  const response = await getHttpJson(options)(url, {
+    timeout: API_TIMEOUT_MS,
+    retries: 0,
+    headers: { Accept: "application/json" }
+  });
+  const payload = response?.data ?? response;
+  if (!payload?.exists || !Array.isArray(payload.results)) {
+    termLookupCache.set(key, { entry: null, expiresAt: now + API_CACHE_TTL_MS });
+    return null;
+  }
+
+  const vietnamese = payload.results.find(item => String(item?.lang_code || "").toLowerCase() === "vi");
+  const meaning = (vietnamese?.meanings || []).find(item =>
+    String(item?.definition_lang || "vi").toLowerCase() === "vi" &&
+    typeof item?.definition === "string" &&
+    item.definition.trim()
+  );
+  if (!vietnamese || !meaning) {
+    termLookupCache.set(key, { entry: null, expiresAt: now + API_CACHE_TTL_MS });
+    return null;
+  }
+
+  const entry = {
+    answer: normalizePhrase(payload.word || key),
+    definition: meaning.definition.trim(),
+    dictionarySource: meaning.source || "dict.minhqnd.com",
+    source: "api"
+  };
+  termLookupCache.set(key, { entry, expiresAt: now + LOOKUP_CACHE_TTL_MS });
+  return entry;
+}
+
+function getDictionaryStats() {
+  const fallbackKeys = FALLBACK_WORD_BANK.map(item => normalizeAnswer(item.answer));
+  const apiKeys = [...apiWordPool.keys()];
+  return {
+    apiCached: apiWordPool.size,
+    fallbackWords: FALLBACK_WORD_BANK.length,
+    totalCached: new Set([...fallbackKeys, ...apiKeys]).size,
+    apiPoolLimit: API_POOL_MAX,
+    source: "dict.minhqnd.com"
+  };
+}
+
 function takePuzzleEntry(session, random = Math.random) {
   const available = [...apiWordPool.entries()].filter(([key]) => !session.usedAnswers.has(key));
   if (!available.length) return null;
@@ -461,6 +515,7 @@ function clear() {
 function clearDictionaryCache() {
   suggestionCache.clear();
   lookupCache.clear();
+  termLookupCache.clear();
   apiWordPool.clear();
   refreshPromise = null;
 }
@@ -479,6 +534,8 @@ module.exports = {
   extractSuggestionWords,
   fetchSuggestions,
   lookupVietnameseWord,
+  lookupVietnameseTerm,
+  getDictionaryStats,
   refreshApiWordPool,
   remainingSeconds,
   start,
