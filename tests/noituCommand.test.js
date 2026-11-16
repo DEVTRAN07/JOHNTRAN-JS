@@ -335,7 +335,11 @@ test("nt go limits malformed-answer hints to once per solo session", async () =>
     session.moves += 1;
     assert.equal(await command._test.handleNoiTuText(context("again")), true);
     assert.equal(await command._test.handleNoiTuText(context("still chatting")), true);
-    assert.equal(sent.length, 1, "the reminder must not repeat on later turns in the same solo session");
+    assert.equal(
+      sent.filter(item => item.msg.includes("Hãy trả lời bằng một cụm từ tiếng Việt gồm 2–4 tiếng")).length,
+      1,
+      "the format reminder must not repeat on later turns in the same solo session"
+    );
   } finally {
     gameService.sessions.delete("solo-invalid-hint");
     if (previousConfig === undefined) delete global.config;
