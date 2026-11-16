@@ -95,6 +95,16 @@ function botDir(name) {
   return path.join(BOTS_DIR, name);
 }
 
+function getStorageLayout() {
+  const { getJsonPersistenceStatus } = require("../core/storage/diagnostics");
+  return {
+    configuredRoot: PERSISTENT_ROOT,
+    registryFile: REGISTRY_FILE,
+    botsRoot: BOTS_DIR,
+    persistence: getJsonPersistenceStatus(REGISTRY_FILE)
+  };
+}
+
 function botPaths(name) {
   const dir = botDir(name);
   return {
@@ -427,5 +437,6 @@ module.exports = {
   botDir,
   BOTS_DIR,
   PERSISTENT_ROOT,
+  getStorageLayout,
   _test: { migrateFileIfMissing, migrateLegacyBotFiles, readRegistry, writeRegistry }
 };
