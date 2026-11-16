@@ -109,6 +109,17 @@ function retireWorker(pool, record, error) {
     const oldest = pool.restartHistory[0] || now;
     pool.circuitOpenUntil = Math.max(now + pool.circuitCooldownMs, oldest + pool.restartWindowMs + 1);
     pool.nextRestartAt = pool.circuitOpenUntil;
+    const circuitError = new Error(`Worker pool ${pool.scriptName} tạm nghỉ sau ${recentFailures} worker crash trong cửa sổ giới hạn.`);
+    for (const queued of pool.pending.splice(0)) {
+      pool.rejected++;
+      settle(queued, circuitError);
+    }
+    try {
+      require("../utils/logger").log(circuitError.message, "warn", {
+        source: "worker-circuit-breaker",
+        eventName: pool.scriptName
+      });
+    } catch { /* Diagnostics must never affect worker recovery. */ }
   } else {
     const delay = Math.min(pool.restartDelayMs * (2 ** Math.max(0, pool.restartAttempt - 1)), pool.restartMaxDelayMs);
     pool.nextRestartAt = now + delay;
