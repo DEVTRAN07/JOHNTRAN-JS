@@ -10,13 +10,6 @@ const {
   parseMountInfo,
   getJsonPersistenceStatus
 } = require("../core/storage/diagnostics");
-const {
-  PERSISTENT_ROOT,
-  botPaths,
-  getStorageLayout,
-  _test: botManagerTest
-} = require("../panel/botManager");
-
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-db-durability-"));
 const dbFile = path.join(tempDir, "store.json");
 
@@ -25,6 +18,13 @@ process.env.JT_DB_DRIVER = "json";
 process.env.JT_DB_FILE = path.join(tempDir, "module-store.json");
 process.env.JT_PERSISTENT_DIR = tempDir;
 process.env.RENDER = "true";
+
+const {
+  PERSISTENT_ROOT,
+  botPaths,
+  getStorageLayout,
+  _test: botManagerTest
+} = require("../panel/botManager");
 
 const {
   createDatabaseFacade,
