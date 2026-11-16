@@ -213,4 +213,63 @@ function renderThemeSettings(data = {}) {
   return saveCard(result.canvas, "Menu Theme", palette);
 }
 
-module.exports = { renderEventSettings, renderThemeSettings };
+
+
+function renderAdminCard(data = {}) {
+  theme.initFonts();
+  const palette = menuPalette.getPalette();
+  const sections = Array.isArray(data.sections) ? data.sections : [];
+  const layouts = sections.map(section => {
+    const items = Array.isArray(section.items) && section.items.length
+      ? section.items
+      : [{ name: "Không có dữ liệu", uid: "" }];
+    return { section, items, height: S(44 + items.length * 43 + 13) };
+  });
+  let y = S(105);
+  const positions = [];
+  for (const layout of layouts) {
+    positions.push(y);
+    y += layout.height + S(12);
+  }
+  const height = y + S(34);
+  const result = theme.newCanvas(W, height);
+  const ctx = result.ctx;
+  drawBackdrop(ctx, W, height, palette);
+  drawHeader(ctx, data.title || "QUẢN LÝ ADMIN", data.subtitle || "Quản trị và phân quyền bot",
+    data.meta || "ADMIN CONTROL", palette);
+
+  layouts.forEach((layout, sectionIndex) => {
+    const x = S(PAD);
+    const sectionY = positions[sectionIndex];
+    const width = W - S(PAD * 2);
+    drawPanel(ctx, x, sectionY, width, layout.height, palette);
+    drawText(ctx, layout.section.title || "DANH SÁCH", x + S(15), sectionY + S(26), 10, palette.accent, true);
+    drawText(ctx, String(layout.items.length).padStart(2, "0") + " MỤC",
+      x + width - S(15), sectionY + S(26), 8, palette.muted, true, "right");
+    layout.items.forEach((item, index) => {
+      const rowY = sectionY + S(54 + index * 43);
+      if (index > 0) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255,255,255,.07)";
+        ctx.beginPath();
+        ctx.moveTo(x + S(14), rowY - S(20));
+        ctx.lineTo(x + width - S(14), rowY - S(20));
+        ctx.stroke();
+        ctx.restore();
+      }
+      drawText(ctx, String(index + 1).padStart(2, "0"), x + S(16), rowY, 8, palette.accent, true);
+      drawText(ctx, item.name || "Không rõ", x + S(48), rowY, 11, palette.text, true, "left", width - S(72));
+      if (item.uid) {
+        drawText(ctx, item.uid, x + S(48), rowY + S(15), 8.5, palette.muted, false, "left", width - S(72));
+      }
+    });
+  });
+
+  const footerY = height - S(32);
+  drawPanel(ctx, S(PAD), footerY, W - S(PAD * 2), S(25), palette, palette.footer);
+  drawText(ctx, data.footer || "JOHNTRAN  ·  ADMIN CONTROL",
+    S(PAD + 12), footerY + S(17), 8, palette.muted, false, "left", W - S(PAD * 2 + 24));
+  return saveCard(result.canvas, data.title || "Admin Control", palette);
+}
+
+module.exports = { renderEventSettings, renderThemeSettings, renderAdminCard };
