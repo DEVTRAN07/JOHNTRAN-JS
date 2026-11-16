@@ -81,6 +81,10 @@ function getBotDisplayName(nameOrBot) {
   const profile = state.botStats?.[key]?.profile || {};
   return String(bot?.displayName || profile.displayName || profile.zaloName || "Tài khoản Zalo");
 }
+function updateChatBotLabel() {
+  const selected = $("chatBotSelect")?.value || "";
+  if ($("chatTypingState")) $("chatTypingState").textContent = getBotDisplayName(selected).toLocaleUpperCase("vi");
+}
 function toast(message, kind = "") {
   const node = $("toast");
   if (!node) return;
@@ -714,7 +718,7 @@ async function loadGroupOptions() {
       renderGroupIdentities(state.groupBotProfile, null);
       $("selectedGroupIdentity").innerHTML = '<div class="empty-state">Tài khoản này chưa có nhóm để cấu hình.</div>';
       $("groupCommandList").innerHTML = '<div class="empty-state">Tài khoản này chưa có nhóm để cấu hình.</div>';
-      $("groupHint").textContent = "Không tìm thấy nhóm nào trong tài khoản " + (data.profile?.displayName || selectedBot) + ".";
+      $("groupHint").textContent = "Không tìm thấy nhóm nào trong tài khoản " + getBotDisplayName(selectedBot) + ".";
       return;
     }
     await loadGroupCommands();
@@ -1049,7 +1053,7 @@ async function loadSystem() {
 
     $("systemBotList").innerHTML = state.bots.length ? state.bots.map(bot => {
       const [label,cls] = botStatus(bot);
-      return '<div class="system-bot-row"><div><b>'+$escape(bot.displayName || bot.name)+'</b><small>'+$escape("ID "+bot.name+" · "+(bot.pid ? "PID "+bot.pid : "Chưa có PID"))+' · '+$escape(fmtUptime(bot.uptimeMs))+'</small></div><span class="status-label '+$escape(cls)+'"><i class="dot"></i>'+$escape(label)+'</span></div>';
+      return '<div class="system-bot-row"><div><b>'+$escape(getBotDisplayName(bot))+'</b><small>'+$escape("ID "+bot.name+" · "+(bot.pid ? "PID "+bot.pid : "Chưa có PID"))+' · '+$escape(fmtUptime(bot.uptimeMs))+'</small></div><span class="status-label '+$escape(cls)+'"><i class="dot"></i>'+$escape(label)+'</span></div>';
     }).join("") : '<div class="empty-state">Không có bot trong registry.</div>';
 
     const cache = m.cache || {};
@@ -1495,6 +1499,11 @@ function bindEvents() {
   $("reloadProfile").addEventListener("click",loadProfiles);
   $("reloadSystem").addEventListener("click",loadSystem);
   $("reloadThreads").addEventListener("click",loadThreads);
+  $("chatBotSelect").addEventListener("change",()=>{
+    updateChatBotLabel();
+    closeThread();
+    if(state.view === "chat") loadThreads();
+  });
   $("threadInfoButton").addEventListener("click",openThreadInfo);
   $("groupForm").addEventListener("submit",event=>{event.preventDefault();loadGroupCommands();});
   $("groupBotEnabled").addEventListener("change",event=>setGroupBotEnabled(event.target.checked,event.target));
