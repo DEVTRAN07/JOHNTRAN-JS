@@ -140,7 +140,18 @@ class SupabaseStore {
         let data, error;
         try { const res = await this.executePrepared("selectMirror", dbTable); data = res.data; error = res.error; } catch (e) { error = e; }
         if (error) {
-          if (/Could not find the table/i.test(String(error.message || error))) { this.mirror[storeTable] = this.mirror[storeTable] || {}; continue; }
+          if (/Could not find the table/i.test(String(error.message || error))) {
+            this.mirror[storeTable] = this.mirror[storeTable] || {};
+            // bot_threads is essential for group ON/OFF persistence. Treat a
+            // missing table as unhealthy instead of silently accepting OFF.
+            if (storeTable === "Threads") {
+              const msg = "Supabase thiếu bảng bot_threads; chạy supabase/schema.sql để tạo bảng cấu hình nhóm";
+              if (!firstError) { firstError = msg; firstClassified = "config"; }
+              this.syncError = msg;
+              this.classified = "config";
+            }
+            continue;
+          }
           const classified = this.classifyError(error);
           const msg = `Supabase ${dbTable}: ${error.message || error}`;
           if (!firstError) { firstError = msg; firstClassified = classified; }
