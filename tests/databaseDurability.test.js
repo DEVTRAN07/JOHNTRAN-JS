@@ -49,7 +49,7 @@ test("JSON status reports a disk mount separately from whether the DB file uses 
   assert.equal(status.persistentDisk.databaseFileOnDisk, true);
   // The test directory is not a mounted volume; the app must not call it persistent.
   assert.equal(status.persistentDisk.mounted, false);
-  assert.equal(status.storage.durability, "ephemeral");
+  assert.equal(status.storage.durability, "unknown");
   assert.equal(status.storage.persistent, false);
 });
 
