@@ -36,7 +36,6 @@ const REPLY_BANK = Object.freeze({
   tam: ["tâm lý", "tâm hồn"],
   ly: ["lý tưởng", "lý do"],
   tuong: ["tưởng tượng", "tượng trưng"],
-  trung: ["trung tâm", "trung thực"],
   thuc: ["thực tế", "thực hành"],
   hanh: ["hành động", "hành trình"],
   dong: ["đồng hồ", "đồng ý"]
