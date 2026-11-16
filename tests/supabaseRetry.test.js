@@ -221,3 +221,22 @@ test("Supabase row retries respect nextRetryAt and increase backoff after repeat
   assert.equal(store.retryQueue.size, 0);
   assert.equal(store.writeVersions.size, 0);
 });
+
+
+test("Supabase partial table failures increase the next sync interval", async () => {
+  const scheduled = [];
+  const store = makeStore(async (_name, table) => {
+    if (table === "bot_threads") return { data: [], error: null };
+    return { data: null, error: new Error("fetch failed") };
+  });
+  store.mirror = { Users: {}, Threads: {}, Metrics: {}, BotStats: {}, MediaCache: {} };
+  store.scheduleInterval = delay => scheduled.push(delay);
+
+  await store.sync();
+
+  assert.equal(store.consecutiveFailures, 1);
+  assert.ok(store.nextSyncDelay > 30000);
+  assert.equal(scheduled.at(-1), store.nextSyncDelay);
+  assert.equal(store.getStatus().nextSyncDelayMs, store.nextSyncDelay);
+  assert.match(store.getStatus().syncError, /fetch failed/);
+});
