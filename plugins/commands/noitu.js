@@ -175,7 +175,7 @@ async function startGhepChu({ api, event }) {
     profile = await getRequesterProfile(api, event, { waitMs: 120, skipAvatarWarm: true });
   } catch {}
 
-  const result = ghepChu.start(
+  const result = await ghepChu.start(
     threadId,
     uid,
     profile.requesterName || "Người chơi",
@@ -187,7 +187,7 @@ async function startGhepChu({ api, event }) {
     api,
     event,
     result.session,
-    "@Wuang\n✅ 🎮 Trò chơi Ghép Chữ đã bắt đầu!\n👉 Gõ đáp án trực tiếp vào chat, gõ skip để bỏ qua (-5s), gõ stop để dừng ván chơi!"
+    "@Wuang\n✅ 🎮 Trò chơi Ghép Chữ đã bắt đầu!\n👉 Gõ đáp án trực tiếp vào chat, gõ skip để bỏ qua (-5s), gõ stop để dừng ván chơi!\n📚 Từ điển: dict.minhqnd.com (@minhqnd) · CC BY-SA 4.0"
   );
 }
 
@@ -216,7 +216,7 @@ async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
   }
 
   if (action === "skip") {
-    const result = ghepChu.skip(threadId, uid);
+    const result = await ghepChu.skip(threadId, uid);
     if (!result.ok && result.code !== "TIME_UP") return;
     if (result.code === "TIME_UP") {
       return finishGhepChu(api, event, result.session, `⌛ Hết giờ sau khi bỏ qua. Đáp án vừa rồi: ${result.skippedAnswer || ""}`);
@@ -225,7 +225,7 @@ async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
     return sendGhepChuCard(api, event, result.session, `⏭️ Đã bỏ qua: ${result.skippedAnswer}. Trừ 5 giây!`);
   }
 
-  const result = ghepChu.submit(threadId, uid, content);
+  const result = await ghepChu.submit(threadId, uid, content);
   if (result.code === "TIME_UP") {
     return finishGhepChu(api, event, result.session, "⌛ Hết giờ! Đây là kết quả ván Ghép Chữ.");
   }
