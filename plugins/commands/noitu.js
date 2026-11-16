@@ -3,6 +3,10 @@
 const game = require("../../core/runtime/services/games/noituService");
 const fs = require("fs");
 const { renderCanvas } = require("../../core/canvas/workerRender");
+const ghepChu = require("../../core/runtime/services/games/ghepchuService");
+const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
+const botVersion = require("../../package.json").version;
+const ghepChuTimers = new Map();
 
 module.exports.config = {
   name: "noitu",
@@ -76,6 +80,165 @@ function currentPlayerLine(session) {
   const player = session?.players.get(session?.turnUid);
   return player ? "🎯 Lượt tiếp theo: " + player.name + "." : "";
 }
+function ghepChuCardData(session) {
+  return {
+    status: session.status,
+    remainingSeconds: ghepChu.remainingSeconds(session),
+    score: session.score,
+    streak: session.streak,
+    bestStreak: session.bestStreak,
+    correct: session.correct,
+    skipped: session.skipped,
+    playerName: session.playerName,
+    requesterAvatarUrl: session.requesterAvatarUrl,
+    letters: session.puzzle?.letters || [],
+    clue: session.puzzle?.clue || "",
+    version: botVersion,
+    botName: global.config?.name_bot || "JOHNTRAN"
+  };
+}
+
+async function sendGhepChuCard(api, event, session, caption = "") {
+  let imagePath;
+  try {
+    imagePath = await renderCanvas("ghepchu", ghepChuCardData(session), {
+      timeout: 20000,
+      poolSize: 1
+    });
+    return await api.sendMessage({
+      msg: caption,
+      attachments: [imagePath],
+      ttlKind: "card"
+    }, event.threadId, event.type);
+  } catch (error) {
+    console.error("[GHEP_CHU_CARD]", error?.stack || error);
+    const fallback = session.status === "active"
+      ? `🎮 GHÉP CHỮ • ${ghepChu.remainingSeconds(session)}s\\n🔤 ${(session.puzzle?.letters || []).join(" ")}\\n💡 ${session.puzzle?.clue || ""}\\n⭐ ${session.score} điểm • Chuỗi x${session.streak}`
+      : `🏁 KẾT THÚC GHÉP CHỮ\\n⭐ ${session.score} điểm • Đúng ${session.correct} câu • Bỏ qua ${session.skipped} câu`;
+    return send(api, event, [caption, fallback].filter(Boolean).join("\\n"));
+  } finally {
+    if (imagePath) {
+      const timer = setTimeout(() => {
+        try { fs.rmSync(imagePath, { force: true }); } catch {}
+      }, 70000);
+      timer.unref?.();
+    }
+  }
+}
+
+function clearGhepChuTimer(threadId) {
+  const timer = ghepChuTimers.get(String(threadId));
+  if (timer) clearTimeout(timer);
+  ghepChuTimers.delete(String(threadId));
+}
+
+function scheduleGhepChuExpiry(api, event, threadId) {
+  clearGhepChuTimer(threadId);
+  const session = ghepChu.get(threadId);
+  if (!session || session.status !== "active") return;
+  const delay = Math.max(20, ghepChu.remainingSeconds(session) * 1000);
+  const timer = setTimeout(async () => {
+    const current = ghepChu.get(threadId);
+    if (!current || current.status !== "active") return;
+    if (ghepChu.remainingSeconds(current) > 0) {
+      scheduleGhepChuExpiry(api, event, threadId);
+      return;
+    }
+    ghepChu.finish(threadId);
+    clearGhepChuTimer(threadId);
+    await sendGhepChuCard(api, event, current, "⌛ Hết giờ! Đây là kết quả ván Ghép Chữ của bạn.");
+  }, delay);
+  timer.unref?.();
+  ghepChuTimers.set(String(threadId), timer);
+}
+
+async function finishGhepChu(api, event, session, caption) {
+  clearGhepChuTimer(event.threadId);
+  await sendGhepChuCard(api, event, session, caption || "🏁 Ván Ghép Chữ đã kết thúc!");
+}
+
+async function startGhepChu({ api, event }) {
+  const uid = String(event?.data?.uidFrom || "");
+  const threadId = String(event?.threadId || "");
+  if (!uid || !threadId) return;
+  const existing = ghepChu.get(threadId);
+  if (existing?.status === "active" && ghepChu.remainingSeconds(existing) > 0) {
+    scheduleGhepChuExpiry(api, event, threadId);
+    return sendGhepChuCard(api, event, existing, "🎮 Ván Ghép Chữ đang diễn ra — tiếp tục thử sức nhé!");
+  }
+
+  let profile = {
+    requesterName: String(event?.data?.dName || event?.data?.name || "Người chơi"),
+    requesterAvatarUrl: ""
+  };
+  try {
+    profile = await getRequesterProfile(api, event, { waitMs: 120, skipAvatarWarm: true });
+  } catch {}
+
+  const result = ghepChu.start(
+    threadId,
+    uid,
+    profile.requesterName || "Người chơi",
+    profile.requesterAvatarUrl || ""
+  );
+  if (!result.ok) return send(api, event, "⚠️ Không thể bắt đầu ván Ghép Chữ lúc này.");
+  scheduleGhepChuExpiry(api, event, threadId);
+  return sendGhepChuCard(
+    api,
+    event,
+    result.session,
+    "@Wuang\\n✅ 🎮 Trò chơi Ghép Chữ đã bắt đầu!\\n👉 Gõ đáp án trực tiếp vào chat, gõ skip để bỏ qua (-5s), gõ stop để dừng ván chơi!"
+  );
+}
+
+async function handleGhepChuText({ api, event, isSelf = false }) {
+  if (isSelf || event?.isSelf) return;
+  const threadId = String(event?.threadId || "");
+  const uid = String(event?.data?.uidFrom || "");
+  if (!threadId || !uid) return;
+  const session = ghepChu.get(threadId);
+  if (!session || session.status !== "active") return;
+  if (session.playerId !== uid) return;
+
+  const raw = event?.data?.content;
+  const content = typeof raw === "string"
+    ? raw.trim()
+    : typeof raw?.title === "string" ? raw.title.trim() : "";
+  if (!content) return;
+  const prefix = String(global.config?.prefix || "/");
+  if (content.startsWith(prefix)) return;
+
+  const action = content.toLocaleLowerCase("vi-VN");
+  if (["stop", "cancel", "thua", "lose"].includes(action)) {
+    const result = ghepChu.stop(threadId, uid);
+    if (!result.ok) return;
+    return finishGhepChu(api, event, result.session, "🛑 Bạn đã dừng ván Ghép Chữ.");
+  }
+
+  if (action === "skip") {
+    const result = ghepChu.skip(threadId, uid);
+    if (!result.ok && result.code !== "TIME_UP") return;
+    if (result.code === "TIME_UP") {
+      return finishGhepChu(api, event, result.session, `⌛ Hết giờ sau khi bỏ qua. Đáp án vừa rồi: ${result.skippedAnswer || ""}`);
+    }
+    scheduleGhepChuExpiry(api, event, threadId);
+    return sendGhepChuCard(api, event, result.session, `⏭️ Đã bỏ qua: ${result.skippedAnswer}. Trừ 5 giây!`);
+  }
+
+  const result = ghepChu.submit(threadId, uid, content);
+  if (result.code === "TIME_UP") {
+    return finishGhepChu(api, event, result.session, "⌛ Hết giờ! Đây là kết quả ván Ghép Chữ.");
+  }
+  if (!result.ok) {
+    if (result.code === "WRONG") {
+      return send(api, event, "❌ Chưa đúng rồi, thử sắp xếp lại nhé! 💡 Đọc kỹ mẹo chơi nha.");
+    }
+    return;
+  }
+  scheduleGhepChuExpiry(api, event, threadId);
+  return sendGhepChuCard(api, event, result.session, `✅ Chính xác: ${result.completedAnswer}! +${result.points} điểm.`);
+}
+
 async function leaderboard(Users) {
   if (!Users?.getAll) return [];
   return Users.getAll().map(row => ({
@@ -92,6 +255,8 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   const action = String(args[0] || "").trim().toLowerCase();
   if (!action || action === "help") return sendGuide(api, event, prefix);
 
+  if (action === "gc") return startGhepChu({ api, event });
+  if (action === "skip" && ghepChu.get(threadId)?.status === "active") return handleGhepChuText({ api, event: { ...event, data: { ...event.data, content: "skip" } } });
   if (action === "start" || action === "go") {
     const caro = require("../../core/runtime/services/games/caroService");
     if (caro.get(threadId)) return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Nối Từ.");
@@ -130,6 +295,11 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
 
   if (action === "stop") {
+    const gcSession = ghepChu.get(threadId);
+    if (gcSession?.status === "active" && gcSession.playerId === uid) {
+      const stopped = ghepChu.stop(threadId, uid);
+      return finishGhepChu(api, event, stopped.session, "🛑 Bạn đã dừng ván Ghép Chữ.");
+    }
     const session = game.get(threadId);
     if (!session) return send(api, event, "⚠️ Không có ván nào đang chạy.");
     if (session.ownerId !== uid && !isAdmin(uid)) return send(api, event, "⛔ Chỉ chủ ván hoặc Admin mới được dừng.");
@@ -145,4 +315,4 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
   return sendGuide(api, event, prefix);
 };
-module.exports._test = { help, leaderboard, sendGuide };
+module.exports.handleEvent = handleGhepChuText;\nmodule.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, handleGhepChuText };
