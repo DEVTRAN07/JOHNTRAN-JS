@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const { after, test } = require("node:test");
 const { renderCanvas } = require("../core/canvas/workerRender");
 const workerPool = require("../core/workerPool");
+const { TEMPLATE_PATH } = require("../core/canvas/ghepchu");
 
 after(async () => {
   await workerPool.shutdown();
@@ -186,4 +187,17 @@ test("canvas worker renders the finished ghép chữ result card", async () => {
   } finally {
     try { fs.unlinkSync(outputPath); } catch {}
   }
+});
+
+
+test("uses the exact supplied ghép chữ screenshot as its canvas template", () => {
+  assert.equal(
+    fs.existsSync(TEMPLATE_PATH),
+    true,
+    "the reference screenshot template must be present in the repository"
+  );
+  assert.equal(
+    TEMPLATE_PATH.endsWith("assets/games/ghepchu-template.jpg"),
+    true
+  );
 });
