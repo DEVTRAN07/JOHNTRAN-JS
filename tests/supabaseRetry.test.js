@@ -252,10 +252,11 @@ test("Supabase stale in-flight SELECT cannot roll back an already acknowledged b
 
   const store = makeStore(async (name, table) => {
     if (name === "selectMirror" && table === "bot_threads") {
+      const valueAtSnapshotStart = remoteEnabled;
       signalSnapshotStarted();
       await staleSnapshot;
       return {
-        data: [{ id: "group-idle-race", data: { bot_enabled: remoteEnabled } }],
+        data: [{ id: "group-idle-race", data: { bot_enabled: valueAtSnapshotStart } }],
         error: null
       };
     }
