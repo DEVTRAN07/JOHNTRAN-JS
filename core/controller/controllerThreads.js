@@ -1,4 +1,4 @@
-const { getData, saveData, saveDataAndWait, hasData, delData, allData } = require("../runtime/adapters/database");
+const { getData, saveData, saveDataAndWait, hasData, delData, allData, db: databaseBackend } = require("../runtime/adapters/database");
 const logger = require("../../utils/logger");
 const { threadCache } = require("../cache");
 
@@ -42,6 +42,27 @@ function preserveBotEnabled(threadId, inputData) {
   };
 }
 
+function getStoreStatus() {
+  try {
+    return typeof databaseBackend?.getStatus === "function"
+      ? databaseBackend.getStatus()
+      : null;
+  } catch {
+    return { ok: false, syncError: "Không đọc được trạng thái database" };
+  }
+}
+
+async function ensureStoreReady() {
+  if (typeof databaseBackend?.ready === "function") {
+    await databaseBackend.ready();
+  }
+  const status = getStoreStatus();
+  if (status?.ok === false) {
+    throw new Error(status.syncError || "Database nhóm chưa đồng bộ xong");
+  }
+  return true;
+}
+
 module.exports = {
   getAll: () => {
     return allData("Threads").map((row) => {
@@ -54,6 +75,10 @@ module.exports = {
   // not yield to an async cache read before command parsing starts.
   getCachedData: (threadId) => {
     const key = String(threadId);
+    // Supabase starts with an empty mirror while its first snapshot is loading.
+    // Never create a default-OFF record during that window.
+    const status = getStoreStatus();
+    if (status?.ok === false) return null;
     const cached = threadCache.get(key);
     if (cached !== undefined) {
       return cached && typeof cached.then !== "function"
@@ -88,6 +113,7 @@ module.exports = {
 
   getData: async (threadId) => {
     const key = String(threadId);
+    await ensureStoreReady();
     const cached = threadCache.get(key);
     if (cached !== undefined) return normalizeThreadRecord(await cached, key);
 
@@ -110,6 +136,10 @@ module.exports = {
 
   setData: (threadId, data) => {
     const key = String(threadId);
+    const status = getStoreStatus();
+    if (status?.ok === false) {
+      return Promise.reject(new Error(status.syncError || "Database nhóm chưa sẵn sàng; không ghi đè cấu hình nhóm"));
+    }
     const safeData = preserveBotEnabled(key, data);
     const record = normalizeThreadRecord({ id: key, threadId: key, data: safeData }, key);
     // Keep the legacy fast write contract for existing settings callers.
@@ -120,6 +150,7 @@ module.exports = {
 
   setDataAndWait: async (threadId, data) => {
     const key = String(threadId);
+    await ensureStoreReady();
     const safeData = preserveBotEnabled(key, data);
     const record = normalizeThreadRecord({ id: key, threadId: key, data: safeData }, key);
     // Critical ON/OFF controls wait for the storage backend to confirm commit.
@@ -141,6 +172,7 @@ module.exports = {
 
   createData: async (threadId, defaultData = {}) => {
     const key = String(threadId);
+    await ensureStoreReady();
     let record;
     if (!hasData("Threads", "threadId", threadId)) {
       const data = {
