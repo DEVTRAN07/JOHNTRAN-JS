@@ -105,6 +105,7 @@ function start(threadId, playerId, playerName = "Người chơi", avatarUrl = ""
     finishedAt: null,
     score: 0,
     streak: 0,
+    bestStreak: 0,
     correct: 0,
     skipped: 0,
     wrong: 0,
@@ -140,6 +141,7 @@ function submit(threadId, playerId, answer, options = {}) {
   session.correct += 1;
   session.score += CORRECT_POINTS;
   session.streak += 1;
+  session.bestStreak = Math.max(session.bestStreak, session.streak);
   const completedAnswer = session.puzzle.answer;
   choosePuzzle(session, options.random || Math.random);
   return {
