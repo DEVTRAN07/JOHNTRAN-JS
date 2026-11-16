@@ -186,3 +186,38 @@ test("failed critical group-setting writes report failure and remain queued for 
   assert.equal(store.retryQueue.has("bot_threads:group-retry"), true);
   assert.equal(store.writeVersions.has("bot_threads:group-retry"), true);
 });
+
+
+test("Supabase row retries respect nextRetryAt and increase backoff after repeated failures", async () => {
+  let online = false;
+  let attempts = 0;
+  const store = makeStore(async (name) => {
+    if (name === "upsert") {
+      attempts++;
+      if (!online) throw new Error("fetch failed");
+      return { error: null };
+    }
+    return { data: [], error: null };
+  });
+
+  store.push("bot_threads", "upsert", { id: "retry-backoff", data: { bot_enabled: true } });
+  await tick();
+  const first = store.retryQueue.get("bot_threads:retry-backoff");
+  assert.equal(first.retryAttempt, 0);
+  assert.ok(first.nextRetryAt > Date.now());
+
+  const firstAttemptCount = attempts;
+  await store.flushRetry({ force: false });
+  assert.equal(attempts, firstAttemptCount, "scheduled retry must not run before nextRetryAt");
+
+  await store.flushRetry();
+  const second = store.retryQueue.get("bot_threads:retry-backoff");
+  assert.equal(second.retryAttempt, 1);
+  assert.ok(second.nextRetryAt - Date.now() > 5000,
+    "second retry must use a longer delay than the initial retry");
+
+  online = true;
+  await store.flushRetry();
+  assert.equal(store.retryQueue.size, 0);
+  assert.equal(store.writeVersions.size, 0);
+});
