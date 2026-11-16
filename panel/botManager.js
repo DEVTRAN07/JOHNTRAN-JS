@@ -110,7 +110,8 @@ function botPaths(name) {
     dir,
     dbFile: path.join(dir, "store.json"),
     accountFile: path.join(dir, "account.json"),
-    qrFile: path.join(dir, "qr.png")
+    qrFile: path.join(dir, "qr.png"),
+    errorLogFile: path.join(dir, "logs", "errors.jsonl")
   };
 }
 
@@ -189,7 +190,7 @@ class BotInstance {
         this.start();
       } catch (error) {
         this.pushLog(`[watchdog] Không thể tự khởi động lại: ${error.message || error}`);
-        logger.log(`Không thể tự khởi động lại bot '${this.name}': ${error.message || error}`, "error");
+        logger.log(`Không thể tự khởi động lại bot '${this.name}': ${error.message || error}`, "error", { source: "bot-manager", bot: this.name });
       }
     }, Math.max(0, delayMs));
     this.restartTimer = timer;
@@ -216,6 +217,7 @@ class BotInstance {
       ...process.env,
       JT_BOT_NAME: this.name,
       JT_DB_FILE: paths.dbFile,
+      JT_ERROR_LOG_FILE: paths.errorLogFile,
       JT_ACCOUNT_FILE: paths.accountFile,
       JT_QRCODE_PATH: paths.qrFile,
       JT_PANEL_CHILD: "1",
@@ -258,7 +260,7 @@ class BotInstance {
     });
     child.once("error", (error) => {
       this.pushLog(`[system] không thể tạo tiến trình: ${error.message || error}`);
-      logger.log(`Không thể tạo tiến trình bot '${this.name}': ${error.message || error}`, "error");
+      logger.log(`Không thể tạo tiến trình bot '${this.name}': ${error.message || error}`, "error", { source: "bot-manager", bot: this.name });
       // ChildProcess emits close after a spawn error; lifecycle cleanup and
       // restart scheduling happen in the single close handler below.
     });
@@ -290,7 +292,7 @@ class BotInstance {
           oldestCrashAt + this.restartWindowMs - Date.now() + 1
         );
         this.pushLog("[watchdog] Bot crash liên tục; tạm nghỉ đến khi cửa sổ giới hạn được làm mới");
-        logger.log(`Watchdog tạm hoãn bot '${this.name}': ${restartCount} lần thoát trong ${Math.round(this.restartWindowMs / 60000)} phút; sẽ tự thử lại sau ${Math.ceil(cooldownMs / 1000)}s`, "error");
+        logger.log(`Watchdog tạm hoãn bot '${this.name}': ${restartCount} lần thoát trong ${Math.round(this.restartWindowMs / 60000)} phút; sẽ tự thử lại sau ${Math.ceil(cooldownMs / 1000)}s`, "error", { source: "bot-watchdog", bot: this.name });
         this.scheduleRestart(cooldownMs, { allowFlapping: true });
       }
     });
