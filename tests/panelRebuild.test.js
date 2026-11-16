@@ -366,6 +366,18 @@ test("production deployment verifier never sends messages or mutates bot configu
 });
 
 
+test("Panel health reports managed child login state instead of the intentionally idle master session", () => {
+  const healthRoute = server.indexOf('if (pathname === "/health" && req.method === "GET")');
+  const healthEnd = server.indexOf('\n      }', healthRoute);
+  const healthSource = server.slice(healthRoute, healthEnd);
+  assert.match(healthSource, /await maybeSyncStore\(\)/);
+  assert.match(healthSource, /manager\.list\(\)\.map\(enrichBot\)/);
+  assert.match(healthSource, /botSummary/);
+  assert.match(healthSource, /const loggedIn = botSummary \? botSummary\.loggedIn > 0/);
+  assert.match(healthSource, /status: manager \? "ok"/);
+  assert.match(server, /loginMessage: loginMessage \|\| null/);
+});
+
 test("Panel awaits and deduplicates Supabase mirror sync before bot and child bridge reads", () => {
   assert.match(server, /let storeSyncPromise = null/);
   assert.match(server, /async function maybeSyncStore\(\{ force = false \} = \{\}\)/);
