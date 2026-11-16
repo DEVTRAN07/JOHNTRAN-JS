@@ -56,8 +56,9 @@ test("JSON status reports a disk mount separately from whether the DB file uses 
   const status = facade.getStatus();
   assert.equal(status.driver, "json");
   assert.equal(status.filePath, dbFile);
-  assert.equal(status.persistentDisk.databaseFileOnDisk, true);
-  // The test directory is not a mounted volume; the app must not call it persistent.
+  // The path is under the configured root, but that directory is not a
+  // separately mounted filesystem in CI. Do not claim the disk is being used.
+  assert.equal(status.persistentDisk.databaseFileOnDisk, null);
   assert.equal(status.persistentDisk.mounted, false);
   assert.equal(status.storage.durability, "unknown");
   assert.equal(status.storage.persistent, false);
