@@ -156,11 +156,12 @@ function startListening(api) {
 
     const dispatchMessageEvents = () => {
       if (isGroupThread && !groupBotEnabled) return;
-      try {
-        handleEvent("message", event, api, event.isSelf === true);
-      } catch (err) {
-        logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn", { source: "listener-event", isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
-      }
+      Promise.resolve(handleEvent("message", event, api, event.isSelf === true))
+        .catch((err) => logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn", {
+          source: "listener-event",
+          isGroup: event?.type === ThreadType.Group,
+          groupId: event?.threadId
+        }));
     };
 
     if (canRunCommand && typeof content === "string" && content.startsWith(prefix)) {
@@ -417,18 +418,18 @@ function startListening(api) {
 
   listener.on("group_event", (event) => {
     if (skipPrivate(event)) return;
-    handleEvent("group_event", event, api, event.isSelf === true);
+    void Promise.resolve(handleEvent("group_event", event, api, event.isSelf === true)).catch((err) => logger.log(`Lỗi handleEvent group_event: ${err.message}`, "warn"));
   });
 
   listener.on("reaction", (event) => {
     if (skipPrivate(event) || event.isSelf) return;
-    handleEvent("reaction", event, api, event.isSelf === true);
+    void Promise.resolve(handleEvent("reaction", event, api, event.isSelf === true)).catch((err) => logger.log(`Lỗi handleEvent reaction: ${err.message}`, "warn"));
   });
 
   listener.on("undo", (event) => {
     // Không xử lý undo của chính bot (tránh anti_undo tự đăng thông báo cho tin bot xoá)
     if (skipPrivate(event) || event.isSelf) return;
-    handleEvent("undo", event, api, event.isSelf === true);
+    void Promise.resolve(handleEvent("undo", event, api, event.isSelf === true)).catch((err) => logger.log(`Lỗi handleEvent undo: ${err.message}`, "warn"));
   });
 
   // ===== Tự kết nối lại: Zalo đóng WS (rớt mạng, đăng nhập lại, trùng kết nối)
