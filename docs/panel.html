@@ -119,6 +119,18 @@
           </select>
         </label>
       </div>
+      <div class="group-bulk-bar">
+        <label class="group-select-visible" for="groupSelectVisible">
+          <input id="groupSelectVisible" type="checkbox">
+          <span>Chọn nhóm đang hiển thị</span>
+        </label>
+        <small id="groupBulkCount">0 nhóm đã chọn</small>
+        <div class="group-bulk-actions">
+          <button type="button" class="button button-secondary" data-group-bulk-action="on" disabled>Bật nhóm đã chọn</button>
+          <button type="button" class="button button-secondary" data-group-bulk-action="off" disabled>Tắt nhóm đã chọn</button>
+          <button type="button" class="button button-ghost" id="groupClearSelection" disabled>Bỏ chọn</button>
+        </div>
+      </div>
       <div class="group-card-grid" id="groupCardGrid" aria-live="polite"><div class="empty-state">Đang tải nhóm từ Zalo…</div></div>
     </div>
     <div class="group-identity-grid" id="groupIdentityGrid" hidden>
