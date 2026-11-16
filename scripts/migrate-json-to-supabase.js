@@ -52,6 +52,19 @@ function toSupabaseRows(tableData, tableName) {
   });
 }
 
+function createMigrationBackup(sourceFile, now = Date.now()) {
+  const resolved = path.resolve(sourceFile);
+  const backupFile = resolved + ".pre-supabase-" + now + ".bak";
+  fs.copyFileSync(resolved, backupFile, fs.constants.COPYFILE_EXCL);
+  const sourceSize = fs.statSync(resolved).size;
+  const backupSize = fs.statSync(backupFile).size;
+  if (sourceSize !== backupSize) {
+    try { fs.unlinkSync(backupFile); } catch {}
+    throw new Error("Backup JSON không khớp dung lượng nguồn; dừng import.");
+  }
+  return backupFile;
+}
+
 function chunk(items, size) {
   const output = [];
   for (let offset = 0; offset < items.length; offset += size) {
@@ -84,7 +97,8 @@ async function migrateJsonToSupabase({
     total: 0,
     planned: 0,
     inserted: 0,
-    skippedExisting: 0
+    skippedExisting: 0,
+    backupFile: null
   };
 
   if (!dryRun && !client) {
@@ -110,6 +124,10 @@ async function migrateJsonToSupabase({
         );
       }
     }
+  }
+
+  if (!dryRun) {
+    summary.backupFile = createMigrationBackup(sourceFile);
   }
 
   for (const [jsonTable, supabaseTable] of Object.entries(TABLE_MAP)) {
@@ -221,4 +239,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { TABLE_MAP, parseJsonDatabase, toSupabaseRows, migrateJsonToSupabase, main };
+module.exports = { TABLE_MAP, parseJsonDatabase, toSupabaseRows, createMigrationBackup, migrateJsonToSupabase, main };
