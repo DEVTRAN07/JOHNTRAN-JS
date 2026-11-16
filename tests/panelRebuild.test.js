@@ -32,9 +32,12 @@ test("bot cards render their status, uptime, port and action controls", () => {
   assert.ok(start >= 0 && end > start, "renderBots function must be present");
   const renderSource = js.slice(start, end);
   const botList = { innerHTML: "" };
+  const panelState = {
+    bots: [{ name: "main", displayName: "JOHNTRAN Zalo", avatar: "https://example.com/bot.png", uid: "zalo-uid", pid: 123, uptimeMs: 60000, restarts: 0, bridgePort: 3901, autoRestart: true, hasQr: false }]
+  };
+  // Deliberately do not expose a global "main" variable: the browser has none.
   const renderBots = vm.runInNewContext("(" + renderSource + ")", {
-    main: true,
-    state: { bots: [{ name: "main", displayName: "JOHNTRAN Zalo", avatar: "https://example.com/bot.png", uid: "zalo-uid", pid: 123, uptimeMs: 60000, restarts: 0, bridgePort: 3901, autoRestart: true, hasQr: false }] },
+    state: panelState,
     $: () => botList,
     botStatus: () => ["Đang chạy", "online"],
     avatarHtml: (url, name) => '<span class="bot-avatar">' + (url ? '<img src="' + url + '" alt="' + name + '">' : name) + '</span>',
@@ -49,6 +52,11 @@ test("bot cards render their status, uptime, port and action controls", () => {
   }
   assert.ok(!botList.innerHTML.includes("ID main"), "the internal main ID should not replace the Zalo identity");
   assert.ok(!botList.innerHTML.includes("MASTER"), "the account card should be labelled by its Zalo identity");
+  assert.ok(!botList.innerHTML.includes('data-action="bot-remove"'), "the primary bot must not expose a remove action");
+
+  panelState.bots = [{ name: "worker-1", displayName: "Worker One", pid: 456 }];
+  renderBots();
+  assert.ok(botList.innerHTML.includes('data-action="bot-remove"'), "child bots should keep their remove action");
 });
 
 test("new panel shell has all six views and their required mount points", () => {
