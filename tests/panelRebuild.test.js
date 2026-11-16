@@ -145,7 +145,7 @@ test("idle group ON state survives hot-cache expiry and is warmed from persisted
 
   const gid = "durable-group-cache-test";
   const record = { threadId: gid, data: { bot_enabled: true } };
-  cache.threadCache.set(gid, record, 0);
+  cache.threadCache.set(gid, record, -1);
   cache.durableThreadCache.set(gid, record);
   try {
     assert.equal(cache.threadCache.get(gid), undefined, "ordinary hot cache should expire");
