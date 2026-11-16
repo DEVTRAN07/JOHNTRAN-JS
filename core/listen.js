@@ -174,6 +174,29 @@ function startListening(api) {
       return;
     }
 
+    // Plain-text answers for nt go / nt gc are consumed here, directly in
+    // the live listener path, before general message events can reply to them.
+    // The game handler returns true only for a player in an active session.
+    if (!event.isSelf && !event?.isSelf) {
+      try {
+        const noituCommand = require("../plugins/commands/noitu");
+        if (typeof noituCommand?.handleEvent === "function") {
+          const consumed = await noituCommand.handleEvent({
+            api,
+            event,
+            eventType: "message",
+            isSelf: false
+          });
+          if (consumed === true) return;
+        }
+      } catch (error) {
+        logger.log(`Lỗi xử lý tin nhắn game Nối Từ: ${error?.message || error}`, "error", {
+          source: "listener-active-game",
+          groupId: event?.threadId
+        });
+      }
+    }
+
     dispatchMessageEvents();
 
     // ===== Điều hướng bằng từ TRẦN (không cần prefix): next / prev / out / số =====
