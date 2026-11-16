@@ -55,6 +55,9 @@ class SupabaseStore {
     // Keep only the latest failed mutation per table/id, not every retry copy.
     this.retryQueue = new Map();
     this.writeVersions = new Map();
+    // Keep the last local mutation version after its network write finishes.
+    // A SELECT that started before that mutation can still return afterwards.
+    this.mutationVersions = new Map();
     this.writeChains = new Map();
     this.writeSequence = 0;
     this.retryFlush = null;
@@ -161,6 +164,14 @@ class SupabaseStore {
     this.syncing = (async () => {
       let anySuccess = false, firstError = null, firstClassified = null;
       for (const [storeTable, dbTable] of Object.entries(TABLE_MAP)) {
+        // Capture row mutations at the exact start of this table snapshot.
+        // A request already in flight can return an older value after a newer
+        // upsert has committed, so protecting only currently pending writes
+        // is not enough.
+        const snapshotVersion = this.writeSequence;
+        const pendingAtSnapshotStart = new Set(
+          [...this.writeVersions.keys()].filter(key => key.startsWith(`${dbTable}:`))
+        );
         let data, error;
         try { const res = await this.executePrepared("selectMirror", dbTable); data = res.data; error = res.error; } catch (e) { error = e; }
         if (error) {
@@ -189,16 +200,35 @@ class SupabaseStore {
         const next = {};
         for (const row of data || []) next[String(row.id)] = { ...row, data: row.data || {} };
 
-        // A remote snapshot can be older than a local write still in flight
-        // or waiting in retryQueue. Never let periodic sync roll that setting
-        // back in the in-memory mirror.
+        // Preserve local rows touched while this SELECT was in flight, rows
+        // whose writes were pending when it began, and writes still pending now.
+        // This covers successful writes too: push() removes writeVersions on
+        // acknowledgement, but an older SELECT may still complete afterwards.
         const pendingPrefix = `${dbTable}:`;
+        for (const [writeKey, version] of this.mutationVersions) {
+          if (!writeKey.startsWith(pendingPrefix)) continue;
+          const pendingAtStart = pendingAtSnapshotStart.has(writeKey);
+          const changedAfterSnapshotStarted = version > snapshotVersion;
+          const pendingNow = this.writeVersions.has(writeKey);
+          if (pendingAtStart || changedAfterSnapshotStarted || pendingNow) {
+            const id = writeKey.slice(pendingPrefix.length);
+            const localRecord = this.mirror[storeTable]?.[id];
+            if (localRecord) next[id] = localRecord;
+            else delete next[id]; // Preserve a local delete as well.
+          } else {
+            // This snapshot began after the last mutation had completed, so
+            // the remote result is now authoritative for this row.
+            this.mutationVersions.delete(writeKey);
+          }
+        }
+        // Backward-compatible safety for pending rows introduced before
+        // mutationVersions existed (and tests/adapters that seed writeVersions).
         for (const [writeKey] of this.writeVersions) {
           if (!writeKey.startsWith(pendingPrefix)) continue;
           const id = writeKey.slice(pendingPrefix.length);
           const localRecord = this.mirror[storeTable]?.[id];
           if (localRecord) next[id] = localRecord;
-          else delete next[id]; // Preserve a pending local delete as well.
+          else delete next[id];
         }
         this.mirror[storeTable] = next;
       }
@@ -268,6 +298,7 @@ class SupabaseStore {
     const key = `${dbTable}:${id}`;
     const version = ++this.writeSequence;
     this.writeVersions.set(key, version);
+    this.mutationVersions.set(key, version);
     // A newer mutation supersedes an older failed retry for this record.
     this.retryQueue.delete(key);
 
