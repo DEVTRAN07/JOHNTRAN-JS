@@ -966,6 +966,23 @@ async function loadSystem() {
     const tables = cache.tables || {};
     const entries = Object.entries(tables);
     $("cacheDetails").innerHTML = entries.length ? entries.map(([name,item])=>'<div class="cache-row"><span>'+$escape(name)+'</span><b>'+number(item.hits)+' hit / '+number(item.misses)+' miss</b></div>').join("") : '<div class="cache-row"><span>Total hits</span><b>'+number(cache.total)+'</b></div>';
+
+    const executions = new Map((m.commandExecutionLatency || []).map(item => [item.command, item]));
+    const latencyRows = Array.isArray(m.commandLatency) ? m.commandLatency : [];
+    const latencySummary = m.latency || {};
+    const latencyHeader = '<div class="detail-row"><span>Tổng mẫu</span><b>'+number(latencySummary.count || 0)+'</b></div>' +
+      '<div class="detail-row"><span>Trung bình toàn bot</span><b>'+Number(latencySummary.avgMs || 0).toFixed(1)+' ms</b></div>' +
+      '<div class="detail-row"><span>P95 toàn bot</span><b>'+Number(latencySummary.p95Ms || 0).toFixed(1)+' ms</b></div>';
+    const latencyDetails = latencyRows.map(item => {
+      const execution = executions.get(item.command);
+      const p95 = Number(item.p95Ms) || 0;
+      const label = p95 >= 1000 ? "CẦN TỐI ƯU" : p95 >= 400 ? "THEO DÕI" : "ỔN";
+      const handler = execution
+        ? ' · Handler P95 '+Number(execution.p95Ms || 0).toFixed(1)+' ms'
+        : '';
+      return '<div class="detail-row"><span>/'+$escape(item.command)+' · '+number(item.count)+' mẫu</span><b>P95 '+p95.toFixed(1)+' ms · TB '+Number(item.avgMs || 0).toFixed(1)+' ms · '+label+handler+'</b></div>';
+    }).join("");
+    $("commandLatencyDetails").innerHTML = latencyHeader + (latencyDetails || '<div class="empty-state">Chưa có mẫu lệnh. Số liệu sẽ xuất hiện sau khi bot nhận lệnh thực tế.</div>');
     $("auditLog").textContent = (m.audit || []).join("\n") || "(chưa có hành động admin)";
   } catch (error) {
     $("systemDetails").innerHTML = '<div class="empty-state">'+$escape(error.message)+'</div>';
