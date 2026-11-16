@@ -837,16 +837,62 @@ function renderProfile(name) {
 
 async function loadSystem() {
   try {
-    const [m, botData] = await Promise.all([api("/api/metrics"),api("/api/bots")]);
+    const [m, botData, database] = await Promise.all([
+      api("/api/metrics"), api("/api/bots"), api("/api/database/health")
+    ]);
     state.bots = Array.isArray(botData.bots) ? botData.bots : state.bots;
     const values = [["Bot con",Math.max(0,state.bots.length-1)],["Tổng bot",state.bots.length],["Node",m.node],["Uptime host",fmtUptime(m.uptimeMs)],["RAM host",number(m.memoryMb)+" MB"],["Lệnh hôm nay",m.today?.commands ?? 0],["Lỗi hôm nay",m.today?.errors ?? 0],["Tìm nhạc",m.today?.musicSearch ?? 0],["Tải nhạc",m.today?.musicDownload ?? 0]];
     $("systemDetails").innerHTML = values.map(([key,value])=>'<div class="detail-row"><span>'+$escape(key)+'</span><b>'+$escape(value ?? "—")+'</b></div>').join("");
 
-    const db = m.supabase;
-    const dbRows = db ? [
-      ["Driver","Supabase"],["Trạng thái",db.ok ? "Đã đồng bộ" : "Chưa đồng bộ"],["Lần đồng bộ",fmtDate(db.lastSyncAt)],
-      ["Lỗi liên tiếp",db.consecutiveFailures ?? 0],["Phân loại lỗi",db.classified || "—"],["Lỗi gần nhất",db.syncError || "Không có"]
-    ] : [["Driver","JSON / local"],["Trạng thái","Đang dùng store cấu hình cục bộ"],["Ghi chú","Dữ liệu trên host ephemeral có thể mất khi redeploy"]];
+    const db = database || m.database || m.supabase || {};
+    const probe = db.probe || {};
+    let dbRows;
+    if (db.driver === "supabase") {
+      const threads = probe.tables?.bot_threads;
+      dbRows = [
+        ["Driver","Supabase"],
+        ["Trạng thái",db.ok ? "Kết nối / đồng bộ ổn định" : "CẦN KIỂM TRA"],
+        ["Bảng bot_threads",threads ? (threads.ok ? "Hoạt động · "+(threads.latencyMs ?? "—")+" ms" : "Lỗi: "+(threads.error || "không xác định")) : "Chưa có kết quả probe"],
+        ["Kiểm tra gần nhất",fmtDate(probe.checkedAt || db.lastSyncAt)],
+        ["Đồng bộ gần nhất",fmtDate(db.lastSyncAt)],
+        ["Lỗi liên tiếp",db.consecutiveFailures ?? 0],
+        ["Phân loại lỗi",db.classified || "—"],
+        ["Lỗi gần nhất",db.syncError || threads?.error || "Không có"],
+        ["Độ bền dữ liệu","Lưu trên database Supabase"]
+      ];
+    } else if (db.driver === "json") {
+      const disk = db.persistentDisk || {};
+      const diskLabels = {
+        not_applicable:"Không áp dụng (không chạy trên Render)",
+        unknown:"Chưa xác minh — chưa cấu hình JT_PERSISTENT_DIR",
+        not_mounted:"Không phát hiện disk tại mount path",
+        mounted_but_unused:"Đã gắn disk nhưng file DB nằm ngoài disk",
+        mounted_and_used:"Đã gắn và file DB đang sử dụng disk"
+      };
+      const durabilityLabels = {
+        local:"Filesystem máy chủ hiện tại",
+        unknown:"Chưa xác minh",
+        ephemeral:"Filesystem tạm — có nguy cơ mất dữ liệu",
+        disk_not_used:"Có disk nhưng database chưa dùng",
+        persistent:"Persistent Disk đang được sử dụng"
+      };
+      const probeFile = probe.fileExists === true;
+      dbRows = [
+        ["Driver","JSON"],
+        ["Trạng thái",db.ok ? "File store sẵn sàng" : "CẦN KIỂM TRA — "+(db.lastFlushError || "lỗi đọc/ghi")],
+        ["File database",db.filePath || "—"],
+        ["File tồn tại",db.file?.exists || probeFile ? "Có" : "Chưa được tạo"],
+        ["Dung lượng",number(db.file?.sizeBytes)+" bytes"],
+        ["Ghi / sửa gần nhất",fmtDate(db.lastFlushAt || db.file?.modifiedAt)],
+        ["Persistent Disk",diskLabels[disk.status] || "Chưa xác minh"],
+        ["Mount path",disk.mountPath || "Chưa cấu hình"],
+        ["File DB nằm trong disk",disk.databaseFileOnDisk === true ? "Có" : disk.databaseFileOnDisk === false ? "Không" : "Chưa rõ"],
+        ["Độ bền dữ liệu",durabilityLabels[db.storage?.durability] || "Chưa xác minh"],
+        ["Lỗi đọc/ghi",db.lastFlushError || "Không có"]
+      ];
+    } else {
+      dbRows = [["Driver","Chưa xác định"],["Trạng thái",db.error || "Không đọc được cấu hình database"]];
+    }
     $("databaseDetails").innerHTML = dbRows.map(([key,value])=>'<div class="detail-row"><span>'+$escape(key)+'</span><b>'+$escape(value ?? "—")+'</b></div>').join("");
 
     $("systemBotList").innerHTML = state.bots.length ? state.bots.map(bot => {
