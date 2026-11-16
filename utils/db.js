@@ -14,7 +14,8 @@ function resolveDatabaseConfig(env = process.env) {
   const url = String(env.SUPABASE_URL || "").trim();
   // Only the service-role key may be used by this private server-side bot.
   // Anon/publishable keys are intentionally not accepted as a database admin key.
-  const serviceKey = String(env.SUPABASE_SERVICE_KEY || "").trim();
+  const serviceKey = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_KEY || "").trim();
+  const keyName = env.SUPABASE_SECRET_KEY ? "SUPABASE_SECRET_KEY" : "SUPABASE_SERVICE_KEY";
   const disabled = String(env.SUPABASE_DISABLE || "").trim().toLowerCase() === "true";
 
   if (disabled && requestedDriver === "supabase") {
@@ -29,11 +30,11 @@ function resolveDatabaseConfig(env = process.env) {
   if (explicitlySupabase || anySupabaseValue) {
     if (!url || !serviceKey) {
       throw new Error(
-        "Thiếu cấu hình Supabase: cần cả SUPABASE_URL và SUPABASE_SERVICE_KEY. " +
-        "Không dùng SUPABASE_ANON_KEY/publishable key cho bot."
+        "Thiếu cấu hình Supabase: cần SUPABASE_URL và SUPABASE_SECRET_KEY " +
+        "(hoặc SUPABASE_SERVICE_KEY cũ). Không dùng anon/publishable key cho bot."
       );
     }
-    return { driver: "supabase", url, serviceKey, forced: explicitlySupabase };
+    return { driver: "supabase", url, serviceKey, keyName, forced: explicitlySupabase };
   }
 
   return { driver: "json", url: "", serviceKey: "", forced: false };
