@@ -16,6 +16,7 @@ const controllerThreads = fs.readFileSync(path.join(root, "core/controller/contr
 const databaseAdapter = fs.readFileSync(path.join(root, "core/runtime/adapters/database.js"), "utf8");
 const databaseFacade = fs.readFileSync(path.join(root, "utils/db.js"), "utf8");
 const supabaseStore = fs.readFileSync(path.join(root, "core/storage/supabase.js"), "utf8");
+const panelBridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
 
 test("rebuilt panel JavaScript parses without browser-side dependencies", () => {
   assert.doesNotThrow(() => new vm.Script(js, { filename: "docs/panel.js" }));
@@ -93,6 +94,20 @@ test("bulk group actions are explicit, confirmed and rate-limited", () => {
   assert.match(js, /groupBulkFlight/);
   assert.match(v4css, /group-bulk-bar/);
   assert.match(v4css, /group-card-select/);
+});
+
+test("unavailable group storage is shown as UNKNOWN, never falsely as OFF", () => {
+  assert.match(panelBridge, /botEnabled: null/);
+  assert.match(panelBridge, /await ensureThreadStoreReady\\(\\)/);
+  assert.match(js, /CHƯA XÁC MINH/);
+  assert.match(js, /typeof group\\.botEnabled !== "boolean"/);
+});
+
+test("existing group settings keep the fast write path while explicit bot toggles await durable storage", () => {
+  assert.match(controllerThreads, /setData: \\(threadId, data\\) =>/);
+  assert.match(controllerThreads, /setDataAndWait: async \\(threadId, data\\) =>/);
+  assert.match(panelBridge, /Threads\\.setDataAndWait\\(gid, data\\)/);
+  assert.match(fs.readFileSync(path.join(root, "plugins/commands/bot.js"), "utf8"), /setDataAndWait \\|\\| Threads\\.setData/);
 });
 
 test("dashboard keeps using the existing protected panel API and bridge routes", () => {
