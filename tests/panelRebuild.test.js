@@ -375,5 +375,9 @@ test("Render CI waits for live deployment state and verifies the deployed servic
   assert.match(workflow, /\[\[ "\$deploy_status" == "live" \]\]/);
   assert.match(workflow, /serviceDetails\.url/);
   assert.match(workflow, /\$service_url\/health/);
+  assert.match(workflow, /services\/\$\{service_id\}\/env-vars\?limit=100/);
+  assert.match(workflow, /JT_PERSISTENT_DIR/);
+  assert.match(workflow, /linked Environment Group variables/);
+  assert.match(workflow, /loggedIn=false/);
   assert.match(workflow, /build_failed\|pre_deploy_failed\|update_failed\|canceled/);
 });
