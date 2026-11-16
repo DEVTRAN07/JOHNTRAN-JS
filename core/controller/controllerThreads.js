@@ -3,9 +3,13 @@ const logger = require("../../utils/logger");
 const { threadCache } = require("../cache");
 
 function normalizeThreadRecord(record, threadId) {
-  if (!record) return { id: String(threadId), threadId: String(threadId), data: {} };
-  const key = String(record.threadId || record.id || threadId);
-  return { ...record, id: record.id || key, threadId: key, data: record.data || {} };
+  const key = String(record?.threadId || record?.id || threadId);
+  const data = {
+    ...(record?.data || {}),
+    // Missing or malformed legacy flags are OFF; only explicit true enables a group.
+    bot_enabled: record?.data?.bot_enabled === true
+  };
+  return { ...(record || {}), id: record?.id || key, threadId: key, data };
 }
 
 module.exports = {
@@ -39,6 +43,7 @@ module.exports = {
           admin_only: false,
           support_only: false,
           box_only: false,
+          bot_enabled: false,
           prefix: global.config?.prefix || "/"
         };
         saveData("Threads", "threadId", key, data);
@@ -63,6 +68,7 @@ module.exports = {
         admin_only: false,
         support_only: false,
         box_only: false,
+        bot_enabled: false,
         prefix: global.config.prefix
       });
     }
@@ -93,7 +99,10 @@ module.exports = {
     const key = String(threadId);
     let record;
     if (!hasData("Threads", "threadId", threadId)) {
-      const data = defaultData || {};
+      const data = {
+        ...(defaultData || {}),
+        bot_enabled: defaultData?.bot_enabled === true
+      };
       await saveData("Threads", "threadId", threadId, data);
       record = normalizeThreadRecord({ id: key, threadId: key, data }, key);
     } else {
