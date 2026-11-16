@@ -117,7 +117,10 @@ async function api(path, options = {}) {
   const type = response.headers.get("content-type") || "";
   const body = type.includes("application/json") ? await response.json().catch(() => ({})) : await response.text();
   if (!response.ok) {
-    const message = typeof body === "object" ? (body.error || "HTTP " + response.status) : String(body || "HTTP " + response.status);
+    let message = typeof body === "object" ? (body.error || "HTTP " + response.status) : String(body || "HTTP " + response.status);
+    if (response.status === 401) {
+      message = "Panel Token chưa đúng hoặc chưa được gửi. Mở Cấu hình và nhập đúng token đang đặt trong Render → Environment (JT_PANEL__TOKEN hoặc JT_PANEL_TOKEN).";
+    }
     throw new Error(message);
   }
   return body;
