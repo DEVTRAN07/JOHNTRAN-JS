@@ -78,7 +78,11 @@ function inspectPersistentDisk({ render = Boolean(process.env.RENDER || process.
     status,
     rawStatus,
     mounted: rawStatus === "verified-mount" ? true : rawStatus === "mount-not-verified" ? false : null,
-    databaseFileOnDisk: mountPath ? rawStatus !== "database-outside-disk" : null,
+    databaseFileOnDisk: rawStatus === "verified-mount"
+      ? true
+      : rawStatus === "database-outside-disk"
+        ? false
+        : null,
     mountPath: report.configuredRoot || report.mountPoint || null,
     fsType: report.fsType || null,
     message: report.message
