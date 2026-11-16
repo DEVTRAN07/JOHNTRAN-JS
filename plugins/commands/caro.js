@@ -109,21 +109,22 @@ function turnLine(session) {
   const player = session.players[session.turnSymbol];
   if (!player) return "";
   const name = player.kind === "bot" ? "🤖 Bot AI" : player.name;
-  return \`🎯 Lượt \${session.turnSymbol}: \${name}\\n⏳ Mỗi lượt có 60 giây. Nhập số ô từ 001–256 để đánh.\`;
+  return "🎯 Lượt " + session.turnSymbol + ": " + name +
+    "\n⏳ Mỗi lượt có 60 giây. Nhập số ô từ 001–256 để đánh.";
 }
 
 function boardCaption(session, heading = "⚔️ BÀN CỜ CARO 16×16", extraLines = []) {
   return [
     heading,
-    \`Chế độ: \${session.mode === "solo" ? "Solo đấu AI" : "PvP"} • Nước đi: \${session.moves}\`,
+    "Chế độ: " + (session.mode === "solo" ? "Solo đấu AI" : "PvP") + " • Nước đi: " + session.moves,
     turnLine(session),
     "💡 Ô trống hiện số 001–256; ví dụ nhập 125.",
     ...extraLines
-  ].filter(Boolean).join("\\n");
+  ].filter(Boolean).join("\n");
 }
 
 function boardMessage(session, heading = "⚔️ BÀN CỜ CARO 16×16") {
-  return [boardCaption(session, heading), renderBoard(session.board)].filter(Boolean).join("\\n");
+  return [boardCaption(session, heading), renderBoard(session.board)].filter(Boolean).join("\n");
 }
 
 async function sendBoard(api, event, session, heading, extraLines = []) {
@@ -138,7 +139,7 @@ async function sendBoard(api, event, session, heading, extraLines = []) {
     }, event.threadId, event.type);
   } catch (error) {
     console.error("[CARO_CANVAS]", error?.stack || error);
-    return send(api, event, [caption, renderBoard(session.board)].filter(Boolean).join("\\n"));
+    return send(api, event, [caption, renderBoard(session.board)].filter(Boolean).join("\n"));
   } finally {
     if (imagePath) {
       const timer = setTimeout(() => {
@@ -318,7 +319,7 @@ async function joinRoom({ api, event, Users, Threads }) {
 
   const session = result.session;
   await sendBoard(api, event, session, "⚔️ BẮT ĐẦU VÁN CARO PvP", [
-    \`✅ \${result.player.name} đã vào phòng và cầm quân \${result.player === session.players.X ? "X" : "O"}.\`,
+    `✅ ${result.player.name} đã vào phòng và cầm quân ${result.player === session.players.X ? "X" : "O"}.`,
     "X luôn đi trước, O đi sau."
   ]);
   scheduleTurn(session, { api, event, Users });
@@ -606,8 +607,8 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
       await send(api, event, "⌛ Phòng Caro đã tự hủy vì 5 phút không có người tham gia.");
     });
     await sendBoard(api, event, session, "⚔️ ĐÃ TẠO PHÒNG CARO PvP", [
-      \`👤 \${session.players[symbol].name}: quân \${symbol}\`,
-      \`🕹️ Đang chờ người chơi thứ hai (quân \${guestSymbol}).\`,
+      `👤 ${session.players[symbol].name}: quân ${symbol}`,
+      `🕹️ Đang chờ người chơi thứ hai (quân ${guestSymbol}).`,
       "👉 Người khác gõ join caro hoặc !caro join để tham gia.",
       "⏳ Phòng tự hủy sau 5 phút nếu không có người tham gia."
     ]);
