@@ -191,52 +191,133 @@ async function startGhepChu({ api, event }) {
   );
 }
 
-async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
-  if ((eventType && eventType !== "message") || isSelf || event?.isSelf) return;
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
-  if (!threadId || !uid) return;
-  const session = ghepChu.get(threadId);
-  if (!session || session.status !== "active") return;
-  if (session.playerId !== uid) return;
-
+function getPlainMessage(event) {
   const raw = event?.data?.content;
-  const content = typeof raw === "string"
+  return typeof raw === "string"
     ? raw.trim()
     : typeof raw?.title === "string" ? raw.title.trim() : "";
-  if (!content) return;
+}
+
+async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
+  if ((eventType && eventType !== "message") || isSelf || event?.isSelf) return false;
+  const threadId = String(event?.threadId || "");
+  const uid = String(event?.data?.uidFrom || "");
+  if (!threadId || !uid) return false;
+  const session = ghepChu.get(threadId);
+  if (!session || session.status !== "active" || session.playerId !== uid) return false;
+
+  const content = getPlainMessage(event);
+  if (!content) return false;
   const prefix = String(global.config?.prefix || "/");
-  if (content.startsWith(prefix)) return;
+  // Prefixed input remains available to the normal command pipeline.
+  if (content.startsWith(prefix)) return false;
 
   const action = content.toLocaleLowerCase("vi-VN");
   if (["stop", "cancel", "thua", "lose"].includes(action)) {
     const result = ghepChu.stop(threadId, uid);
-    if (!result.ok) return;
-    return finishGhepChu(api, event, result.session, "🛑 Bạn đã dừng ván Ghép Chữ.");
+    if (!result.ok) return true;
+    await finishGhepChu(api, event, result.session, "🛑 Bạn đã dừng ván Ghép Chữ.");
+    return true;
   }
 
   if (action === "skip") {
     const result = await ghepChu.skip(threadId, uid);
-    if (!result.ok && result.code !== "TIME_UP") return;
+    if (!result.ok && result.code !== "TIME_UP") return true;
     if (result.code === "TIME_UP") {
-      return finishGhepChu(api, event, result.session, `⌛ Hết giờ sau khi bỏ qua. Đáp án vừa rồi: ${result.skippedAnswer || ""}`);
+      await finishGhepChu(api, event, result.session, `⌛ Hết giờ sau khi bỏ qua. Đáp án vừa rồi: ${result.skippedAnswer || ""}`);
+      return true;
     }
     scheduleGhepChuExpiry(api, event, threadId);
-    return sendGhepChuCard(api, event, result.session, `⏭️ Đã bỏ qua: ${result.skippedAnswer}. Trừ 5 giây!`);
+    await sendGhepChuCard(api, event, result.session, `⏭️ Đã bỏ qua: ${result.skippedAnswer}. Trừ 5 giây!`);
+    return true;
   }
 
   const result = await ghepChu.submit(threadId, uid, content);
   if (result.code === "TIME_UP") {
-    return finishGhepChu(api, event, result.session, "⌛ Hết giờ! Đây là kết quả ván Ghép Chữ.");
+    await finishGhepChu(api, event, result.session, "⌛ Hết giờ! Đây là kết quả ván Ghép Chữ.");
+    return true;
   }
   if (!result.ok) {
     if (result.code === "WRONG") {
-      return send(api, event, "❌ Chưa đúng rồi, thử sắp xếp lại nhé! 💡 Đọc kỹ mẹo chơi nha.");
+      await send(api, event, "❌ Chưa đúng rồi, thử sắp xếp lại nhé!");
     }
-    return;
+    return true;
   }
+
   scheduleGhepChuExpiry(api, event, threadId);
-  return sendGhepChuCard(api, event, result.session, `✅ Chính xác: ${result.completedAnswer}! +${result.points} điểm.`);
+  await sendGhepChuCard(api, event, result.session, `✅ Chính xác: ${result.completedAnswer}! +${result.points} điểm.`);
+  return true;
+}
+
+async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
+  if ((eventType && eventType !== "message") || isSelf || event?.isSelf) return false;
+  const threadId = String(event?.threadId || "");
+  const uid = String(event?.data?.uidFrom || "");
+  if (!threadId || !uid) return false;
+  const session = game.get(threadId);
+  // Only enrolled players are captured; everyone else keeps normal chat.
+  if (!session || session.status !== "active" || !session.players?.has(uid)) return false;
+
+  const content = getPlainMessage(event);
+  if (!content) return false;
+  const prefix = String(global.config?.prefix || "/");
+  if (content.startsWith(prefix)) return false;
+
+  const action = content.toLocaleLowerCase("vi-VN");
+  if (["stop", "cancel", "thua", "lose"].includes(action)) {
+    if (session.ownerId !== uid && !isAdmin(uid)) {
+      await send(api, event, "⛔ Chỉ chủ ván hoặc Admin mới được dừng game.");
+      return true;
+    }
+    game.stop(threadId);
+    await send(api, event, "🛑 Đã dừng game Nối Từ. Mọi tin nhắn sau đó sẽ được xử lý bình thường.");
+    return true;
+  }
+
+  if (["leave", "out", "quit"].includes(action)) {
+    const result = game.leave(threadId, uid);
+    if (!result.ok) return true;
+    await send(api, event, result.empty
+      ? "👋 Ván Nối Từ đã kết thúc vì không còn người chơi."
+      : "👋 Bạn đã rời ván. " + currentPlayerLine(game.get(threadId)));
+    return true;
+  }
+
+  if (action === "pass" || action === "skip") {
+    const result = game.pass(threadId, uid);
+    if (!result.ok) {
+      await send(api, event, result.code === "NOT_TURN" ? "⏳ Chưa đến lượt bạn." : "⚠️ Không thể bỏ lượt.");
+      return true;
+    }
+    await send(api, event, "⏭️ Đã bỏ lượt. " + currentPlayerLine(game.get(threadId)));
+    return true;
+  }
+
+  const result = game.play(threadId, uid, content);
+  if (!result.ok) {
+    if (result.code === "NOT_TURN") {
+      const current = game.get(threadId)?.players?.get(result.currentUid);
+      await send(api, event, "⏳ Đang đến lượt " + (current?.name || "người chơi khác") + ". Chờ chút nhé!");
+    } else if (result.code === "WRONG_LINK") {
+      const needed = session.currentPhrase?.display?.trim().split(/\\s+/).at(-1) || result.expected;
+      await send(api, event, "❌ Chưa nối đúng. Cụm từ cần bắt đầu bằng: " + needed + ".");
+    } else if (result.code === "DUPLICATE") {
+      await send(api, event, "🔁 Cụm từ này đã được dùng rồi. Nghĩ cụm khác nhé!");
+    } else if (result.code === "INVALID_PHRASE") {
+      await send(api, event, "💬 Hãy trả lời bằng một cụm từ tiếng Việt gồm 2–4 tiếng.");
+    }
+    return true;
+  }
+
+  const nextName = result.nextPlayer?.name || "người chơi tiếp theo";
+  await send(api, event, "✅ " + result.phrase.display + " · +1 điểm. Đến lượt " + nextName + "!");
+  return true;
+}
+
+async function handleActiveGameText(context) {
+  if (await handleGhepChuText(context)) return true;
+  if (await handleNoiTuText(context)) return true;
+  return false;
 }
 
 async function leaderboard(Users) {
@@ -315,5 +396,5 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
   return sendGuide(api, event, prefix);
 };
-module.exports.handleEvent = handleGhepChuText;
-module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, handleGhepChuText };
+module.exports.handleEvent = handleActiveGameText;
+module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage };
