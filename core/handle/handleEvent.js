@@ -55,7 +55,7 @@ function handleEvent(eventType, eventData, api, isSelf = false) {
     },
     onError(error, kind, name) {
       const label = kind === "event" ? "event" : "handleEvent trong command";
-      logger.log(`Lỗi khi xử lý ${label} ${name}: ${error?.message || error}`, "error");
+      logger.log(`Lỗi khi xử lý ${label} ${name}: ${error?.message || error}`, "error", { source: kind === "event" ? "event" : "command-event", eventName: name, eventType, isGroup: eventData?.type === ThreadType.Group || eventType === "group_event", groupId: eventData?.threadId });
     }
   });
 }
