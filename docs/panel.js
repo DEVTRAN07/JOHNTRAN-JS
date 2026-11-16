@@ -73,6 +73,14 @@ function botStatus(bot) {
   const key = String(bot?.loginState || bot?.status || "offline");
   return STATUS[key] || [key, "offline"];
 }
+function getBotDisplayName(nameOrBot) {
+  const bot = nameOrBot && typeof nameOrBot === "object"
+    ? nameOrBot
+    : (state.bots || []).find(item => item.name === String(nameOrBot || ""));
+  const key = typeof nameOrBot === "string" ? nameOrBot : bot?.name;
+  const profile = state.botStats?.[key]?.profile || {};
+  return String(bot?.displayName || profile.displayName || profile.zaloName || "Tài khoản Zalo");
+}
 function toast(message, kind = "") {
   const node = $("toast");
   if (!node) return;
@@ -190,13 +198,14 @@ function renderBotSelectors() {
   if (!select) return;
   const previous = select.value;
   const options = (state.bots || []).map(bot => {
-    const label = bot.displayName || bot.name || "Bot Zalo";
-    return '<option value="' + $escape(bot.name) + '">' + $escape(label) + '</option>';
+    return '<option value="' + $escape(bot.name) + '">' + $escape(getBotDisplayName(bot)) + '</option>';
   }).join("");
   select.innerHTML = options || '<option value="">Chưa có bot</option>';
   select.value = (state.bots || []).some(bot => bot.name === previous)
     ? previous
     : (state.bots?.[0]?.name || "");
+  const activeBot = (state.bots || []).find(bot => bot.name === select.value);
+  if ($("chatTypingState")) $("chatTypingState").textContent = getBotDisplayName(activeBot || select.value).toLocaleUpperCase("vi");
 }
 function renderBots() {
   if (!state.bots.length) {
@@ -385,8 +394,8 @@ function renderCommandHealth(data) {
 }
 function renderGroupIdentities(botProfile, group) {
   const grid = $("groupIdentityGrid");
-  const botName = botProfile?.displayName || botProfile?.zaloName || botProfile?.name || "Tài khoản bot";
-  const botUid = botProfile?.uid || botProfile?.name || "";
+  const botName = botProfile?.displayName || botProfile?.zaloName || "Tài khoản Zalo";
+  const botUid = botProfile?.uid || "";
   $("groupBotIdentity").innerHTML =
     avatarHtml(botProfile?.avatar || "", botName, "avatar-large") +
     '<div><small>BOT ZALO</small><b>' + $escape(botName) + '</b><span>' + $escape(botUid) + '</span></div>';
@@ -668,7 +677,7 @@ async function loadGroupOptions() {
     (bots.find(bot => bot.loginState === "logged_in")?.name || botNames[0] || "");
   state.selectedGroupBot = selectedBot;
   botSelect.innerHTML = botNames.length ? bots.map(bot =>
-    '<option value="' + $escape(bot.name) + '">' + $escape(bot.displayName || bot.name) + (bot.loginState === "logged_in" ? " · online" : " · " + $escape(bot.loginState || bot.status || "offline")) + '</option>'
+    '<option value="' + $escape(bot.name) + '">' + $escape(getBotDisplayName(bot)) + (bot.loginState === "logged_in" ? " · online" : " · " + $escape(bot.loginState || bot.status || "offline")) + '</option>'
   ).join("") : '<option value="">Chưa có bot</option>';
   botSelect.value = selectedBot;
   if (!selectedBot) {
@@ -793,8 +802,8 @@ async function loadProfiles() {
     const selected = names.includes(state.selectedProfile) ? state.selectedProfile :
       (names.includes("main") ? "main" : names[0] || "");
     state.selectedProfile = selected;
-    const botLabels = new Map((state.bots || []).map(bot => [bot.name, bot.displayName || bot.name]));
-    $("profileBotSelect").innerHTML = names.length ? names.map(name=>'<option value="'+$escape(name)+'">'+$escape(botLabels.get(name) || state.botStats[name]?.profile?.displayName || name)+'</option>').join("") : '<option value="">Chưa có bot</option>';
+    const botLabels = new Map((state.bots || []).map(bot => [bot.name, getBotDisplayName(bot)]));
+    $("profileBotSelect").innerHTML = names.length ? names.map(name=>'<option value="'+$escape(name)+'">'+$escape(botLabels.get(name) || getBotDisplayName(name))+'</option>').join("") : '<option value="">Chưa có bot</option>';
     $("profileBotSelect").value = selected;
     await loadProfileData(selected);
   } catch (error) {
@@ -804,7 +813,7 @@ async function loadProfiles() {
 async function loadProfileData(name) {
   if (!name) return renderProfile("");
   state.selectedProfile = name;
-  $("profileDetails").innerHTML = '<div class="empty-state">Đang lấy hồ sơ và danh bạ từ bot ' + $escape(name) + '…</div>';
+  $("profileDetails").innerHTML = '<div class="empty-state">Đang lấy hồ sơ và danh bạ từ ' + $escape(getBotDisplayName(name)) + '…</div>';
   try {
     // Bridge trả dữ liệu trực tiếp từ phiên Zalo của đúng bot đã chọn.
     const live = await api("/api/chat/" + enc(name) + "/threads");
@@ -828,7 +837,7 @@ function renderProfile(name) {
   const hasData = Boolean(data.profile || data.friends?.list?.length || data.groups?.list?.length);
   if (!name || !hasData) {
     $("profileAvatar").textContent = "JT"; $("profileName").textContent = "Chưa có dữ liệu";
-    $("profileUid").textContent = "Bot " + (name || "chưa chọn") + " chưa cung cấp được dữ liệu Zalo.";
+    $("profileUid").textContent = getBotDisplayName(name) + " chưa cung cấp được dữ liệu Zalo.";
     $("profileState").textContent = data.loadError ? "CHƯA KẾT NỐI" : "UNKNOWN";
     $("profileDetails").innerHTML = '<div class="empty-state">' + $escape(data.loadError || "Bot cần đang chạy và đăng nhập Zalo để tải hồ sơ, bạn bè và nhóm.") + '</div>';
     $("friendList").innerHTML = '<div class="empty-state">Chưa tải được danh sách bạn bè.</div>';
@@ -837,13 +846,14 @@ function renderProfile(name) {
     return;
   }
   const online = data.loginState === "logged_in" || data.live === true;
-  $("profileAvatar").innerHTML = safeImage(p.avatar) ? '<img src="'+safeImage(p.avatar)+'" alt="">' : $escape(initials(p.displayName || name));
-  $("profileName").textContent = p.displayName || name;
+  const displayName = p.displayName || p.zaloName || getBotDisplayName(name);
+  $("profileAvatar").innerHTML = safeImage(p.avatar) ? '<img src="'+safeImage(p.avatar)+'" alt="">' : $escape(initials(displayName));
+  $("profileName").textContent = displayName;
   $("profileUid").textContent = p.uid || "—";
   $("profileState").textContent = online ? "ONLINE · ZALO" : "OFFLINE";
   $("profileState").style.color = online ? "var(--green)" : "var(--muted)";
   $("profileUpdated").textContent = "Cập nhật: " + fmtDate(data.updatedAt) + (data.loadError ? " · dữ liệu cache" : "");
-  const rows = [["Bot",name],["UID",p.uid],["Số điện thoại",p.phoneNumber],["Bạn bè",data.friends?.total ?? 0],["Nhóm",data.groups?.total ?? 0],["Login state",data.loginState || (online ? "logged_in" : "unknown")],["Cập nhật",fmtDate(data.updatedAt)]];
+  const rows = [["Tài khoản Zalo",displayName],["UID",p.uid],["Số điện thoại",p.phoneNumber],["Bạn bè",data.friends?.total ?? 0],["Nhóm",data.groups?.total ?? 0],["Login state",data.loginState || (online ? "logged_in" : "unknown")],["Cập nhật",fmtDate(data.updatedAt)]];
   $("profileDetails").innerHTML = rows.map(([key,value])=>'<div class="detail-row"><span>'+$escape(key)+'</span><b>'+$escape(value ?? "—")+'</b></div>').join("");
   const friends = data.friends?.list || [], groups = data.groups?.list || [];
   $("friendCount").textContent = data.friends?.total ?? friends.length;
@@ -1130,7 +1140,7 @@ function readMutedThreads() { return state.mutedThreads || []; }
 function threadRows() {
   const friends = state.chatData.friends?.list || [], groups = state.chatData.groups?.list || [];
   return [
-    ...groups.map(g=>({id:String(g.gid||g.id||""),type:1,name:g.name||g.groupName||g.gid||g.id,avatar:g.avatar||"",last:g.lastMessage,isGroup:true})),
+    ...groups.map(g=>({id:String(g.gid||g.id||""),type:1,name:g.name||g.groupName||g.gid||g.id,avatar:g.avatar||"",last:g.lastMessage,isGroup:true,botEnabled:typeof g.botEnabled==="boolean"?g.botEnabled:null})),
     ...friends.map(f=>({id:String(f.uid||""),type:0,name:f.displayName||f.zaloName||f.uid,avatar:f.avatar||"",last:f.lastMessage,isGroup:false}))
   ].filter(t=>t.id && !state.mutedThreads.includes(t.id));
 }
@@ -1161,7 +1171,12 @@ function renderThreads() {
     const preview = t.last ? (t.last.name ? t.last.name+": " : "") + (t.last.text || "[tin nhắn]") : "Chưa có tin nhắn";
     const time = t.last?.ts ? new Date(t.last.ts).toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit"}) : "";
     const key = state.adminGroups.includes(t.id) ? " · 👑" : "";
-    return '<button class="thread-item '+(active?"active":"")+'" data-action="open-thread" data-id="'+$escape(t.id)+'" data-type="'+t.type+'"><span class="avatar">'+(safeImage(t.avatar)?'<img src="'+safeImage(t.avatar)+'" alt="">':$escape(initials(t.name)))+'</span><span class="thread-copy"><span class="thread-title">'+$escape(t.name)+$escape(key)+' <small class="thread-kind">'+(t.isGroup?"NHÓM":"BẠN BÈ")+'</small></span><span class="thread-preview">'+$escape(preview)+'</span></span><small style="color:var(--muted-2)">'+$escape(time)+'</small></button>';
+    const botState = !t.isGroup ? "" : t.botEnabled === true
+      ? '<small class="thread-bot-state is-on">BOT ON</small>'
+      : t.botEnabled === false
+        ? '<small class="thread-bot-state is-off">BOT OFF</small>'
+        : '<small class="thread-bot-state is-unknown">CHƯA XÁC MINH</small>';
+    return '<button class="thread-item '+(active?"active":"")+'" data-action="open-thread" data-id="'+$escape(t.id)+'" data-type="'+t.type+'"><span class="avatar">'+(safeImage(t.avatar)?'<img src="'+safeImage(t.avatar)+'" alt="">':$escape(initials(t.name)))+'</span><span class="thread-copy"><span class="thread-title">'+$escape(t.name)+$escape(key)+' <small class="thread-kind">'+(t.isGroup?"NHÓM":"BẠN BÈ")+'</small> '+botState+'</span><span class="thread-preview">'+$escape(preview)+'</span></span><small style="color:var(--muted-2)">'+$escape(time)+'</small></button>';
   }).join("") : '<div class="empty-state">Không tìm thấy hội thoại.</div>';
 }
 async function openThread(t) {
