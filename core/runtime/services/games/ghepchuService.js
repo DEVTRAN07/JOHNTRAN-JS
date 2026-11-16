@@ -3,7 +3,7 @@
 const ROUND_SECONDS = 90;
 const CORRECT_POINTS = 10;
 const API_BASE = "https://dict.minhqnd.com/api/v1";
-const API_TIMEOUT_MS = 1800;
+const API_TIMEOUT_MS = 1500;
 const API_PREFIX_ATTEMPTS = 3;
 const API_LOOKUP_BATCH = 4;
 const API_POOL_MAX = 160;
@@ -219,42 +219,40 @@ async function refreshApiWordPool(options = {}) {
   refreshPromise = (async () => {
     const random = options.random || Math.random;
     const prefixes = randomize(PREFIXES, random).slice(0, API_PREFIX_ATTEMPTS);
-    let added = 0;
 
-    for (const prefix of prefixes) {
-      let suggestions = [];
+    // Search several Vietnamese prefixes concurrently so the first round does
+    // not wait for a serial chain of network requests.
+    const suggestionGroups = await Promise.all(prefixes.map(async prefix => {
       try {
-        suggestions = await fetchSuggestions(prefix, options);
+        return await fetchSuggestions(prefix, options);
       } catch (error) {
         options.onApiError?.(error);
-        continue;
+        return [];
       }
+    }));
+    const suggestions = [...new Set(suggestionGroups.flat())];
+    const candidates = randomize(
+      suggestions.filter(word => !apiWordPool.has(normalizeAnswer(word))),
+      random
+    ).slice(0, API_LOOKUP_BATCH);
 
-      const candidates = randomize(
-        suggestions.filter(word => !apiWordPool.has(normalizeAnswer(word))),
-        random
-      ).slice(0, API_LOOKUP_BATCH);
-
-      if (!candidates.length) continue;
-
-      const entries = await Promise.all(candidates.map(async candidate => {
-        try {
-          return await lookupVietnameseWord(candidate, options);
-        } catch (error) {
-          options.onApiError?.(error);
-          return null;
-        }
-      }));
-
-      for (const entry of entries) {
-        if (!entry || !isPlayablePhrase(entry.answer)) continue;
-        const key = normalizeAnswer(entry.answer);
-        if (!apiWordPool.has(key)) {
-          apiWordPool.set(key, entry);
-          added++;
-        }
+    const entries = await Promise.all(candidates.map(async candidate => {
+      try {
+        return await lookupVietnameseWord(candidate, options);
+      } catch (error) {
+        options.onApiError?.(error);
+        return null;
       }
-      if (apiWordPool.size >= API_POOL_MAX) break;
+    }));
+
+    let added = 0;
+    for (const entry of entries) {
+      if (!entry || !isPlayablePhrase(entry.answer)) continue;
+      const key = normalizeAnswer(entry.answer);
+      if (!apiWordPool.has(key)) {
+        apiWordPool.set(key, entry);
+        added++;
+      }
     }
 
     while (apiWordPool.size > API_POOL_MAX) {
@@ -314,7 +312,7 @@ async function choosePuzzle(session, options = {}) {
   };
   session.round += 1;
 
-  if (apiWordPool.size < 10 && !refreshPromise) {
+  if (apiWordPool.size < API_LOOKUP_BATCH && !refreshPromise) {
     void refreshApiWordPool(options).catch(error => options.onApiError?.(error));
   }
   return session.puzzle;
