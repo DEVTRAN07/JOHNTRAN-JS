@@ -837,12 +837,72 @@ function renderProfile(name) {
 
 async function loadSystem() {
   try {
-    const [m, botData, database] = await Promise.all([
-      api("/api/metrics"), api("/api/bots"), api("/api/database/health")
+    const [m, botData, database, recovery] = await Promise.all([
+      api("/api/metrics"), api("/api/bots"), api("/api/database/health"), api("/api/recovery")
     ]);
     state.bots = Array.isArray(botData.bots) ? botData.bots : state.bots;
     const values = [["Bot con",Math.max(0,state.bots.length-1)],["Tổng bot",state.bots.length],["Node",m.node],["Uptime host",fmtUptime(m.uptimeMs)],["RAM host",number(m.memoryMb)+" MB"],["Lệnh hôm nay",m.today?.commands ?? 0],["Lỗi hôm nay",m.today?.errors ?? 0],["Tìm nhạc",m.today?.musicSearch ?? 0],["Tải nhạc",m.today?.musicDownload ?? 0]];
     $("systemDetails").innerHTML = values.map(([key,value])=>'<div class="detail-row"><span>'+$escape(key)+'</span><b>'+$escape(value ?? "—")+'</b></div>').join("");
+
+    const recoveryMaster = recovery?.master || {};
+    const processHealth = recoveryMaster.process || {};
+    const memoryHealth = processHealth.memory || {};
+    const queueHealth = recoveryMaster.queues || {};
+    const jobGlobal = queueHealth.jobs?.global || {};
+    const workerPools = queueHealth.workers || {};
+    const workerPending = number(queueHealth.workerPending || 0);
+    const componentHealth = recoveryMaster.components || [];
+    const listenerHealth = componentHealth.find(item => item.name === "listener");
+    const recoveryStatusLabels = {
+      healthy: "ỔN ĐỊNH",
+      degraded: "ĐANG SUY GIẢM",
+      critical: "NGUY HIỂM",
+      recovering: "ĐANG PHỤC HỒI",
+      connecting: "ĐANG KẾT NỐI",
+      unknown: "CHƯA RÕ"
+    };
+    const recoveryClass = recovery?.status === "critical" ? "is-critical" :
+      recovery?.status === "degraded" ? "is-warning" : "is-ok";
+    const recoveryRows = [
+      ["Trạng thái tổng", recoveryStatusLabels[recovery?.status] || "CHƯA RÕ"],
+      ["CPU tiến trình", Number(processHealth.cpuPercent || 0).toFixed(1) + "%"],
+      ["RAM tiến trình", number(Math.round((memoryHealth.rssBytes || 0) / 1024 / 1024)) + " MB · " + number(memoryHealth.rssRatio || 0) + "% giới hạn"],
+      ["Nguồn giới hạn RAM", memoryHealth.source === "cgroup" ? "Container / cgroup" : "RAM host"],
+      ["Event loop P95", Number(processHealth.eventLoop?.p95Ms || 0).toFixed(1) + " ms"],
+      ["Job queue", number(jobGlobal.active || 0) + " chạy · " + number(jobGlobal.pending || 0) + "/" + number(jobGlobal.maxPending || 0) + " chờ"],
+      ["Worker queue", workerPending + " chờ · " + Object.values(workerPools).filter(pool => pool.circuitOpen).length + " pool đang nghỉ"],
+      ["Supabase retry", number(recoveryMaster.database?.retryQueueSize || 0) + " bản ghi · " + number(recoveryMaster.database?.consecutiveFailures || 0) + " lỗi sync liên tiếp"],
+      ["Listener", listenerHealth ? (recoveryStatusLabels[listenerHealth.status] || listenerHealth.status) + " · lần thử " + number(listenerHealth.attempt || 0) : "Chưa có snapshot"],
+      ["Bot con", number(recovery?.counts?.healthyBots || 0) + " ổn định · " + number(recovery?.counts?.degradedBots || 0) + " suy giảm · " + number(recovery?.counts?.unavailableBots || 0) + " chưa kết nối"]
+    ];
+    $("recoveryDetails").innerHTML =
+      '<div class="recovery-state ' + recoveryClass + '">' + $escape(recoveryStatusLabels[recovery?.status] || "CHƯA RÕ") + '</div>' +
+      recoveryRows.map(([key,value]) => '<div class="detail-row"><span>' + $escape(key) + '</span><b>' + $escape(value) + '</b></div>').join("");
+
+    const recoveryAlerts = (recovery?.alerts || []).slice(0, 16).map(alert => {
+      const severity = alert.severity === "critical" ? "is-critical" :
+        alert.severity === "warning" ? "is-warning" : "is-info";
+      const scope = alert.bot ? "Bot " + alert.bot : "Master";
+      return '<div class="recovery-alert ' + severity + '"><b>' + $escape(alert.severity || "info") +
+        '</b><span>' + $escape(alert.message || alert.code || "Cảnh báo") +
+        '</span><small>' + $escape(scope + (alert.code ? " · " + alert.code : "")) + '</small></div>';
+    }).join("");
+    const childRecovery = (recovery?.bots || []).map(bot => {
+      const childStatus = bot.available ? (recoveryStatusLabels[bot.recovery?.status] || bot.recovery?.status || "CHƯA RÕ") : "KHÔNG KẾT NỐI";
+      const childClass = !bot.available ? "is-unknown" :
+        bot.recovery?.status === "critical" ? "is-critical" :
+        bot.recovery?.status === "degraded" ? "is-warning" : "is-ok";
+      const rss = bot.recovery?.process?.memory?.rssBytes;
+      const p95 = bot.recovery?.process?.eventLoop?.p95Ms;
+      const details = bot.available
+        ? number(Math.round((rss || 0) / 1024 / 1024)) + " MB RAM · " + Number(p95 || 0).toFixed(1) + " ms event loop"
+        : (bot.reason || "Bridge chưa sẵn sàng");
+      return '<div class="recovery-child-row"><b>' + $escape(bot.name) + '</b><span class="recovery-child-state ' + childClass + '">' +
+        $escape(childStatus) + '</span><small>' + $escape(details) + '</small></div>';
+    }).join("");
+    $("recoveryAlertList").innerHTML =
+      (recoveryAlerts || '<div class="empty-state">Chưa có cảnh báo sức khỏe.</div>') +
+      (childRecovery ? '<div class="recovery-child-list">' + childRecovery + '</div>' : "");
 
     const db = database || m.database || m.supabase || {};
     const probe = db.probe || {};
