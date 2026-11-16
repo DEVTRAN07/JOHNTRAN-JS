@@ -104,6 +104,21 @@
         <div><span class="eyebrow">YOUR ZALO COMMUNITIES</span><h3>Danh sách nhóm</h3><small id="groupCardCount">Đang tải nhóm…</small></div>
         <label class="group-search" for="groupSearch"><span>⌕</span><input id="groupSearch" type="search" placeholder="Tìm tên nhóm hoặc ID…" autocomplete="off"></label>
       </div>
+      <div class="group-browser-toolbar">
+        <div class="group-filter-tabs" role="group" aria-label="Lọc trạng thái bot theo nhóm">
+          <button type="button" class="active" data-group-filter="all" aria-pressed="true">Tất cả</button>
+          <button type="button" data-group-filter="on" aria-pressed="false">Bot đang bật</button>
+          <button type="button" data-group-filter="off" aria-pressed="false">Bot đang tắt</button>
+        </div>
+        <label class="group-sort" for="groupSort"><span>Sắp xếp</span>
+          <select id="groupSort">
+            <option value="name-asc">Tên nhóm A → Z</option>
+            <option value="members-desc">Thành viên nhiều nhất</option>
+            <option value="members-asc">Thành viên ít nhất</option>
+            <option value="status-on-first">Bot đang bật trước</option>
+          </select>
+        </label>
+      </div>
       <div class="group-card-grid" id="groupCardGrid" aria-live="polite"><div class="empty-state">Đang tải nhóm từ Zalo…</div></div>
     </div>
     <div class="group-identity-grid" id="groupIdentityGrid" hidden>
