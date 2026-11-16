@@ -9,7 +9,7 @@ test("room creation, code join and group isolation", () => {
   assert.equal(made.ok, true);
   assert.equal(made.room.status, "waiting");
   assert.equal(room.join("another-group", "A1B2", "intruder").code, "WRONG_GROUP");
-  const joined = room.join("room-group-1", "player-2", "Người chơi 2");
+  const joined = room.join("room-group-1", "A1B2", "player-2", "Người chơi 2");
   assert.equal(joined.ok, true);
   assert.equal(joined.room.players.length, 2);
   assert.equal(room.join("room-group-1", "A1B2", "player-2", "Trùng").code, "ALREADY_JOINED");
