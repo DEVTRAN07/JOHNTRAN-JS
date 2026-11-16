@@ -56,10 +56,17 @@ test("partial group settings updates preserve bot_enabled until an explicit OFF 
   assert.equal(current.data.bot_enabled, true,
     "an older command saving only anti settings must not turn the bot OFF");
 
+  // A stale full settings snapshot may still carry bot_enabled=false; it is
+  // not an intentional OFF operation and must not disable this group.
   await Threads.setData(threadId, { bot_enabled: false, anti_link: true });
   current = await Threads.getData(threadId);
+  assert.equal(current.data.bot_enabled, true,
+    "ordinary settings writes must never turn an enabled group OFF");
+
+  await Threads.setBotEnabled(threadId, false);
+  current = await Threads.getData(threadId);
   assert.equal(current.data.bot_enabled, false,
-    "an explicit manual OFF must still turn the bot OFF");
+    "only the dedicated explicit switch may turn the bot OFF");
 
   await db.flush();
   threadCache.invalidate(threadId);
