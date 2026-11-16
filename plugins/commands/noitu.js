@@ -1,6 +1,7 @@
 "use strict";
 
 const game = require("../../core/runtime/services/games/noituService");
+const { withRequesterMention } = require("../../core/mentions");
 const fs = require("fs");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const ghepChu = require("../../core/runtime/services/games/ghepchuService");
@@ -30,7 +31,7 @@ module.exports.config = {
 
 const isAdmin = uid => (global.users?.admin || []).map(String).includes(String(uid));
 async function send(api, event, msg) {
-  return api.sendMessage({ msg }, event.threadId, event.type);
+  return api.sendMessage(withRequesterMention(event, { msg }), event.threadId, event.type);
 }
 
 function clearQuickNoituTimer(threadId) {
@@ -255,7 +256,7 @@ async function handleQuickNoituText({ api, event, eventType, isSelf = false, Use
 }
 function help(prefix, enabled = true) {
   return [
-    "@Wuang 📖 NỐI TỪ TIẾNG VIỆT - ĐẠI CHIẾN TỪ VỰNG",
+    "📖 NỐI TỪ TIẾNG VIỆT - ĐẠI CHIẾN TỪ VỰNG",
     "💤 Trạng thái: " + (enabled ? "🟢 BẬT" : "🔴 TẮT"),
     "",
     "🕹️ Chế độ chơi:",
@@ -286,11 +287,11 @@ async function sendGuide(api, event, prefix, enabled = true) {
   let imagePath;
   try {
     imagePath = await renderCanvas("noitu-guide", {}, { timeout: 20000, poolSize: 1 });
-    return await api.sendMessage({
+    return await api.sendMessage(withRequesterMention(event, {
       msg: help(prefix, enabled),
       attachments: [imagePath],
       ttlKind: "card"
-    }, event.threadId, event.type);
+    }), event.threadId, event.type);
   } catch (error) {
     console.error("[NOITU_GUIDE]", error?.stack || error);
     return send(api, event, help(prefix, enabled));
@@ -437,11 +438,11 @@ async function sendGhepChuCard(api, event, session, caption = "") {
       timeout: 20000,
       poolSize: 1
     });
-    return await api.sendMessage({
+    return await api.sendMessage(withRequesterMention(event, {
       msg: caption,
       attachments: [imagePath],
       ttlKind: "card"
-    }, event.threadId, event.type);
+    }), event.threadId, event.type);
   } catch (error) {
     console.error("[GHEP_CHU_CARD]", error?.stack || error);
     const fallback = session.status === "active"
@@ -528,7 +529,7 @@ async function startGhepChu({ api, event }) {
     api,
     event,
     result.session,
-    "@Wuang\n✅ 🎮 Trò chơi Ghép Chữ đã bắt đầu!\n👉 Gõ đáp án trực tiếp vào chat, gõ skip để bỏ qua (-5s), gõ stop để dừng ván chơi!\n📚 Từ điển: dict.minhqnd.com (@minhqnd) · CC BY-SA 4.0"
+    "✅ 🎮 Trò chơi Ghép Chữ đã bắt đầu!\n👉 Gõ đáp án trực tiếp vào chat, gõ skip để bỏ qua (-5s), gõ stop để dừng ván chơi!\n📚 Từ điển: dict.minhqnd.com (@minhqnd) · CC BY-SA 4.0"
   );
 }
 

@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("node:fs");
+const { withRequesterMention } = require("../../core/mentions");
 const game = require("../../core/runtime/services/games/caroService");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 
@@ -147,7 +148,7 @@ function isAdmin(uid) {
 }
 
 async function send(api, event, msg) {
-  return api.sendMessage({ msg }, event.threadId, event.type);
+  return api.sendMessage(withRequesterMention(event, { msg }), event.threadId, event.type);
 }
 
 async function isGameEnabled(Threads, threadId) {
@@ -223,11 +224,11 @@ async function sendBoard(api, event, session, heading, extraLines = []) {
       // Recall the previous image only after the replacement is ready to send.
       // recallAfterMs: 0 disables the generic 60-second TTL for the live board.
       await recallPreviousBoard(api, threadId, event.type);
-      const response = await api.sendMessage({
+      const response = await api.sendMessage(withRequesterMention(event, {
         msg: caption,
         attachments: [imagePath],
         recallAfterMs: 0
-      }, threadId, event.type);
+      }), threadId, event.type);
       rememberBoardResponse(threadId, response);
       return response;
     } catch (error) {
