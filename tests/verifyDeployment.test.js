@@ -70,7 +70,7 @@ test("anonymous deployment verification checks only liveness and authorization g
 test("authenticated deployment verification inspects master, recovery, error and storage APIs read-only", async () => {
   const calls = [];
   const mockPayloads = {
-    "/health": { status: "ok", uptimeMs: 5000, loggedIn: true },
+    "/health": { status: "ok", uptimeSeconds: 5, loggedIn: true },
     "/metrics": null,
     "/api/bots": { bots: [{ name: "main", loginState: "logged_in" }] },
     "/api/metrics": { node: "v22", uptimeMs: 5000 },
@@ -85,7 +85,10 @@ test("authenticated deployment verification inspects master, recovery, error and
   };
   const fetcher = async (_base, pathname, options = {}) => {
     calls.push({ pathname, token: options.token, timeoutMs: options.timeoutMs });
-    if (pathname === "/metrics") return { ok: true, status: 200, body: Buffer.from("# TYPE nodejs_heap_size_used_bytes gauge\n"), ms: 2 };
+    if (pathname === "/metrics") return {
+      ok: true, status: 200, json: { node: "v22", uptimeSeconds: 5 },
+      body: Buffer.from(JSON.stringify({ node: "v22" })), ms: 2
+    };
     return { ok: true, status: 200, json: mockPayloads[pathname], body: Buffer.alloc(0), ms: 2 };
   };
   const output = [];
