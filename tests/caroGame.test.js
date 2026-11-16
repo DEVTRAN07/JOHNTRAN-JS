@@ -31,14 +31,17 @@ test("five stones cannot wrap from one row to the next", () => {
   assert.equal(result.won, false);
 });
 
-test("AI takes an immediate win before making a defensive move", () => {
+test("AI takes an immediate win and blocks an open four", () => {
   const winBoard = engine.createBoard();
   for (const cell of [34, 35, 36, 37]) engine.placeMove(winBoard, cell, "O");
-  assert.equal(engine.chooseAiMove(winBoard, "O"), 38);
+  const winningCell = engine.chooseAiMove(winBoard, "O");
+  assert.ok(winningCell >= 1 && winningCell <= 256);
+  assert.equal(engine.placeMove(winBoard, winningCell, "O").won, true);
 
   const blockBoard = engine.createBoard();
   for (const cell of [50, 51, 52, 53]) engine.placeMove(blockBoard, cell, "X");
-  assert.equal(engine.chooseAiMove(blockBoard, "O"), 54);
+  const blockingCell = engine.chooseAiMove(blockBoard, "O");
+  assert.ok([49, 54].includes(blockingCell));
 });
 
 test("PvP room assigns X to the first turn even when the host chooses O", () => {
