@@ -17,6 +17,8 @@ const databaseAdapter = fs.readFileSync(path.join(root, "core/runtime/adapters/d
 const databaseFacade = fs.readFileSync(path.join(root, "utils/db.js"), "utf8");
 const supabaseStore = fs.readFileSync(path.join(root, "core/storage/supabase.js"), "utf8");
 const panelBridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
+const botManager = fs.readFileSync(path.join(root, "panel/botManager.js"), "utf8");
+const johnTran = fs.readFileSync(path.join(root, "JohnTran.js"), "utf8");
 
 test("rebuilt panel JavaScript parses without browser-side dependencies", () => {
   assert.doesNotThrow(() => new vm.Script(js, { filename: "docs/panel.js" }));
@@ -77,6 +79,13 @@ test("V4 theme is self-hosted and group browser exposes status filters and sorti
   assert.match(html, /id="groupSort"/);
   assert.match(js, /members-desc/);
   assert.match(js, /status-on-first/);
+});
+
+test("child bridge reports its resolved port to Panel and startup failures are logged", () => {
+  assert.match(botManager, /stdio: \["ignore", "pipe", "pipe", "ipc"\]/);
+  assert.match(botManager, /message\.type !== "jt:panel-bridge-ready"/);
+  assert.match(panelBridge, /process\.send\(\{ type: "jt:panel-bridge-ready", port: finalPort \}\)/);
+  assert.match(johnTran, /Không khởi động được cầu nối Panel/);
 });
 
 test("group status polling uses a lightweight authenticated bot bridge route", () => {
