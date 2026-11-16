@@ -42,15 +42,15 @@ test("error journal stores structured bot, command, group and source context", a
 
 test("error journal redacts credentials before retaining or persisting a message", async () => {
   const journal = makeJournal("redaction");
-  journal.recordError("request failed: Bearer abc.def.ghi https://host/path?token=super-secret", {
+  journal.recordError("request failed: Bearer abc.def.ghi https://host/path?token=super-secret SUPABASE_SERVICE_KEY=service-secret Cookie=session-cookie", {
     source: "external-api"
   });
   await journal.flush();
 
   const snapshotText = JSON.stringify(journal.snapshot());
   const diskText = fs.readFileSync(journal.filePath, "utf8");
-  assert.doesNotMatch(snapshotText, /abc\.def\.ghi|super-secret/);
-  assert.doesNotMatch(diskText, /abc\.def\.ghi|super-secret/);
+  assert.doesNotMatch(snapshotText, /abc\.def\.ghi|super-secret|service-secret|session-cookie/);
+  assert.doesNotMatch(diskText, /abc\.def\.ghi|super-secret|service-secret|session-cookie/);
   assert.match(snapshotText, /\*\*\*/);
 });
 
