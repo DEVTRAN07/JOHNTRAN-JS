@@ -10,6 +10,7 @@ const LOOP_CRITICAL_MS = Math.max(LOOP_WARN_MS, Number(process.env.JT_RECOVERY_L
 const RSS_WARN_RATIO = clamp(Number(process.env.JT_RECOVERY_RSS_WARN_RATIO) || 0.8, 0.1, 0.99);
 const RSS_CRITICAL_RATIO = clamp(Number(process.env.JT_RECOVERY_RSS_CRITICAL_RATIO) || 0.92, RSS_WARN_RATIO, 0.999);
 const QUEUE_WARN_RATIO = clamp(Number(process.env.JT_RECOVERY_QUEUE_WARN_RATIO) || 0.75, 0.1, 0.99);
+const CPU_WARN_PERCENT = clamp(Number(process.env.JT_RECOVERY_CPU_WARN_PERCENT) || 85, 10, 100);
 const COMPONENT_TTL_MS = 5 * 60 * 1000;
 
 function clamp(value, minimum, maximum) {
@@ -106,6 +107,7 @@ function collectRecoverySnapshot(options = {}) {
   }
 
   const memory = process.memoryUsage();
+  const cpuPercent = sampleCpu();
   const rssRatio = memorySnapshot.limitBytes > 0 ? memory.rss / memorySnapshot.limitBytes : 0;
   const eventLoopP95Ms = Number.isFinite(eventLoop.percentile(95))
     ? Number((eventLoop.percentile(95) / 1e6).toFixed(1)) : 0;
@@ -128,7 +130,13 @@ function collectRecoverySnapshot(options = {}) {
   const workerPools = Object.entries(workers || {});
   const workerPending = workerPools.reduce((sum, [, pool]) => sum + (Number(pool.pending) || 0), 0);
   const workerCircuits = workerPools.filter(([, pool]) => pool.circuitOpen === true);
+  const workerBacklogs = workerPools.filter(([, pool]) =>
+    Number(pool.maxPending) > 0 && Number(pool.pending) >= Number(pool.maxPending) * QUEUE_WARN_RATIO
+  );
 
+  if (cpuPercent >= CPU_WARN_PERCENT) {
+    alerts.push({ severity: "warning", code: "cpu-high", message: "CPU tiến trình đang sử dụng cao; theo dõi thời gian kéo dài trước khi can thiệp." });
+  }
   if (rssRatio >= RSS_CRITICAL_RATIO) {
     alerts.push({ severity: "critical", code: "memory-critical", message: "RAM tiến trình gần chạm giới hạn bộ nhớ container." });
   } else if (rssRatio >= RSS_WARN_RATIO) {
@@ -143,6 +151,14 @@ function collectRecoverySnapshot(options = {}) {
 
   if (maxPending > 0 && pending >= maxPending * QUEUE_WARN_RATIO) {
     alerts.push({ severity: "warning", code: "job-queue-backlog", message: "Hàng đợi tác vụ gần chạm giới hạn; hệ thống đang áp dụng backpressure." });
+  }
+  if (workerBacklogs.length) {
+    alerts.push({
+      severity: "warning",
+      code: "worker-queue-backlog",
+      message: "Một hoặc nhiều worker queue gần chạm giới hạn.",
+      pools: workerBacklogs.map(([name]) => name)
+    });
   }
   if (workerCircuits.length) {
     alerts.push({
@@ -193,7 +209,7 @@ function collectRecoverySnapshot(options = {}) {
     process: {
       pid: process.pid,
       uptimeSeconds: Math.floor(process.uptime()),
-      cpuPercent: sampleCpu(),
+      cpuPercent,
       memory: {
         rssBytes: memory.rss,
         heapUsedBytes: memory.heapUsed,
@@ -235,5 +251,6 @@ module.exports = {
   LOOP_CRITICAL_MS,
   RSS_WARN_RATIO,
   RSS_CRITICAL_RATIO,
-  QUEUE_WARN_RATIO
+  QUEUE_WARN_RATIO,
+  CPU_WARN_PERCENT
 };
