@@ -9,6 +9,7 @@ const stats = require("./stats");
 const logger = require("../utils/logger");
 const { wrapApi } = require("./message");
 const { attachGroupBotState, getGroupBotStateSnapshot } = require("./runtime/groupBotState");
+const { readAdminGroups, writeAdminGroups } = require("./runtime/adminGroups");
 
 async function ensureThreadStoreReady() {
   const database = require("./runtime/adapters/database");
@@ -29,20 +30,8 @@ const path = require("path");
 const MAX_PER_THREAD = 200;
 const MAX_THREADS = 30;
 const CACHE_FILE = path.join(__dirname, "..", "data", "panel_chat.json");
-const ADMIN_GROUPS_FILE = path.join(__dirname, "..", "data", "bot_admin_groups.json");
-
-// Zalo không trả memberIds cho nhóm lớn → không đo "bot có phải admin" qua
-// API được. Người dùng tự đánh dấu nhóm bot CẦM KEY trong panel (lưu file).
-function readAdminGroups() {
-  try { return JSON.parse(fs.readFileSync(ADMIN_GROUPS_FILE, "utf8")) || []; } catch { return []; }
-}
-function writeAdminGroups(list) {
-  try {
-    fs.mkdirSync(path.dirname(ADMIN_GROUPS_FILE), { recursive: true });
-    fs.writeFileSync(ADMIN_GROUPS_FILE, JSON.stringify(list));
-  } catch { /* bỏ qua */ }
-  return list;
-}
+// Zalo không trả memberIds cho nhóm lớn → người dùng tự đánh dấu
+// nhóm bot CẦM KEY qua Panel. File được cache ngắn hạn trong tiến trình bot.
 const ring = new Map(); // threadId → [{ from, name, text, ts, isSelf }]
 let persistTimer = null;
 
