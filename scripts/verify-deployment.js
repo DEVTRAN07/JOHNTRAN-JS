@@ -94,7 +94,7 @@ async function runVerification(base, token, fetcher = request, output = console.
   } else {
     const valid = health.status === 200 &&
       health.json && ["ok", "starting"].includes(health.json.status) &&
-      typeof health.json.uptimeMs === "number";
+      (typeof health.json.uptimeMs === "number" || typeof health.json.uptimeSeconds === "number");
     record("GET /health", valid,
       valid ? "status=" + health.json.status + ", loggedIn=" + Boolean(health.json.loggedIn) :
         "status=" + health.status + ", invalid health payload", health.ms);
@@ -113,8 +113,10 @@ async function runVerification(base, token, fetcher = request, output = console.
     const metrics = await get("/metrics");
     const metricsText = metrics.ok ? metrics.body.toString("utf8") : "";
     const promLooksValid = /(^#\s*(HELP|TYPE)\s)|_bucket|process_cpu|nodejs_/m.test(metricsText);
-    record("GET /metrics", metrics.ok && metrics.status === 200 && promLooksValid,
-      metrics.ok ? "prometheus=" + promLooksValid + ", bytes=" + metrics.body.length : metrics.error, metrics.ms);
+    const jsonMetricsValid = Boolean(metrics.json && typeof metrics.json.node === "string");
+    const metricsValid = metrics.ok && metrics.status === 200 && (promLooksValid || jsonMetricsValid);
+    record("GET /metrics", metricsValid,
+      metrics.ok ? "prometheus=" + promLooksValid + ", json=" + jsonMetricsValid + ", bytes=" + metrics.body.length : metrics.error, metrics.ms);
 
     const botsResponse = await get("/api/bots");
     const bots = botsResponse?.json?.bots;
