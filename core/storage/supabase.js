@@ -1,5 +1,6 @@
 // Storage adapter cho Supabase
 const { createClient } = require("@supabase/supabase-js");
+const logger = require("../../utils/logger");
 
 const TABLE_MAP = {
   Users: "bot_users",
@@ -71,8 +72,7 @@ class SupabaseStore {
       }).catch((error) => {
         this.syncError = error.message;
         this.classified = this.classifyError(error);
-        const hint = this.classified === "network" ? " Kiểm tra SUPABASE_URL, SUPABASE_SERVICE_KEY và trạng thái project Supabase (có thể bị pause)." : "";
-        console.log(`[supabase] Lần đồng bộ đầu thất bại: ${error.message}${hint}`);
+        this.logFailure(`Lần đồng bộ đầu thất bại: ${error.message}`, this.classified || "unknown", true);
       });
       this.scheduleInterval(SYNC_INTERVAL);
     } else {
@@ -84,7 +84,7 @@ class SupabaseStore {
   scheduleInterval(delay) {
     if (this.interval) clearInterval(this.interval);
     this.interval = setInterval(() => {
-      this.sync().catch((error) => { console.log(`[supabase] Đồng bộ lỗi: ${error.message}`); });
+      this.sync().catch((error) => { this.logFailure(`Đồng bộ lỗi: ${error.message}`, this.classifyError(error), true); });
       this.flushRetry().catch(() => {});
     }, delay);
     this.interval.unref?.();
@@ -107,14 +107,14 @@ class SupabaseStore {
     this.lastFailureLogAt = now;
     const host = this.safeHost();
     const extra = (hint && classified === "network") ? " Kiểm tra SUPABASE_URL, SUPABASE_SERVICE_KEY và trạng thái project Supabase (có thể bị pause)." : "";
-    console.log(`[supabase] ${classified} failure${host ? ` (${host})` : ""}: ${msg}${extra}`);
+    logger.log(`[supabase] ${classified} failure${host ? ` (${host})` : ""}: ${msg}${extra}`, "warn", { source: "database-supabase", code: classified });
   }
 
   async ready() {
     await this.readyPromise;
     if (this.syncError && this.lastSyncAt === 0) {
       const hint = this.classified === "network" ? " Kiểm tra SUPABASE_URL, SUPABASE_SERVICE_KEY và trạng thái project Supabase (có thể bị pause)." : "";
-      console.log(`[supabase] ready: ${this.syncError}${hint}`);
+      this.logFailure(`ready: ${this.syncError}${hint}`, this.classified || "unknown", true);
     }
     return this.getStatus();
   }
@@ -153,6 +153,7 @@ class SupabaseStore {
               if (!firstError) { firstError = msg; firstClassified = "config"; }
               this.syncError = msg;
               this.classified = "config";
+              this.logFailure(msg, "config", false);
             }
             continue;
           }
@@ -232,7 +233,7 @@ class SupabaseStore {
     const id = String(payload?.id ?? "");
     if (!id) {
       const error = new Error(`Thiếu record id cho ${dbTable}`);
-      console.log(`[supabase] Bỏ qua ${op}: ${error.message}`);
+      logger.log(`[supabase] Bỏ qua ${op}: ${error.message}`, "warn", { source: "database-supabase", code: "mutation-rejected" });
       if (wait) return Promise.reject(error);
       return;
     }
@@ -252,7 +253,7 @@ class SupabaseStore {
 
       const classified = this.classifyError(error);
       if (classified === "network") this.logFailure(`Ghi ${op} thất bại, xếp retry: ${error.message}`, classified);
-      else console.log(`[supabase] Ghi ${op} thất bại, xếp retry: ${error.message}`);
+      else logger.log(`[supabase] Ghi ${op} thất bại, xếp retry: ${error.message}`, "warn", { source: "database-supabase", code: "write-retry" });
       this.retryQueue.set(key, { key, dbTable, op, payload, version, failedAt: Date.now() });
       this.metrics.retries += 1;
       if (wait) throw error;
