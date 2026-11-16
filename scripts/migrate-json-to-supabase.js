@@ -225,6 +225,7 @@ async function main(argv = process.argv.slice(2)) {
         ", inserted=" + value.inserted +
         ", skippedExisting=" + value.skippedExisting +
         ", planned=" + value.planned);
+      if (value.backupFile) console.log("BACKUP: " + value.backupFile);
     }
   });
 
