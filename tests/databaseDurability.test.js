@@ -148,12 +148,12 @@ test("mountinfo parser verifies only a database path beneath a separate configur
 });
 
 test("mountinfo parser decodes escaped mount paths containing spaces", () => {
-  const mountInfo = "61 29 8:1 / /var\\\\data\\\\bot\\\\files rw,relatime - ext4 /dev/vda1 rw";
+  const mountInfo = String.raw`61 29 8:1 / /var\040data\040bot\040files rw,relatime - ext4 /dev/vda1 rw`;
   const mounts = parseMountInfo(mountInfo);
-  assert.equal(mounts[0].mountPoint, "/var data\\bot\\files");
-  const status = getJsonPersistenceStatus("/var data\\bot\\files/store.json", {
+  assert.equal(mounts[0].mountPoint, "/var data bot files");
+  const status = getJsonPersistenceStatus("/var data bot files/store.json", {
     RENDER:"true",
-    JT_PERSISTENT_DIR:"/var data\\bot\\files"
+    JT_PERSISTENT_DIR:"/var data bot files"
   }, mountInfo);
   assert.equal(status.status, "verified-mount");
 });
