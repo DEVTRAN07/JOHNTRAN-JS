@@ -21,35 +21,28 @@ async function handleEvent(eventType, eventData, api, isSelf = false) {
   // enrolled in the matching session can consume a message; unrelated group
   // conversations continue through the regular event plugins unchanged.
   if (eventType === "message" && !isSelf && !eventData?.isSelf) {
-    const noituCommand = global.client?.commands?.get?.("noitu");
-    if (typeof noituCommand?.handleEvent === "function") {
-      try {
-        const context = createEventContext({
-          api,
-          eventData,
-          name: "noitu",
-          eventType,
-          ThreadType,
-          wrapForEvent
-        });
+    // Load the game consumer directly. Do not rely on command-registry timing:
+    // the listener may receive plain text immediately after a command reload.
+    try {
+      const noituCommand = require("../../plugins/commands/noitu");
+      if (typeof noituCommand?.handleEvent === "function") {
         const consumed = await noituCommand.handleEvent({
-          api: context.api,
+          api,
           event: eventData,
           eventType,
           isSelf,
-          reply: context.reply,
           Users,
-          Threads,
-          replyData: context.replyData,
-          threadType: context.threadType
+          Threads
         });
-        if (consumed === true) return { consumed: true, eventModules: 0, commandModules: 0 };
-      } catch (error) {
-        logger.log("Lỗi xử lý câu trả lời game: " + (error?.message || error), "error", {
-          source: "game-message-consumer",
-          groupId: eventData?.threadId
-        });
+        if (consumed === true) {
+          return { consumed: true, eventModules: 0, commandModules: 0 };
+        }
       }
+    } catch (error) {
+      logger.log("Lỗi xử lý câu trả lời game: " + (error?.message || error), "error", {
+        source: "game-message-consumer",
+        groupId: eventData?.threadId
+      });
     }
   }
 
