@@ -159,7 +159,14 @@ function getHttpJson(options = {}) {
   return require("../../queuedHttp").getJson;
 }
 
+function getApiTimeout(options = {}) {
+  const requested = Number(options.timeoutMs);
+  if (!Number.isFinite(requested) || requested <= 0) return API_TIMEOUT_MS;
+  return Math.max(250, Math.min(API_TIMEOUT_MS, requested));
+}
+
 async function fetchSuggestions(prefix, options = {}) {
+  const timeout = getApiTimeout(options);
   const key = normalizePhrase(prefix);
   const cached = suggestionCache.get(key);
   const now = Number(options.now) || Date.now();
@@ -167,7 +174,7 @@ async function fetchSuggestions(prefix, options = {}) {
 
   const url = API_BASE + "/suggest?q=" + encodeURIComponent(key) + "&limit=20";
   const response = await getHttpJson(options)(url, {
-    timeout: API_TIMEOUT_MS,
+    timeout,
     retries: 0,
     headers: { Accept: "application/json" }
   });
@@ -178,6 +185,7 @@ async function fetchSuggestions(prefix, options = {}) {
 }
 
 async function lookupVietnameseWord(word, options = {}) {
+  const timeout = getApiTimeout(options);
   const key = normalizePhrase(word);
   const now = Number(options.now) || Date.now();
   const cached = lookupCache.get(key);
@@ -186,7 +194,7 @@ async function lookupVietnameseWord(word, options = {}) {
   const url = API_BASE + "/lookup?word=" + encodeURIComponent(key) +
     "&lang=vi&def_lang=vi";
   const response = await getHttpJson(options)(url, {
-    timeout: API_TIMEOUT_MS,
+    timeout,
     retries: 0,
     headers: { Accept: "application/json" }
   });
@@ -534,6 +542,7 @@ module.exports = {
   extractSuggestionWords,
   fetchSuggestions,
   lookupVietnameseWord,
+  getApiTimeout,
   lookupVietnameseTerm,
   getDictionaryStats,
   refreshApiWordPool,
