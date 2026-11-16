@@ -271,7 +271,7 @@ class BotInstance {
       const wasStoppedByUser = this.stoppedByUser;
       const exitLabel = signal ? `signal ${signal}` : `code ${code}`;
       this.pushLog(`[system] tiến trình thoát với ${exitLabel}`);
-      logger.log(`Bot con '${this.name}' thoát (${exitLabel})`, wasStoppedByUser ? "info" : "warn");
+      logger.log(`Bot con '${this.name}' thoát (${exitLabel})`, wasStoppedByUser ? "info" : "warn", { source: "bot-lifecycle", bot: this.name });
 
       // A manual Stop is not a crash and must not consume the crash budget.
       if (wasStoppedByUser) {
