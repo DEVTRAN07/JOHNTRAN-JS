@@ -12,6 +12,36 @@ function normalizeThreadRecord(record, threadId) {
   return { ...(record || {}), id: record?.id || key, threadId: key, data };
 }
 
+function preserveBotEnabled(threadId, inputData) {
+  const key = String(threadId);
+  const input = inputData && typeof inputData === "object" ? inputData : {};
+
+  // Explicit boolean writes are authoritative: only an explicit false
+  // (for example /bot off or the Panel toggle) can turn an enabled group OFF.
+  if (Object.prototype.hasOwnProperty.call(input, "bot_enabled")) {
+    return { ...input, bot_enabled: input.bot_enabled === true };
+  }
+
+  // Older commands sometimes persist a partial settings object. Preserve
+  // the current group switch instead of interpreting an omitted field as OFF.
+  let existing = null;
+  try {
+    if (hasData("Threads", "threadId", key)) {
+      existing = getData("Threads", "threadId", key);
+    }
+  } catch {}
+
+  if (!existing) {
+    const cached = threadCache.get(key);
+    if (cached && typeof cached.then !== "function") existing = cached;
+  }
+
+  return {
+    ...input,
+    bot_enabled: existing?.data?.bot_enabled === true
+  };
+}
+
 module.exports = {
   getAll: () => {
     return allData("Threads").map((row) => {
@@ -80,7 +110,8 @@ module.exports = {
 
   setData: (threadId, data) => {
     const key = String(threadId);
-    const record = normalizeThreadRecord({ id: key, threadId: key, data: data || {} }, key);
+    const safeData = preserveBotEnabled(key, data);
+    const record = normalizeThreadRecord({ id: key, threadId: key, data: safeData }, key);
     // Keep the legacy fast write contract for existing settings callers.
     const pending = saveData("Threads", "threadId", key, record.data);
     threadCache.set(key, record);
@@ -89,7 +120,8 @@ module.exports = {
 
   setDataAndWait: async (threadId, data) => {
     const key = String(threadId);
-    const record = normalizeThreadRecord({ id: key, threadId: key, data: data || {} }, key);
+    const safeData = preserveBotEnabled(key, data);
+    const record = normalizeThreadRecord({ id: key, threadId: key, data: safeData }, key);
     // Critical ON/OFF controls wait for the storage backend to confirm commit.
     const pending = typeof saveDataAndWait === "function"
       ? saveDataAndWait("Threads", "threadId", key, record.data)
