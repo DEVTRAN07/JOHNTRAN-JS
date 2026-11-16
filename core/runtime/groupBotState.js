@@ -36,10 +36,20 @@ function attachGroupBotState(groups, threadRecords) {
   }));
 }
 
+function getGroupBotStateSnapshot(threadRecords) {
+  return (Array.isArray(threadRecords) ? threadRecords : [])
+    .map(record => ({
+      gid: String(record?.threadId || record?.id || ""),
+      botEnabled: isEnabled(record)
+    }))
+    .filter(record => record.gid);
+}
+
 module.exports = {
   isEnabled,
   isAllowedControl,
   isAllowedControlMessage,
   canRunCommandInGroup,
-  attachGroupBotState
+  attachGroupBotState,
+  getGroupBotStateSnapshot
 };
