@@ -14,6 +14,8 @@ const SYNC_INTERVAL = Number(process.env.SUPABASE_SYNC_MS) || 30000;
 const BACKOFF_CAP = 5 * 60 * 1000;
 const LOG_COOLDOWN = 60 * 1000;
 const RETRY_CONCURRENCY = 5;
+const RETRY_BASE_DELAY_MS = Math.max(1000, Number(process.env.JT_SUPABASE_RETRY_BASE_MS) || 5000);
+const RETRY_MAX_DELAY_MS = Math.max(RETRY_BASE_DELAY_MS, Number(process.env.JT_SUPABASE_RETRY_MAX_MS) || BACKOFF_CAP);
 const SYNC_ENABLED = process.env.JT_SUPABASE_SYNC !== "0";
 
 // "Prepared" query specs for consistent, reusable Supabase operations.
@@ -56,6 +58,7 @@ class SupabaseStore {
     this.writeChains = new Map();
     this.writeSequence = 0;
     this.retryFlush = null;
+    this.retryTimer = null;
     this.syncing = null;
     this.lastSyncAt = 0;
     this.syncError = null;
@@ -85,9 +88,26 @@ class SupabaseStore {
     if (this.interval) clearInterval(this.interval);
     this.interval = setInterval(() => {
       this.sync().catch((error) => { this.logFailure(`Đồng bộ lỗi: ${error.message}`, this.classifyError(error), true); });
-      this.flushRetry().catch(() => {});
+      this.flushRetry({ force: false }).catch(() => {});
     }, delay);
     this.interval.unref?.();
+  }
+
+  scheduleRetryFlush(delayMs = RETRY_BASE_DELAY_MS) {
+    if (this.retryTimer || this.retryQueue.size === 0) return;
+    const timer = setTimeout(() => {
+      if (this.retryTimer !== timer) return;
+      this.retryTimer = null;
+      this.flushRetry({ force: false }).catch((error) => {
+        this.logFailure(`Retry queue gặp lỗi: ${error.message}`, this.classifyError(error));
+      });
+    }, Math.max(1, Number(delayMs) || 1));
+    timer.unref?.();
+    this.retryTimer = timer;
+  }
+
+  retryDelay(attempt) {
+    return Math.min(RETRY_BASE_DELAY_MS * (2 ** Math.max(0, Number(attempt) || 0)), RETRY_MAX_DELAY_MS);
   }
 
   classifyError(err) {
@@ -254,8 +274,15 @@ class SupabaseStore {
       const classified = this.classifyError(error);
       if (classified === "network") this.logFailure(`Ghi ${op} thất bại, xếp retry: ${error.message}`, classified);
       else logger.log(`[supabase] Ghi ${op} thất bại, xếp retry: ${error.message}`, "warn", { source: "database-supabase", code: "write-retry" });
-      this.retryQueue.set(key, { key, dbTable, op, payload, version, failedAt: Date.now() });
+      const failedAt = Date.now();
+      this.retryQueue.set(key, {
+        key, dbTable, op, payload, version,
+        failedAt,
+        retryAttempt: 0,
+        nextRetryAt: failedAt + this.retryDelay(0)
+      });
       this.metrics.retries += 1;
+      this.scheduleRetryFlush(this.retryDelay(0));
       if (wait) throw error;
       return false;
     });
@@ -266,16 +293,24 @@ class SupabaseStore {
     return undefined;
   }
 
-  async flushRetry() {
+  async flushRetry({ force = true } = {}) {
     if (this.retryFlush) return this.retryFlush;
     if (this.retryQueue.size === 0) return;
 
+    const now = Date.now();
+    const pending = [...this.retryQueue.entries()].filter(([, job]) =>
+      force || !job.nextRetryAt || job.nextRetryAt <= now
+    );
+    if (pending.length === 0) {
+      const nextAt = Math.min(...[...this.retryQueue.values()].map(job => job.nextRetryAt || now + RETRY_BASE_DELAY_MS));
+      this.scheduleRetryFlush(Math.max(1, nextAt - now));
+      return;
+    }
+
     this.retryFlush = (async () => {
-      const pending = [...this.retryQueue.entries()];
       for (let offset = 0; offset < pending.length; offset += RETRY_CONCURRENCY) {
         const batch = pending.slice(offset, offset + RETRY_CONCURRENCY);
         await Promise.all(batch.map(async ([key, job]) => {
-          // A newer local write may have replaced this retry after snapshotting.
           if (this.writeVersions.get(key) !== job.version ||
               this.retryQueue.get(key)?.version !== job.version) return;
 
@@ -287,16 +322,34 @@ class SupabaseStore {
               this.writeVersions.delete(key);
             }
           } catch (error) {
-            // Keep the latest job in place. Do not append duplicate retries.
-            if (this.writeVersions.get(key) === job.version) {
+            if (this.writeVersions.get(key) === job.version &&
+                this.retryQueue.get(key)?.version === job.version) {
+              const retryAttempt = (Number(job.retryAttempt) || 0) + 1;
+              const delay = this.retryDelay(retryAttempt);
+              const updated = {
+                ...job,
+                retryAttempt,
+                lastAttemptAt: Date.now(),
+                nextRetryAt: Date.now() + delay,
+                lastError: error.message || String(error)
+              };
+              this.retryQueue.set(key, updated);
               const classified = this.classifyError(error);
-              if (classified === "network") this.logFailure(`Retry ${job.op} thất bại: ${error.message}`, classified);
+              if (classified === "network") this.logFailure(`Retry ${job.op} thất bại (lần ${retryAttempt}), thử lại sau ${Math.ceil(delay / 1000)}s: ${error.message}`, classified);
+              else logger.log(`[supabase] Retry ${job.op} thất bại: ${error.message}`, "warn", { source: "database-supabase", code: "write-retry" });
             }
           }
         }));
       }
     })().finally(() => {
       this.retryFlush = null;
+      if (this.retryQueue.size) {
+        const nextAt = Math.min(...[...this.retryQueue.values()].map(job => job.nextRetryAt || Date.now() + RETRY_BASE_DELAY_MS));
+        this.scheduleRetryFlush(Math.max(1, nextAt - Date.now()));
+      } else if (this.retryTimer) {
+        clearTimeout(this.retryTimer);
+        this.retryTimer = null;
+      }
     });
 
     return this.retryFlush;
@@ -342,6 +395,10 @@ class SupabaseStore {
       tableCounts,
       pendingWrites: this.writeVersions.size,
       retryQueueSize: this.retryQueue.size,
+      retryAttempts: [...this.retryQueue.values()].reduce((total, job) => total + (Number(job.retryAttempt) || 0), 0),
+      nextRetryAt: this.retryQueue.size
+        ? Math.min(...[...this.retryQueue.values()].map(job => Number(job.nextRetryAt) || Date.now()))
+        : null,
       pool: this.clientOptions?.pool || null,
       metrics: { ...this.metrics, retryQueue: this.retryQueue.size },
       persistence: {
