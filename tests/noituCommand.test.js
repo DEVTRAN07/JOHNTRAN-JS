@@ -107,3 +107,92 @@ test("nt go wrong-link hint shows the final syllable of the current phrase", asy
     else global.config = previousConfig;
   }
 });
+
+
+test("nt go plays a bot reply after the human's plain-text answer", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_command: false, prefix: "/" };
+  const session = command._test.createSoloBotSession("solo-ai-test", "p1", "Player", () => 0).session;
+  const sent = [];
+  const scores = {};
+  const Users = {
+    async getData(uid) { return { data: scores[uid] || {} }; },
+    async setData(uid, data) { scores[uid] = data; }
+  };
+
+  try {
+    const consumed = await command._test.handleNoiTuText({
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: {
+        threadId: "solo-ai-test",
+        type: 2,
+        data: { uidFrom: "p1", content: "sinh viên" }
+      },
+      eventType: "message",
+      Users
+    });
+    assert.equal(consumed, true);
+    assert.match(sent[0].msg, /JOHNTRAN AI/);
+    assert.match(sent[0].msg, /viên chức/);
+    assert.equal(session.moves, 2);
+    assert.equal(session.turnUid, "p1");
+    assert.equal(session.currentPhrase.display, "viên chức");
+    assert.equal(scores.p1.noitu.points, 1);
+    assert.equal(scores.p1.noitu.moves, 1);
+  } finally {
+    gameService.sessions.clear();
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
+
+test("nt go awards five bonus points when the AI has no matching phrase", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_command: false, prefix: "/" };
+  command._test.createSoloBotSession("solo-ai-win", "p1", "Player", () => 0);
+  const sent = [];
+  const scores = {};
+  const Users = {
+    async getData(uid) { return { data: scores[uid] || {} }; },
+    async setData(uid, data) { scores[uid] = data; }
+  };
+
+  try {
+    const consumed = await command._test.handleNoiTuText({
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: {
+        threadId: "solo-ai-win",
+        type: 2,
+        data: { uidFrom: "p1", content: "sinh giới" }
+      },
+      eventType: "message",
+      Users
+    });
+    assert.equal(consumed, true);
+    assert.match(sent[0].msg, /BẠN ĐÃ THẮNG JOHNTRAN AI/);
+    assert.equal(scores.p1.noitu.points, 6);
+    assert.equal(scores.p1.noitu.botWins, 1);
+    assert.equal(gameService.get("solo-ai-win"), null);
+  } finally {
+    gameService.sessions.clear();
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
+
+test("solo AI messages from non-players are not consumed", async () => {
+  const session = command._test.createSoloBotSession("solo-ai-isolation", "p1", "Player", () => 0).session;
+  const consumed = await command._test.handleNoiTuText({
+    api: { async sendMessage() { throw new Error("stranger message should not be answered"); } },
+    event: {
+      threadId: "solo-ai-isolation",
+      type: 2,
+      data: { uidFrom: "p2", content: "sinh viên" }
+    },
+    eventType: "message",
+    Users: { async getData() { return { data: {} }; }, async setData() {} }
+  });
+  assert.equal(consumed, false);
+  assert.equal(session.moves, 0);
+  gameService.sessions.clear();
+});
