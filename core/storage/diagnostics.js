@@ -13,7 +13,7 @@ function isWithinPath(parent, target) {
 }
 
 function decodeMountField(value) {
-  return String(value || "").replace(/\\\\(040|011|012|134)/g, (_match, code) => ({
+  return String(value || "").replace(/\\(040|011|012|134)/g, (_match, code) => ({
     "040": " ", "011": "\t", "012": "\n", "134": "\\"
   }[code]));
 }
