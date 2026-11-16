@@ -8,6 +8,9 @@ const { ThreadType } = require("zalo-client");
 const command = require("../plugins/commands/bot");
 const handleEvent = require("../core/handle/handleEvent");
 const ThreadsService = require("../core/runtime/services/threadService");
+const ThreadsController = require("../core/controller/controllerThreads");
+const runtimeCache = require("../core/cache");
+const databaseBackend = require("../core/runtime/adapters/database").db;
 
 global.config = { prefix: "/" };
 
@@ -28,6 +31,35 @@ function createContext(initialEnabled = false, omitSetting = false) {
     }
   };
 }
+
+test("an enabled group stays ON after the five-minute hot cache expires during a DB outage", () => {
+  const gid = "group-idle-on-database-outage";
+  const record = { id: gid, threadId: gid, data: { bot_enabled: true, prefix: "/" } };
+  const originalGetStatus = databaseBackend.getStatus;
+
+  runtimeCache.threadCache.invalidate(gid);
+  runtimeCache.durableThreadCache.set(gid, record);
+  // Force the ordinary hot cache to be expired before the read.
+  runtimeCache.threadCache.set(gid, record, -1);
+  databaseBackend.getStatus = () => ({ ok: false, syncError: "temporary test outage" });
+
+  try {
+    const restored = ThreadsController.getCachedData(gid);
+    assert.equal(restored?.data?.bot_enabled, true,
+      "the last committed ON state must be used even after the short cache expires");
+
+    // OFF remains OFF only when that explicit value is what was saved.
+    const explicitlyDisabled = { ...record, data: { ...record.data, bot_enabled: false } };
+    runtimeCache.threadCache.invalidate(gid);
+    runtimeCache.durableThreadCache.set(gid, explicitlyDisabled);
+    const disabled = ThreadsController.getCachedData(gid);
+    assert.equal(disabled?.data?.bot_enabled, false);
+  } finally {
+    databaseBackend.getStatus = originalGetStatus;
+    runtimeCache.threadCache.invalidate(gid);
+    runtimeCache.durableThreadCache.invalidate(gid);
+  }
+});
 
 test("thread service forwards the explicit durable group switch", async () => {
   const calls = [];
