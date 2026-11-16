@@ -88,7 +88,7 @@ function startListening(api) {
     try {
       if (!event.isSelf) updateMessageCache(event);
     } catch (err) {
-      logger.log(`Lỗi updateMessageCache (bỏ qua): ${err.message}`, "warn");
+      logger.log(`Lỗi updateMessageCache (bỏ qua): ${err.message}`, "warn", { source: "listener-cache", isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
     }
 
     // Panel chat: ghi tin vào bộ nhớ để panel xem/gửi tiếp
@@ -109,7 +109,7 @@ function startListening(api) {
       if (!threadData) threadData = await Threads.getData(event.threadId);
     } catch (err) {
       // DB (Supabase) hỏng / timeout → vẫn chạy lệnh với threadInfo rỗng
-      logger.log(`Lỗi đọc dữ liệu nhóm ${event.threadId} (bỏ qua): ${err.message}`, "warn");
+      logger.log(`Lỗi đọc dữ liệu nhóm ${event.threadId} (bỏ qua): ${err.message}`, "warn", { source: "listener-database", isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
     }
 
     // Chuẩn hoá @mention → event.mentions = [{ uid }] để mọi lệnh dùng chung
@@ -147,7 +147,7 @@ function startListening(api) {
       try {
         handleEvent("message", event, api, event.isSelf === true);
       } catch (err) {
-        logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn");
+        logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn", { source: "listener-event", isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
       }
     };
 
@@ -155,7 +155,7 @@ function startListening(api) {
       // Start command parsing immediately. Passive event handlers run on the
       // next event-loop turn so they cannot delay the command hot path.
       Promise.resolve(handleCommand(content, event, api, threadInfo, prefix, threadData)).catch((err) => {
-        logger.log(`Lỗi xử lý lệnh: ${err.message}`, "error");
+        logger.log(`Lỗi xử lý lệnh: ${err.message}`, "error", { source: "listener-command", commandName: String(content).slice(prefix.length).trim().split(/\s+/, 1)[0], isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
       });
       if (!isGroupThread || groupBotEnabled) setImmediate(dispatchMessageEvents);
       return;
@@ -439,7 +439,7 @@ function startListening(api) {
     } catch (error) {
       reconnectAttempt += 1;
       const delay = Math.min(RECONNECT_BASE_DELAY * reconnectAttempt, RECONNECT_MAX_DELAY);
-      logger.log(`Chưa kết nối được listener (${error.message}) — thử lại sau ${delay / 1000}s`, "warn");
+      logger.log(`Chưa kết nối được listener (${error.message}) — thử lại sau ${delay / 1000}s`, "warn", { source: "websocket-listener", eventName: "connect" });
       reconnectTimer = setTimeout(() => connectListener("tự kết nối lại"), delay);
     }
   };
@@ -448,7 +448,7 @@ function startListening(api) {
     if (reconnectTimer) return;
     reconnectAttempt += 1;
     const delay = Math.min(RECONNECT_BASE_DELAY * reconnectAttempt, RECONNECT_MAX_DELAY);
-    logger.log(`Listener đóng (${reason}) — kết nối lại sau ${delay / 1000}s`, "warn");
+    logger.log(`Listener đóng (${reason}) — kết nối lại sau ${delay / 1000}s`, "warn", { source: "websocket-listener", eventName: "closed" });
     reconnectTimer = setTimeout(() => connectListener("tự kết nối lại"), delay);
   };
 
