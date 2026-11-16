@@ -3,6 +3,7 @@ const path = require("path");
 const logger = require("../utils/logger");
 const { invalidate: invalidateCommandRegistry } = require("./runtime/commandRegistry");
 const { invalidateEventRegistry } = require("./runtime/eventRegistry");
+const { invalidateMenuGroupIndex } = require("./runtime/folderMenu");
 
 const COMMANDS_DIR = path.join(__dirname, "..", "plugins", "commands");
 const EVENTS_DIR = path.join(__dirname, "..", "plugins", "events");
@@ -31,6 +32,7 @@ function registerCommand(filePath, { silent = true } = {}) {
     const name = plugin.config.name.toLowerCase();
     global.client.commands.set(name, plugin);
     invalidateCommandRegistry(global.client.commands);
+    invalidateMenuGroupIndex(global.client.commands);
     if (!silent) logger.log("[hot-reload] Đã nạp lệnh '" + name + "'", "info");
     return name;
   } catch (error) {
@@ -76,6 +78,7 @@ function handleChange(dir, type) {
           if (type === "command") {
             global.client.commands.delete(name);
             invalidateCommandRegistry(global.client.commands);
+            invalidateMenuGroupIndex(global.client.commands);
           } else {
             global.client.events.delete(name);
             invalidateEventRegistry(global.client.events);
