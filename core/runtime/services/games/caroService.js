@@ -138,8 +138,12 @@ function move(threadId, uid, cellNumber) {
   if (!session || session.status !== "active") return { ok: false, code: "NO_GAME" };
   const symbol = session.turnSymbol;
   const player = session.players[symbol];
-  if (!player || player.kind !== "human" || player.uid !== String(uid)) {
-    return { ok: false, code: player?.uid === String(uid) ? "NOT_TURN" : "NOT_PLAYER", session };
+  const playerSymbol = ["X", "O"].find(value =>
+    session.players[value]?.kind === "human" && session.players[value]?.uid === String(uid)
+  );
+  if (!playerSymbol) return { ok: false, code: "NOT_PLAYER", session };
+  if (playerSymbol !== symbol || !player || player.kind !== "human" || player.uid !== String(uid)) {
+    return { ok: false, code: "NOT_TURN", session };
   }
   return applyCell(session, cellNumber, symbol);
 }
