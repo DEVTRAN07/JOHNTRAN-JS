@@ -470,9 +470,13 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     if (!isAdmin(uid)) return send(api, event, "⛔ Chỉ Admin bot mới được bật/tắt Game Caro.");
     try {
       await setGameEnabled(Threads, threadId, action === "on");
+      if (action === "off" && game.get(threadId)) {
+        game.stop(threadId);
+        game.finish(threadId);
+      }
       return send(api, event, action === "on"
         ? "✅ Đã bật Game Caro trong nhóm hiện tại."
-        : "🚫 Đã tắt Game Caro trong nhóm hiện tại.");
+        : "🚫 Đã tắt Game Caro trong nhóm hiện tại. Ván đang chạy (nếu có) đã được hủy, không tính sao.");
     } catch (error) {
       return send(api, event, "❌ Không thể lưu cài đặt Caro: " + error.message);
     }
@@ -523,6 +527,13 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
 
   if (!await isGameEnabled(Threads, threadId)) {
     return send(api, event, "🚫 Game Caro đã được Admin tắt trong nhóm này.");
+  }
+
+  if (action === "solo" || action === "pvp") {
+    const noitu = require("../../core/runtime/services/games/noituService");
+    if (noitu.get(threadId)?.status === "active") {
+      return send(api, event, "⚠️ Nhóm đang có ván Nối Từ. Hãy kết thúc ván đó trước khi mở Caro.");
+    }
   }
 
   if (action === "solo") {
