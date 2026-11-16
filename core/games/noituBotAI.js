@@ -1,6 +1,7 @@
 "use strict";
 
 const engine = require("./noituEngine");
+const dictionary = require("../runtime/services/games/ghepchuService");
 
 const OPENING_PHRASES = Object.freeze([
   "học sinh", "bông hoa", "bầu trời", "trường học", "bóng đá",
@@ -62,4 +63,41 @@ function chooseReply(session, random = Math.random) {
   return index < 0 ? null : candidates[index];
 }
 
-module.exports = { OPENING_PHRASES, REPLY_BANK, chooseOpeningPhrase, chooseReply };
+async function findDynamicReply(session, options = {}) {
+  const display = String(session?.currentPhrase?.display || "");
+  const prefix = display.trim().split(/\\s+/).at(-1);
+  if (!prefix) return null;
+
+  const required = engine.normalizeSyllable(prefix);
+  const used = session.used || new Set();
+  const fetchSuggestions = options.fetchSuggestions || dictionary.fetchSuggestions;
+
+  try {
+    const suggestions = await fetchSuggestions(prefix, {
+      getJson: options.getJson,
+      timeoutMs: options.timeoutMs || 700,
+      now: options.now
+    });
+    const candidates = [...new Set((Array.isArray(suggestions) ? suggestions : [])
+      .map(engine.parsePhrase)
+      .filter(Boolean)
+      .filter(phrase => phrase.first === required && !used.has(phrase.normalized))
+      .map(phrase => phrase.normalized))];
+
+    const phrases = candidates
+      .map(value => suggestions.find(item => engine.parsePhrase(item)?.normalized === value))
+      .filter(Boolean);
+    const index = pickIndex(phrases.length, options.random || Math.random);
+    return index < 0 ? null : engine.parsePhrase(phrases[index]);
+  } catch {
+    return null;
+  }
+}
+
+module.exports = {
+  OPENING_PHRASES,
+  REPLY_BANK,
+  chooseOpeningPhrase,
+  chooseReply,
+  findDynamicReply
+};
