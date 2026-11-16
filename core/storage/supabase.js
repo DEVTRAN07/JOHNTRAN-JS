@@ -320,7 +320,35 @@ class SupabaseStore {
   }
 
   getStatus() {
-    return { ok: !this.syncError && this.lastSyncAt > 0, lastSyncAt: this.lastSyncAt, syncError: this.syncError, consecutiveFailures: this.consecutiveFailures, classified: this.classified, pool: this.clientOptions?.pool || null, metrics: { ...this.metrics, retryQueue: this.retryQueue.size } };
+    const tableCounts = Object.fromEntries(
+      Object.keys(TABLE_MAP).map(tableName => [
+        tableName,
+        Object.keys(this.mirror[tableName] || {}).length
+      ])
+    );
+    return {
+      driver: "supabase",
+      ok: !this.syncError && this.lastSyncAt > 0,
+      ready: !this.syncError && this.lastSyncAt > 0,
+      durable: true,
+      sharedStore: true,
+      syncEnabled: SYNC_ENABLED,
+      lastSyncAt: this.lastSyncAt,
+      lastSyncAgeMs: this.lastSyncAt ? Math.max(0, Date.now() - this.lastSyncAt) : null,
+      syncError: this.syncError,
+      consecutiveFailures: this.consecutiveFailures,
+      classified: this.classified,
+      tableCounts,
+      pendingWrites: this.writeVersions.size,
+      retryQueueSize: this.retryQueue.size,
+      pool: this.clientOptions?.pool || null,
+      metrics: { ...this.metrics, retryQueue: this.retryQueue.size },
+      persistence: {
+        status: "managed-remote",
+        confirmed: true,
+        message: "Cấu hình database được lưu trên Supabase; registry và file tài khoản local vẫn cần nơi lưu trữ bền vững riêng nếu dùng Panel nhiều bot."
+      }
+    };
   }
 
   get(tableName, idField, id) { const key = String(id); const row = this.mirror[tableName]?.[key]; return row ? { ...row } : null; }
