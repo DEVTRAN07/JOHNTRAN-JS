@@ -4,6 +4,83 @@ const fs = require("node:fs");
 const game = require("../../core/runtime/services/games/caroService");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 
+// One live Caro canvas card per group. Previous cards are explicitly undone
+// before a replacement is sent, avoiding a growing stack of board images.
+const boardCards = new Map();
+const boardUpdateQueues = new Map();
+
+function snapshotBoardSession(session) {
+  return {
+    ...session,
+    board: Array.isArray(session?.board) ? session.board.slice() : [],
+    players: { ...(session?.players || {}) }
+  };
+}
+
+function getBoardRecallTargets(response) {
+  const messages = [
+    ...(response?.message ? [response.message] : []),
+    ...(Array.isArray(response?.attachment) ? response.attachment : [])
+  ];
+  const unique = new Map();
+  for (const message of messages) {
+    const msgId = message?.msgId;
+    const cliMsgId = message?.cliMsgId;
+    if ((typeof msgId !== "number" && typeof msgId !== "string") ||
+        (typeof cliMsgId !== "number" && typeof cliMsgId !== "string")) continue;
+    unique.set(String(msgId) + ":" + String(cliMsgId), { msgId, cliMsgId });
+  }
+  return [...unique.values()];
+}
+
+function rememberBoardResponse(threadId, response) {
+  const key = String(threadId);
+  const targets = getBoardRecallTargets(response);
+  if (targets.length) boardCards.set(key, targets);
+  else boardCards.delete(key);
+  return targets.length;
+}
+
+async function recallBoardMessages(api, threadId, type, messages) {
+  const pending = Array.isArray(messages) ? messages : [];
+  if (!pending.length) return { recalled: 0, failed: [] };
+  if (typeof api?.undo !== "function") return { recalled: 0, failed: pending.slice() };
+
+  let recalled = 0;
+  const failed = [];
+  for (const target of pending) {
+    try {
+      await api.undo({ msgId: target.msgId, cliMsgId: target.cliMsgId }, String(threadId), type);
+      recalled += 1;
+    } catch (error) {
+      failed.push(target);
+      console.error("[CARO_RECALL] Không thể thu hồi card cũ:", error?.message || error);
+    }
+  }
+  return { recalled, failed };
+}
+
+async function recallPreviousBoard(api, threadId, type) {
+  const key = String(threadId);
+  const pending = boardCards.get(key);
+  if (!pending?.length) return true;
+
+  const result = await recallBoardMessages(api, key, type, pending);
+  if (result.failed.length) boardCards.set(key, result.failed);
+  else boardCards.delete(key);
+  return result.failed.length === 0;
+}
+
+function enqueueBoardUpdate(threadId, operation) {
+  const key = String(threadId);
+  const previous = boardUpdateQueues.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  boardUpdateQueues.set(key, current);
+  return current.finally(() => {
+    if (boardUpdateQueues.get(key) === current) boardUpdateQueues.delete(key);
+  });
+}
+
 module.exports.config = {
   name: "caro",
   aliases: [],
@@ -128,26 +205,37 @@ function boardMessage(session, heading = "⚔️ BÀN CỜ CARO 16×16") {
 }
 
 async function sendBoard(api, event, session, heading, extraLines = []) {
-  let imagePath;
-  const caption = boardCaption(session, heading, extraLines);
-  try {
-    imagePath = await renderCanvas("caro", { session }, { timeout: 20000, poolSize: 1 });
-    return await api.sendMessage({
-      msg: caption,
-      attachments: [imagePath],
-      ttlKind: "card"
-    }, event.threadId, event.type);
-  } catch (error) {
-    console.error("[CARO_CANVAS]", error?.stack || error);
-    return send(api, event, [caption, renderBoard(session.board)].filter(Boolean).join("\n"));
-  } finally {
-    if (imagePath) {
-      const timer = setTimeout(() => {
-        try { fs.rmSync(imagePath, { force: true }); } catch {}
-      }, 60000);
-      timer.unref?.();
+  const threadId = String(event?.threadId || session?.threadId || "");
+  const boardSession = snapshotBoardSession(session);
+  return enqueueBoardUpdate(threadId, async () => {
+    let imagePath;
+    const caption = boardCaption(boardSession, heading, extraLines);
+    try {
+      imagePath = await renderCanvas("caro", { session: boardSession }, { timeout: 20000, poolSize: 1 });
+
+      // Recall the previous image only after the replacement is ready to send.
+      // recallAfterMs: 0 disables the generic 60-second TTL for the live board.
+      await recallPreviousBoard(api, threadId, event.type);
+      const response = await api.sendMessage({
+        msg: caption,
+        attachments: [imagePath],
+        recallAfterMs: 0
+      }, threadId, event.type);
+      rememberBoardResponse(threadId, response);
+      return response;
+    } catch (error) {
+      console.error("[CARO_CANVAS]", error?.stack || error);
+      await recallPreviousBoard(api, threadId, event.type);
+      return send(api, event, [caption, renderBoard(boardSession.board)].filter(Boolean).join("\n"));
+    } finally {
+      if (imagePath) {
+        const timer = setTimeout(() => {
+          try { fs.rmSync(imagePath, { force: true }); } catch {}
+        }, 60000);
+        timer.unref?.();
+      }
     }
-  }
+  });
 }
 
 function help(prefix) {
@@ -624,6 +712,11 @@ module.exports._test = {
   renderBoard,
   boardCaption,
   sendBoard,
+  getBoardRecallTargets,
+  rememberBoardResponse,
+  recallBoardMessages,
+  recallPreviousBoard,
+  enqueueBoardUpdate,
   leaderboard,
   updateCaroStats,
   help,

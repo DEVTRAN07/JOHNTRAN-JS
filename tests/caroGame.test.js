@@ -115,3 +115,95 @@ test("Caro awards stars and keeps per-mode/month leaderboard counters", async ()
   assert.equal(ranking[0].name, "Score User");
   assert.equal(ranking[0].rankingPoints, 1);
 });
+
+
+test("Caro board replacement recalls the previous canvas card for that group", async () => {
+  const threadId = "caro-recall-group";
+  const otherThreadId = "caro-recall-other-group";
+  const calls = [];
+  const api = {
+    async undo(payload, targetThreadId, type) {
+      calls.push({ payload, threadId: targetThreadId, type });
+      return { status: 1 };
+    }
+  };
+
+  caroCommand._test.rememberBoardResponse(threadId, {
+    message: null,
+    attachment: [
+      { msgId: 101, cliMsgId: "caro-image-101" }
+    ]
+  });
+  caroCommand._test.rememberBoardResponse(otherThreadId, {
+    message: null,
+    attachment: [
+      { msgId: 202, cliMsgId: "caro-image-202" }
+    ]
+  });
+
+  assert.equal(await caroCommand._test.recallPreviousBoard(api, threadId, 1), true);
+  assert.deepEqual(calls, [{
+    payload: { msgId: 101, cliMsgId: "caro-image-101" },
+    threadId,
+    type: 1
+  }]);
+
+  assert.equal(await caroCommand._test.recallPreviousBoard(api, threadId, 1), true);
+  assert.equal(calls.length, 1, "a recalled card must not be recalled twice");
+  assert.equal(await caroCommand._test.recallPreviousBoard(api, otherThreadId, 1), true);
+  assert.equal(calls.length, 2, "recalling one group must not affect another group");
+});
+
+test("Caro card recall handles captions and all attachment message IDs", async () => {
+  const threadId = "caro-recall-multiple";
+  const seen = [];
+  const response = {
+    message: { msgId: 1, cliMsgId: "caption-1" },
+    attachment: [
+      { msgId: 2, cliMsgId: "image-2" },
+      { msgId: 3, cliMsgId: "image-3" },
+      { msgId: 2, cliMsgId: "image-2" }
+    ]
+  };
+  const targets = caroCommand._test.getBoardRecallTargets(response);
+  assert.deepEqual(targets, [
+    { msgId: 1, cliMsgId: "caption-1" },
+    { msgId: 2, cliMsgId: "image-2" },
+    { msgId: 3, cliMsgId: "image-3" }
+  ]);
+
+  const api = {
+    async undo(payload, targetThreadId, type) {
+      seen.push({ payload, threadId: targetThreadId, type });
+    }
+  };
+  const result = await caroCommand._test.recallBoardMessages(api, threadId, 1, targets);
+  assert.equal(result.recalled, 3);
+  assert.equal(result.failed.length, 0);
+  assert.equal(seen.length, 3);
+});
+
+test("Caro board recall keeps failed IDs so the next update can retry", async () => {
+  const threadId = "caro-recall-retry";
+  const target = { msgId: 404, cliMsgId: "caro-image-retry" };
+  caroCommand._test.rememberBoardResponse(threadId, { attachment: [target] });
+
+  let attempts = 0;
+  const failingApi = {
+    async undo() {
+      attempts += 1;
+      throw new Error("temporary Zalo error");
+    }
+  };
+  assert.equal(await caroCommand._test.recallPreviousBoard(failingApi, threadId, 1), false);
+  assert.equal(attempts, 1);
+
+  const successfulApi = {
+    async undo(payload) {
+      assert.deepEqual(payload, target);
+      attempts += 1;
+    }
+  };
+  assert.equal(await caroCommand._test.recallPreviousBoard(successfulApi, threadId, 1), true);
+  assert.equal(attempts, 2);
+});
