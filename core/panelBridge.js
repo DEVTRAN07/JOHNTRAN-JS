@@ -224,6 +224,25 @@ async function handleRequest(req, res, url) {
   }
 
   // Storage diagnostics chỉ đọc, không tiết lộ URL/key hay thông tin xác thực.
+  // Lightweight live identity endpoint for the Panel bot card.
+  // Only expose the public Zalo profile fields needed for the account label.
+  if (route === "/profile") {
+    try {
+      const profile = await stats.getProfile(apiRef);
+      if (!profile) return json(503, { error: "Chưa lấy được hồ sơ tài khoản Zalo" });
+      return json(200, {
+        profile: {
+          uid: String(profile.uid || ""),
+          displayName: String(profile.displayName || ""),
+          avatar: String(profile.avatar || "")
+        }
+      });
+    } catch (error) {
+      logger.log(`[panel bridge] Không lấy được hồ sơ bot: ${error.message}`, "warn");
+      return json(503, { error: "Không lấy được hồ sơ tài khoản Zalo" });
+    }
+  }
+
   if (route === "/storage-status") {
     if (req.method !== "GET") return json(405, { error: "Method không hỗ trợ" });
     try {
