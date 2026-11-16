@@ -6,14 +6,21 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 const { JsonStore } = require("../core/storage");
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-db-durability-"));
+const dbFile = path.join(tempDir, "store.json");
+
+// Isolate the module-level production database singleton in this test process.
+process.env.JT_DB_DRIVER = "json";
+process.env.JT_DB_FILE = path.join(tempDir, "module-store.json");
+process.env.JT_PERSISTENT_DIR = tempDir;
+process.env.RENDER = "true";
+
 const {
   createDatabaseFacade,
   inspectPersistentDisk,
   isPathInside
 } = require("../utils/db");
-
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-db-durability-"));
-const dbFile = path.join(tempDir, "store.json");
 
 test("persistent disk status stays UNKNOWN when Render mount path is not configured", () => {
   const report = inspectPersistentDisk({
