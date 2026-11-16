@@ -499,3 +499,5 @@ select:focus,input:focus,textarea:focus{border-color:rgba(201,168,106,.55)}
   .group-bulk-actions{width:100%;margin-left:0;display:grid;grid-template-columns:1fr 1fr}
   .group-bulk-actions #groupClearSelection{grid-column:1/-1}
 }
+.group-card-status.is-unknown{background:rgba(231,178,91,.12);color:#eac27f}
+.group-card-status.is-unknown:before{background:#d9aa5c;box-shadow:0 0 6px rgba(217,170,92,.35)}
