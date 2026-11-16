@@ -312,3 +312,33 @@ test("structured error monitor is protected and aggregates master plus child bot
   assert.match(html, /id="errorMonitorSummary"/);
   assert.match(html, /id="errorMonitorList"/);
 });
+
+
+test("recovery monitor is authenticated, aggregates child bridge health and exposes safeguards", () => {
+  const recovery = fs.readFileSync(path.join(root, "core/runtime/recovery.js"), "utf8");
+  const workerPool = fs.readFileSync(path.join(root, "core/workerPool.js"), "utf8");
+  const listener = fs.readFileSync(path.join(root, "core/listen.js"), "utf8");
+  const supabase = fs.readFileSync(path.join(root, "core/storage/supabase.js"), "utf8");
+  const botManager = fs.readFileSync(path.join(root, "panel/botManager.js"), "utf8");
+  const bridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
+
+  assert.match(server, /pathname === "\/api\/recovery"/);
+  assert.match(server, /headers: \{ "x-bridge-token": bridgeToken \}/);
+  assert.match(server, /childReports/);
+  assert.match(bridge, /collectRecoverySnapshot/);
+  assert.match(recovery, /monitorEventLoopDelay/);
+  assert.match(recovery, /RSS_CRITICAL_RATIO/);
+  assert.match(recovery, /processRestartByResourcePressure: false/);
+  assert.match(recovery, /groupBotStateChanges: false/);
+  assert.match(workerPool, /circuitOpenUntil/);
+  assert.match(workerPool, /DEFAULT_MAX_RESTARTS/);
+  assert.match(listener, /computeReconnectDelay/);
+  assert.match(listener, /reportComponent\("listener"/);
+  assert.match(supabase, /RETRY_BASE_DELAY_MS/);
+  assert.match(supabase, /nextRetryAt/);
+  assert.match(botManager, /maxRestartDelayMs/);
+  assert.match(html, /id="recoveryDetails"/);
+  assert.match(html, /id="recoveryAlertList"/);
+  assert.match(js, /api\("\/api\/recovery"\)/);
+  assert.match(js, /recoveryRows/);
+});
