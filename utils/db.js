@@ -45,6 +45,18 @@ function createDatabaseFacade(backend) {
     saveData(table, idField, id, data) {
       return backend.set(table, idField, id, data);
     },
+    async saveDataAndWait(table, idField, id, data) {
+      if (typeof backend.setAndWait === "function") {
+        return backend.setAndWait(table, idField, id, data);
+      }
+      const result = await backend.set(table, idField, id, data);
+      // JSON storage is local and synchronous; flush now so a successful
+      // group toggle is already on disk before the bridge acknowledges it.
+      if (typeof backend.flushSync === "function" && backend.flushSync() === false) {
+        throw new Error("Không thể ghi cấu hình nhóm xuống file database");
+      }
+      return result;
+    },
     hasData(table, idField, id) {
       return backend.has(table, idField, id);
     },
