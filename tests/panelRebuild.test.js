@@ -282,3 +282,31 @@ test("menu shortcut and admin-group hot paths use cache invalidation", () => {
   assert.match(handler, /require\("\.\.\/runtime\/adminGroups"\)/);
   assert.doesNotMatch(handler, /readFileSync\(ADMIN_GROUPS_FILE/);
 });
+
+
+test("structured error monitor is protected and aggregates master plus child bot journals", () => {
+  const errorJournal = fs.readFileSync(path.join(root, "core/runtime/errorJournal.js"), "utf8");
+  const loggerSource = fs.readFileSync(path.join(root, "utils/logger.js"), "utf8");
+  const botManager = fs.readFileSync(path.join(root, "panel/botManager.js"), "utf8");
+  const dispatcher = fs.readFileSync(path.join(root, "core/runtime/dispatcher.js"), "utf8");
+  const listener = fs.readFileSync(path.join(root, "core/listen.js"), "utf8");
+  const supabase = fs.readFileSync(path.join(root, "core/storage/supabase.js"), "utf8");
+
+  assert.match(server, /pathname === "\/api\/errors"/);
+  assert.match(server, /readJournalFile\(botPaths\(bot\.name\)\.errorLogFile/);
+  assert.match(errorJournal, /MAX_FILE_BYTES/);
+  assert.match(errorJournal, /rotateIfNeeded/);
+  assert.match(errorJournal, /DEDUPE_WINDOW_MS/);
+  assert.match(errorJournal, /uncaughtExceptionMonitor/);
+  assert.match(loggerSource, /journal\.recordError/);
+  assert.match(botManager, /JT_ERROR_LOG_FILE: paths\.errorLogFile/);
+  assert.match(botManager, /bot-restart-auto/);
+  assert.match(botManager, /bot-restart-manual/);
+  assert.match(dispatcher, /commandName, isGroup:/);
+  assert.match(listener, /websocket-listener/);
+  assert.match(supabase, /database-supabase/);
+  assert.match(js, /errorMonitorSummary/);
+  assert.match(js, /errorMonitorList/);
+  assert.match(html, /id="errorMonitorSummary"/);
+  assert.match(html, /id="errorMonitorList"/);
+});
