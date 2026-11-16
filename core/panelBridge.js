@@ -569,7 +569,7 @@ async function start({ api, port = 3901, token } = {}) {
   server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
     Promise.resolve(handleRequest(req, res, url)).catch((error) => {
-      logger.log(`[bridge] lỗi: ${error.message}`, "warn");
+      logger.log(`[bridge] lỗi: ${error.message}`, "warn", { source: "panel-bridge", eventName: url.pathname });
       try { res.writeHead(500); res.end(JSON.stringify({ error: error.message })); } catch { /* bỏ qua */ }
     });
   });
