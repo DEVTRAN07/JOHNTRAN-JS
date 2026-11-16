@@ -42,7 +42,7 @@ Với cấu hình hiện tại trong `render.yaml`, Disk Mount Path là `/opt/re
 
 1. Đồng bộ Blueprint hoặc thêm biến môi trường `JT_PERSISTENT_DIR=/opt/render/project/data` trong Render Dashboard → Environment.
 2. Giữ nguyên `JT_DB_DRIVER=json` nếu hiện tại đang dùng JSON.
-3. Để `JT_DB_FILE` trống/không khai báo để master tự dùng `/var/data/store.json`, hoặc chỉ định một file nằm bên trong mount path.
+3. Giữ `JT_DB_FILE=/opt/render/project/data/store.json` như cấu hình hiện tại trong `render.yaml`; file này nằm trong mount path.
 4. Redeploy dịch vụ.
 
 BotManager sẽ lưu registry tại `/opt/render/project/data/data/bots.json`, và file riêng của từng bot tại `/opt/render/project/data/bots/<bot-name>/` (store, account, cookie và QR). Khi đường dẫn persistent được bật lần đầu, mã sẽ sao chép registry/database/account cũ sang đích nếu file đích chưa có; file nguồn không bị xóa hoặc ghi đè.
