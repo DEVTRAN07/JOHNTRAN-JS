@@ -209,7 +209,19 @@ async function handleRequest(req, res, url) {
     res.end(JSON.stringify(obj));
   };
 
-  if (route === "/health") return json(200, { ok: true, pid: process.pid });
+  if (route === "/health") {
+    let recovery = null;
+    try {
+      recovery = require("./runtime/recovery").collectRecoverySnapshot();
+    } catch { /* lightweight health must remain available without diagnostics */ }
+    return json(200, {
+      ok: true,
+      pid: process.pid,
+      bot: process.env.JT_BOT_NAME || global.config?.name_bot || "bot",
+      loggedIn: Boolean(apiRef),
+      recovery
+    });
+  }
 
   // Storage diagnostics chỉ đọc, không tiết lộ URL/key hay thông tin xác thực.
   if (route === "/storage-status") {
