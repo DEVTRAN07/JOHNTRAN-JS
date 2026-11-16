@@ -10,7 +10,7 @@ process.env.JT_DB_FILE = dbFile;
 global.config = { prefix: "/" };
 
 const Threads = require("../core/controller/controllerThreads");
-const { threadCache } = require("../core/cache");
+const { threadCache, durableThreadCache } = require("../core/cache");
 const db = require("../utils/db");
 
 // JsonStore schedules its disk flush timer as unref(); keep this isolated test
@@ -115,6 +115,58 @@ test("a cold Supabase mirror never creates default-OFF rows before the initial s
     else backend.ready = originalReady;
     if (originalGetStatus === undefined) delete backend.getStatus;
     else backend.getStatus = originalGetStatus;
+  }
+});
+
+test("cold getData reads also warm the long-lived group-state cache", async () => {
+  const backend = db.db;
+  const originalGetStatus = backend.getStatus;
+  const threadId = "thread-cache-cold-read-warm-" + process.pid;
+
+  await Threads.setBotEnabled(threadId, true);
+  threadCache.invalidate(threadId);
+  durableThreadCache.invalidate(threadId);
+
+  try {
+    const cold = await Threads.getData(threadId);
+    assert.equal(cold.data.bot_enabled, true);
+
+    // A later transient database outage must not lose a record that was
+    // loaded through getData before the listener's synchronous hot path.
+    threadCache.set(threadId, cold, -1);
+    backend.getStatus = () => ({ ok:false, syncError:"temporary read outage" });
+    const restored = Threads.getCachedData(threadId);
+    assert.equal(restored?.data?.bot_enabled, true);
+  } finally {
+    backend.getStatus = originalGetStatus;
+    threadCache.invalidate(threadId);
+    durableThreadCache.invalidate(threadId);
+  }
+});
+
+test("startup getAll rehydrates enabled groups after both caches are empty", async () => {
+  const backend = db.db;
+  const originalGetStatus = backend.getStatus;
+  const threadId = "thread-cache-startup-rehydrate-" + process.pid;
+
+  await Threads.setBotEnabled(threadId, true);
+  // Simulate a process restart: in-memory caches are empty, storage remains.
+  threadCache.invalidate(threadId);
+  durableThreadCache.invalidate(threadId);
+
+  try {
+    const loaded = Threads.getAll().find(row => row.threadId === threadId);
+    assert.equal(loaded?.data?.bot_enabled, true, "startup must read the persisted ON row");
+
+    threadCache.set(threadId, loaded, -1);
+    backend.getStatus = () => ({ ok:false, syncError:"temporary post-start outage" });
+    const restored = Threads.getCachedData(threadId);
+    assert.equal(restored?.data?.bot_enabled, true,
+      "the startup snapshot must survive hot-cache expiry");
+  } finally {
+    backend.getStatus = originalGetStatus;
+    threadCache.invalidate(threadId);
+    durableThreadCache.invalidate(threadId);
   }
 });
 
