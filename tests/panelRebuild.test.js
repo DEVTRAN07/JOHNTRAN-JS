@@ -85,9 +85,9 @@ test("V4 theme is self-hosted and group browser exposes status filters and sorti
 });
 
 test("Panel reads a cached live Zalo profile instead of showing the internal main ID", () => {
-  assert.match(panelBridge, /route === "\\/profile"/);
+  assert.match(panelBridge, /route === "\/profile"/);
   assert.match(panelBridge, /stats\.getProfile\(apiRef\)/);
-  assert.match(bridgeProfile, /path: "\\/profile"/);
+  assert.match(bridgeProfile, /path: "\/profile"/);
   assert.match(server, /probeBridgeProfile\(out, bridgeToken\)/);
   assert.match(server, /threads\|profile\|messages/);
   assert.match(js, /function renderBotSelectors\(\)/);
