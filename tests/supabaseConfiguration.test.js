@@ -25,6 +25,18 @@ test("database selects Supabase only with URL and service-role key", () => {
   assert.equal(config.driver, "supabase");
   assert.equal(config.url, "https://unit-test.supabase.co");
   assert.equal(config.serviceKey, "unit-test-service-role");
+  assert.equal(config.keyName, "SUPABASE_SERVICE_KEY");
+});
+
+test("modern Supabase Secret API key is preferred over the legacy service_role key", () => {
+  const config = resolveDatabaseConfig({
+    SUPABASE_URL: "https://unit-test.supabase.co",
+    SUPABASE_SECRET_KEY: "sb_secret_unit_test",
+    SUPABASE_SERVICE_KEY: "legacy-key-must-not-win"
+  });
+  assert.equal(config.driver, "supabase");
+  assert.equal(config.serviceKey, "sb_secret_unit_test");
+  assert.equal(config.keyName, "SUPABASE_SECRET_KEY");
 });
 
 test("explicit Supabase driver fails fast when either credential is missing", () => {
@@ -41,7 +53,7 @@ test("explicit Supabase driver fails fast when either credential is missing", ()
 test("partial Supabase configuration never silently falls back to JSON", () => {
   assert.throws(
     () => resolveDatabaseConfig({ SUPABASE_URL: "https://unit-test.supabase.co" }),
-    /cần cả SUPABASE_URL và SUPABASE_SERVICE_KEY/
+    /cần SUPABASE_URL và SUPABASE_SECRET_KEY/
   );
   assert.throws(
     () => resolveDatabaseConfig({
