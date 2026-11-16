@@ -113,9 +113,9 @@ async function sendGhepChuCard(api, event, session, caption = "") {
   } catch (error) {
     console.error("[GHEP_CHU_CARD]", error?.stack || error);
     const fallback = session.status === "active"
-      ? `🎮 GHÉP CHỮ • ${ghepChu.remainingSeconds(session)}s\\n🔤 ${(session.puzzle?.letters || []).join(" ")}\\n💡 ${session.puzzle?.clue || ""}\\n⭐ ${session.score} điểm • Chuỗi x${session.streak}`
-      : `🏁 KẾT THÚC GHÉP CHỮ\\n⭐ ${session.score} điểm • Đúng ${session.correct} câu • Bỏ qua ${session.skipped} câu`;
-    return send(api, event, [caption, fallback].filter(Boolean).join("\\n"));
+      ? `🎮 GHÉP CHỮ • ${ghepChu.remainingSeconds(session)}s\n🔤 ${(session.puzzle?.letters || []).join(" ")}\n💡 ${session.puzzle?.clue || ""}\n⭐ ${session.score} điểm • Chuỗi x${session.streak}`
+      : `🏁 KẾT THÚC GHÉP CHỮ\n⭐ ${session.score} điểm • Đúng ${session.correct} câu • Bỏ qua ${session.skipped} câu`;
+    return send(api, event, [caption, fallback].filter(Boolean).join("\n"));
   } finally {
     if (imagePath) {
       const timer = setTimeout(() => {
@@ -187,7 +187,7 @@ async function startGhepChu({ api, event }) {
     api,
     event,
     result.session,
-    "@Wuang\\n✅ 🎮 Trò chơi Ghép Chữ đã bắt đầu!\\n👉 Gõ đáp án trực tiếp vào chat, gõ skip để bỏ qua (-5s), gõ stop để dừng ván chơi!"
+    "@Wuang\n✅ 🎮 Trò chơi Ghép Chữ đã bắt đầu!\n👉 Gõ đáp án trực tiếp vào chat, gõ skip để bỏ qua (-5s), gõ stop để dừng ván chơi!"
   );
 }
 
@@ -315,4 +315,5 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
   return sendGuide(api, event, prefix);
 };
-module.exports.handleEvent = handleGhepChuText;\nmodule.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, handleGhepChuText };
+module.exports.handleEvent = handleGhepChuText;
+module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, handleGhepChuText };
