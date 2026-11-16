@@ -33,6 +33,18 @@ test("setData keeps the database record envelope in the LRU cache", async () => 
   assert.equal(persisted.data.anti_link, true);
 });
 
+test("setDataAndWait resolves only after the enabled group flag is on disk", async () => {
+  const threadId = "thread-cache-group-durable-" + process.pid;
+  await Threads.setDataAndWait(threadId, { bot_enabled: true, prefix: "!" });
+
+  const disk = JSON.parse(fs.readFileSync(dbFile, "utf8"));
+  assert.equal(disk.Threads[threadId].data.bot_enabled, true);
+
+  threadCache.invalidate(threadId);
+  const persisted = await Threads.getData(threadId);
+  assert.equal(persisted.data.bot_enabled, true);
+});
+
 test("createData initializes the same record shape as persisted rows", async () => {
   const threadId = "thread-cache-create-" + process.pid;
   const created = await Threads.createData(threadId, { anti_link: false, anti_spam: true });
