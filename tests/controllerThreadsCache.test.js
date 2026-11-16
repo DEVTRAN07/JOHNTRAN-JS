@@ -81,6 +81,30 @@ test("createData initializes the same record shape as persisted rows", async () 
   assert.equal(persisted.data.anti_spam, true);
 });
 
+test("a cold Supabase mirror never creates default-OFF rows before the initial sync is ready", async () => {
+  const backend = db.db;
+  const originalReady = backend.ready;
+  const originalGetStatus = backend.getStatus;
+  const threadId = "thread-cache-db-not-ready-" + process.pid;
+
+  backend.getStatus = () => ({ ok:false, syncError:"initial snapshot pending" });
+  backend.ready = async () => backend.getStatus();
+
+  try {
+    assert.equal(Threads.getCachedData(threadId), null,
+      "the synchronous hot path must not synthesize a default-OFF record");
+    await assert.rejects(Threads.getData(threadId), /initial snapshot pending/);
+    await assert.rejects(Threads.setData(threadId, { bot_enabled:false }), /initial snapshot pending/);
+    assert.equal(db.hasData("Threads", "threadId", threadId), false,
+      "no local row may be written until the initial Supabase snapshot is ready");
+  } finally {
+    if (originalReady === undefined) delete backend.ready;
+    else backend.ready = originalReady;
+    if (originalGetStatus === undefined) delete backend.getStatus;
+    else backend.getStatus = originalGetStatus;
+  }
+});
+
 test("new thread records persist bot_enabled=false by default", async () => {
   const threadId = "thread-cache-group-default-off-" + process.pid;
   const created = await Threads.getData(threadId);
