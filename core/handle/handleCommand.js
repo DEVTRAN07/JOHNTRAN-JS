@@ -2,13 +2,13 @@ const logger = require("../../utils/logger");
 const { wrapForThread } = require("../runtime/adapters/zalo");
 const metrics = require("../metrics");
 const fs = require("fs");
-const path = require("path");
 const { performance } = require("node:perf_hooks");
 
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
 const { getRequesterProfile } = require("../runtime/requesterProfile");
 const { renderCanvas } = require("../canvas/workerRender");
+const { readAdminGroups } = require("../runtime/adminGroups");
 
 
 const { ThreadType, Reactions } = require("zalo-client");
@@ -19,13 +19,6 @@ const {
   getRequesterGreeting,
   getRequesterPrompt
 } = require("../runtime/requesterGreeting");
-
-const ADMIN_GROUPS_FILE = path.join(__dirname, "..", "..", "data", "bot_admin_groups.json");
-
-function readAdminGroups() {
-  try { return JSON.parse(fs.readFileSync(ADMIN_GROUPS_FILE, "utf8")) || []; } catch { return []; }
-}
-
 
 const { resolve: resolveCommand } = require("../runtime/commandRegistry");
 const { commandLimiter } = require("../runtime/rateLimiter");
