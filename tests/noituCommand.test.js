@@ -12,7 +12,7 @@ test("Nối Từ is reachable through the short nt alias", () => {
 test("bare nt guide contains the requested game modes and utilities", () => {
   const guide = command._test.help("!");
   for (const expected of [
-    "@Wuang 📖 NỐI TỪ TIẾNG VIỆT",
+    "📖 NỐI TỪ TIẾNG VIỆT",
     "!nt go",
     "!nt q",
     "!nt gc",
