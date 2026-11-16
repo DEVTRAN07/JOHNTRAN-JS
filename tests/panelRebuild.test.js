@@ -98,7 +98,7 @@ test("group settings expose a master bot switch and real bot/group identities", 
     assert.ok(html.includes('id="' + id + '"'), "missing group control: " + id);
   }
   assert.match(js, /botEnabled: enabled/);
-  assert.match(js, /data\.botEnabled !== false/);
+  assert.match(js, /data\.botEnabled === true/);
   assert.match(js, /botProfile\?\.displayName/);
   assert.match(js, /group\.avatar \|\| group\.avt/);
   assert.match(server, /out\.displayName/);
@@ -109,14 +109,13 @@ test("group-level bot switch is persisted in the selected bot process and OFF is
   const bridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
   const listener = fs.readFileSync(path.join(root, "core/listen.js"), "utf8");
   const handler = fs.readFileSync(path.join(root, "core/handle/handleCommand.js"), "utf8");
-  assert.match(bridge, /botEnabled: thread\.data\?\.bot_enabled !== false/);
+  assert.match(bridge, /botEnabled: thread\.data\?\.bot_enabled === true/);
   assert.match(bridge, /data\.bot_enabled = body\.botEnabled/);
   assert.match(bridge, /Threads\.setData\(gid, data\)/);
-  assert.match(listener, /threadInfo\?\.bot_enabled === false/);
-  assert.match(listener, /isBotControlCommand/);
-  assert.match(fs.readFileSync(path.join(root, "core/handle/handleEvent.js"), "utf8"), /thread\?\.data\?\.bot_enabled === false/);
-  assert.match(handler, /threadInfo\?\.bot_enabled === false/);
-  assert.match(handler, /commandName === "bot".*\["on", "status"\]/);
+  assert.match(listener, /groupBotEnabled/);
+  assert.match(listener, /isAllowedBotControlMessage/);
+  assert.match(fs.readFileSync(path.join(root, "core/handle/handleEvent.js"), "utf8"), /isGroupBotEnabled/);
+  assert.match(handler, /canRunCommandInGroup/);
 });
 
 test("bot menu folder uses /bot and keeps /mybot as a backward-compatible route", () => {
