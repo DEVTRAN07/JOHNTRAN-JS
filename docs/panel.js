@@ -407,6 +407,7 @@ function renderGroupCards(emptyMessage = "") {
   state.groupSort = sort;
 
   const enabledCount = groups.filter(group => group.botEnabled === true).length;
+  const unknownCount = groups.filter(group => typeof group.botEnabled !== "boolean").length;
   if (!groups.length) {
     const counter = $("groupCardCount");
     if (counter) counter.textContent = "0 nhóm";
@@ -440,7 +441,8 @@ function renderGroupCards(emptyMessage = "") {
   });
 
   const counter = $("groupCardCount");
-  if (counter) counter.textContent = groups.length + " nhóm · " + enabledCount + " đang bật · " + filtered.length + " đang hiển thị";
+  if (counter) counter.textContent = groups.length + " nhóm · " + enabledCount + " đang bật" +
+    (unknownCount ? " · " + unknownCount + " chưa xác minh" : "") + " · " + filtered.length + " đang hiển thị";
 
   if (!filtered.length) {
     const message = filter === "on" ? "Chưa có nhóm nào đang bật bot." :
@@ -463,6 +465,8 @@ function renderGroupCards(emptyMessage = "") {
     const members = Number(group.totalMember || group.memberCount) || 0;
     const memberLabel = members > 0 ? members.toLocaleString("vi-VN") + " thành viên" : "Chưa rõ thành viên";
     const enabled = group.botEnabled === true;
+    const statusClass = enabled ? "is-on" : group.botEnabled === false ? "is-off" : "is-unknown";
+    const statusLabel = enabled ? "BOT ĐANG BẬT" : group.botEnabled === false ? "BOT ĐANG TẮT" : "CHƯA XÁC MINH";
     const selected = gid === selectedGid;
     const bulkSelected = state.selectedGroupIds.has(gid);
     return '<div class="group-card-item">' +
@@ -477,7 +481,7 @@ function renderGroupCards(emptyMessage = "") {
         '<span class="group-card-copy">' +
           '<span class="group-card-name">' + $escape(name) + '</span>' +
           '<span class="group-card-meta"><span>' + $escape(memberLabel) + '</span><span>·</span><span class="group-card-id">ID ' + $escape(gid) + '</span></span>' +
-          '<span class="group-card-status ' + (enabled ? 'is-on' : 'is-off') + '">' + (enabled ? 'BOT ĐANG BẬT' : 'BOT ĐANG TẮT') + '</span>' +
+          '<span class="group-card-status ' + statusClass + '">' + statusLabel + '</span>' +
         '</span>' +
         '<span class="group-card-arrow" aria-hidden="true">›</span>' +
       '</button>' +
@@ -584,10 +588,11 @@ function syncGroupCardStatuses() {
     const group = groupsById.get(String(card.dataset.groupId || ""));
     if (!group) return;
     const enabled = group.botEnabled === true;
+    const known = typeof group.botEnabled === "boolean";
     const status = card.querySelector(".group-card-status");
     if (!status) return;
-    status.className = "group-card-status " + (enabled ? "is-on" : "is-off");
-    status.textContent = enabled ? "BOT ĐANG BẬT" : "BOT ĐANG TẮT";
+    status.className = "group-card-status " + (enabled ? "is-on" : known ? "is-off" : "is-unknown");
+    status.textContent = enabled ? "BOT ĐANG BẬT" : known ? "BOT ĐANG TẮT" : "CHƯA XÁC MINH";
   });
   const total = (state.groupList || []).length;
   const enabled = (state.groupList || []).filter(group => group.botEnabled === true).length;
