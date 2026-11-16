@@ -459,7 +459,8 @@ JOHNTRAN-JS/
 | `SUPABASE_URL` | URL project Supabase |
 | `SUPABASE_SERVICE_KEY` | service_role key |
 | `JT_PANEL__ENABLED` | `1` (bật panel API) |
-| `JT_PANEL__TOKEN` | tạo bằng `openssl rand -hex 32` (bắt buộc khi public) |
+| `JT_PANEL__TOKEN` | tạo bằng `openssl rand -hex 32` (bắt buộc khi public; tên chuẩn) |
+| `JT_PANEL_TOKEN` | alias tương thích cho cấu hình cũ; ưu tiên dùng `JT_PANEL__TOKEN` |
 | `JT_PANEL__ALLOWED_ORIGINS` | origin của GitHub Pages, ví dụ `https://<user>.github.io` |
 | `JT_ACCOUNT_JSON` | nội dung file `account.json` |
 | `JT_COOKIE_JSON` | nội dung file `cookie.json` |
