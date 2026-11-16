@@ -146,6 +146,17 @@ test("mountinfo parser verifies only a database path beneath a separate configur
   assert.equal(status.mountPoint, "/var/data");
 });
 
+test("mountinfo parser decodes escaped mount paths containing spaces", () => {
+  const mountInfo = "61 29 8:1 / /var\\\\data\\\\bot\\\\files rw,relatime - ext4 /dev/vda1 rw";
+  const mounts = parseMountInfo(mountInfo);
+  assert.equal(mounts[0].mountPoint, "/var data\\bot\\files");
+  const status = getJsonPersistenceStatus("/var data\\bot\\files/store.json", {
+    RENDER:"true",
+    JT_PERSISTENT_DIR:"/var data\\bot\\files"
+  }, mountInfo);
+  assert.equal(status.status, "verified-mount");
+});
+
 test("database outside JT_PERSISTENT_DIR is never reported as disk-backed", () => {
   const mountInfo = "61 29 8:1 / /var/data rw,relatime - ext4 /dev/vda1 rw";
   const status = getJsonPersistenceStatus("/opt/render/project/src/data/store.json", {
