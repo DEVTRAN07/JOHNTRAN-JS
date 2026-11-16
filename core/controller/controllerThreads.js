@@ -81,14 +81,22 @@ module.exports = {
   setData: (threadId, data) => {
     const key = String(threadId);
     const record = normalizeThreadRecord({ id: key, threadId: key, data: data || {} }, key);
-    // Group enable/disable is a user-facing safety setting: wait for the
-    // selected storage backend to acknowledge persistence before replying OK.
+    // Keep the legacy fast write contract for existing settings callers.
+    const pending = saveData("Threads", "threadId", key, record.data);
+    threadCache.set(key, record);
+    return pending;
+  },
+
+  setDataAndWait: async (threadId, data) => {
+    const key = String(threadId);
+    const record = normalizeThreadRecord({ id: key, threadId: key, data: data || {} }, key);
+    // Critical ON/OFF controls wait for the storage backend to confirm commit.
     const pending = typeof saveDataAndWait === "function"
       ? saveDataAndWait("Threads", "threadId", key, record.data)
       : saveData("Threads", "threadId", key, record.data);
-    // Keep cache envelope identical to the normalized getData() shape.
     threadCache.set(key, record);
-    return pending;
+    await pending;
+    return record;
   },
 
   delData: (threadId) => {
