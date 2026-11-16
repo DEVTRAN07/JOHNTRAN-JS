@@ -16,6 +16,10 @@ services:
         value: /opt/render/project/data/store.json
       - key: JT_QRCODE_PATH
         value: /opt/render/project/data/qr.png
+      # Persist the bot registry, child-bot stores and error logs on the
+      # same Persistent Disk already mounted above.
+      - key: JT_PERSISTENT_DIR
+        value: /opt/render/project/data
     disk:
       name: bot-data
       mountPath: /opt/render/project/data
