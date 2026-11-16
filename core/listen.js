@@ -100,12 +100,6 @@ function startListening(api) {
     // never be executed again after reconnect.
     if (!shouldExecuteMessageCommand(options)) return;
 
-    // Prefetch the sender profile in the background. The lookup is single-flight
-    // and TTL-cached, so repeated messages do not trigger repeated Zalo requests.
-    if (!event.isSelf && event?.data?.uidFrom) {
-      void getRequesterProfile(api, event).catch(() => {});
-    }
-
     // Active groups are normally already cached. Use the synchronous cache
     // hit so a hot message can enter command parsing without an avoidable
     // Promise/microtask boundary; cold groups retain the safe async fallback.
@@ -141,6 +135,12 @@ function startListening(api) {
 
     // Every group starts OFF. Only /bot on and /bot status pass until enabled.
     if (isGroupThread && !groupBotEnabled && !(canRunCommand && isBotControlCommand)) return;
+
+    // OFF groups do not trigger profile/avatar lookups. Active groups and
+    // private conversations retain the single-flight TTL-cached prefetch.
+    if (groupBotEnabled && !event.isSelf && event?.data?.uidFrom) {
+      void getRequesterProfile(api, event).catch(() => {});
+    }
 
     const dispatchMessageEvents = () => {
       if (isGroupThread && !groupBotEnabled) return;
