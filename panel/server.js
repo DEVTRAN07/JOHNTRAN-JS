@@ -8,10 +8,22 @@ const { installMonitoring, httpMetricsMiddleware, register } = require("../core/
 let dbUtils, storeDb;
 try { dbUtils = require("../utils/db"); storeDb = dbUtils.db || dbUtils; } catch { dbUtils = null; storeDb = null; }
 
-function maybeSyncStore() {
-  if (storeDb && typeof storeDb.sync === "function" && Date.now() - (storeDb.lastSyncAt || 0) > 15000) {
-    storeDb.sync().catch(() => {});
+// The Panel master disables the background Supabase interval because child
+// bots own their own sync loops. It still needs a fresh mirror before reading
+// BotStats or deciding whether a child bridge is ready. Await one shared sync
+// instead of firing-and-forgetting it; concurrent API requests join this flight.
+let storeSyncPromise = null;
+async function maybeSyncStore({ force = false } = {}) {
+  if (!storeDb || typeof storeDb.sync !== "function") return false;
+  const lastSyncAt = Number(storeDb.lastSyncAt) || 0;
+  if (!force && lastSyncAt > 0 && Date.now() - lastSyncAt <= 15000) return true;
+  if (!storeSyncPromise) {
+    storeSyncPromise = Promise.resolve()
+      .then(() => storeDb.sync())
+      .catch(() => false)
+      .finally(() => { storeSyncPromise = null; });
   }
+  return await storeSyncPromise;
 }
 
 // ===== Đọc danh sách lệnh trực tiếp từ file (process panel không có global.client) =====
@@ -243,7 +255,7 @@ function startPanel({ manager, config }) {
       }
 
       if (pathname === "/api/bots" && req.method === "GET") {
-        maybeSyncStore();
+        await maybeSyncStore();
         const bots = manager.list().map(enrichBot);
         return sendJson(res, 200, { bots, master: { botCount: bots.length, uptimeMs: process.uptime() * 1000 } });
       }
@@ -398,7 +410,7 @@ function startPanel({ manager, config }) {
       }
 
       if (pathname === "/api/metrics" && req.method === "GET") {
-        maybeSyncStore();
+        await maybeSyncStore();
         try {
           const metrics = require("../core/metrics");
           const { allStats } = require("../core/cache");
@@ -434,7 +446,7 @@ function startPanel({ manager, config }) {
       }
 
       if (pathname === "/api/stats" && req.method === "GET") {
-        maybeSyncStore();
+        await maybeSyncStore();
         try {
           const db = require("../utils/db");
           const stats = {};
@@ -497,6 +509,8 @@ function startPanel({ manager, config }) {
 
       // ===== CHAT (Zalo thu nhỏ): proxy sang cầu nối localhost của bot =====
       if (pathname.startsWith("/api/chat")) {
+        // Refresh child BotStats before deciding if its Zalo bridge is logged in.
+        await maybeSyncStore();
         const match = pathname.match(/^\/api\/chat\/([a-zA-Z0-9_-]+)\/(threads|messages|health|thread-info|user-info|action|admin-groups|toggle-admin-group|group-commands|group-status|storage-status)$/);
         const sendMatch = pathname.match(/^\/api\/chat\/([a-zA-Z0-9_-]+)\/send$/);
         const botName = match?.[1] || sendMatch?.[1];
@@ -536,7 +550,7 @@ function startPanel({ manager, config }) {
       }
 
       if (pathname === "/api/master" && req.method === "GET") {
-        maybeSyncStore();
+        await maybeSyncStore();
         let supabaseStatus = null;
         try { supabaseStatus = storeDb && typeof storeDb.getStatus === "function" ? storeDb.getStatus() : null; } catch { supabaseStatus = null; }
         return sendJson(res, 200, {
@@ -547,7 +561,7 @@ function startPanel({ manager, config }) {
 
       // health endpoint cho UptimeRobot / cloud monitor ping (luôn 200 để chống sleep)
       if (pathname === "/health" && req.method === "GET") {
-        maybeSyncStore();
+        await maybeSyncStore();
         let supabaseStatus = null;
         try { supabaseStatus = storeDb && typeof storeDb.getStatus === "function" ? storeDb.getStatus() : null; } catch { supabaseStatus = null; }
         return sendJson(res, 200, {
