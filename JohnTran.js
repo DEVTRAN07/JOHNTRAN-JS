@@ -220,6 +220,12 @@ require("./core/panelBridge").start({
   api,
   port: Number(process.env.JT_BRIDGE_PORT) || 3901,
   token: process.env.JT_BRIDGE_TOKEN || global.config?.panel?.bridge_token || undefined
-}).catch(() => { /* hỏng bridge không được làm chết bot */ });
+}).catch((error) => {
+  // Bridge failure must not kill an otherwise logged-in Zalo bot, but it must
+  // be visible so Panel connectivity failures are diagnosable from child logs.
+  logger.log(`Không khởi động được cầu nối Panel: ${error.message || error}`, "error", {
+    source: "panel-bridge-start", bot: process.env.JT_BOT_NAME || "main"
+  });
+});
 
 })();
