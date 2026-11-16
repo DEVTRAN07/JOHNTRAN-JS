@@ -342,3 +342,24 @@ test("recovery monitor is authenticated, aggregates child bridge health and expo
   assert.match(js, /api\("\/api\/recovery"\)/);
   assert.match(js, /recoveryRows/);
 });
+
+
+test("Render production configuration places bot registry and child data on the declared Persistent Disk", () => {
+  const render = fs.readFileSync(path.join(root, "render.yaml"), "utf8");
+  const docs = fs.readFileSync(path.join(root, "docs/RENDER_STORAGE.md"), "utf8");
+  assert.match(render, /mountPath: \/opt\/render\/project\/data/);
+  assert.match(render, /key: JT_PERSISTENT_DIR\s+value: \/opt\/render\/project\/data/);
+  assert.match(render, /key: JT_DB_FILE\s+value: \/opt\/render\/project\/data\/store\.json/);
+  assert.match(render, /key: JT_ACCOUNT_FILE\s+value: \/opt\/render\/project\/data\/account\.json/);
+  assert.match(render, /key: JT_QRCODE_PATH\s+value: \/opt\/render\/project\/data\/qr\.png/);
+  assert.match(docs, /registry BotManager, dữ liệu từng bot con/);
+  assert.match(docs, /npm run verify:deployment/);
+});
+
+test("production deployment verifier never sends messages or mutates bot configuration", () => {
+  const verifier = fs.readFileSync(path.join(root, "scripts/verify-deployment.js"), "utf8");
+  assert.match(packageJson, /verify:deployment/);
+  assert.match(verifier, /method: "GET"/);
+  assert.doesNotMatch(verifier, /\/api\/chat\/.*\/send/);
+  assert.doesNotMatch(verifier, /method: "POST"/);
+});
