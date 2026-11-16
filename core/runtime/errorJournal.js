@@ -125,13 +125,21 @@ function readJournalFile(filePath, limit = 50) {
 function readJournalFiles(filePath, limit = 50, rotatedFiles = ROTATED_FILES) {
   const maximum = Math.max(1, Math.min(200, Number(limit) || 50));
   const rotations = Math.max(0, Math.min(10, Number(rotatedFiles) || 0));
-  const entries = [];
+  const byId = new Map();
   for (let index = rotations; index >= 0; index--) {
     const target = index === 0 ? filePath : filePath + "." + index;
-    entries.push(...readJournalFile(target, 200));
+    for (const entry of readJournalFile(target, 200)) {
+      // Deduplication updates append a newer snapshot with the same event ID.
+      // Keep the latest count/lastAt while retaining the original timestamp.
+      const previous = byId.get(entry.id);
+      if (!previous || Date.parse(entry.lastAt) >= Date.parse(previous.lastAt)) {
+        byId.set(entry.id, entry);
+      }
+    }
   }
-  entries.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-  return entries.slice(-maximum);
+  return [...byId.values()]
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+    .slice(-maximum);
 }
 
 function createErrorJournal(options = {}) {
@@ -245,6 +253,14 @@ function createErrorJournal(options = {}) {
     if (previous && timestampMs - Date.parse(previous.lastAt) <= dedupeWindowMs) {
       previous.count += 1;
       previous.lastAt = candidate.lastAt;
+      if (pendingLines.length < MAX_PENDING_WRITES) {
+        // Persist the updated counter under the same event ID. Readers collapse
+        // these snapshots so the count survives process restarts and rotation.
+        pendingLines.push(JSON.stringify(previous));
+        scheduleFlush();
+      } else {
+        droppedWrites += 1;
+      }
       return { ...previous, deduplicated: true };
     }
 
@@ -306,13 +322,8 @@ function createErrorJournal(options = {}) {
   }
 
   function loadRecent() {
-    const loaded = [];
-    for (let index = rotatedFiles; index >= 0; index--) {
-      const pathToRead = index === 0 ? filePath : filePath + "." + index;
-      loaded.push(...readJournalFile(pathToRead, maxRecent));
-    }
-    loaded.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-    for (const item of loaded.slice(-maxRecent)) {
+    const loaded = readJournalFiles(filePath, maxRecent, rotatedFiles);
+    for (const item of loaded) {
       recent.push(item);
       const key = fingerprint(item);
       fingerprints.set(key, item);
