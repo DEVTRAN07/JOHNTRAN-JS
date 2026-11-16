@@ -981,9 +981,20 @@ async function loadSystem() {
       '<div><b>' + number(errorSummary.deduplicated || 0) + '</b><small>Lỗi lặp đã gộp</small></div>' +
       '<div><b>' + number(errorSummary.unique || 0) + '</b><small>Sự kiện riêng</small></div>' +
       '</div>';
+    const summarizeErrorBuckets = (buckets, prefix) => Object.entries(buckets || {})
+      .sort((a, b) => b[1] - a[1]).slice(0, 4)
+      .map(([name, count]) => prefix + $escape(name) + " · " + number(count))
+      .join("  /  ") || "Chưa có";
+    const errorBreakdown =
+      '<div class="error-monitor-breakdown"><div><b>Top lệnh</b><span>' +
+      summarizeErrorBuckets(errorSummary.byCommand, "/") +
+      '</span></div><div><b>Nhóm có lỗi</b><span>' +
+      summarizeErrorBuckets(errorSummary.byGroup, "") +
+      '</span></div><div><b>Nguồn lỗi</b><span>' +
+      summarizeErrorBuckets(errorSummary.bySource, "") +
+      '</span></div></div>';
     const botErrorRows = (errorsData.bots || []).map(bot => {
       const stateLabel = bot.flapping ? "Đang flapping" : (bot.processStatus || "unknown");
-      const stateClass = bot.flapping ? "is-warning" : "is-neutral";
       return '<div class="error-bot-row"><b>' + $escape(bot.name) + '</b><span>' +
         $escape(stateLabel) + '</span><small>Restart: ' + number(bot.restarts) + '</small></div>';
     }).join("");
@@ -1006,7 +1017,7 @@ async function loadSystem() {
     }).join("");
     $("errorMonitorSummary").innerHTML = errorsData.unavailable
       ? '<div class="empty-state">' + $escape(errorsData.unavailable) + '</div>'
-      : errorHeader + '<div class="error-bot-list">' + (botErrorRows || '<small>Chưa có bot con</small>') + '</div>';
+      : errorHeader + errorBreakdown + '<div class="error-bot-list">' + (botErrorRows || '<small>Chưa có bot con</small>') + '</div>';
     $("errorMonitorList").innerHTML = eventRows ||
       '<div class="empty-state">' + (errorsData.unavailable ? $escape(errorsData.unavailable) : "Chưa ghi nhận lỗi hoặc cảnh báo gần đây.") + '</div>';
 
