@@ -838,7 +838,8 @@ function renderProfile(name) {
 async function loadSystem() {
   try {
     const [m, botData, database, recovery] = await Promise.all([
-      api("/api/metrics"), api("/api/bots"), api("/api/database/health"), api("/api/recovery")
+      api("/api/metrics"), api("/api/bots"), api("/api/database/health"),
+      api("/api/recovery").catch(error => ({ error: error.message || "Recovery API chưa sẵn sàng" }))
     ]);
     state.bots = Array.isArray(botData.bots) ? botData.bots : state.bots;
     const values = [["Bot con",Math.max(0,state.bots.length-1)],["Tổng bot",state.bots.length],["Node",m.node],["Uptime host",fmtUptime(m.uptimeMs)],["RAM host",number(m.memoryMb)+" MB"],["Lệnh hôm nay",m.today?.commands ?? 0],["Lỗi hôm nay",m.today?.errors ?? 0],["Tìm nhạc",m.today?.musicSearch ?? 0],["Tải nhạc",m.today?.musicDownload ?? 0]];
@@ -875,9 +876,10 @@ async function loadSystem() {
       ["Listener", listenerHealth ? (recoveryStatusLabels[listenerHealth.status] || listenerHealth.status) + " · lần thử " + number(listenerHealth.attempt || 0) : "Chưa có snapshot"],
       ["Bot con", number(recovery?.counts?.healthyBots || 0) + " ổn định · " + number(recovery?.counts?.degradedBots || 0) + " suy giảm · " + number(recovery?.counts?.unavailableBots || 0) + " chưa kết nối"]
     ];
-    $("recoveryDetails").innerHTML =
-      '<div class="recovery-state ' + recoveryClass + '">' + $escape(recoveryStatusLabels[recovery?.status] || "CHƯA RÕ") + '</div>' +
-      recoveryRows.map(([key,value]) => '<div class="detail-row"><span>' + $escape(key) + '</span><b>' + $escape(value) + '</b></div>').join("");
+    $("recoveryDetails").innerHTML = recovery?.error
+      ? '<div class="empty-state">Không tải được recovery: ' + $escape(recovery.error) + '</div>'
+      : '<div class="recovery-state ' + recoveryClass + '">' + $escape(recoveryStatusLabels[recovery?.status] || "CHƯA RÕ") + '</div>' +
+        recoveryRows.map(([key,value]) => '<div class="detail-row"><span>' + $escape(key) + '</span><b>' + $escape(value) + '</b></div>').join("");
 
     const recoveryAlerts = (recovery?.alerts || []).slice(0, 16).map(alert => {
       const severity = alert.severity === "critical" ? "is-critical" :
@@ -900,9 +902,10 @@ async function loadSystem() {
       return '<div class="recovery-child-row"><b>' + $escape(bot.name) + '</b><span class="recovery-child-state ' + childClass + '">' +
         $escape(childStatus) + '</span><small>' + $escape(details) + '</small></div>';
     }).join("");
-    $("recoveryAlertList").innerHTML =
-      (recoveryAlerts || '<div class="empty-state">Chưa có cảnh báo sức khỏe.</div>') +
-      (childRecovery ? '<div class="recovery-child-list">' + childRecovery + '</div>' : "");
+    $("recoveryAlertList").innerHTML = recovery?.error
+      ? '<div class="empty-state">Chưa đọc được cảnh báo phục hồi.</div>'
+      : (recoveryAlerts || '<div class="empty-state">Chưa có cảnh báo sức khỏe.</div>') +
+        (childRecovery ? '<div class="recovery-child-list">' + childRecovery + '</div>' : "");
 
     const db = database || m.database || m.supabase || {};
     const probe = db.probe || {};
