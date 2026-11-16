@@ -26,10 +26,14 @@ function event(threadId, uid, content) {
   };
 }
 
+const previousConfig = global.config;
+
 afterEach(() => {
   noitu.sessions.clear();
   ghepChu.clear();
   ghepChu.clearDictionaryCache();
+  if (previousConfig === undefined) delete global.config;
+  else global.config = previousConfig;
 });
 
 test("messages from users outside an active nt go session remain normal chat", async () => {
@@ -210,4 +214,41 @@ test("nt gc accepts plain text from its player and does not consume prefixed com
   assert.equal(prefixed, false);
   assert.equal(plain, true);
   assert.match(api.messages[0].msg, /Chưa đúng/);
+});
+
+
+test("self-listen answers work in nt go only when allow_self_command is enabled", async () => {
+  global.config = { allow_self_command: true, prefix: "/" };
+  const session = noituEngine.createSession("group-self", "bot-owner", "Wuang", () => 0);
+  noitu.sessions.set("group-self", session);
+  const api = fakeApi();
+
+  const consumed = await command._test.handleNoiTuText({
+    api,
+    event: { ...event("group-self", "bot-owner", "sinh viên"), isSelf: true },
+    eventType: "message",
+    isSelf: true
+  });
+
+  assert.equal(consumed, true);
+  assert.equal(session.moves, 1);
+  assert.match(api.messages[0].msg, /sinh viên/);
+});
+
+test("self-listen messages remain ignored when allow_self_command is disabled", async () => {
+  global.config = { allow_self_command: false, prefix: "/" };
+  const session = noituEngine.createSession("group-self", "bot-owner", "Wuang", () => 0);
+  noitu.sessions.set("group-self", session);
+  const api = fakeApi();
+
+  const consumed = await command._test.handleNoiTuText({
+    api,
+    event: { ...event("group-self", "bot-owner", "sinh viên"), isSelf: true },
+    eventType: "message",
+    isSelf: true
+  });
+
+  assert.equal(consumed, false);
+  assert.equal(session.moves, 0);
+  assert.equal(api.messages.length, 0);
 });
