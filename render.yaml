@@ -24,6 +24,9 @@ services:
       # sync:false prevents Blueprint commits from overwriting secret values.
       - key: SUPABASE_URL
         sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      # Legacy compatibility only; use SUPABASE_SECRET_KEY for new projects.
       - key: SUPABASE_SERVICE_KEY
         sync: false
     disk:
