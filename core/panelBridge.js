@@ -10,6 +10,17 @@ const logger = require("../utils/logger");
 const { wrapApi } = require("./message");
 const { attachGroupBotState, getGroupBotStateSnapshot } = require("./runtime/groupBotState");
 
+async function ensureThreadStoreReady() {
+  const database = require("./runtime/adapters/database");
+  const store = database?.db;
+  if (typeof store?.ready !== "function") return true;
+  const status = await store.ready();
+  if (status?.ok === false) {
+    throw new Error(status.syncError || "Database nhóm chưa đồng bộ xong");
+  }
+  return true;
+}
+
 // ===== Bộ nhớ tin nhắn: RAM + lưu đĩa (sống sót qua restart) =====
 // Zalo đã XOÁ API lịch sử nhóm (getGroupChatHistory → 404) nên panel chỉ
 // xem được tin từ khi bot chạy; lưu ra JSON để restart không mất.
@@ -215,6 +226,7 @@ async function handleRequest(req, res, url) {
   if (route === "/group-status") {
     if (req.method !== "GET") return json(405, { error: "Method không hỗ trợ" });
     try {
+      await ensureThreadStoreReady();
       const Threads = require("./controller/controllerThreads");
       return json(200, {
         groups: getGroupBotStateSnapshot(Threads.getAll()),
@@ -233,16 +245,21 @@ async function handleRequest(req, res, url) {
       stats.getGroups(apiRef),
       stats.getProfile(apiRef)
     ]);
-    // Lấy trạng thái từ đúng DB của bot con. Nhóm chưa có record hoặc thiếu
-    // bot_enabled luôn OFF; tuyệt đối không suy ra ON từ việc nhóm tồn tại.
+    // Đợi snapshot DB đầu tiên. Khi database lỗi, trạng thái phải là UNKNOWN,
+    // không được giả thành OFF và làm người dùng tưởng bot tự tắt.
     let threadRecords = [];
+    let groupStateAvailable = true;
     try {
+      await ensureThreadStoreReady();
       const Threads = require("./controller/controllerThreads");
       threadRecords = Threads.getAll();
     } catch (error) {
-      logger.log(`[panel bridge] Không đọc được cấu hình trạng thái nhóm: ${error.message}`, "warn");
+      groupStateAvailable = false;
+      logger.log(`[panel bridge] Không xác minh được trạng thái nhóm: ${error.message}`, "warn");
     }
-    const groupsWithState = attachGroupBotState(groups.list || [], threadRecords);
+    const groupsWithState = groupStateAvailable
+      ? attachGroupBotState(groups.list || [], threadRecords)
+      : (groups.list || []).map(group => ({ ...group, botEnabled: null }));
     // Kèm tin cuối (từ ring) để panel hiện preview giống Zalo
     const withLast = (item, key) => {
       const last = getMessages(String(item[key]), 1)[0];
