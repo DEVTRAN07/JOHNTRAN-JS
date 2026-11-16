@@ -3,10 +3,11 @@ const path = require("path");
 const logger = require("./logger");
 const { JsonStore } = require("../core/storage");
 const { SupabaseStore } = require("../core/storage/supabase");
+const { getJsonPersistenceStatus } = require("../core/storage/diagnostics");
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || "";
-const PERSISTENT_DIR = process.env.JT_PERSISTENT_DIR || "";
+const PERSISTENT_DIR = process.env.JT_DB_PERSISTENT_PATH || process.env.JT_PERSISTENT_DIR || "";
 
 const forceJson =
   String(process.env.JT_DB_DRIVER || "").toLowerCase() === "json" ||
@@ -51,70 +52,36 @@ function isPathInside(filePath, directoryPath) {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-function decodeMountInfoPath(value) {
-  return String(value || "").replace(/\\([0-7]{3})/g, (_match, octal) =>
-    String.fromCharCode(parseInt(octal, 8))
-  );
-}
-
 /**
- * Render does not expose a standard environment variable containing a disk
- * mount path. The owner must provide the exact Dashboard mount path through
- * JT_PERSISTENT_DIR. On Linux, /proc/self/mountinfo verifies the exact mount;
- * device IDs are used only as a fallback on other platforms.
+ * Use the shared filesystem inspector so the storage adapter and Panel agree
+ * on what counts as a verified Render disk mount.
  */
-function inspectPersistentDisk({ render = Boolean(process.env.RENDER), mountPath = PERSISTENT_DIR, databaseFile = dbFile } = {}) {
+function inspectPersistentDisk({ render = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID), mountPath = PERSISTENT_DIR, databaseFile = dbFile } = {}) {
   if (!render) {
     return { applicable: false, status: "not_applicable", mounted: null, databaseFileOnDisk: null, mountPath: null };
   }
 
-  if (!mountPath) {
-    return {
-      applicable: true, status: "unknown", mounted: null, databaseFileOnDisk: null,
-      mountPath: null, message: "Chưa cấu hình JT_PERSISTENT_DIR nên chưa thể xác minh Persistent Disk."
-    };
-  }
-
-  const absoluteMount = path.resolve(mountPath);
-  const absoluteDatabaseFile = databaseFile ? path.resolve(databaseFile) : "";
-  const databaseFileOnDisk = isPathInside(absoluteDatabaseFile, absoluteMount);
-  let mounted = null;
-
-  try {
-    const mountStat = fs.statSync(absoluteMount);
-    if (!mountStat.isDirectory()) {
-      mounted = false;
-    } else if (process.platform === "linux" && fs.existsSync("/proc/self/mountinfo")) {
-      const entries = fs.readFileSync("/proc/self/mountinfo", "utf8").split("\n");
-      mounted = entries.some(line => {
-        const separator = line.indexOf(" - ");
-        if (separator < 0) return false;
-        const fields = line.slice(0, separator).split(" ");
-        return decodeMountInfoPath(fields[4]) === absoluteMount;
-      });
-    } else {
-      const parent = fs.statSync(path.dirname(absoluteMount));
-      mounted = String(mountStat.dev) !== String(parent.dev);
-    }
-  } catch {
-    mounted = false;
-  }
-
-  const status = mounted
-    ? (databaseFileOnDisk ? "mounted_and_used" : "mounted_but_unused")
-    : "not_mounted";
+  const report = getJsonPersistenceStatus(databaseFile || path.join(process.cwd(), "data", "store.json"), {
+    RENDER: "true",
+    RENDER_SERVICE_ID: "render",
+    JT_DB_PERSISTENT_PATH: mountPath || ""
+  });
+  const rawStatus = report.status;
+  const status = rawStatus === "verified-mount" ? "mounted_and_used"
+    : rawStatus === "database-outside-disk" ? "database_outside_disk"
+      : rawStatus === "mount-not-verified" ? "mount_not_verified"
+        : rawStatus === "mount-detected-unverified" ? "mount_detected_unverified"
+          : "unknown";
 
   return {
     applicable: true,
     status,
-    mounted,
-    databaseFileOnDisk,
-    mountPath: absoluteMount,
-    message: status === "mounted_and_used"
-      ? "Database JSON nằm bên trong Persistent Disk đã gắn."
-      : status === "mounted_but_unused"
-        ? "Có Persistent Disk nhưng JT_DB_FILE đang nằm ngoài mount path."
-        : "Không phát hiện Persistent Disk tại JT_PERSISTENT_DIR đã cấu hình."
+    rawStatus,
+    mounted: rawStatus === "verified-mount" ? true : rawStatus === "mount-not-verified" ? false : null,
+    databaseFileOnDisk: mountPath ? rawStatus !== "database-outside-disk" : null,
+    mountPath: report.configuredRoot || report.mountPoint || null,
+    fsType: report.fsType || null,
+    message: report.message
   };
 }
 
@@ -141,40 +108,45 @@ function getDatabaseStatus(backend = db, options = {}) {
     };
   }
 
-  const filePath = options.databaseFile || backend.file || dbFile;
-  let file = { exists: false, sizeBytes: 0, modifiedAt: null };
+  const source = typeof backend.getStatus === "function" ? (backend.getStatus() || {}) : {};
+  const filePath = options.databaseFile || source.filePath || backend.file || dbFile;
+  let stat = null;
   if (filePath) {
-    try {
-      const stat = fs.statSync(path.resolve(filePath));
-      file = { exists: stat.isFile(), sizeBytes: stat.size, modifiedAt: stat.mtime.toISOString() };
-    } catch { /* file chưa được tạo trước lần ghi đầu tiên */ }
+    try { stat = fs.statSync(path.resolve(filePath)); } catch { /* file chưa được tạo trước lần ghi đầu tiên */ }
   }
+  const file = {
+    exists: source.fileExists !== undefined ? source.fileExists : Boolean(stat?.isFile()),
+    sizeBytes: source.fileSizeBytes != null ? source.fileSizeBytes : (stat?.size || 0),
+    modifiedAt: stat?.mtime?.toISOString?.() || null
+  };
 
-  const render = options.render !== undefined ? Boolean(options.render) : Boolean(process.env.RENDER);
+  const render = options.render !== undefined
+    ? Boolean(options.render)
+    : Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
   const persistentDisk = inspectPersistentDisk({
     render,
     mountPath: options.persistentDir !== undefined ? options.persistentDir : PERSISTENT_DIR,
     databaseFile: filePath
   });
-  let durability = "local";
-  if (render) {
-    durability = persistentDisk.status === "mounted_and_used"
-      ? "persistent"
-      : persistentDisk.status === "mounted_but_unused"
-        ? "disk_not_used"
-        : persistentDisk.status === "not_mounted"
-          ? "ephemeral"
-          : "unknown";
-  }
+  const durability = persistentDisk.status === "mounted_and_used" ? "persistent"
+    : persistentDisk.status === "database_outside_disk" ? "disk_not_used"
+      : persistentDisk.status === "not_applicable" ? "local"
+        : "unknown";
+  const lastFlushError = source.lastFlushError || source.loadError ||
+    backend.lastFlushError || backend.loadError || null;
+  const healthy = source.ok !== undefined ? source.ok === true : !lastFlushError;
 
   return {
     driver: "json",
-    ok: !backend.lastFlushError && !backend.lastLoadError,
-    ready: true,
+    ok: healthy,
+    ready: source.ready !== undefined ? source.ready : true,
     filePath: filePath ? path.resolve(filePath) : null,
     file,
-    lastFlushAt: backend.lastFlushAt || null,
-    lastFlushError: backend.lastFlushError || backend.lastLoadError || null,
+    lastWriteAt: source.lastWriteAt || null,
+    lastFlushAt: source.lastFlushAt || backend.lastFlushAt || null,
+    pendingFlush: Boolean(source.pendingFlush),
+    tableCounts: source.tableCounts || null,
+    lastFlushError,
     persistentDisk,
     storage: {
       kind: "local_json",
@@ -182,12 +154,10 @@ function getDatabaseStatus(backend = db, options = {}) {
       persistent: durability === "persistent",
       message: render
         ? (durability === "persistent"
-          ? "File JSON đang nằm trên Persistent Disk."
+          ? "File JSON nằm trong Persistent Disk đã được xác minh."
           : durability === "disk_not_used"
-            ? "Persistent Disk đã gắn nhưng file database chưa nằm trong mount path."
-            : durability === "ephemeral"
-              ? "Không phát hiện Persistent Disk tại mount path đã cấu hình; dữ liệu có nguy cơ mất khi redeploy/restart."
-              : "Chưa đủ thông tin để xác minh độ bền dữ liệu trên Render.")
+            ? "JT_DB_FILE nằm ngoài JT_DB_PERSISTENT_PATH."
+            : "Chưa xác minh được Persistent Disk; không được coi JSON store là lưu trữ bền vững.")
         : "JSON được lưu trên filesystem của máy chủ hiện tại."
     }
   };
