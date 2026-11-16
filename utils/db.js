@@ -42,7 +42,7 @@ if (!forceJson && SUPABASE_URL && SUPABASE_KEY) {
   db = new JsonStore(dbFile, ["Users", "Threads", "Metrics", "BotStats"]);
   logger.log(`Database: JSON store (${dbFile})`, "info");
   if (process.env.RENDER || process.env.RENDER_SERVICE_ID) {
-    logger.log("CẢNH BÁO: JSON store trên Render chỉ bền vững khi JT_DB_FILE nằm trong Persistent Disk đã gắn. Cấu hình JT_DB_PERSISTENT_PATH đúng mount path để kiểm tra.", "warn");
+    logger.log("CẢNH BÁO: JSON store trên Render chỉ bền vững khi JT_DB_FILE nằm trong Persistent Disk đã gắn. Cấu hình JT_PERSISTENT_DIR đúng mount path để kiểm tra.", "warn");
   }
 }
 
