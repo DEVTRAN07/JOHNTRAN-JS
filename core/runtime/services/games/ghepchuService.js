@@ -3,9 +3,9 @@
 const ROUND_SECONDS = 90;
 const CORRECT_POINTS = 10;
 const API_BASE = "https://dict.minhqnd.com/api/v1";
-const API_TIMEOUT_MS = 1500;
-const API_PREFIX_ATTEMPTS = 3;
-const API_LOOKUP_BATCH = 4;
+const API_TIMEOUT_MS = 1800;
+const API_PREFIX_ATTEMPTS = 4;
+const API_LOOKUP_BATCH = 8;
 const API_POOL_MAX = 160;
 const API_CACHE_TTL_MS = 10 * 60 * 1000;
 const LOOKUP_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -50,7 +50,11 @@ const PREFIXES = Object.freeze([
   "việt", "trường", "gia", "bình", "hoàng", "âm", "thư", "bảo", "lòng",
   "ước", "khám", "môi", "sinh", "đất", "nước", "con", "người", "văn",
   "lịch", "thiên", "nhiên", "tâm", "phong", "đẹp", "yêu", "quê", "hương",
-  "sức", "khỏe", "thể", "thao", "học", "tập", "lao", "động", "hữu"
+  "sức", "khỏe", "thể", "thao", "học", "tập", "lao", "động", "hữu",
+  "bạn", "bè", "chăm", "chỉ", "trung", "thực", "dũng", "cảm", "tự", "tin",
+  "khoa", "học", "kỹ", "thuật", "công", "nghệ", "điện", "thoại", "phần", "mềm",
+  "động", "vật", "thực", "vật", "núi", "rừng", "sông", "suối", "biển", "đảo",
+  "mưa", "nắng", "gió", "bão", "mây", "sấm", "chớp", "lửa", "đá", "cát"
 ]);
 
 const sessions = new Map();
