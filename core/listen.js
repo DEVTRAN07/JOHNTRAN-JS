@@ -2,6 +2,7 @@ const handleCommand = require("./handle/handleCommand");
 const handleEvent = require("./handle/handleEvent");
 const { wrapForThread } = require("./runtime/adapters/zalo");
 const logger = require("../utils/logger");
+const { reportComponent } = require("./runtime/recovery");
 const { updateMessageCache, getMessageCache } = require("../utils/index");
 const { ThreadType } = require("zalo-client");
 const { createCipherReadyGate, requestOldMessagesThen } = require("./topchat/historyBootstrap");
@@ -30,6 +31,16 @@ const CONNECT_FAIL_LIMIT = 3;
 const WATCHDOG_INTERVAL = 30000;
 // 30 phút không có frame nào MỚI coi là half-open (nhóm im lặng vài phút là bình thường)
 const WATCHDOG_STALE_MS = 1800000;
+
+function computeReconnectDelay(attempt, baseMs = RECONNECT_BASE_DELAY, maxMs = RECONNECT_MAX_DELAY, jitterRatio = 0.15, random = Math.random) {
+  const step = Math.max(1, Math.floor(Number(attempt) || 1));
+  const base = Math.max(1, Number(baseMs) || RECONNECT_BASE_DELAY);
+  const maximum = Math.max(base, Number(maxMs) || RECONNECT_MAX_DELAY);
+  const jitter = Math.max(0, Math.min(0.5, Number(jitterRatio) || 0));
+  const raw = Math.min(base * (2 ** Math.min(16, step - 1)), maximum);
+  const spread = Math.floor(raw * jitter * Math.max(0, Math.min(1, Number(random()) || 0)));
+  return Math.min(maximum, raw + spread);
+}
 
 // Prevent accidental duplicate listener registration when startup paths race
 // or a caller invokes startListening twice with the same SDK API instance.
@@ -430,6 +441,7 @@ function startListening(api) {
   const connectListener = (reason) => {
     // connectListener chỉ chạy khi không có timer pending hoặc từ chính timer đã fired
     reconnectTimer = null;
+    reportComponent("listener", { status: "connecting", attempt: reconnectAttempt, message: "Đang mở kết nối WebSocket." });
     try {
       // retryOnClose: false → mọi lần đóng WS đều phát event "closed",
       // reconnect chỉ đi qua MỘT luồng duy nhất (tránh 2 WS đấu nhau)
@@ -438,7 +450,13 @@ function startListening(api) {
       logger.log(`Đã bắt đầu lắng nghe sự kiện${reason ? ` (${reason})` : ""}`, "info");
     } catch (error) {
       reconnectAttempt += 1;
-      const delay = Math.min(RECONNECT_BASE_DELAY * reconnectAttempt, RECONNECT_MAX_DELAY);
+      const delay = computeReconnectDelay(reconnectAttempt);
+      reportComponent("listener", {
+        status: "recovering",
+        attempt: reconnectAttempt,
+        nextRetryAt: Date.now() + delay,
+        message: "Không mở được WebSocket; đang thử lại theo exponential backoff."
+      });
       logger.log(`Chưa kết nối được listener (${error.message}) — thử lại sau ${delay / 1000}s`, "warn", { source: "websocket-listener", eventName: "connect" });
       reconnectTimer = setTimeout(() => connectListener("tự kết nối lại"), delay);
     }
@@ -447,7 +465,14 @@ function startListening(api) {
   const scheduleReconnect = (reason) => {
     if (reconnectTimer) return;
     reconnectAttempt += 1;
-    const delay = Math.min(RECONNECT_BASE_DELAY * reconnectAttempt, RECONNECT_MAX_DELAY);
+    const delay = computeReconnectDelay(reconnectAttempt);
+    reportComponent("listener", {
+      status: "recovering",
+      attempt: reconnectAttempt,
+      nextRetryAt: Date.now() + delay,
+      consecutiveHandshakeFailures: reconnectFailures.count || 0,
+      message: "WebSocket đóng; đang tự kết nối lại theo backoff."
+    });
     logger.log(`Listener đóng (${reason}) — kết nối lại sau ${delay / 1000}s`, "warn", { source: "websocket-listener", eventName: "closed" });
     reconnectTimer = setTimeout(() => connectListener("tự kết nối lại"), delay);
   };
@@ -489,6 +514,7 @@ function startListening(api) {
     // WebSocket OPEN is not yet a usable Zalo session; wait for cipher_key.
     lastFrameAt = Date.now();
     connectingSince = 0;
+    reportComponent("listener", { status: "connecting", message: "WebSocket đã mở; đang chờ cipher key để hoàn tất handshake." });
     historyBootstrapGate.connected();
   });
 
@@ -506,6 +532,7 @@ function startListening(api) {
     }
     const failure = reconnectFailures.closed();
     if (failure.exhausted) {
+      reportComponent("listener", { status: "critical", consecutiveHandshakeFailures: failure.count, message: "Handshake thất bại liên tiếp; yêu cầu supervisor khởi động lại tiến trình." });
       logger.log(`Listener rớt ${failure.count} lần liên tiếp không hoàn tất handshake — khởi động lại tiến trình để đăng nhập lại`, "error", { source: "websocket-listener", eventName: "handshake-failed", code: String(code) });
       process.exit(2); // supervisor tự dựng lại (index.js restart code 2 / botManager autoRestart)
     }
@@ -515,6 +542,7 @@ function startListening(api) {
   // Chỉ log lỗi WS — "error" không tự reconnect (tránh 2 luồng kết nối đấu nhau);
   // việc kết nối lại do event "closed" + watchdog đảm nhiệm
   listener.on("error", (error) => {
+    reportComponent("listener", { status: "degraded", message: "Listener phát sinh lỗi WebSocket; chờ event closed/watchdog xử lý." });
     logger.log(`Listener lỗi: ${error?.message || error}`, "error", { source: "websocket-listener", eventName: "error", code: error?.code });
   });
 
@@ -528,6 +556,7 @@ function startListening(api) {
     // must still count as a failed connection attempt.
     reconnectAttempt = 0;
     reconnectFailures.markStable();
+    reportComponent("listener", { status: "healthy", attempt: 0, consecutiveHandshakeFailures: 0, message: "WebSocket handshake hoàn tất; listener hoạt động." });
     historyBootstrapGate.cipherReady();
   });
 
@@ -569,3 +598,5 @@ module.exports = startListening;
 module.exports.shouldReplayOldMessage = shouldReplayOldMessage;
 module.exports.claimListenerRegistration = claimListenerRegistration;
 module.exports.shouldExecuteMessageCommand = shouldExecuteMessageCommand;
+
+module.exports.computeReconnectDelay = computeReconnectDelay;
