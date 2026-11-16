@@ -103,3 +103,70 @@ test("Supabase ignores a stale failed write when a newer write for that row is q
   assert.equal(store.retryQueue.size, 0);
   assert.equal(store.writeVersions.size, 0);
 });
+
+test("Supabase sync preserves a pending bot_enabled write when the remote snapshot is stale", async () => {
+  const store = makeStore(async (name, table) => ({
+    data: table === "bot_threads"
+      ? [{ id: "group-1", data: { bot_enabled: false } }, { id: "group-deleted", data: { bot_enabled: true } }]
+      : [],
+    error: null
+  }));
+  store.mirror = {
+    Users: {},
+    Threads: {
+      "group-1": { id: "group-1", data: { bot_enabled: true } }
+    },
+    Metrics: {}
+  };
+  store.writeVersions.set("bot_threads:group-1", 1);
+  store.writeVersions.set("bot_threads:group-deleted", 2);
+  store.scheduleInterval = () => {};
+
+  await store.sync();
+
+  assert.equal(store.mirror.Threads["group-1"].data.bot_enabled, true,
+    "an older Supabase snapshot must not turn a locally enabled group OFF");
+  assert.equal(store.mirror.Threads["group-deleted"], undefined,
+    "a pending local delete must not be resurrected by an older snapshot");
+});
+
+test("critical group-setting writes wait for Supabase acknowledgement", async () => {
+  let finishWrite;
+  const store = makeStore(async (name) => {
+    if (name === "upsert") {
+      await new Promise(resolve => { finishWrite = resolve; });
+      return { error: null };
+    }
+    return { data: [], error: null };
+  });
+  store.mirror = { Users: {}, Threads: {}, Metrics: {} };
+
+  const pending = store.setAndWait("Threads", "threadId", "group-persist", { bot_enabled: true });
+  await tick();
+  assert.equal(typeof finishWrite, "function", "the remote write should have started");
+  assert.equal(store.mirror.Threads["group-persist"].data.bot_enabled, true);
+  assert.equal(store.writeVersions.has("bot_threads:group-persist"), true,
+    "the row remains protected from stale sync until the write commits");
+
+  finishWrite();
+  await pending;
+
+  assert.equal(store.writeVersions.has("bot_threads:group-persist"), false);
+  assert.equal(store.retryQueue.has("bot_threads:group-persist"), false);
+});
+
+test("failed critical group-setting writes report failure and remain queued for retry", async () => {
+  const store = makeStore(async (name) => {
+    if (name === "upsert") throw new Error("fetch failed");
+    return { data: [], error: null };
+  });
+  store.mirror = { Users: {}, Threads: {}, Metrics: {} };
+
+  await assert.rejects(
+    store.setAndWait("Threads", "threadId", "group-retry", { bot_enabled: true }),
+    /fetch failed/
+  );
+  assert.equal(store.mirror.Threads["group-retry"].data.bot_enabled, true);
+  assert.equal(store.retryQueue.has("bot_threads:group-retry"), true);
+  assert.equal(store.writeVersions.has("bot_threads:group-retry"), true);
+});
