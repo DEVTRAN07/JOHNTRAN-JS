@@ -46,3 +46,13 @@ test("createData initializes the same record shape as persisted rows", async () 
   assert.equal(persisted.data.anti_link, false);
   assert.equal(persisted.data.anti_spam, true);
 });
+
+test("new thread records persist bot_enabled=false by default", async () => {
+  const threadId = "thread-cache-group-default-off-" + process.pid;
+  const created = await Threads.getData(threadId);
+  assert.equal(created.data.bot_enabled, false);
+
+  threadCache.invalidate(threadId);
+  const cached = Threads.getCachedData(threadId);
+  assert.equal(cached.data.bot_enabled, false);
+});
