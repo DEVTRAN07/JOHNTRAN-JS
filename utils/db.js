@@ -5,24 +5,54 @@ const { JsonStore } = require("../core/storage");
 const { SupabaseStore } = require("../core/storage/supabase");
 const { getJsonPersistenceStatus } = require("../core/storage/diagnostics");
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "";
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || "";
-const PERSISTENT_DIR = process.env.JT_PERSISTENT_DIR || process.env.JT_DB_PERSISTENT_PATH || "";
+function resolveDatabaseConfig(env = process.env) {
+  const requestedDriver = String(env.JT_DB_DRIVER || "").trim().toLowerCase();
+  if (requestedDriver && !["json", "supabase"].includes(requestedDriver)) {
+    throw new Error("JT_DB_DRIVER chỉ nhận json hoặc supabase.");
+  }
 
-const forceJson =
-  String(process.env.JT_DB_DRIVER || "").toLowerCase() === "json" ||
-  String(process.env.SUPABASE_DISABLE || "").toLowerCase() === "true";
+  const url = String(env.SUPABASE_URL || "").trim();
+  // Only the service-role key may be used by this private server-side bot.
+  // Anon/publishable keys are intentionally not accepted as a database admin key.
+  const serviceKey = String(env.SUPABASE_SERVICE_KEY || "").trim();
+  const disabled = String(env.SUPABASE_DISABLE || "").trim().toLowerCase() === "true";
+
+  if (disabled && requestedDriver === "supabase") {
+    throw new Error("Cấu hình xung đột: JT_DB_DRIVER=supabase nhưng SUPABASE_DISABLE=true.");
+  }
+
+  const forceJson = requestedDriver === "json" || disabled;
+  if (forceJson) return { driver: "json", url: "", serviceKey: "", forced: true };
+
+  const anySupabaseValue = Boolean(url || serviceKey);
+  const explicitlySupabase = requestedDriver === "supabase";
+  if (explicitlySupabase || anySupabaseValue) {
+    if (!url || !serviceKey) {
+      throw new Error(
+        "Thiếu cấu hình Supabase: cần cả SUPABASE_URL và SUPABASE_SERVICE_KEY. " +
+        "Không dùng SUPABASE_ANON_KEY/publishable key cho bot."
+      );
+    }
+    return { driver: "supabase", url, serviceKey, forced: explicitlySupabase };
+  }
+
+  return { driver: "json", url: "", serviceKey: "", forced: false };
+}
+
+const DATABASE_CONFIG = resolveDatabaseConfig();
+const PERSISTENT_DIR = process.env.JT_PERSISTENT_DIR || process.env.JT_DB_PERSISTENT_PATH || "";
 
 let db;
 let dbFile = null;
 
-if (!forceJson && SUPABASE_URL && SUPABASE_KEY) {
-  db = new SupabaseStore(SUPABASE_URL, SUPABASE_KEY);
-  logger.log("Database: Supabase (bot_threads / bot_users / bot_metrics)", "info");
+if (DATABASE_CONFIG.driver === "supabase") {
+  db = new SupabaseStore(DATABASE_CONFIG.url, DATABASE_CONFIG.serviceKey);
+  logger.log("Database: Supabase (bot_threads / bot_users / bot_metrics / bot_stats / bot_media_cache)", "info");
 } else {
-  if (forceJson && (SUPABASE_URL || SUPABASE_KEY)) {
+  if (DATABASE_CONFIG.forced && (process.env.SUPABASE_URL || process.env.SUPABASE_SERVICE_KEY)) {
     logger.log("Database: forced JSON store (JT_DB_DRIVER/SUPABASE_DISABLE) mặc dù Supabase env có sẵn", "warn");
   }
+
   // Khi có Persistent Disk nhưng không chỉ định JT_DB_FILE, đặt file JSON
   // trực tiếp trong mount path để tránh ghi nhầm vào filesystem tạm của Render.
   dbFile = process.env.JT_DB_FILE ||
@@ -39,7 +69,7 @@ if (!forceJson && SUPABASE_URL && SUPABASE_KEY) {
     logger.log("Đã sao chép master store.json sang JT_PERSISTENT_DIR; giữ nguyên file nguồn.", "info");
   }
 
-  db = new JsonStore(dbFile, ["Users", "Threads", "Metrics", "BotStats"]);
+  db = new JsonStore(dbFile, ["Users", "Threads", "Metrics", "BotStats", "MediaCache"]);
   logger.log(`Database: JSON store (${dbFile})`, "info");
   if (process.env.RENDER || process.env.RENDER_SERVICE_ID) {
     logger.log("CẢNH BÁO: JSON store trên Render chỉ bền vững khi JT_DB_FILE nằm trong Persistent Disk đã gắn. Cấu hình JT_PERSISTENT_DIR đúng mount path để kiểm tra.", "warn");
@@ -252,3 +282,4 @@ module.exports.createDatabaseFacade = createDatabaseFacade;
 module.exports.getDatabaseStatus = getDatabaseStatus;
 module.exports.inspectPersistentDisk = inspectPersistentDisk;
 module.exports.isPathInside = isPathInside;
+module.exports.resolveDatabaseConfig = resolveDatabaseConfig;
