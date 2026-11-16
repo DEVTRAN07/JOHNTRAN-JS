@@ -48,7 +48,7 @@ test("setDataAndWait resolves only after the enabled group flag is on disk", asy
 test("partial group settings updates preserve bot_enabled until an explicit OFF write", async () => {
   const threadId = "thread-cache-group-preserve-" + process.pid;
 
-  await Threads.setDataAndWait(threadId, { bot_enabled: true, prefix: "/" });
+  await Threads.setBotEnabled(threadId, true);
   await Threads.setData(threadId, { anti_link: true });
   let current = await Threads.getData(threadId);
 
@@ -61,8 +61,13 @@ test("partial group settings updates preserve bot_enabled until an explicit OFF 
   await Threads.setData(threadId, { bot_enabled: false, anti_link: true });
   current = await Threads.getData(threadId);
   assert.equal(current.data.bot_enabled, true,
-    "ordinary settings writes must never turn an enabled group OFF");
+    "ordinary stale OFF settings must not turn an enabled group OFF");
 
+  await Threads.setBotEnabled(threadId, false);
+  await Threads.setData(threadId, { bot_enabled: true, anti_link: true });
+  current = await Threads.getData(threadId);
+  assert.equal(current.data.bot_enabled, false,
+    "ordinary stale ON settings must not re-enable a manually disabled group");
   await Threads.setBotEnabled(threadId, false);
   current = await Threads.getData(threadId);
   assert.equal(current.data.bot_enabled, false,
