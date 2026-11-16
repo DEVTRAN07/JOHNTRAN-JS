@@ -893,7 +893,69 @@ async function loadSystem() {
     } else {
       dbRows = [["Driver","Chưa xác định"],["Trạng thái",db.error || "Không đọc được cấu hình database"]];
     }
+    const storageLayout = m.storageLayout || {};
+    const registryDisk = storageLayout.persistence || {};
+    dbRows.push(
+      ["Registry bot", storageLayout.registryFile || "—"],
+      ["Độ bền registry", registryDisk.message || "Chưa xác minh"],
+      ["Thư mục bot con", storageLayout.botsRoot || "—"]
+    );
     $("databaseDetails").innerHTML = dbRows.map(([key,value])=>'<div class="detail-row"><span>'+$escape(key)+'</span><b>'+$escape(value ?? "—")+'</b></div>').join("");
+
+    // Kiểm tra database thật trong từng tiến trình bot con, không suy luận từ DB master.
+    const botStorageResults = new Array(state.bots.length);
+    let storageCursor = 0;
+    const storageWorker = async () => {
+      while (storageCursor < state.bots.length) {
+        const index = storageCursor++;
+        const bot = state.bots[index];
+        if (bot.loginState !== "logged_in") {
+          botStorageResults[index] = { bot, unavailable: "Bot chưa đăng nhập; chưa thể hỏi bridge của tiến trình này." };
+          continue;
+        }
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        try {
+          const result = await api("/api/chat/" + enc(bot.name) + "/storage-status", { signal:controller.signal });
+          botStorageResults[index] = { bot, result };
+        } catch (error) {
+          botStorageResults[index] = { bot, unavailable: error.name === "AbortError" ? "Bridge quá thời gian kiểm tra." : error.message };
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(3,state.bots.length)}, () => storageWorker()));
+
+    const persistenceLabels = {
+      "verified-mount":"Mount riêng đã được xác minh",
+      "mount-detected-unverified":"Có mount nhưng chưa khai báo",
+      "unconfigured":"Chưa khai báo Persistent Disk",
+      "database-outside-disk":"File database nằm ngoài disk",
+      "mount-not-verified":"Chưa xác minh được mount",
+      "host-local":"Filesystem của host",
+      "managed-remote":"Database Supabase từ xa"
+    };
+    $("botStorageDetails").innerHTML = botStorageResults.length ? botStorageResults.map(item => {
+      const name = item.bot.displayName || item.bot.name;
+      if (item.unavailable) {
+        return '<div class="bot-storage-row"><div><b>'+$escape(name)+'</b><small>'+$escape(item.unavailable)+'</small></div><span class="storage-state is-unknown">Chưa kiểm tra</span></div>';
+      }
+      const storage = item.result?.storage || {};
+      const persistence = storage.persistence || {};
+      const driver = storage.driver || "unknown";
+      const healthy = storage.ok === true;
+      const durability = persistenceLabels[persistence.status] || persistence.status || "Chưa xác minh";
+      const summary = driver === "supabase"
+        ? "Supabase · " + (healthy ? "Đã đồng bộ" : (storage.syncError || "Cần kiểm tra"))
+        : "JSON · " + (storage.filePath || "Chưa rõ đường dẫn");
+      const message = persistence.message || (driver === "supabase"
+        ? "Dữ liệu bot được lưu trên Supabase."
+        : storage.loadError || storage.lastFlushError || "Không có thông tin độ bền dữ liệu.");
+      const className = !healthy ? "is-warning" :
+        (driver === "supabase" || persistence.confirmed === true) ? "is-ok" : "is-unknown";
+      return '<div class="bot-storage-row"><div><b>'+$escape(name)+'</b><small>'+$escape(summary)+'</small><small>'+$escape(message)+'</small></div><span class="storage-state '+className+'">'+$escape(durability)+'</span></div>';
+    }).join("") : '<div class="empty-state">Chưa có bot con trong registry.</div>';
 
     $("systemBotList").innerHTML = state.bots.length ? state.bots.map(bot => {
       const [label,cls] = botStatus(bot);
@@ -908,6 +970,7 @@ async function loadSystem() {
   } catch (error) {
     $("systemDetails").innerHTML = '<div class="empty-state">'+$escape(error.message)+'</div>';
     $("databaseDetails").innerHTML = '<div class="empty-state">Không kiểm tra được database: '+$escape(error.message)+'</div>';
+    if ($("botStorageDetails")) $("botStorageDetails").innerHTML = '<div class="empty-state">Không tải được trạng thái storage từng bot.</div>';
     $("systemBotList").innerHTML = '<div class="empty-state">Không tải được trạng thái bot.</div>';
   }
 }
