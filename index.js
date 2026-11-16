@@ -41,15 +41,22 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
         logger.log("Panel mode: dùng web panel để tạo và quản lý bot con", "info");
         console.log(`Bot con đã lưu: ${manager.list().map((b) => b.name).join(", ") || "(chưa có)"}`);
 
-        // Deploy (Koyeb): tự tạo + chạy bot chính nếu chưa có bot con nào
+        // Registry là danh sách bot cần duy trì. Sau mỗi lần Render restart,
+        // ChildProcess cũ không còn nên phải khởi chạy lại tất cả bot đã lưu.
         if (manager.list().length === 0) {
             try {
-                const bot = manager.create("main");
-                bot.start();
-                logger.log("Đã tự khởi động bot con 'main' (xem QR trên panel hoặc qr.png)", "info");
+                manager.create("main");
             } catch (error) {
-                logger.log(`Không thể tự khởi động bot main: ${error.message}`, "error");
+                logger.log(`Không thể tạo bot main: ${error.message}`, "error");
             }
+        }
+
+        const bootResult = manager.startAll();
+        if (bootResult.started.length) {
+            logger.log(`Đã tự khởi động ${bootResult.started.length} bot: ${bootResult.started.join(", ")}`, "info");
+        }
+        if (bootResult.errors.length) {
+            logger.log(`Có ${bootResult.errors.length} bot không thể tự khởi động; xem log từng bot trong Panel.`, "warn");
         }
 
         const shutdown = async () => {
