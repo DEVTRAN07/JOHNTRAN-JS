@@ -153,6 +153,18 @@ jobs:
             if health="$(curl --fail --silent --show-error --max-time 10 "$service_url/health" 2>/dev/null)"; then
               if jq -e '(.status == "ok" or .status == "starting") and ((.uptimeMs | type) == "number" or (.uptimeSeconds | type) == "number")' >/dev/null <<< "$health"; then
                 echo "PASS  public /health: status=$(jq -r '.status' <<< "$health"), loggedIn=$(jq -r '.loggedIn // false' <<< "$health")"
+                db_driver="$(jq -r '.supabase.driver // "unknown"' <<< "$health")"
+                db_ok="$(jq -r '.supabase.ok // false' <<< "$health")"
+                db_failures="$(jq -r '.supabase.consecutiveFailures // 0' <<< "$health")"
+                if [[ "$db_driver" == "supabase" && "$db_ok" == "true" ]]; then
+                  echo "PASS  database: driver=supabase, sync=healthy, consecutiveFailures=$db_failures"
+                elif [[ "$db_driver" == "supabase" ]]; then
+                  echo "::warning::Database driver is Supabase but sync is not healthy yet (consecutiveFailures=$db_failures). Check Panel → Hệ thống → Database and Supabase SQL schema/credentials."
+                elif [[ "$db_driver" == "json" ]]; then
+                  echo "::warning::Production is still using JSON, not Supabase. Add SUPABASE_URL and SUPABASE_SECRET_KEY in Render Environment, and remove JT_DB_DRIVER=json/SUPABASE_DISABLE=true."
+                else
+                  echo "::warning::Could not determine database driver from public health payload."
+                fi
                 if [[ "$(jq -r '.loggedIn // false' <<< "$health")" != "true" ]]; then
                   echo "::warning::The service is live but the Zalo session is not logged in yet (loggedIn=false). Complete the login/QR flow before expecting bot commands to work."
                 fi
