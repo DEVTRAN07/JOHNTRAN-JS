@@ -44,10 +44,10 @@ jobs:
     # Chỉ deploy khi push lên main (không deploy trên PR)
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Trigger Render deploy
+      - name: Trigger Render deploy and verify live health
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           SERVICE_NAME: JOHNTRAN-JS
@@ -73,9 +73,72 @@ jobs:
             exit 1
           fi
 
-          curl --fail --silent --show-error \
+          deploy_response="$(curl --fail --silent --show-error --max-time 30 \
             -X POST \
             -H "Authorization: Bearer ${RENDER_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{\"commitId\":\"${GITHUB_SHA}\"}" \
-            "https://api.render.com/v1/services/${service_id}/deploys"
+            "https://api.render.com/v1/services/${service_id}/deploys")"
+          deploy_id="$(jq -r '.id // empty' <<< "$deploy_response")"
+          if [[ -z "$deploy_id" ]]; then
+            echo "::error::Render accepted no verifiable deploy ID. Response: $deploy_response"
+            exit 1
+          fi
+          echo "Render deploy ID: $deploy_id"
+
+          deploy_status=""
+          for attempt in $(seq 1 90); do
+            deploy="$(curl --fail --silent --show-error --max-time 20 \
+              -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              "https://api.render.com/v1/services/${service_id}/deploys/${deploy_id}")"
+            deploy_status="$(jq -r '.status // empty' <<< "$deploy")"
+            echo "Render deploy check $attempt/90: ${deploy_status:-unknown}"
+
+            if [[ "$deploy_status" == "live" ]]; then
+              break
+            fi
+            case "$deploy_status" in
+              build_failed|pre_deploy_failed|update_failed|canceled|deactivated)
+                echo "::error::Render deployment ended with status: $deploy_status"
+                echo "$deploy"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+
+          if [[ "$deploy_status" != "live" ]]; then
+            echo "::error::Render deploy did not reach live state within 15 minutes (last status: ${deploy_status:-unknown})."
+            exit 1
+          fi
+
+          service_details="$(curl --fail --silent --show-error --max-time 20 \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            "https://api.render.com/v1/services/${service_id}")"
+          service_url="$(jq -r '.serviceDetails.url // empty' <<< "$service_details")"
+          if [[ -z "$service_url" ]]; then
+            echo "::error::Render service did not return a public serviceDetails.url."
+            exit 1
+          fi
+          echo "Verifying public health endpoint: $service_url/health"
+
+          healthy=0
+          for attempt in $(seq 1 12); do
+            if health="$(curl --fail --silent --show-error --max-time 10 "$service_url/health" 2>/dev/null)"; then
+              if jq -e '(.status == "ok" or .status == "starting") and ((.uptimeMs | type) == "number" or (.uptimeSeconds | type) == "number")' >/dev/null <<< "$health"; then
+                echo "PASS  public /health: status=$(jq -r '.status' <<< "$health"), loggedIn=$(jq -r '.loggedIn // false' <<< "$health")"
+                healthy=1
+                break
+              fi
+              echo "Health endpoint returned an unexpected payload; retry $attempt/12."
+            else
+              echo "Health endpoint is not ready yet; retry $attempt/12."
+            fi
+            sleep 5
+          done
+
+          if [[ "$healthy" -ne 1 ]]; then
+            echo "::error::Render deployment is live, but the public /health endpoint did not return a valid health payload."
+            exit 1
+          fi
+          echo "PASS  Render deployment ${deploy_id} is live for commit ${GITHUB_SHA}."
