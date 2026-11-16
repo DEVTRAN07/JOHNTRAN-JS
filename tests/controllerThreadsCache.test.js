@@ -33,9 +33,10 @@ test("setData keeps the database record envelope in the LRU cache", async () => 
   assert.equal(persisted.data.anti_link, true);
 });
 
-test("setDataAndWait resolves only after the enabled group flag is on disk", async () => {
+test("setDataAndWait preserves the enabled group flag on disk after an ordinary settings write", async () => {
   const threadId = "thread-cache-group-durable-" + process.pid;
-  await Threads.setDataAndWait(threadId, { bot_enabled: true, prefix: "!" });
+  await Threads.setBotEnabled(threadId, true);
+  await Threads.setDataAndWait(threadId, { bot_enabled: false, prefix: "!" });
 
   const disk = JSON.parse(fs.readFileSync(dbFile, "utf8"));
   assert.equal(disk.Threads[threadId].data.bot_enabled, true);
@@ -134,7 +135,7 @@ test("an enabled group remains ON from the last-known mirror when a later DB syn
   const threadId = "thread-cache-retain-on-" + process.pid;
   const unknownThreadId = "thread-cache-no-default-while-degraded-" + process.pid;
 
-  await Threads.setDataAndWait(threadId, { bot_enabled: true, prefix: "/" });
+  await Threads.setBotEnabled(threadId, true);
   // Simulate the five-minute thread LRU expiry without waiting in the test.
   threadCache.set(threadId, {
     id: threadId,
