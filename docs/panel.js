@@ -865,16 +865,16 @@ async function loadSystem() {
       const diskLabels = {
         not_applicable:"Không áp dụng (không chạy trên Render)",
         unknown:"Chưa xác minh — chưa cấu hình JT_PERSISTENT_DIR",
-        not_mounted:"Không phát hiện disk tại mount path",
-        mounted_but_unused:"Đã gắn disk nhưng file DB nằm ngoài disk",
-        mounted_and_used:"Đã gắn và file DB đang sử dụng disk"
+        mount_not_verified:"Chưa xác minh được mount riêng tại đường dẫn này",
+        mount_detected_unverified:"Có mount riêng nhưng chưa cấu hình JT_DB_PERSISTENT_PATH",
+        database_outside_disk:"File DB nằm ngoài JT_DB_PERSISTENT_PATH",
+        mounted_and_used:"Mount riêng đã xác minh và file DB đang sử dụng disk"
       };
       const durabilityLabels = {
         local:"Filesystem máy chủ hiện tại",
         unknown:"Chưa xác minh",
-        ephemeral:"Filesystem tạm — có nguy cơ mất dữ liệu",
-        disk_not_used:"Có disk nhưng database chưa dùng",
-        persistent:"Persistent Disk đang được sử dụng"
+        disk_not_used:"File database nằm ngoài đường dẫn disk đã khai báo",
+        persistent:"Persistent Disk đã được xác minh và đang sử dụng"
       };
       const probeFile = probe.fileExists === true;
       dbRows = [
@@ -886,7 +886,7 @@ async function loadSystem() {
         ["Ghi / sửa gần nhất",fmtDate(db.lastFlushAt || db.file?.modifiedAt)],
         ["Persistent Disk",diskLabels[disk.status] || "Chưa xác minh"],
         ["Mount path",disk.mountPath || "Chưa cấu hình"],
-        ["File DB nằm trong disk",disk.databaseFileOnDisk === true ? "Có" : disk.databaseFileOnDisk === false ? "Không" : "Chưa rõ"],
+        ["File DB nằm trong mount path",disk.databaseFileOnDisk === true ? "Có (theo cấu hình)" : disk.databaseFileOnDisk === false ? "Không" : "Chưa rõ"],
         ["Độ bền dữ liệu",durabilityLabels[db.storage?.durability] || "Chưa xác minh"],
         ["Lỗi đọc/ghi",db.lastFlushError || "Không có"]
       ];
