@@ -575,3 +575,39 @@ select:focus,input:focus,textarea:focus{border-color:rgba(201,168,106,.55)}
 .error-monitor-breakdown>div{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
 .error-monitor-breakdown b{min-width:82px;color:var(--text);font-size:9px}
 .error-monitor-breakdown span{color:var(--muted-2);font-size:9px;line-height:1.5;overflow-wrap:anywhere}
+
+
+/* Step 8 · recovery engine health and safe backpressure status */
+.recovery-state{
+  display:inline-flex;align-items:center;justify-self:start;
+  padding:5px 8px;border:1px solid var(--line);border-radius:6px;
+  margin:3px 0 8px;font-size:8px;font-weight:800;letter-spacing:.08em
+}
+.recovery-state.is-ok{color:#91dbb7;background:rgba(109,206,164,.1);border-color:rgba(109,206,164,.24)}
+.recovery-state.is-warning{color:#eac27f;background:rgba(231,178,91,.1);border-color:rgba(231,178,91,.24)}
+.recovery-state.is-critical{color:#ed8b87;background:rgba(237,139,135,.1);border-color:rgba(237,139,135,.24)}
+.recovery-alert-list{display:grid;gap:7px;margin-top:10px}
+.recovery-alert{
+  display:grid;grid-template-columns:auto 1fr;gap:3px 8px;
+  padding:8px 10px;border:1px solid var(--line);border-radius:7px;
+  background:rgba(11,18,26,.34);min-width:0
+}
+.recovery-alert>b{font-size:8px;text-transform:uppercase;letter-spacing:.06em}
+.recovery-alert>span{font-size:9px;line-height:1.45;color:var(--text);overflow-wrap:anywhere}
+.recovery-alert>small{grid-column:2;font-size:8px;color:var(--muted-2);overflow-wrap:anywhere}
+.recovery-alert.is-critical>b{color:#ed8b87}
+.recovery-alert.is-warning>b{color:#eac27f}
+.recovery-alert.is-info>b{color:var(--muted-2)}
+.recovery-child-list{display:grid;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.recovery-child-row{
+  display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;
+  padding:7px 8px;border:1px solid var(--line);border-radius:7px;
+  background:rgba(11,18,26,.24);min-width:0
+}
+.recovery-child-row>b{font-size:9px;color:var(--text);overflow-wrap:anywhere}
+.recovery-child-row>small{grid-column:1/-1;font-size:8px;color:var(--muted-2);overflow-wrap:anywhere}
+.recovery-child-state{font-size:8px;font-weight:700}
+.recovery-child-state.is-ok{color:#91dbb7}
+.recovery-child-state.is-warning{color:#eac27f}
+.recovery-child-state.is-critical{color:#ed8b87}
+.recovery-child-state.is-unknown{color:var(--muted-2)}
