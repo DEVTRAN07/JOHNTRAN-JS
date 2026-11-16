@@ -5,6 +5,7 @@ const path = require("path");
 const { botPaths, getStorageLayout } = require("./botManager");
 const { assertPanelToken, isPanelRequestAuthorized, resolvePanelToken } = require("../utils/tokenSecurity");
 const { probeBridgeHealth } = require("./bridgeHealth");
+const { probeBridgeProfile } = require("./bridgeProfile");
 const { installMonitoring, httpMetricsMiddleware, register } = require("../core/monitoring");
 let dbUtils, storeDb;
 try { dbUtils = require("../utils/db"); storeDb = dbUtils.db || dbUtils; } catch { dbUtils = null; storeDb = null; }
@@ -167,6 +168,14 @@ async function enrichBotLive(bot, bridgeToken = "") {
     out.status = "online";
     out.displayStatus = "online";
     out.sessionHint = "Phiên Zalo đang hoạt động qua Cookie + IMEI hoặc phiên đã lưu.";
+    // Resolve the human-facing Zalo name and avatar from the authenticated child.
+    // The bridge profile probe is cached, so this does not re-query Zalo on every refresh.
+    const profile = await probeBridgeProfile(out, bridgeToken);
+    if (profile) {
+      if (profile.displayName) out.displayName = profile.displayName;
+      if (profile.avatar) out.avatar = profile.avatar;
+      if (profile.uid) out.uid = profile.uid;
+    }
   } else if (out.loginState === "logged_in") {
     // A stale BotStats row must not make the Panel send requests to an
     // unauthenticated or still-starting child process.
@@ -544,7 +553,7 @@ function startPanel({ manager, config }) {
       if (pathname.startsWith("/api/chat")) {
         // Refresh child BotStats before deciding if its Zalo bridge is logged in.
         await maybeSyncStore();
-        const match = pathname.match(/^\/api\/chat\/([a-zA-Z0-9_-]+)\/(threads|messages|health|thread-info|user-info|action|admin-groups|toggle-admin-group|group-commands|group-status|storage-status)$/);
+        const match = pathname.match(/^\/api\/chat\/([a-zA-Z0-9_-]+)\/(threads|profile|messages|health|thread-info|user-info|action|admin-groups|toggle-admin-group|group-commands|group-status|storage-status)$/);
         const sendMatch = pathname.match(/^\/api\/chat\/([a-zA-Z0-9_-]+)\/send$/);
         const botName = match?.[1] || sendMatch?.[1];
         if (!botName) return sendJson(res, 400, { error: "Thiếu tên bot" });
