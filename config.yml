@@ -104,6 +104,7 @@ privacy:
     - lrclib.net
     - cloudflare-dns.com
     - dns.google
+    - dict.minhqnd.com
 
 # ===== DỊCH VỤ NGOÀI (chỉ chạy khi admin tự cấu hình endpoint) =====
 # Để trống = tính năng tắt hoàn toàn, bot KHÔNG gửi dữ liệu đi đâu cả.
