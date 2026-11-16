@@ -32,6 +32,7 @@ const { commandLimiter } = require("../runtime/rateLimiter");
 const { checkCommandRole, checkGroupPermissions } = require("../runtime/middleware/permissions");
 const { consumeCooldown } = require("../runtime/middleware/cooldown");
 const { dispatchCommand } = require("../runtime/dispatcher");
+const { canRunCommandInGroup } = require("../runtime/groupBotState");
 
 
 async function runCommandPipeline(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
@@ -56,8 +57,8 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   const command = resolveCommand(global.client.commands, commandName);
   const folderMenuRuntime = require("../runtime/folderMenu");
   const menuGroupShortcut = folderMenuRuntime.resolveMenuGroup(global.client.commands, UIDUsage, commandName);
-  // Nhóm OFF phải im lặng hoàn toàn. Chỉ cho phép /bot on để chủ bot mở lại.
-  if (threadInfo?.bot_enabled === false && !(commandName === "bot" && ["on", "status"].includes(String(args[0] || "").toLowerCase()))) return;
+  // Groups stay silent by default; only /bot on and /bot status pass while OFF.
+  if (type === ThreadType.Group && !canRunCommandInGroup(threadInfo, commandName, args)) return;
   // A bare category shortcut opens its card. Commands with the same name
   // (for example /anti and /admin) still execute normally when arguments exist.
   if (!command || (menuGroupShortcut && args.length === 0)) {
