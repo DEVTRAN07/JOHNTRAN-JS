@@ -154,6 +154,7 @@ async function refreshOverview() {
   try {
     const data = await api("/api/bots");
     state.bots = Array.isArray(data.bots) ? data.bots : [];
+    renderBotSelectors();
     renderBots();
     await loadMetrics();
     $("lastSync").textContent = "Đồng bộ " + new Date().toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
@@ -184,6 +185,19 @@ async function loadMetrics() {
   }
 }
 function processVersionFallback() { return "—"; }
+function renderBotSelectors() {
+  const select = $("chatBotSelect");
+  if (!select) return;
+  const previous = select.value;
+  const options = (state.bots || []).map(bot => {
+    const label = bot.displayName || bot.name || "Bot Zalo";
+    return '<option value="' + $escape(bot.name) + '">' + $escape(label) + '</option>';
+  }).join("");
+  select.innerHTML = options || '<option value="">Chưa có bot</option>';
+  select.value = (state.bots || []).some(bot => bot.name === previous)
+    ? previous
+    : (state.bots?.[0]?.name || "");
+}
 function renderBots() {
   if (!state.bots.length) {
     $("botList").innerHTML = '<div class="empty-state">Chưa có bot nào trong registry.</div>';
@@ -191,11 +205,10 @@ function renderBots() {
   }
   $("botList").innerHTML = state.bots.map(bot => {
     const [label, cls] = botStatus(bot);
-    const main = bot.name === "main";
-    const displayName = bot.displayName || bot.name;
+    const displayName = bot.displayName || "Tài khoản Zalo";
     const avatar = avatarHtml(bot.avatar, displayName, "bot-avatar");
     return '<article class="bot-row">' +
-      '<div class="bot-identity">' + avatar + '<div><div class="bot-name">' + $escape(displayName) + (main ? ' <span class="role-tag">MASTER</span>' : '') + '</div><div class="bot-meta">ID ' + $escape(bot.name) + ' · PID ' + $escape(bot.pid || "—") + ' · ' + (bot.flapping ? '<span style="color:var(--red)">CRASH LOOP</span>' : (bot.sessionHint ? $escape(bot.sessionHint) : "JOHNTRAN instance")) + '</div></div></div>' +
+      '<div class="bot-identity">' + avatar + '<div><div class="bot-name">' + $escape(displayName) + '</div><div class="bot-meta">TÀI KHOẢN ZALO · PID ' + $escape(bot.pid || "—") + ' · ' + (bot.flapping ? '<span style="color:var(--red)">CRASH LOOP</span>' : (bot.sessionHint ? $escape(bot.sessionHint) : "JOHNTRAN instance")) + '</div></div></div>' +
       '<div><div class="status-label ' + cls + '"><i class="dot"></i>' + $escape(label) + '</div><div class="bot-meta">Uptime ' + fmtUptime(bot.uptimeMs) + ' · restart ' + number(bot.restarts) + '</div></div>' +
       '<div class="bot-stats"><span>PORT <b>' + $escape(bot.bridgePort || "—") + '</b></span><span>QR <b>' + (bot.hasQr ? "READY" : "—") + '</b></span><label class="auto-restart"><input type="checkbox" data-action="auto-restart" data-bot="' + $escape(bot.name) + '" ' + (bot.autoRestart ? "checked" : "") + '> Auto restart</label></div>' +
       '<div class="bot-actions">' +
