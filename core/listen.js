@@ -493,7 +493,7 @@ function startListening(api) {
   });
 
   listener.on("disconnected", (code, reason) => {
-    logger.log(`Listener mất kết nối (code ${code}) ${reason || ""}`, "warn");
+    logger.log(`Listener mất kết nối (code ${code}) ${reason || ""}`, "warn", { source: "websocket-listener", eventName: "disconnected", code });
   });
 
   listener.on("closed", (code) => {
@@ -506,7 +506,7 @@ function startListening(api) {
     }
     const failure = reconnectFailures.closed();
     if (failure.exhausted) {
-      logger.log(`Listener rớt ${failure.count} lần liên tiếp không hoàn tất handshake — khởi động lại tiến trình để đăng nhập lại`, "error");
+      logger.log(`Listener rớt ${failure.count} lần liên tiếp không hoàn tất handshake — khởi động lại tiến trình để đăng nhập lại`, "error", { source: "websocket-listener", eventName: "handshake-failed", code: String(code) });
       process.exit(2); // supervisor tự dựng lại (index.js restart code 2 / botManager autoRestart)
     }
     scheduleReconnect(`code ${code}`);
@@ -515,7 +515,7 @@ function startListening(api) {
   // Chỉ log lỗi WS — "error" không tự reconnect (tránh 2 luồng kết nối đấu nhau);
   // việc kết nối lại do event "closed" + watchdog đảm nhiệm
   listener.on("error", (error) => {
-    logger.log(`Listener lỗi: ${error?.message || error}`, "error");
+    logger.log(`Listener lỗi: ${error?.message || error}`, "error", { source: "websocket-listener", eventName: "error", code: error?.code });
   });
 
   // Đánh dấu freshness cho watchdog (dùng cho cả message và cipher_key)
@@ -541,16 +541,16 @@ function startListening(api) {
     if (state === 1) {
       connectingSince = 0;
       if (Date.now() - lastFrameAt < WATCHDOG_STALE_MS) return;
-      logger.log("Watchdog: 30 phút không có frame nào — thử khôi phục kết nối", "warn");
+      logger.log("Watchdog: 30 phút không có frame nào — thử khôi phục kết nối", "warn", { source: "websocket-watchdog", eventName: "stale-frame" });
     } else if (state === 0) {
       // CONNECTING: chỉ nhảy khi kẹt quá 90s
       if (!connectingSince) connectingSince = Date.now();
       if (Date.now() - connectingSince < 90000) return;
-      logger.log("Watchdog: kẹt kết nối quá 90s — buộc thử lại", "warn");
+      logger.log("Watchdog: kẹt kết nối quá 90s — buộc thử lại", "warn", { source: "websocket-watchdog", eventName: "connect-timeout" });
     } else if (reconnectTimer) {
       return; // đã có lịch reconnect
     } else {
-      logger.log(`Watchdog: socket state=${state} — buộc kết nối lại`, "warn");
+      logger.log(`Watchdog: socket state=${state} — buộc kết nối lại`, "warn", { source: "websocket-watchdog", eventName: "socket-state" });
     }
 
     try {
