@@ -355,15 +355,8 @@ async function choosePuzzle(session, options = {}) {
   const random = options.random || Math.random;
   let selected = takePuzzleEntry(session, random);
 
-  if (!selected) {
-    try {
-      await refreshApiWordPool(options);
-    } catch (error) {
-      options.onApiError?.(error);
-    }
-    selected = takePuzzleEntry(session, random);
-  }
-
+  // Never block a player's answer or a new round on dictionary network calls.
+  // Use the local bank immediately, then warm the API pool in the background.
   if (!selected) selected = takeFallbackEntry(session, random);
 
   const normalized = normalizeAnswer(selected.answer);
@@ -395,7 +388,8 @@ async function start(threadId, playerId, playerName = "Người chơi", avatarUr
   if (!key || !uid) return { ok: false, code: "INVALID_CONTEXT" };
 
   const existing = sessions.get(key);
-  if (existing?.status === "active" && remainingSeconds(existing, options.now ?? Date.now()) > 0) {
+  if (existing?.status === "starting" || existing?.processing ||
+      (existing?.status === "active" && remainingSeconds(existing, options.now ?? Date.now()) > 0)) {
     return { ok: false, code: "RUNNING", session: existing };
   }
 
@@ -405,7 +399,8 @@ async function start(threadId, playerId, playerName = "Người chơi", avatarUr
     playerId: uid,
     playerName: String(playerName || "Người chơi").slice(0, 32),
     requesterAvatarUrl: String(avatarUrl || ""),
-    status: "active",
+    status: "starting",
+    processing: false,
     startedAt: now,
     endsAt: now + ROUND_SECONDS * 1000,
     finishedAt: null,
@@ -420,9 +415,21 @@ async function start(threadId, playerId, playerName = "Người chơi", avatarUr
     puzzle: null
   };
 
-  await choosePuzzle(session, options);
+  // Reserve the group before the first await so two rapid /nt gc commands
+  // cannot create separate sessions for the same group.
   sessions.set(key, session);
-  return { ok: true, session };
+  try {
+    await choosePuzzle(session, options);
+    if (sessions.get(key) !== session || session.status !== "starting") {
+      return { ok: false, code: "CANCELLED", session };
+    }
+    session.status = "active";
+    return { ok: true, session };
+  } catch (error) {
+    if (sessions.get(key) === session) sessions.delete(key);
+    session.status = "failed";
+    throw error;
+  }
 }
 
 function get(threadId) {
@@ -434,33 +441,39 @@ async function submit(threadId, playerId, answer, options = {}) {
   if (!session || session.status !== "active") return { ok: false, code: "NO_GAME" };
   if (session.playerId !== String(playerId || "")) return { ok: false, code: "NOT_PLAYER" };
 
+  if (session.processing) return { ok: false, code: "BUSY" };
   const now = Number(options.now) || Date.now();
   if (remainingSeconds(session, now) <= 0) {
     finish(threadId, now);
     return { ok: false, code: "TIME_UP", session };
   }
 
-  if (normalizeAnswer(answer) !== normalizeAnswer(session.puzzle?.answer)) {
-    session.wrong += 1;
-    session.streak = 0;
-    return { ok: false, code: "WRONG", session, remaining: remainingSeconds(session, now) };
-  }
+  session.processing = true;
+  try {
+    if (normalizeAnswer(answer) !== normalizeAnswer(session.puzzle?.answer)) {
+      session.wrong += 1;
+      session.streak = 0;
+      return { ok: false, code: "WRONG", session, remaining: remainingSeconds(session, now) };
+    }
 
-  session.correct += 1;
-  session.score += CORRECT_POINTS;
-  session.streak += 1;
-  session.bestStreak = Math.max(session.bestStreak, session.streak);
-  const completedAnswer = session.puzzle.answer;
-  const points = CORRECT_POINTS;
-  await choosePuzzle(session, options);
-  return {
-    ok: true,
-    code: "CORRECT",
-    completedAnswer,
-    points,
-    session,
-    remaining: remainingSeconds(session, now)
-  };
+    session.correct += 1;
+    session.score += CORRECT_POINTS;
+    session.streak += 1;
+    session.bestStreak = Math.max(session.bestStreak, session.streak);
+    const completedAnswer = session.puzzle.answer;
+    const points = CORRECT_POINTS;
+    await choosePuzzle(session, options);
+    return {
+      ok: true,
+      code: "CORRECT",
+      completedAnswer,
+      points,
+      session,
+      remaining: remainingSeconds(session, now)
+    };
+  } finally {
+    session.processing = false;
+  }
 }
 
 async function skip(threadId, playerId, options = {}) {
@@ -468,30 +481,36 @@ async function skip(threadId, playerId, options = {}) {
   if (!session || session.status !== "active") return { ok: false, code: "NO_GAME" };
   if (session.playerId !== String(playerId || "")) return { ok: false, code: "NOT_PLAYER" };
 
+  if (session.processing) return { ok: false, code: "BUSY" };
   const now = Number(options.now) || Date.now();
   if (remainingSeconds(session, now) <= 0) {
     finish(threadId, now);
     return { ok: false, code: "TIME_UP", session };
   }
 
-  const skippedAnswer = session.puzzle.answer;
-  session.skipped += 1;
-  session.streak = 0;
-  session.endsAt -= 5000;
+  session.processing = true;
+  try {
+    const skippedAnswer = session.puzzle.answer;
+    session.skipped += 1;
+    session.streak = 0;
+    session.endsAt -= 5000;
 
-  if (remainingSeconds(session, now) <= 0) {
-    finish(threadId, now);
-    return { ok: true, code: "TIME_UP", skippedAnswer, session, remaining: 0 };
+    if (remainingSeconds(session, now) <= 0) {
+      finish(threadId, now);
+      return { ok: true, code: "TIME_UP", skippedAnswer, session, remaining: 0 };
+    }
+
+    await choosePuzzle(session, options);
+    return {
+      ok: true,
+      code: "SKIPPED",
+      skippedAnswer,
+      session,
+      remaining: remainingSeconds(session, now)
+    };
+  } finally {
+    session.processing = false;
   }
-
-  await choosePuzzle(session, options);
-  return {
-    ok: true,
-    code: "SKIPPED",
-    skippedAnswer,
-    session,
-    remaining: remainingSeconds(session, now)
-  };
 }
 
 function finish(threadId, now = Date.now()) {
@@ -505,7 +524,7 @@ function finish(threadId, now = Date.now()) {
 
 function stop(threadId, playerId, now = Date.now()) {
   const session = get(threadId);
-  if (!session || session.status !== "active") return { ok: false, code: "NO_GAME" };
+  if (!session || !["active", "starting"].includes(session.status)) return { ok: false, code: "NO_GAME" };
   if (session.playerId !== String(playerId || "")) return { ok: false, code: "NOT_PLAYER" };
   session.status = "stopped";
   session.finishedAt = now;
