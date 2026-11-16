@@ -32,6 +32,10 @@ async function mockDictionary(url) {
 }
 
 async function startRound(options = {}) {
+  const getJson = options.getJson || mockDictionary;
+  if (options.preloadApi !== false) {
+    await game.refreshApiWordPool({ now: 1000, random: () => 0, getJson });
+  }
   return game.start(
     "thread-1",
     "user-1",
@@ -40,7 +44,7 @@ async function startRound(options = {}) {
     {
       now: 1000,
       random: () => 0,
-      getJson: options.getJson || mockDictionary
+      getJson
     }
   );
 }
@@ -179,4 +183,85 @@ test("dictionary statistics clearly report only loaded cache and fallback words"
   assert.equal(stats.apiCached, 0);
   assert.ok(stats.totalCached >= stats.fallbackWords);
   assert.equal(stats.source, "dict.minhqnd.com");
+});
+
+
+test("two rapid starts reserve only one Ghép Chữ session", async () => {
+  const first = game.start("double-start", "user-1", "Player", "", {
+    now: 1000,
+    random: () => 0,
+    getJson: mockDictionary
+  });
+  const second = await game.start("double-start", "user-2", "Other", "", {
+    now: 1000,
+    random: () => 0,
+    getJson: mockDictionary
+  });
+  const started = await first;
+
+  assert.equal(started.ok, true);
+  assert.equal(second.ok, false);
+  assert.equal(second.code, "RUNNING");
+  assert.equal(game.get("double-start").playerId, "user-1");
+  assert.equal(game.get("double-start").status, "active");
+});
+
+test("simultaneous correct submissions award points and advance only once", async () => {
+  const { session } = await startRound();
+  const answer = session.puzzle.answer;
+
+  const first = game.submit("thread-1", "user-1", answer, {
+    now: 2000,
+    random: () => 0,
+    getJson: mockDictionary
+  });
+  const second = await game.submit("thread-1", "user-1", answer, {
+    now: 2000,
+    random: () => 0,
+    getJson: mockDictionary
+  });
+  const accepted = await first;
+
+  assert.equal(accepted.ok, true);
+  assert.equal(second.code, "BUSY");
+  assert.equal(session.score, 10);
+  assert.equal(session.correct, 1);
+  assert.equal(session.round, 2);
+});
+
+test("simultaneous skips consume time and advance only once", async () => {
+  const { session } = await startRound();
+  const first = game.skip("thread-1", "user-1", {
+    now: 2000,
+    random: () => 0,
+    getJson: mockDictionary
+  });
+  const second = await game.skip("thread-1", "user-1", {
+    now: 2000,
+    random: () => 0,
+    getJson: mockDictionary
+  });
+  const accepted = await first;
+
+  assert.equal(accepted.ok, true);
+  assert.equal(second.code, "BUSY");
+  assert.equal(session.skipped, 1);
+  assert.equal(session.round, 2);
+});
+
+test("new Ghép Chữ round uses fallback immediately while dictionary API is still pending", async () => {
+  game.clearDictionaryCache();
+  let release;
+  const pendingApi = new Promise(resolve => { release = resolve; });
+  const started = await game.start("fast-start", "user-1", "Player", "", {
+    now: 1000,
+    random: () => 0,
+    getJson: () => pendingApi
+  });
+
+  assert.equal(started.ok, true);
+  assert.equal(started.session.status, "active");
+  assert.equal(started.session.puzzle.source, "fallback");
+  release({ data: { suggestions: [] } });
+  await new Promise(resolve => setImmediate(resolve));
 });
