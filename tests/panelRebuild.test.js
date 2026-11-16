@@ -24,7 +24,7 @@ test("rebuilt panel JavaScript parses without browser-side dependencies", () => 
 
 test("bot cards render their status, uptime, port and action controls", () => {
   const start = js.indexOf("function renderBots()");
-  const end = js.indexOf("\\nfunction renderTopCommands", start);
+  const end = js.indexOf("function renderTopCommands", start);
   assert.ok(start >= 0 && end > start, "renderBots function must be present");
   const renderSource = js.slice(start, end);
   const botList = { innerHTML: "" };
