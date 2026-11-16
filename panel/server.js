@@ -275,6 +275,9 @@ function startPanel({ manager, config }) {
           return sendJson(res, 200, {
             today: metrics.getDayStats(),
             topCommands: metrics.topCommands(),
+            latency: metrics.getLatencyStats?.() || null,
+            commandLatency: metrics.getCommandLatencyStats?.(10) || [],
+            commandExecutionLatency: metrics.getCommandExecutionLatencyStats?.(10) || [],
             cache: allStats(),
             audit: metrics.readAudit(20),
             node: process.version,
