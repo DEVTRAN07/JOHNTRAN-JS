@@ -161,6 +161,13 @@ async function startGhepChu({ api, event }) {
   const uid = String(event?.data?.uidFrom || "");
   const threadId = String(event?.threadId || "");
   if (!uid || !threadId) return;
+  if (game.get(threadId)?.status === "active") {
+    return send(api, event, "⚠️ Nhóm đang có ván Nối Từ. Hãy dừng ván đó trước khi mở Ghép Chữ.");
+  }
+  const caro = require("../../core/runtime/services/games/caroService");
+  if (caro.get(threadId)) {
+    return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Ghép Chữ.");
+  }
   const existing = ghepChu.get(threadId);
   if (existing?.status === "active" && ghepChu.remainingSeconds(existing) > 0) {
     scheduleGhepChuExpiry(api, event, threadId);
@@ -340,6 +347,7 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   if (action === "skip" && ghepChu.get(threadId)?.status === "active") return handleGhepChuText({ api, event: { ...event, data: { ...event.data, content: "skip" } } });
   if (action === "start" || action === "go") {
     const caro = require("../../core/runtime/services/games/caroService");
+    if (ghepChu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Ghép Chữ. Hãy dừng ván đó trước khi mở Nối Từ.");
     if (caro.get(threadId)) return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Nối Từ.");
     const name = String(event?.data?.dName || event?.data?.name || "Người chơi");
     const result = game.start(threadId, uid, name);
