@@ -186,7 +186,7 @@ function createErrorJournal(options = {}) {
     let inFlight = [];
     try {
       while (pendingLines.length) {
-        inFlight = pendingLines.splice(0, 100);
+        inFlight = pendingLines.splice(0, 10);
         const payload = inFlight.join("\n") + "\n";
         await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
         await rotateIfNeeded(Buffer.byteLength(payload));
