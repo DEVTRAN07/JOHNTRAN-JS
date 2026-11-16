@@ -4,6 +4,11 @@ const path = require("path");
 const WORKERS_DIR = path.join(__dirname, "workers");
 const DEFAULT_POOL_SIZE = 4;
 const DEFAULT_MAX_PENDING = Math.max(1, Number(process.env.JT_WORKER_MAX_PENDING) || 32);
+const DEFAULT_RESTART_WINDOW_MS = Math.max(1000, Number(process.env.JT_WORKER_RESTART_WINDOW_MS) || 10 * 60 * 1000);
+const DEFAULT_MAX_RESTARTS = Math.max(1, Number(process.env.JT_WORKER_MAX_RESTARTS) || 5);
+const DEFAULT_RESTART_DELAY_MS = Math.max(10, Number(process.env.JT_WORKER_RESTART_DELAY_MS) || 1000);
+const DEFAULT_RESTART_MAX_DELAY_MS = Math.max(DEFAULT_RESTART_DELAY_MS, Number(process.env.JT_WORKER_RESTART_MAX_DELAY_MS) || 30000);
+const DEFAULT_CIRCUIT_COOLDOWN_MS = Math.max(1000, Number(process.env.JT_WORKER_CIRCUIT_COOLDOWN_MS) || 60000);
 const pools = new Map();
 let shuttingDown = false;
 
@@ -19,6 +24,8 @@ function createWorker(pool, scriptName) {
   worker.on("message", (result) => {
     const task = record.task;
     if (!task || task.settled) return;
+    pool.restartAttempt = 0;
+    pool.lastWorkerHealthyAt = Date.now();
     clearTaskTimer(task);
     record.task = null;
     record.busy = false;
@@ -67,6 +74,23 @@ function settle(task, error, value) {
   else task.resolve(value);
 }
 
+function pruneWorkerFailures(pool, now = Date.now()) {
+  const cutoff = now - pool.restartWindowMs;
+  pool.restartHistory = pool.restartHistory.filter(timestamp => timestamp > cutoff);
+  return pool.restartHistory.length;
+}
+
+function schedulePoolWakeup(pool, waitMs) {
+  if (pool.restartTimer || shuttingDown) return;
+  const timer = setTimeout(() => {
+    if (pool.restartTimer !== timer) return;
+    pool.restartTimer = null;
+    pump(pool);
+  }, Math.max(1, Number(waitMs) || 1));
+  timer.unref?.();
+  pool.restartTimer = timer;
+}
+
 function retireWorker(pool, record, error) {
   if (record.dead) return;
   record.dead = true;
@@ -74,13 +98,41 @@ function retireWorker(pool, record, error) {
   const task = record.task;
   record.task = null;
   if (task) settle(task, error || new Error(`worker ${pool.scriptName} stopped`));
+
+  const now = Date.now();
+  pool.restartHistory.push(now);
+  const recentFailures = pruneWorkerFailures(pool, now);
+  pool.lastWorkerFailureAt = now;
+  pool.restartAttempt = Math.min(10, (pool.restartAttempt || 0) + 1);
+
+  if (recentFailures > pool.maxRestartsInWindow) {
+    const oldest = pool.restartHistory[0] || now;
+    pool.circuitOpenUntil = Math.max(now + pool.circuitCooldownMs, oldest + pool.restartWindowMs + 1);
+    pool.nextRestartAt = pool.circuitOpenUntil;
+  } else {
+    const delay = Math.min(pool.restartDelayMs * (2 ** Math.max(0, pool.restartAttempt - 1)), pool.restartMaxDelayMs);
+    pool.nextRestartAt = now + delay;
+  }
   pump(pool);
 }
 
 function getOrCreatePool(scriptName, size) {
   let pool = pools.get(scriptName);
   if (!pool) {
-    pool = { scriptName, size, maxPending: DEFAULT_MAX_PENDING, workers: [], pending: [], pumping: false, completed: 0, failed: 0, rejected: 0 };
+    pool = {
+      scriptName, size, maxPending: DEFAULT_MAX_PENDING,
+      workers: [], pending: [], pumping: false,
+      completed: 0, failed: 0, rejected: 0,
+      restartHistory: [], restartAttempt: 0,
+      restartWindowMs: DEFAULT_RESTART_WINDOW_MS,
+      maxRestartsInWindow: DEFAULT_MAX_RESTARTS,
+      restartDelayMs: DEFAULT_RESTART_DELAY_MS,
+      restartMaxDelayMs: DEFAULT_RESTART_MAX_DELAY_MS,
+      circuitCooldownMs: DEFAULT_CIRCUIT_COOLDOWN_MS,
+      circuitOpenUntil: 0, nextRestartAt: 0,
+      restartTimer: null, lastWorkerFailureAt: 0,
+      lastWorkerHealthyAt: 0
+    };
     pools.set(scriptName, pool);
   } else {
     pool.size = Math.max(pool.size, size);
@@ -93,11 +145,23 @@ function ensureWorkers(pool) {
   const aliveRecords = pool.workers.filter((record) => !record.dead);
   const busy = aliveRecords.filter((record) => record.busy).length;
   const idle = aliveRecords.length - busy;
-  // Grow on demand; do not respawn workers that intentionally exited idle.
   const required = busy + Math.min(pool.size - busy, Math.max(0, pool.pending.length - idle));
-  for (let i = aliveRecords.length; i < required; i++) {
-    createWorker(pool, pool.scriptName);
+  if (aliveRecords.length >= required) return;
+
+  const now = Date.now();
+  const recentFailures = pruneWorkerFailures(pool, now);
+  if (recentFailures > pool.maxRestartsInWindow) {
+    const oldest = pool.restartHistory[0] || now;
+    pool.circuitOpenUntil = Math.max(pool.circuitOpenUntil || 0, now + pool.circuitCooldownMs, oldest + pool.restartWindowMs + 1);
   }
+
+  const waitUntil = Math.max(pool.nextRestartAt || 0, pool.circuitOpenUntil || 0);
+  if (waitUntil > now) {
+    schedulePoolWakeup(pool, waitUntil - now);
+    return;
+  }
+
+  for (let i = aliveRecords.length; i < required; i++) createWorker(pool, pool.scriptName);
 }
 
 function pump(pool) {
@@ -149,6 +213,16 @@ function runInWorker(scriptName, data, options = {}) {
   if (shuttingDown) return Promise.reject(new Error("workerPool: shutting down"));
   const size = Math.max(1, Number(options.size) || DEFAULT_POOL_SIZE);
   const pool = getOrCreatePool(scriptName, size);
+  if (Number.isFinite(Number(options.maxRestartsInWindow))) pool.maxRestartsInWindow = Math.max(1, Number(options.maxRestartsInWindow));
+  if (Number.isFinite(Number(options.restartWindowMs))) pool.restartWindowMs = Math.max(100, Number(options.restartWindowMs));
+  if (Number.isFinite(Number(options.restartDelayMs))) pool.restartDelayMs = Math.max(1, Number(options.restartDelayMs));
+  if (Number.isFinite(Number(options.restartMaxDelayMs))) pool.restartMaxDelayMs = Math.max(pool.restartDelayMs, Number(options.restartMaxDelayMs));
+  if (Number.isFinite(Number(options.circuitCooldownMs))) pool.circuitCooldownMs = Math.max(10, Number(options.circuitCooldownMs));
+  const now = Date.now();
+  if (pool.circuitOpenUntil > now) {
+    pool.rejected++;
+    return Promise.reject(new Error(`Worker pool ${scriptName} đang tạm nghỉ sau nhiều lần worker crash.`));
+  }
   const maxPending = Math.max(1, Number(options.maxPending) || pool.maxPending);
   pool.maxPending = Math.min(pool.maxPending, maxPending);
   if (pool.pending.length >= pool.maxPending) {
@@ -173,6 +247,8 @@ async function shutdown() {
   shuttingDown = true;
   const terminations = [];
   for (const pool of pools.values()) {
+    if (pool.restartTimer) clearTimeout(pool.restartTimer);
+    pool.restartTimer = null;
     for (const task of pool.pending.splice(0)) {
       settle(task, new Error("workerPool: shutting down"));
     }
@@ -203,7 +279,13 @@ function stats() {
     maxPending: pool.maxPending,
     completed: pool.completed,
     failed: pool.failed,
-    rejected: pool.rejected
+    rejected: pool.rejected,
+    restartCount: pruneWorkerFailures(pool),
+    restartAttempt: pool.restartAttempt,
+    lastWorkerFailureAt: pool.lastWorkerFailureAt || null,
+    nextRestartAt: pool.nextRestartAt || null,
+    circuitOpenUntil: pool.circuitOpenUntil || null,
+    circuitOpen: Boolean(pool.circuitOpenUntil && pool.circuitOpenUntil > Date.now())
   }]));
 }
 
