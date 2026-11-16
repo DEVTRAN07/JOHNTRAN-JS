@@ -97,6 +97,21 @@ async function migrateJsonToSupabase({
     });
   }
 
+  // Verify access to every destination table before the first write. This
+  // prevents a partially imported database when one table is missing from
+  // schema.sql or the server key lacks its required grants.
+  if (!dryRun) {
+    for (const supabaseTable of Object.values(TABLE_MAP)) {
+      const { error } = await client.from(supabaseTable).select("id").limit(1);
+      if (error) {
+        throw new Error(
+          "Supabase chưa sẵn sàng tại bảng " + supabaseTable +
+          ": " + error.message + ". Hãy chạy đầy đủ supabase/schema.sql và kiểm tra server key/grants."
+        );
+      }
+    }
+  }
+
   for (const [jsonTable, supabaseTable] of Object.entries(TABLE_MAP)) {
     const rows = toSupabaseRows(database[jsonTable] || {}, jsonTable);
     const tableSummary = {
