@@ -7,7 +7,7 @@ const { getJsonPersistenceStatus } = require("../core/storage/diagnostics");
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || "";
-const PERSISTENT_DIR = process.env.JT_DB_PERSISTENT_PATH || process.env.JT_PERSISTENT_DIR || "";
+const PERSISTENT_DIR = process.env.JT_PERSISTENT_DIR || process.env.JT_DB_PERSISTENT_PATH || "";
 
 const forceJson =
   String(process.env.JT_DB_DRIVER || "").toLowerCase() === "json" ||
