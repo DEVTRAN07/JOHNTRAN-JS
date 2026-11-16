@@ -14,12 +14,12 @@ const state = {
 };
 
 const VIEWS = {
-  overview: ["Tổng quan hệ thống", "OVERVIEW"],
+  overview: ["Tổng quan", "OVERVIEW"],
   chat: ["Zalo Chat", "MESSAGES"],
-  commands: ["Quản lý lệnh", "COMMANDS"],
-  groups: ["Thiết lập nhóm", "GROUPS"],
+  commands: ["Danh mục lệnh", "COMMANDS"],
+  groups: ["Quản lý nhóm", "GROUPS"],
   profile: ["Hồ sơ & dữ liệu", "ACCOUNT DATA"],
-  system: ["Hệ thống", "INFRASTRUCTURE"]
+  system: ["Giám sát hệ thống", "INFRASTRUCTURE"]
 };
 const STATUS = {
   online:["Đang chạy","online"],offline:["Chưa chạy","offline"],stopped:["Đã dừng","stopped"],
