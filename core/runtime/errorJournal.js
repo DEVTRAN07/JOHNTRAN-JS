@@ -118,6 +118,18 @@ function readJournalFile(filePath, limit = 50) {
   }
 }
 
+function readJournalFiles(filePath, limit = 50, rotatedFiles = ROTATED_FILES) {
+  const maximum = Math.max(1, Math.min(200, Number(limit) || 50));
+  const rotations = Math.max(0, Math.min(10, Number(rotatedFiles) || 0));
+  const entries = [];
+  for (let index = rotations; index >= 0; index--) {
+    const target = index === 0 ? filePath : filePath + "." + index;
+    entries.push(...readJournalFile(target, 200));
+  }
+  entries.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  return entries.slice(-maximum);
+}
+
 function createErrorJournal(options = {}) {
   const filePath = path.resolve(options.filePath || resolveDefaultFile());
   const now = typeof options.now === "function" ? options.now : Date.now;
@@ -354,6 +366,7 @@ module.exports = {
   ...journal,
   createErrorJournal,
   readJournalFile,
+  readJournalFiles,
   redact,
   normalizeContext,
   MAX_RECENT,
