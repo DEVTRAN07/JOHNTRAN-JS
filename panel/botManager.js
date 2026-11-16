@@ -140,30 +140,35 @@ function writeRegistry(registry) {
 function migrateLegacyBotFiles(name, targetPaths = botPaths(name)) {
   fs.mkdirSync(targetPaths.dir, { recursive: true });
   const copied = [];
-  if (name === "main") copied.push(...migrateLegacyMainSession(targetPaths));
-  if (PERSISTENT_ROOT === ROOT) return copied;
 
-  const legacyDir = path.join(LEGACY_BOTS_DIR, name);
-  if (!fs.existsSync(legacyDir)) return copied;
-  for (const file of ["store.json", "account.json", "cookie.json", "qr.png"]) {
-    if (migrateFileIfMissing(path.join(legacyDir, file), path.join(targetPaths.dir, file))) copied.push(file);
+  // Prefer an existing per-bot session. Only fall back to the old root-level
+  // account/cookie when bots/main has no account yet.
+  if (PERSISTENT_ROOT !== ROOT) {
+    const legacyDir = path.join(LEGACY_BOTS_DIR, name);
+    if (fs.existsSync(legacyDir)) {
+      for (const file of ["store.json", "account.json", "cookie.json", "qr.png"]) {
+        if (migrateFileIfMissing(path.join(legacyDir, file), path.join(targetPaths.dir, file))) copied.push(file);
+      }
+
+      // Preserve a custom relative cookie file referenced by legacy account.json.
+      try {
+        const account = JSON.parse(fs.readFileSync(path.join(legacyDir, "account.json"), "utf8"));
+        const cookie = typeof account?.cookie === "string" ? account.cookie : "";
+        if (cookie && !path.isAbsolute(cookie)) {
+          const source = path.resolve(legacyDir, cookie);
+          const relative = path.relative(path.resolve(legacyDir), source);
+          if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+            if (migrateFileIfMissing(source, path.join(targetPaths.dir, relative))) copied.push(relative);
+          }
+        }
+      } catch { /* tài khoản có thể chưa có file hoặc dùng cookie path tuyệt đối */ }
+    }
   }
 
-  // Preserve a custom relative cookie file referenced by account.json.
-  try {
-    const account = JSON.parse(fs.readFileSync(path.join(legacyDir, "account.json"), "utf8"));
-    const cookie = typeof account?.cookie === "string" ? account.cookie : "";
-    if (cookie && !path.isAbsolute(cookie)) {
-      const source = path.resolve(legacyDir, cookie);
-      const relative = path.relative(path.resolve(legacyDir), source);
-      if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
-        if (migrateFileIfMissing(source, path.join(targetPaths.dir, relative))) copied.push(relative);
-      }
-    }
-  } catch { /* tài khoản có thể chưa có file hoặc dùng cookie path tuyệt đối */ }
+  if (name === "main") copied.push(...migrateLegacyMainSession(targetPaths));
 
   if (copied.length) {
-    logger.log(`Đã sao chép dữ liệu bot '${name}' sang JT_PERSISTENT_DIR: ${copied.join(", ")}. Giữ nguyên file nguồn.`, "info");
+    logger.log(`Đã chuyển dữ liệu/phiên bot '${name}': ${copied.join(", ")}. Giữ nguyên file nguồn.`, "info");
   }
   return copied;
 }
