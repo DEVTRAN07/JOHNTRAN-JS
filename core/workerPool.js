@@ -87,7 +87,8 @@ function schedulePoolWakeup(pool, waitMs) {
     pool.restartTimer = null;
     pump(pool);
   }, Math.max(1, Number(waitMs) || 1));
-  timer.unref?.();
+  // A queued task is awaiting this replacement worker; keep the event loop
+  // alive until it is retried or the pool circuit rejects the waiting work.
   pool.restartTimer = timer;
 }
 
