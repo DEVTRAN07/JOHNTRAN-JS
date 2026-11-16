@@ -1,6 +1,6 @@
 const { getData, saveData, saveDataAndWait, hasData, delData, allData, db: databaseBackend } = require("../runtime/adapters/database");
 const logger = require("../../utils/logger");
-const { threadCache } = require("../cache");
+const { threadCache, durableThreadCache } = require("../cache");
 
 function normalizeThreadRecord(record, threadId) {
   const key = String(record?.threadId || record?.id || threadId);
@@ -12,17 +12,43 @@ function normalizeThreadRecord(record, threadId) {
   return { ...(record || {}), id: record?.id || key, threadId: key, data };
 }
 
+function rememberThreadRecord(record, threadId) {
+  if (!record || typeof record.then === "function") return null;
+  const key = String(threadId || record.threadId || record.id || "");
+  if (!key) return null;
+  const normalized = normalizeThreadRecord(record, key);
+  threadCache.set(key, normalized);
+  durableThreadCache.set(key, normalized);
+  return normalized;
+}
+
 function getExistingRecord(threadId) {
   const key = String(threadId);
+  const status = getStoreStatus();
+
+  // When storage is degraded, use the last known committed row even after
+  // the five-minute hot cache has expired. This prevents an idle, previously
+  // enabled group from being treated as OFF during a temporary DB outage.
+  if (status?.ok === false) {
+    const remembered = durableThreadCache.get(key);
+    if (remembered && typeof remembered.then !== "function") return remembered;
+    const hot = threadCache.get(key);
+    return hot && typeof hot.then !== "function" ? normalizeThreadRecord(hot, key) : null;
+  }
+
   try {
     if (hasData("Threads", "threadId", key)) {
       const existing = getData("Threads", "threadId", key);
-      if (existing && typeof existing.then !== "function") return existing;
+      if (existing && typeof existing.then !== "function") {
+        return rememberThreadRecord(existing, key);
+      }
     }
   } catch {}
 
+  const remembered = durableThreadCache.get(key);
+  if (remembered && typeof remembered.then !== "function") return remembered;
   const cached = threadCache.get(key);
-  return cached && typeof cached.then !== "function" ? cached : null;
+  return cached && typeof cached.then !== "function" ? normalizeThreadRecord(cached, key) : null;
 }
 
 function preserveBotEnabled(threadId, inputData) {
@@ -63,7 +89,7 @@ async function ensureStoreReady() {
 module.exports = {
   getAll: () => {
     return allData("Threads").map((row) => {
-      const record = normalizeThreadRecord(row, row.threadId || row.id);
+      const record = rememberThreadRecord(row, row.threadId || row.id);
       return { threadId: record.threadId, data: record.data };
     });
   },
@@ -83,21 +109,29 @@ module.exports = {
     const cached = threadCache.get(key);
     if (cached !== undefined) {
       return cached && typeof cached.then !== "function"
-        ? normalizeThreadRecord(cached, key)
+        ? rememberThreadRecord(cached, key)
         : null;
     }
 
+    // A long DB outage must not turn an ON group OFF just because the normal
+    // five-minute hot cache expired. The bounded durable cache contains only
+    // rows already observed from storage or committed by an explicit write.
+    if (storageDegraded) {
+      const remembered = durableThreadCache.get(key);
+      if (remembered && typeof remembered.then !== "function") {
+        threadCache.set(key, remembered);
+        return remembered;
+      }
+      return null;
+    }
+
     // JSON/Supabase adapters expose an in-memory mirror. Read it synchronously
-    // on the message hot path, including during a later transient outage.
+    // on the message hot path while storage is healthy.
     try {
       let record;
       if (hasData("Threads", "threadId", key)) {
         record = normalizeThreadRecord(getData("Threads", "threadId", key), key);
       } else {
-        // Do not synthesize default-OFF rows when the first snapshot has not
-        // loaded or storage is degraded; only an existing last-known record
-        // may continue to authorize active group processing.
-        if (storageDegraded) return null;
         const data = {
           ban: false,
           admin_only: false,
@@ -109,9 +143,13 @@ module.exports = {
         saveData("Threads", "threadId", key, data);
         record = normalizeThreadRecord({ id: key, threadId: key, data }, key);
       }
-      if (record && typeof record.then !== "function") threadCache.set(key, record);
-      return record && typeof record.then !== "function" ? record : null;
+      return rememberThreadRecord(record, key);
     } catch {
+      const remembered = durableThreadCache.get(key);
+      if (remembered && typeof remembered.then !== "function") {
+        threadCache.set(key, remembered);
+        return remembered;
+      }
       return null;
     }
   },
@@ -149,7 +187,7 @@ module.exports = {
     const record = normalizeThreadRecord({ id: key, threadId: key, data: safeData }, key);
     // Keep the legacy fast write contract for existing settings callers.
     const pending = saveData("Threads", "threadId", key, record.data);
-    threadCache.set(key, record);
+    rememberThreadRecord(record, key);
     return pending;
   },
 
@@ -162,9 +200,8 @@ module.exports = {
     const pending = typeof saveDataAndWait === "function"
       ? saveDataAndWait("Threads", "threadId", key, record.data)
       : saveData("Threads", "threadId", key, record.data);
-    threadCache.set(key, record);
     await pending;
-    return record;
+    return rememberThreadRecord(record, key);
   },
 
   // Dedicated, durable group switch. Ordinary feature settings writes cannot
@@ -182,8 +219,7 @@ module.exports = {
       ? saveDataAndWait("Threads", "threadId", key, record.data)
       : saveData("Threads", "threadId", key, record.data);
     await pending;
-    threadCache.set(key, record);
-    return record;
+    return rememberThreadRecord(record, key);
   },
 
   delData: (threadId) => {
@@ -192,6 +228,7 @@ module.exports = {
       delData("Threads", "threadId", threadId);
     }
     threadCache.invalidate(key);
+    durableThreadCache.invalidate(key);
   },
 
   createData: async (threadId, defaultData = {}) => {
@@ -208,7 +245,6 @@ module.exports = {
     } else {
       record = normalizeThreadRecord(await getData("Threads", "threadId", threadId), key);
     }
-    threadCache.set(key, record);
-    return record;
+    return rememberThreadRecord(record, key);
   }
 };
