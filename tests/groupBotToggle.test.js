@@ -29,6 +29,20 @@ function createContext(initialEnabled = false, omitSetting = false) {
   };
 }
 
+test("thread service forwards the explicit durable group switch", async () => {
+  const calls = [];
+  const service = ThreadsService.createThreadService({
+    setBotEnabled: async (threadId, enabled) => {
+      calls.push([threadId, enabled]);
+      return { threadId, data: { bot_enabled: enabled } };
+    }
+  });
+
+  const result = await service.setBotEnabled("group-service", false);
+  assert.deepEqual(calls, [["group-service", false]]);
+  assert.equal(result.data.bot_enabled, false);
+});
+
 test("/bot off disables the current group only", async () => {
   const ctx = createContext(true);
   await command.run({
