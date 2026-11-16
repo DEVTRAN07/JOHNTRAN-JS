@@ -64,7 +64,11 @@ class SupabaseStore {
     this.nextSyncDelay = SYNC_INTERVAL;
     this.metrics = { reads: 0, writes: 0, retries: 0, healthChecks: 0 };
     if (SYNC_ENABLED) {
-      this.readyPromise = this.sync().then(() => { this.syncError = null; }).catch((error) => {
+      this.readyPromise = this.sync().then(() => {
+        // sync() may complete optional tables while bot_threads is missing.
+        // Do not clear a required-table error after a partial initial sync.
+        if (!this.syncError) this.syncError = null;
+      }).catch((error) => {
         this.syncError = error.message;
         this.classified = this.classifyError(error);
         const hint = this.classified === "network" ? " Kiểm tra SUPABASE_URL, SUPABASE_SERVICE_KEY và trạng thái project Supabase (có thể bị pause)." : "";
