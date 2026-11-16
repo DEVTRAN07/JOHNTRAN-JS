@@ -3,7 +3,7 @@
 const http = require("node:http");
 
 function createBridgeHealthProbe(options = {}) {
-  const request = options.get || http.get;
+  const request = options.request || http.request;
   const now = options.now || Date.now;
   const timeoutMs = Math.max(100, Number(options.timeoutMs) || 1200);
   const positiveCacheMs = Math.max(0, Number(options.positiveCacheMs) || 1800);
