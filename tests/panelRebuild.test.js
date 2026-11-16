@@ -147,7 +147,8 @@ test("existing group settings keep the fast write path while explicit bot toggle
   assert.match(controllerThreads, /setDataAndWait: async \(threadId, data\) =>/);
   assert.match(panelBridge, /Threads\.setBotEnabled\(gid, body\.botEnabled\)/);
   assert.match(controllerThreads, /setBotEnabled: async \(threadId, enabled\)/);
-  assert.match(controllerThreads, /bot_enabled: wasEnabled \|\| requestedEnabled/);
+  assert.match(controllerThreads, /bot_enabled: storedEnabled/);
+  assert.match(controllerThreads, /setBotEnabled: async \(threadId, enabled\)/);
   assert.match(fs.readFileSync(path.join(root, "plugins/commands/bot.js"), "utf8"), /Threads\.setBotEnabled\(threadId, enabled\)/);
 });
 
