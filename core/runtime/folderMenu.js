@@ -195,14 +195,59 @@ const MENU_COMMAND_GROUPS = Object.freeze({
   hidden: new Set(["girl", "hon", "noi", "vdgirl"])
 });
 
+const MENU_COMMAND_GROUP_BY_NAME = new Map();
+for (const [slug, names] of Object.entries(MENU_COMMAND_GROUPS)) {
+  for (const name of names) {
+    if (!MENU_COMMAND_GROUP_BY_NAME.has(name)) MENU_COMMAND_GROUP_BY_NAME.set(name, slug);
+  }
+}
+
+// A command message only needs to know whether its first token is a menu
+// shortcut. Building all visible menu folders on every message used to scan
+// every loaded command and sort each folder again. Cache by command Map and
+// permission class; loaders explicitly invalidate this cache after hot reload.
+const menuGroupIndexCache = new WeakMap();
+
+function menuVisibilityKey(userId) {
+  if (isBotAdmin(userId)) return "admin";
+  if (isSupportUser(userId)) return "support";
+  return "public";
+}
+
+function getMenuGroupIndex(commands, userId) {
+  if (!(commands instanceof Map)) return new Map();
+  const size = commands.size;
+  let entry = menuGroupIndexCache.get(commands);
+  if (!entry || entry.size !== size) {
+    entry = { size, visibility: new Map() };
+    menuGroupIndexCache.set(commands, entry);
+  }
+
+  const key = menuVisibilityKey(userId);
+  let index = entry.visibility.get(key);
+  if (!index) {
+    // These three visibility classes have identical command visibility for
+    // every user in that class, so the index can safely be shared.
+    const groups = collectMenuGroups(commands, userId);
+    index = new Map(groups.map(group => [group.slug, group]));
+    entry.visibility.set(key, index);
+  }
+  return index;
+}
+
+function invalidateMenuGroupIndex(commands) {
+  if (commands && (typeof commands === "object" || typeof commands === "function")) {
+    menuGroupIndexCache.delete(commands);
+  }
+}
+
 function menuGroupForCommand(command) {
   const config = command?.config || {};
   const name = String(config.name || "").toLowerCase();
   if (!name || name === "menu") return null;
 
-  for (const [slug, names] of Object.entries(MENU_COMMAND_GROUPS)) {
-    if (names.has(name)) return slug;
-  }
+  const commandGroup = MENU_COMMAND_GROUP_BY_NAME.get(name);
+  if (commandGroup) return commandGroup;
 
   const category = normalizeFolder(config.category);
   if (category === "game") return "game";
@@ -264,8 +309,7 @@ function resolveMenuGroup(commands, userId, value) {
     (legacyNames[item.slug] || []).includes(key)
   );
   if (!group) return null;
-  const collected = collectMenuGroups(commands, userId);
-  return collected.find(item => item.slug === group.slug) || null;
+  return getMenuGroupIndex(commands, userId).get(group.slug) || null;
 }
 
 function collectMenuGroupCommands(commands, userId, group) {
@@ -278,5 +322,6 @@ module.exports = {
   collectFolders, resolveFolder, collectFolderCommands, collectAllCommands,
   canonicalCategory, renderFolders, renderFolder, renderAllCommands,
   normalizeFolder, ALL_FOLDER_KEYS,
-  MENU_GROUPS, menuGroupForCommand, collectMenuGroups, resolveMenuGroup, collectMenuGroupCommands
+  MENU_GROUPS, menuGroupForCommand, collectMenuGroups, resolveMenuGroup, collectMenuGroupCommands,
+  invalidateMenuGroupIndex
 };
