@@ -531,8 +531,12 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
 
   if (action === "solo" || action === "pvp") {
     const noitu = require("../../core/runtime/services/games/noituService");
-    if (noitu.get(threadId)?.status === "active") {
-      return send(api, event, "⚠️ Nhóm đang có ván Nối Từ. Hãy kết thúc ván đó trước khi mở Caro.");
+    const noituQuick = require("../../core/runtime/services/games/noituQuickService");
+    const noituRoom = require("../../core/runtime/services/games/noituRoomService");
+    const ghepChu = require("../../core/runtime/services/games/ghepchuService");
+    if (noitu.get(threadId)?.status === "active" || noituQuick.get(threadId)?.status === "active" ||
+        noituRoom.get(threadId) || ghepChu.get(threadId)?.status === "active") {
+      return send(api, event, "⚠️ Nhóm đang có game Nối Từ/Ghép Chữ. Hãy kết thúc game hiện tại trước khi mở Caro.");
     }
   }
 
