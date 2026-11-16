@@ -8,7 +8,8 @@ const {
   isAllowedControl,
   isAllowedControlMessage,
   canRunCommandInGroup,
-  attachGroupBotState
+  attachGroupBotState,
+  getGroupBotStateSnapshot
 } = require("../core/runtime/groupBotState");
 
 test("realtime messages may execute commands", () => {
@@ -63,4 +64,19 @@ test("group browser state is ON only for records explicitly enabled in the selec
   ]);
   assert.equal(result[0].avatar, undefined);
   assert.equal(result[0].totalMember, 10);
+});
+
+test("lightweight group status snapshot reads strict bot_enabled state without loading Zalo data", () => {
+  const snapshot = getGroupBotStateSnapshot([
+    { threadId: "status-on", data: { bot_enabled: true } },
+    { threadId: "status-off", data: { bot_enabled: false } },
+    { threadId: "status-legacy", data: {} },
+    { threadId: "", data: { bot_enabled: true } },
+    null
+  ]);
+  assert.deepEqual(snapshot, [
+    { gid: "status-on", botEnabled: true },
+    { gid: "status-off", botEnabled: false },
+    { gid: "status-legacy", botEnabled: false }
+  ]);
 });
