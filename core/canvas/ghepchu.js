@@ -212,7 +212,7 @@ function drawPlayerAvatar(ctx, x, y, radius, avatarUrl) {
 
   const avatar = avatarCache.getAvatar(avatarUrl);
   if (avatar) {
-    const size = Math.max(avatar.width, avatar.height);
+    const size = Math.min(avatar.width, avatar.height);
     const sx = (avatar.width - size) / 2;
     const sy = (avatar.height - size) / 2;
     ctx.drawImage(avatar, sx, sy, size, size, x - radius, y - radius, radius * 2, radius * 2);
