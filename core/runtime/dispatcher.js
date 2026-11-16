@@ -71,6 +71,13 @@ async function dispatchCommand({
       reply?.finishCommand?.();
     }
   } catch (error) {
+    // The command.run() catch above already records plugin failures. Reaching
+    // this outer catch means dispatcher setup/context handling failed instead.
+    try {
+      metrics?.track?.("error", { command: commandName, source: "dispatcher" });
+    } catch {
+      // Telemetry must not interfere with dispatcher error isolation.
+    }
     logger.log(`Lỗi pipeline lệnh '${commandName}': ${error.message}`, "error");
   } finally {
     metrics?.trackCommandExecutionLatency?.(commandName, performance.now() - commandStartedAt);
