@@ -199,10 +199,18 @@ async function startGhepChu({ api, event }) {
 }
 
 function getPlainMessage(event) {
-  const raw = event?.data?.content;
-  return typeof raw === "string"
-    ? raw.trim()
-    : typeof raw?.title === "string" ? raw.title.trim() : "";
+  const data = event?.data || {};
+  const raw = data.content;
+  if (typeof raw === "string") return raw.trim();
+  if (raw && typeof raw === "object") {
+    for (const key of ["title", "text", "content", "message", "body"]) {
+      if (typeof raw[key] === "string" && raw[key].trim()) return raw[key].trim();
+    }
+  }
+  for (const key of ["text", "message", "body"]) {
+    if (typeof data[key] === "string" && data[key].trim()) return data[key].trim();
+  }
+  return "";
 }
 
 async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
