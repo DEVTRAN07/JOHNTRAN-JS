@@ -201,3 +201,32 @@ test("uses the exact supplied ghép chữ screenshot as its canvas template", ()
     true
   );
 });
+
+
+test("canvas worker renders a square 16x16 Caro board with live X and O marks", async () => {
+  const board = Array(256).fill(null);
+  board[0] = "X";
+  board[17] = "O";
+  board[34] = "X";
+  const outputPath = await renderCanvas("caro", {
+    session: {
+      mode: "pvp",
+      status: "active",
+      board,
+      turnSymbol: "O",
+      moves: 3,
+      players: {
+        X: { uid: "x-user", name: "Player X", kind: "human" },
+        O: { uid: "o-user", name: "Player O", kind: "human" }
+      }
+    }
+  }, { timeout: 20000, poolSize: 1 });
+
+  try {
+    const png = fs.readFileSync(outputPath);
+    assert.ok(png.length > 10000, "Caro board card should contain the full square grid");
+    assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  } finally {
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+});

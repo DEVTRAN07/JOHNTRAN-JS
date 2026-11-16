@@ -1,6 +1,8 @@
 "use strict";
 
+const fs = require("node:fs");
 const game = require("../../core/runtime/services/games/caroService");
+const { renderCanvas } = require("../../core/canvas/workerRender");
 
 module.exports.config = {
   name: "caro",
@@ -12,7 +14,7 @@ module.exports.config = {
   category: "Game",
   usage: "caro [solo|pvp|join|bxh|reset|on|off|help]",
   cooldowns: 0,
-  dependencies: {}
+  dependencies: { canvas: "" }
 };
 
 const EMPTY_STATS = () => ({ points: 0, wins: 0, losses: 0, draws: 0, games: 0 });
@@ -99,23 +101,52 @@ function renderBoard(board) {
 }
 
 function turnLine(session) {
-  if (!session || session.status !== "active") return "";
+  if (!session) return "";
+  if (session.status === "waiting") {
+    return "⏳ Đang chờ người chơi thứ hai tham gia phòng Caro.";
+  }
+  if (session.status !== "active") return "";
   const player = session.players[session.turnSymbol];
   if (!player) return "";
   const name = player.kind === "bot" ? "🤖 Bot AI" : player.name;
-  return `🎯 Lượt ${session.turnSymbol}: ${name}\n⏳ Mỗi lượt có 60 giây. Nhập số ô từ 001–256 để đánh.`;
+  return \`🎯 Lượt \${session.turnSymbol}: \${name}\\n⏳ Mỗi lượt có 60 giây. Nhập số ô từ 001–256 để đánh.\`;
+}
+
+function boardCaption(session, heading = "⚔️ BÀN CỜ CARO 16×16", extraLines = []) {
+  return [
+    heading,
+    \`Chế độ: \${session.mode === "solo" ? "Solo đấu AI" : "PvP"} • Nước đi: \${session.moves}\`,
+    turnLine(session),
+    "💡 Ô trống hiện số 001–256; ví dụ nhập 125.",
+    ...extraLines
+  ].filter(Boolean).join("\\n");
 }
 
 function boardMessage(session, heading = "⚔️ BÀN CỜ CARO 16×16") {
-  return [
-    heading,
-    `Chế độ: ${session.mode === "solo" ? "Solo đấu AI" : "PvP"} • Nước đi: ${session.moves}`,
-    "",
-    renderBoard(session.board),
-    "",
-    turnLine(session),
-    "💡 Ô trống hiện số 001–256; ví dụ nhập 125."
-  ].filter(Boolean).join("\n");
+  return [boardCaption(session, heading), renderBoard(session.board)].filter(Boolean).join("\\n");
+}
+
+async function sendBoard(api, event, session, heading, extraLines = []) {
+  let imagePath;
+  const caption = boardCaption(session, heading, extraLines);
+  try {
+    imagePath = await renderCanvas("caro", { session }, { timeout: 20000, poolSize: 1 });
+    return await api.sendMessage({
+      msg: caption,
+      attachments: [imagePath],
+      ttlKind: "card"
+    }, event.threadId, event.type);
+  } catch (error) {
+    console.error("[CARO_CANVAS]", error?.stack || error);
+    return send(api, event, [caption, renderBoard(session.board)].filter(Boolean).join("\\n"));
+  } finally {
+    if (imagePath) {
+      const timer = setTimeout(() => {
+        try { fs.rmSync(imagePath, { force: true }); } catch {}
+      }, 60000);
+      timer.unref?.();
+    }
+  }
 }
 
 function help(prefix) {
@@ -225,16 +256,13 @@ async function settleGame({ api, event, Users, result }) {
   } else if (result.reason === "leave") {
     reasonLine = "Đối phương đã rời phòng.";
   }
-  const message = [
-    boardMessage(session, "⚔️ KẾT THÚC VÁN CARO"),
-    "",
+  game.finish(session.threadId);
+  return sendBoard(api, event, session, "⚔️ KẾT THÚC VÁN CARO", [
     title,
     reasonLine,
     ...scoreLines,
     "Gõ !caro solo hoặc !caro pvp để chơi ván mới."
-  ].filter(Boolean).join("\n");
-  game.finish(session.threadId);
-  return send(api, event, message);
+  ]);
 }
 
 function scheduleTurn(session, context) {
@@ -263,10 +291,9 @@ async function afterAcceptedMove({ api, event, Users }, result) {
   }
 
   const latest = game.get(session.threadId);
-  await send(api, event, [
-    boardMessage(latest, "⚔️ CẬP NHẬT BÀN CỜ CARO"),
-    `✅ ${session.moves > 0 ? "Đã ghi nhận nước đi." : ""}`
-  ].filter(Boolean).join("\n"));
+  await sendBoard(api, event, latest, "⚔️ CẬP NHẬT BÀN CỜ CARO", [
+    "✅ Đã ghi nhận nước đi."
+  ]);
   scheduleTurn(latest, { api, event, Users });
 }
 
@@ -290,11 +317,10 @@ async function joinRoom({ api, event, Users, Threads }) {
   }
 
   const session = result.session;
-  await send(api, event, [
-    `✅ ${result.player.name} đã vào phòng và cầm quân ${result.player === session.players.X ? "X" : "O"}.`,
-    "X luôn đi trước, O đi sau.",
-    boardMessage(session, "⚔️ BẮT ĐẦU VÁN CARO PvP")
-  ].join("\n"));
+  await sendBoard(api, event, session, "⚔️ BẮT ĐẦU VÁN CARO PvP", [
+    \`✅ \${result.player.name} đã vào phòng và cầm quân \${result.player === session.players.X ? "X" : "O"}.\`,
+    "X luôn đi trước, O đi sau."
+  ]);
   scheduleTurn(session, { api, event, Users });
 }
 
@@ -518,7 +544,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   if (action === "board" || action === "status") {
     const session = game.get(threadId);
     if (!session) return send(api, event, "⚠️ Nhóm hiện không có ván Caro.");
-    return send(api, event, boardMessage(session, "⚔️ BÀN CỜ CARO HIỆN TẠI"));
+    return sendBoard(api, event, session, "⚔️ BÀN CỜ CARO HIỆN TẠI");
   }
 
   if (action === "lose" || action === "leave" || action === "stop") {
@@ -560,7 +586,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
       session = game.get(threadId);
       openingLine += `\n🤖 Bot AI đã đánh ô ${botResult.cell}.`;
     }
-    await send(api, event, [openingLine, boardMessage(session, "⚔️ BẮT ĐẦU CARO SOLO")].join("\n"));
+    await sendBoard(api, event, session, "⚔️ BẮT ĐẦU CARO SOLO", [openingLine]);
     scheduleTurn(session, { api, event, Users });
     return;
   }
@@ -575,17 +601,16 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     if (!result.ok) return send(api, event, "⚠️ Nhóm đang có ván Caro. Gõ board để xem hoặc stop để hủy.");
     const session = result.session;
     const guestSymbol = symbol === "X" ? "O" : "X";
-    await send(api, event, [
-      "⚔️ ĐÃ TẠO PHÒNG CARO PvP",
-      `👤 ${session.players[symbol].name}: quân ${symbol}`,
-      `🕹️ Đang chờ người chơi thứ hai (quân ${guestSymbol}).`,
-      "👉 Người khác gõ join caro hoặc !caro join để tham gia.",
-      "⏳ Phòng tự hủy sau 5 phút nếu không có người tham gia."
-    ].join("\n"));
     game.watchLobby(threadId, async () => {
       game.finish(threadId);
       await send(api, event, "⌛ Phòng Caro đã tự hủy vì 5 phút không có người tham gia.");
     });
+    await sendBoard(api, event, session, "⚔️ ĐÃ TẠO PHÒNG CARO PvP", [
+      \`👤 \${session.players[symbol].name}: quân \${symbol}\`,
+      \`🕹️ Đang chờ người chơi thứ hai (quân \${guestSymbol}).\`,
+      "👉 Người khác gõ join caro hoặc !caro join để tham gia.",
+      "⏳ Phòng tự hủy sau 5 phút nếu không có người tham gia."
+    ]);
     return;
   }
 
@@ -596,6 +621,8 @@ module.exports.handleIncoming = handleIncoming;
 module.exports._test = {
   normalizeCaro,
   renderBoard,
+  boardCaption,
+  sendBoard,
   leaderboard,
   updateCaroStats,
   help,
