@@ -6,11 +6,13 @@ const fs = require("node:fs");
 const workerPool = require("../core/workerPool");
 const { ThreadType } = require("zalo-client");
 const command = require("../plugins/commands/bot");
+const handleEvent = require("../core/handle/handleEvent");
+const ThreadsService = require("../core/runtime/services/threadService");
 
 global.config = { prefix: "/" };
 
-function createContext(initialEnabled = true) {
-  const data = { bot_enabled: initialEnabled };
+function createContext(initialEnabled = false, omitSetting = false) {
+  const data = omitSetting ? {} : { bot_enabled: initialEnabled };
   const messages = [];
   return {
     data,
@@ -51,7 +53,7 @@ test("/bot on restores a group previously switched off", async () => {
   assert.match(ctx.messages.at(-1).message, /bật bot/i);
 });
 
-test("/bot status lists only enabled groups (missing setting defaults to ON)", async () => {
+test("/bot status lists only explicitly enabled groups (missing setting defaults to OFF)", async () => {
   const calls = [];
   const ids = ["status-on-a", "status-off-b", "status-on-c"];
   const api = {
@@ -69,7 +71,7 @@ test("/bot status lists only enabled groups (missing setting defaults to ON)", a
   };
 
   const result = await command._test.collectEnabledGroups(api, Threads);
-  assert.deepEqual(result.groups.map(group => group.gid), ["status-on-a", "status-on-c"]);
+  assert.deepEqual(result.groups.map(group => group.gid), ["status-on-c"]);
   assert.equal(result.totalGroups, 3);
   assert.ok(!calls.includes("status-off-b"), "disabled groups are not loaded for the Canvas card");
 });
@@ -90,7 +92,7 @@ test("/bot status works with wrapApi's built-in group cache without nested cache
   const wrappedApi = wrapApi(rawApi, gid, ThreadType.Group, "bot");
   try {
     const result = await Promise.race([
-      command._test.collectEnabledGroups(wrappedApi, { getAll: () => [] }),
+      command._test.collectEnabledGroups(wrappedApi, { getAll: () => [{ threadId: gid, data: { bot_enabled: true } }] }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("nested group cache deadlock")), 1000))
     ]);
     assert.deepEqual(result.groups.map(group => group.gid), [gid]);
@@ -144,4 +146,63 @@ test("/bot refuses private conversations", async () => {
   });
   assert.equal(ctx.data.bot_enabled, true);
   assert.equal(ctx.messages.at(-1).type, "error");
+});
+
+test("/bot on enables a legacy group whose record has no bot_enabled field", async () => {
+  const ctx = createContext(false, true);
+  await command.run({
+    event: { threadId: "group-legacy-default-off", type: ThreadType.Group },
+    args: ["on"],
+    Threads: ctx.Threads,
+    reply: ctx.reply
+  });
+  assert.equal(ctx.data.bot_enabled, true);
+  assert.match(ctx.messages.at(-1).message, /bật bot/i);
+});
+
+test("group event handlers are blocked unless bot_enabled is explicitly true", async () => {
+  const previousClient = global.client;
+  const originalGetCachedData = ThreadsService.getCachedData;
+  let calls = 0;
+  const flush = async () => {
+    await new Promise(resolve => setImmediate(resolve));
+    await new Promise(resolve => setImmediate(resolve));
+  };
+  try {
+    ThreadsService.getCachedData = () => ({ data: {} });
+    global.client = {
+      events: new Map([["test-off", {
+        config: { event_type: ["message"] },
+        run: async () => { calls++; }
+      }]]),
+      commands: new Map()
+    };
+    handleEvent("message", {
+      threadId: "group-default-off",
+      type: ThreadType.Group,
+      data: {}
+    }, {}, false);
+    await flush();
+    assert.equal(calls, 0);
+
+    ThreadsService.getCachedData = () => ({ data: { bot_enabled: true } });
+    global.client = {
+      events: new Map([["test-on", {
+        config: { event_type: ["message"] },
+        run: async () => { calls++; }
+      }]]),
+      commands: new Map()
+    };
+    handleEvent("message", {
+      threadId: "group-explicit-on",
+      type: ThreadType.Group,
+      data: {}
+    }, {}, false);
+    await flush();
+    assert.equal(calls, 1);
+  } finally {
+    ThreadsService.getCachedData = originalGetCachedData;
+    if (previousClient === undefined) delete global.client;
+    else global.client = previousClient;
+  }
 });
