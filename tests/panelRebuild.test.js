@@ -366,6 +366,22 @@ test("production deployment verifier never sends messages or mutates bot configu
 });
 
 
+test("Panel awaits and deduplicates Supabase mirror sync before bot and child bridge reads", () => {
+  assert.match(server, /let storeSyncPromise = null/);
+  assert.match(server, /async function maybeSyncStore\(\{ force = false \} = \{\}\)/);
+  assert.match(server, /return await storeSyncPromise/);
+  const botRoute = server.indexOf('if (pathname === "/api/bots" && req.method === "GET")');
+  const botSync = server.indexOf("await maybeSyncStore();", botRoute);
+  assert.ok(botRoute >= 0 && botSync > botRoute, "bot registry response must wait for BotStats mirror sync");
+  const chatRoute = server.indexOf('if (pathname.startsWith("/api/chat"))');
+  const chatSync = server.indexOf("await maybeSyncStore();", chatRoute);
+  const bridgeLookup = server.indexOf("manager.list().find((b) => b.name === botName)", chatRoute);
+  assert.ok(chatRoute >= 0 && chatSync > chatRoute && chatSync < bridgeLookup,
+    "child bridge login state must be read only after the shared mirror sync");
+  const statsRoute = server.indexOf('if (pathname === "/api/stats" && req.method === "GET")');
+  assert.ok(server.indexOf("await maybeSyncStore();", statsRoute) > statsRoute);
+});
+
 test("Render CI waits for live deployment state and verifies the deployed service health", () => {
   const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
   assert.match(workflow, /timeout-minutes: 20/);
