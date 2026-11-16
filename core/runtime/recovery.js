@@ -226,6 +226,7 @@ function collectRecoverySnapshot(options = {}) {
       driver: database.driver || "unknown",
       ok: database.ok === true,
       consecutiveFailures: Number(database.consecutiveFailures) || 0,
+      nextSyncDelayMs: Number(database.nextSyncDelayMs) || null,
       retryQueueSize: Number(database.retryQueueSize) || 0,
       lastSyncAgeMs: Number(database.lastSyncAgeMs) || null,
       classified: database.classified || null
