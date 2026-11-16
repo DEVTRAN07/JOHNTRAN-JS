@@ -131,7 +131,9 @@ function enrichBot(bot) {
   // Lấy tên/ảnh đại diện thật của tài khoản Zalo từ snapshot thống kê của bot.
   // Tên registry (ví dụ "main") chỉ là ID nội bộ, không phải tên hiển thị.
   const profile = stats?.profile && typeof stats.profile === "object" ? stats.profile : {};
-  out.displayName = String(profile.displayName || profile.zaloName || out.name || "Bot");
+  // The registry key (for example "main") is internal and must never be
+  // presented as the account's Zalo display name.
+  out.displayName = String(profile.displayName || profile.zaloName || "Tài khoản Zalo");
   out.avatar = String(profile.avatar || "");
   out.uid = String(profile.uid || "");
   // Gợi ý lưu phiên (không chứa secrets) để Render redeploy không cần quét QR.
