@@ -16,6 +16,8 @@ const SIGKILL_DELAY = 5000;
 const RESTART_DELAY_MS = 3000;
 const RESTART_WINDOW_MS = 10 * 60 * 1000;
 const MAX_RESTARTS_IN_WINDOW = 5;
+const MAX_RESTART_DELAY_MS = 60000;
+const STABLE_RUNTIME_RESET_MS = 5 * 60 * 1000;
 
 function ensureDirs() {
   fs.mkdirSync(BOTS_DIR, { recursive: true });
@@ -131,12 +133,21 @@ class BotInstance {
     this.restartTimer = null;
     this.restarting = false;
     this.restartHistory = [];
+    this.nextRestartAt = null;
+    this.lastExitAt = null;
+    this.lastExitReason = null;
     this.restartDelayMs = Number.isFinite(Number(options.restartDelayMs))
       ? Math.max(0, Number(options.restartDelayMs))
       : RESTART_DELAY_MS;
     this.restartWindowMs = Number.isFinite(Number(options.restartWindowMs))
       ? Math.max(1, Number(options.restartWindowMs))
       : RESTART_WINDOW_MS;
+    this.maxRestartDelayMs = Number.isFinite(Number(options.maxRestartDelayMs))
+      ? Math.max(this.restartDelayMs, Number(options.maxRestartDelayMs))
+      : MAX_RESTART_DELAY_MS;
+    this.stableRuntimeResetMs = Number.isFinite(Number(options.stableRuntimeResetMs))
+      ? Math.max(1, Number(options.stableRuntimeResetMs))
+      : STABLE_RUNTIME_RESET_MS;
     this.maxRestartsInWindow = Number.isInteger(options.maxRestartsInWindow)
       ? Math.max(0, options.maxRestartsInWindow)
       : MAX_RESTARTS_IN_WINDOW;
@@ -170,6 +181,7 @@ class BotInstance {
     if (!this.restartTimer) return false;
     clearTimeout(this.restartTimer);
     this.restartTimer = null;
+    this.nextRestartAt = null;
     this.restarting = false;
     return true;
   }
@@ -178,9 +190,11 @@ class BotInstance {
     if (this.restartTimer || this.stoppedByUser || !this.autoRestart || (this.flapping && !allowFlapping)) return false;
 
     this.restarting = true;
+    this.nextRestartAt = Date.now() + Math.max(0, delayMs);
     const timer = setTimeout(() => {
       if (this.restartTimer !== timer) return;
       this.restartTimer = null;
+      this.nextRestartAt = null;
       this.restarting = false;
 
       // Re-check flags at execution time: Stop or disabling auto-restart may
@@ -271,6 +285,14 @@ class BotInstance {
 
       const wasStoppedByUser = this.stoppedByUser;
       const exitLabel = signal ? `signal ${signal}` : `code ${code}`;
+      const runtimeMs = this.startedAt ? Date.now() - this.startedAt : 0;
+      this.lastExitAt = Date.now();
+      this.lastExitReason = exitLabel;
+      if (runtimeMs >= this.stableRuntimeResetMs) {
+        // A long stable run breaks the consecutive restart backoff, while the
+        // rolling window still protects against frequent crashes.
+        this.restartAttempt = 0;
+      }
       this.pushLog(`[system] tiến trình thoát với ${exitLabel}`);
       logger.log(`Bot con '${this.name}' thoát (${exitLabel})`, wasStoppedByUser ? "info" : "warn", { source: "bot-lifecycle", bot: this.name });
 
@@ -285,7 +307,9 @@ class BotInstance {
       const restartCount = this.pruneRestartHistory();
 
       if (this.autoRestart && restartCount <= this.maxRestartsInWindow) {
-        this.scheduleRestart();
+        const attempt = Math.max(1, restartCount);
+        const delay = Math.min(this.restartDelayMs * (2 ** (attempt - 1)), this.maxRestartDelayMs);
+        this.scheduleRestart(delay);
       } else if (this.autoRestart) {
         const oldestCrashAt = this.restartHistory[0] || Date.now();
         const cooldownMs = Math.max(
@@ -350,6 +374,10 @@ class BotInstance {
       uptimeMs: this.startedAt ? Date.now() - this.startedAt : 0,
       restarts: this.restarts,
       flapping: this.flapping,
+      restartCountInWindow: this.restartHistory.length,
+      nextRestartAt: this.nextRestartAt,
+      lastExitAt: this.lastExitAt,
+      lastExitReason: this.lastExitReason,
       hasQr: fs.existsSync(botPaths(this.name).qrFile),
       lastLogs: this.logs.slice(-20),
       bridgePort: this.bridgePort || 3901
