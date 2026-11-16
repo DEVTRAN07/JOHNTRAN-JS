@@ -134,6 +134,18 @@ jobs:
             echo "::error::Render service did not return a public serviceDetails.url."
             exit 1
           fi
+          # The Render service env-vars endpoint exposes direct service vars only;
+          # linked Environment Group values are intentionally not returned by this API.
+          direct_env_vars="$(curl --fail --silent --show-error --max-time 20 \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            "https://api.render.com/v1/services/${service_id}/env-vars?limit=100")"
+          persistent_dir="$(jq -r '[.[] | .envVar? | select(.key == "JT_PERSISTENT_DIR") | .value] | first // empty' <<< "$direct_env_vars")"
+          if [[ "$persistent_dir" == "/opt/render/project/data" ]]; then
+            echo "PASS  direct Render JT_PERSISTENT_DIR matches the Blueprint Persistent Disk mount."
+          else
+            echo "::warning::JT_PERSISTENT_DIR was not confirmed as a direct service variable with the expected mount path. The API omits linked Environment Group variables; sync the Blueprint or inspect Render Dashboard → Environment before assuming registry/child-bot logs are persistent."
+          fi
+
           echo "Verifying public health endpoint: $service_url/health"
 
           healthy=0
@@ -141,6 +153,9 @@ jobs:
             if health="$(curl --fail --silent --show-error --max-time 10 "$service_url/health" 2>/dev/null)"; then
               if jq -e '(.status == "ok" or .status == "starting") and ((.uptimeMs | type) == "number" or (.uptimeSeconds | type) == "number")' >/dev/null <<< "$health"; then
                 echo "PASS  public /health: status=$(jq -r '.status' <<< "$health"), loggedIn=$(jq -r '.loggedIn // false' <<< "$health")"
+                if [[ "$(jq -r '.loggedIn // false' <<< "$health")" != "true" ]]; then
+                  echo "::warning::The service is live but the Zalo session is not logged in yet (loggedIn=false). Complete the login/QR flow before expecting bot commands to work."
+                fi
                 healthy=1
                 break
               fi
