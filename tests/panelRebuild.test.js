@@ -9,6 +9,7 @@ const { test } = require("node:test");
 const root = path.resolve(__dirname, "..");
 const html = fs.readFileSync(path.join(root, "docs/panel.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "docs/panel.css"), "utf8");
+const v4css = fs.readFileSync(path.join(root, "docs/panel.v4.css"), "utf8");
 const js = fs.readFileSync(path.join(root, "docs/panel.js"), "utf8");
 const server = fs.readFileSync(path.join(root, "panel/server.js"), "utf8");
 
@@ -36,6 +37,36 @@ test("panel frontend is self-hosted and has no external runtime dependency", () 
   assert.match(html, /src="panel\.js"/);
   assert.doesNotMatch(html, /https:\/\/(?:cdn\.|unpkg\.com|fonts\.googleapis\.com)/i);
   assert.match(css, /@media\(max-width:680px\)/);
+});
+
+test("V4 theme is self-hosted and group browser exposes status filters and sorting", () => {
+  assert.match(html, /href="panel\\.v4\\.css"/);
+  assert.match(server, /"\\/panel\\.v4\\.css": "panel\\.v4\\.css"/);
+  assert.match(v4css, /group-filter-tabs/);
+  assert.match(v4css, /group-sort/);
+  for (const filter of ["all", "on", "off"]) {
+    assert.ok(html.includes('data-group-filter="' + filter + '"'));
+  }
+  assert.match(html, /id="groupSort"/);
+  assert.match(js, /members-desc/);
+  assert.match(js, /status-on-first/);
+});
+
+test("group status polling uses a lightweight authenticated bot bridge route", () => {
+  const bridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
+  assert.match(server, /group-commands\\|group-status/);
+  assert.match(bridge, /route === "\/group-status"/);
+  assert.match(bridge, /getGroupBotStateSnapshot\\(Threads\\.getAll\\(\\)\\)/);
+  assert.match(js, /\/group-status/);
+  assert.match(js, /}, 15000\\)/);
+  assert.match(js, /document\\.visibilityState === "visible"/);
+});
+
+test("group avatars are lazy-loaded and failed images degrade to initials without full-card refresh", () => {
+  assert.match(js, /loading="lazy" decoding="async" fetchpriority="low"/);
+  assert.match(js, /failedGroupAvatarUrls\\.add\\(key\\)/);
+  assert.match(js, /function syncGroupCardStatuses/);
+  assert.match(v4css, /group-card-avatar img\\.loaded/);
 });
 
 test("dashboard keeps using the existing protected panel API and bridge routes", () => {
