@@ -38,3 +38,47 @@ test("command latency includes an unknown-command response before dispatch", asy
     else global.client = previousClient;
   }
 });
+
+
+test("pipeline failures are counted once and still propagate to the listener", async () => {
+  const { ThreadType } = require("zalo-client");
+  const previousConfig = global.config;
+  const originalTrack = metrics.track;
+  const tracked = [];
+
+  global.config = new Proxy({}, {
+    get(_target, property) {
+      if (property === "allow_private_command") {
+        throw new Error("simulated private-command config failure");
+      }
+      return undefined;
+    }
+  });
+  metrics.track = (...args) => tracked.push(args);
+
+  try {
+    await assert.rejects(
+      handleCommand(
+        "/pipelinebroken",
+        {
+          threadId: "pipeline-error-group",
+          type: ThreadType.User,
+          data: { uidFrom: "pipeline-error-user", content: "/pipelinebroken" }
+        },
+        {},
+        {},
+        "/",
+        { data: {} }
+      ),
+      /simulated private-command config failure/
+    );
+    assert.deepEqual(tracked, [[
+      "error",
+      { command: "pipelinebroken", source: "pipeline" }
+    ]]);
+  } finally {
+    metrics.track = originalTrack;
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
