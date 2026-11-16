@@ -17,6 +17,7 @@ const databaseAdapter = fs.readFileSync(path.join(root, "core/runtime/adapters/d
 const databaseFacade = fs.readFileSync(path.join(root, "utils/db.js"), "utf8");
 const supabaseStore = fs.readFileSync(path.join(root, "core/storage/supabase.js"), "utf8");
 const panelBridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
+const bridgeProfile = fs.readFileSync(path.join(root, "panel/bridgeProfile.js"), "utf8");
 const botManager = fs.readFileSync(path.join(root, "panel/botManager.js"), "utf8");
 const johnTran = fs.readFileSync(path.join(root, "JohnTran.js"), "utf8");
 
@@ -31,19 +32,21 @@ test("bot cards render their status, uptime, port and action controls", () => {
   const renderSource = js.slice(start, end);
   const botList = { innerHTML: "" };
   const renderBots = vm.runInNewContext("(" + renderSource + ")", {
-    state: { bots: [{ name: "main", displayName: "JOHNTRAN", pid: 123, uptimeMs: 60000, restarts: 0, bridgePort: 3901, autoRestart: true, hasQr: false }] },
+    state: { bots: [{ name: "main", displayName: "JOHNTRAN Zalo", avatar: "https://example.com/bot.png", uid: "zalo-uid", pid: 123, uptimeMs: 60000, restarts: 0, bridgePort: 3901, autoRestart: true, hasQr: false }] },
     $: () => botList,
     botStatus: () => ["Đang chạy", "online"],
-    avatarHtml: () => '<span class="bot-avatar">JT</span>',
+    avatarHtml: (url, name) => '<span class="bot-avatar">' + (url ? '<img src="' + url + '" alt="' + name + '">' : name) + '</span>',
     $escape: value => String(value ?? ""),
     fmtUptime: () => "1 phút",
     number: value => Number(value) || 0
   });
 
   renderBots();
-  for (const marker of ['class="bot-row"', 'class="status-label online"', "Uptime 1 phút", "PORT", "3901", "QR", 'data-action="bot-restart"', 'data-action="bot-logs"']) {
+  for (const marker of ['class="bot-row"', 'class="status-label online"', "Uptime 1 phút", "PORT", "3901", "QR", 'data-action="bot-restart"', 'data-action="bot-logs"', "JOHNTRAN Zalo", 'src="https://example.com/bot.png"', "TÀI KHOẢN ZALO"]) {
     assert.ok(botList.innerHTML.includes(marker), "bot card is missing: " + marker);
   }
+  assert.ok(!botList.innerHTML.includes("ID main"), "the internal main ID should not replace the Zalo identity");
+  assert.ok(!botList.innerHTML.includes("MASTER"), "the account card should be labelled by its Zalo identity");
 });
 
 test("new panel shell has all six views and their required mount points", () => {
@@ -79,6 +82,17 @@ test("V4 theme is self-hosted and group browser exposes status filters and sorti
   assert.match(html, /id="groupSort"/);
   assert.match(js, /members-desc/);
   assert.match(js, /status-on-first/);
+});
+
+test("Panel reads a cached live Zalo profile instead of showing the internal main ID", () => {
+  assert.match(panelBridge, /route === "\\/profile"/);
+  assert.match(panelBridge, /stats\.getProfile\(apiRef\)/);
+  assert.match(bridgeProfile, /path: "\\/profile"/);
+  assert.match(server, /probeBridgeProfile\(out, bridgeToken\)/);
+  assert.match(server, /threads\|profile\|messages/);
+  assert.match(js, /function renderBotSelectors\(\)/);
+  assert.match(js, /bot\.displayName \|\| bot\.name/);
+  assert.match(html, /Đang tải tài khoản Zalo/);
 });
 
 test("child bridge reports its resolved port to Panel and startup failures are logged", () => {
