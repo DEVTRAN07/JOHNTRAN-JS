@@ -586,8 +586,22 @@ async function start({ api, port = 3901, token } = {}) {
     });
   });
 
-  await new Promise((resolve) => server.listen(finalPort, "127.0.0.1", resolve));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(finalPort, "127.0.0.1", resolve);
+  });
   logger.log(`Cầu nối panel (chat) đang chạy: 127.0.0.1:${finalPort}`, "info");
+  // Tell the Panel master which port was actually selected by findPort().
+  // This matters when the preferred port is already occupied and findPort
+  // advances to another local port.
+  if (typeof process.send === "function") {
+    try { process.send({ type: "jt:panel-bridge-ready", port: finalPort }); }
+    catch (error) {
+      logger.log(`Không gửi được bridge port về Panel master: ${error.message || error}`, "warn", {
+        source: "panel-bridge-ipc", bot: process.env.JT_BOT_NAME || "main"
+      });
+    }
+  }
   return finalPort;
 }
 
