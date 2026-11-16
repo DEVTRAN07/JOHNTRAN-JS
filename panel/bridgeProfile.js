@@ -6,7 +6,7 @@ function createBridgeProfileProbe(options = {}) {
   const request = options.request || http.request;
   const now = options.now || Date.now;
   const timeoutMs = Math.max(100, Number(options.timeoutMs) || 1500);
-  const positiveCacheMs = Math.max(1000, Number(options.positiveCacheMs) || 300000);
+  const positiveCacheMs = Math.max(1000, Number(options.positiveCacheMs) || 30000);
   const negativeCacheMs = Math.max(250, Number(options.negativeCacheMs) || 15000);
   const cache = new Map();
 
