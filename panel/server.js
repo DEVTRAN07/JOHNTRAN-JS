@@ -248,13 +248,30 @@ function startPanel({ manager, config }) {
         return sendJson(res, 200, { bots, master: { botCount: bots.length, uptimeMs: process.uptime() * 1000 } });
       }
 
+      if (pathname === "/api/database/health" && req.method === "GET") {
+        res.setHeader("Cache-Control", "no-store");
+        try {
+          if (!dbUtils || typeof dbUtils.healthCheck !== "function") {
+            return sendJson(res, 200, { driver: "unknown", ok: false, error: "Database health check chưa sẵn sàng." });
+          }
+          // Chỉ probe bảng bot_threads — đây là bảng thiết yếu giữ trạng thái ON/OFF của nhóm.
+          const report = await dbUtils.healthCheck();
+          return sendJson(res, 200, report);
+        } catch (error) {
+          return sendJson(res, 200, {
+            driver: "unknown", ok: false,
+            probe: { ok: false, error: error.message || String(error), checkedAt: new Date().toISOString() }
+          });
+        }
+      }
+
       if (pathname === "/api/metrics" && req.method === "GET") {
         maybeSyncStore();
         try {
           const metrics = require("../core/metrics");
           const { allStats } = require("../core/cache");
-          let supabaseStatus = null;
-          try { supabaseStatus = storeDb && typeof storeDb.getStatus === "function" ? storeDb.getStatus() : null; } catch { supabaseStatus = null; }
+          let databaseStatus = null;
+          try { databaseStatus = dbUtils && typeof dbUtils.getStatus === "function" ? dbUtils.getStatus() : null; } catch { databaseStatus = null; }
           return sendJson(res, 200, {
             today: metrics.getDayStats(),
             topCommands: metrics.topCommands(),
@@ -263,7 +280,9 @@ function startPanel({ manager, config }) {
             node: process.version,
             uptimeMs: process.uptime() * 1000,
             memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
-            supabase: supabaseStatus
+            // Keep the legacy "supabase" field while adding a driver-neutral status.
+            supabase: databaseStatus?.driver === "supabase" ? databaseStatus : null,
+            database: databaseStatus
           });
         } catch (error) {
           return sendJson(res, 500, { error: error.message });
