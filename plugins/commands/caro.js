@@ -213,16 +213,26 @@ async function settleGame({ api, event, Users, result }) {
     }
   }
 
-  const title = result.draw
+  let title = result.draw
     ? "🤝 VÁN CARO HÒA!"
     : `🏆 ${session.players[result.winnerSymbol]?.name || "Người chơi"} THẮNG!`;
+  let reasonLine = "";
+  if (result.reason === "timeout") {
+    title = `⏰ HẾT GIỜ — ${session.players[result.winnerSymbol]?.name || "Đối thủ"} THẮNG!`;
+    reasonLine = "Người chơi đến lượt đã quá 60 giây.";
+  } else if (result.reason === "resign") {
+    reasonLine = "Đối phương đã đầu hàng.";
+  } else if (result.reason === "leave") {
+    reasonLine = "Đối phương đã rời phòng.";
+  }
   const message = [
     boardMessage(session, "⚔️ KẾT THÚC VÁN CARO"),
     "",
     title,
+    reasonLine,
     ...scoreLines,
     "Gõ !caro solo hoặc !caro pvp để chơi ván mới."
-  ].join("\n");
+  ].filter(Boolean).join("\n");
   game.finish(session.threadId);
   return send(api, event, message);
 }
@@ -233,13 +243,7 @@ function scheduleTurn(session, context) {
     const timeoutResult = game.resign(session.threadId, player.uid);
     if (!timeoutResult.ok) return;
     timeoutResult.reason = "timeout";
-    const message = [
-      `⏰ HẾT 60 GIÂY! ${player.name} (${symbol}) đã quá thời gian.`,
-      `🏆 ${session.players[symbol === "X" ? "O" : "X"]?.name || "Đối thủ"} thắng do đối phương hết giờ.`
-    ].join("\n");
     await settleGame({ ...context, result: timeoutResult });
-    // Keep the timeout reason visible even if the board rendering is reused.
-    void message;
   });
 }
 
@@ -319,6 +323,7 @@ async function handleSpecial({ api, event, Users }, action) {
       game.finish(threadId);
       return send(api, event, "👋 Bạn đã rời phòng. Ván Caro đã được hủy, không tính thắng/thua.");
     }
+    result.reason = "leave";
     return settleGame({ api, event, Users, result });
   }
 
