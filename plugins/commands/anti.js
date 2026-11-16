@@ -43,14 +43,21 @@ async function handlePhoto(messageCache, tempPath, name, timeSend, timeUndo, thr
 }
 
 async function isAdmin(api, userId, threadId) {
+  if (userId == null || typeof api?.getGroupInfo !== "function") return null;
+
   const info = await api.getGroupInfo(threadId);
-  const groupInfo = info.gridInfoMap[threadId];
+  const groupInfo = info?.gridInfoMap?.[threadId];
+  // Missing role metadata is "unknown", not proof that the sender is a member.
+  if (!groupInfo || (groupInfo.creatorId == null && !Array.isArray(groupInfo.adminIds))) {
+    return null;
+  }
 
-  const isCreator = groupInfo.creatorId === userId;
-  const isDeputy = Array.isArray(groupInfo.adminIds) && groupInfo.adminIds.includes(userId);
-  let isGroupAdmin = isCreator || isDeputy;
+  const uid = String(userId);
+  const isCreator = groupInfo.creatorId != null && String(groupInfo.creatorId) === uid;
+  const isDeputy = Array.isArray(groupInfo.adminIds) &&
+    groupInfo.adminIds.some(id => String(id) === uid);
 
-  return isGroupAdmin;
+  return isCreator || isDeputy;
 }
 
 
@@ -66,12 +73,22 @@ module.exports.handleEvent = async function ({ event, api, Threads, eventType, i
   const threadData = (await Threads.getData(threadId)).data || {};
   const tempPath = path.join(__dirname, "temp");
   const tempFiles = [];
+  let groupAdminCheck = null;
+
+  // Reuse one Zalo group-info lookup for every Anti rule on this message.
+  // Unknown role metadata fails safe: do not delete a message that may belong to an admin.
+  const isAdminOrUnknown = () => {
+    if (!groupAdminCheck) {
+      groupAdminCheck = isAdmin(api, userId, threadId).catch(() => null);
+    }
+    return groupAdminCheck.then(result => result !== false);
+  };
 
   try {
     // === Anti Link ===
     if (threadData.anti_link) {
       if ((data.msgType == "chat.recommended" && data.content.action == "recommended.link") || (data.msgType == "webchat" && String(data.content).match(/https?:\/\/[^\s]+/))) {
-        if (isAdmin(api, userId, threadId)) return;
+        if (await isAdminOrUnknown()) return;
         await api.deleteMessage({
           threadId,
           type,
@@ -102,7 +119,7 @@ module.exports.handleEvent = async function ({ event, api, Threads, eventType, i
       if (!spamCache[threadId]) spamCache[threadId] = {};
       if (!spamCache[threadId][userId]) spamCache[threadId][userId] = [];
 
-      if (isAdmin(api, userId, threadId)) return;
+      if (await isAdminOrUnknown()) return;
 
       spamCache[threadId][userId].push(now);
       spamCache[threadId][userId] = spamCache[threadId][userId].filter(ts => now - ts <= SPAM_TIME);
