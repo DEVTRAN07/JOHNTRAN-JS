@@ -249,7 +249,7 @@ test("storage diagnostics never reveal Supabase secrets or silently replace a le
   assert.match(diagnostics, /verified-mount/);
   assert.match(botManager, /fs\.constants\.COPYFILE_EXCL/);
   assert.match(botManager, /Giữ nguyên file nguồn/);
-  assert.match(botManager, /from \"\.\.\/core\/storage\/diagnostics\"/);
+  assert.match(botManager, /require\(\"\.\.\/core\/storage\/diagnostics\"\)/);
   assert.doesNotMatch(bridgeSafeSource(), /SUPABASE_SERVICE_KEY|SUPABASE_ANON_KEY/);
 });
 
