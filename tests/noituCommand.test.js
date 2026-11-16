@@ -78,3 +78,30 @@ test("nt go accepts self-listen answers only when allow_self_command is enabled"
     else global.config = previousConfig;
   }
 });
+
+
+test("nt go wrong-link hint shows the final syllable of the current phrase", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_command: false, prefix: "/" };
+  const session = noituEngine.createSession("wrong-link-group", "player-1", "Wuang", () => 0);
+  gameService.sessions.set("wrong-link-group", session);
+  const sent = [];
+  try {
+    const consumed = await command._test.handleNoiTuText({
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: {
+        threadId: "wrong-link-group",
+        type: 2,
+        data: { uidFrom: "player-1", content: "bầu trời" }
+      },
+      eventType: "message"
+    });
+    assert.equal(consumed, true);
+    assert.match(sent[0].msg, /sinh/);
+    assert.equal(session.moves, 0);
+  } finally {
+    gameService.sessions.clear();
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
