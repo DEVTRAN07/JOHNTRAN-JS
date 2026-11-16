@@ -47,7 +47,7 @@ Kiểm tra số lượng bản ghi được liệt kê. Sau khi xác nhận đú
 npm run migrate:supabase -- --import-missing
 ```
 
-Trước khi import, script kiểm tra quyền truy cập đủ cả 5 bảng đích; nếu thiếu bảng/quyền, nó dừng trước khi ghi bản ghi đầu tiên. Lệnh import chỉ thêm ID chưa có trên Supabase; hàng cùng ID đã tồn tại được bỏ qua, không bị ghi đè. File JSON nguồn chỉ được đọc, không sửa hoặc xóa.
+Trước khi import, script kiểm tra quyền truy cập đủ cả 5 bảng đích; nếu thiếu bảng/quyền, nó dừng trước khi ghi bản ghi đầu tiên. Khi import thật, script tự tạo bản sao `.pre-supabase-<timestamp>.bak` cạnh file JSON trước khi ghi và báo đường dẫn backup; file JSON gốc không bị sửa hoặc xóa. Lệnh import chỉ thêm ID chưa có trên Supabase; hàng cùng ID đã tồn tại được bỏ qua, không bị ghi đè. File JSON nguồn chỉ được đọc, không sửa hoặc xóa.
 
 Nếu đang quản lý bot con có file riêng tại `<JT_PERSISTENT_DIR>/bots/<bot-name>/store.json`, sao lưu và chạy lại lệnh import cho từng file đó. Các ID trùng đã có trên Supabase sẽ được giữ nguyên; không tự động hợp nhất hai cấu hình khác nhau.
 
