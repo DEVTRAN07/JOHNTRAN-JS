@@ -73,7 +73,13 @@ class JsonStore {
     if (this.loadError) {
       throw new Error(`JSON database bị lỗi khi đọc; từ chối ghi đè dữ liệu: ${this.loadError}`);
     }
-    if (this.lastFlushError) {
+    if (this.lastFlushError && this.pendingFlush) {
+      // Retry a previously failed flush before accepting another write. This
+      // lets the store recover automatically after a transient disk problem.
+      if (!this.flushSync()) {
+        throw new Error(`JSON database chưa ghi được xuống đĩa: ${this.lastFlushError}`);
+      }
+    } else if (this.lastFlushError) {
       throw new Error(`JSON database chưa ghi được xuống đĩa: ${this.lastFlushError}`);
     }
   }
