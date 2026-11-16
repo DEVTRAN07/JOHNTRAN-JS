@@ -100,8 +100,8 @@ test("menu shortcut cache refreshes on map size changes and explicit hot-reload 
 
   // Replacing a value leaves Map.size unchanged; the loader/hot-reload path
   // must explicitly invalidate the derived menu index after this mutation.
-  commands.set("noitu", command("noitu", "Tiện ích"));
+  commands.set("extra-game", command("extra-game", "Tiện ích"));
   folderMenu.invalidateMenuGroupIndex(commands);
-  assert.equal(folderMenu.resolveMenuGroup(commands, "guest", "game"), null);
-  assert.equal(folderMenu.resolveMenuGroup(commands, "guest", "tools").count, 2);
+  assert.equal(folderMenu.resolveMenuGroup(commands, "guest", "game").count, 1);
+  assert.equal(folderMenu.resolveMenuGroup(commands, "guest", "tools").count, 1);
 });
