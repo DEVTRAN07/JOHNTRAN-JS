@@ -6,6 +6,9 @@ const { renderCanvas } = require("../../core/canvas/workerRender");
 const ghepChu = require("../../core/runtime/services/games/ghepchuService");
 const quickNoitu = require("../../core/runtime/services/games/noituQuickService");
 const noituRoom = require("../../core/runtime/services/games/noituRoomService");
+const noituBotAI = require("../../core/games/noituBotAI");
+const noituEngine = require("../../core/games/noituEngine");
+const defaultUsers = require("../../core/runtime/services/userService");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const botVersion = require("../../package.json").version;
 const ghepChuTimers = new Map();
@@ -114,7 +117,7 @@ async function startNoituRoomGame({ api, event }) {
   );
 }
 
-async function handleNoituRoomText({ api, event, eventType, isSelf = false }) {
+async function handleNoituRoomText({ api, event, eventType, isSelf = false, Users }) {
   if ((eventType && eventType !== "message") || ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true)) return false;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
@@ -173,6 +176,7 @@ async function handleNoituRoomText({ api, event, eventType, isSelf = false }) {
     }
     return true;
   }
+  await updateNoituScore(Users || defaultUsers, uid, 1, { move: true });
   await send(api, event,
     "✅ " + result.phrase.display + " · +1 điểm.\n" +
     "🎯 Đến lượt " + (result.nextPlayer?.name || "người chơi tiếp theo") + "."
@@ -301,6 +305,95 @@ async function sendGuide(api, event, prefix) {
 function currentPlayerLine(session) {
   const player = session?.players.get(session?.turnUid);
   return player ? "🎯 Lượt tiếp theo: " + player.name + "." : "";
+}
+
+async function updateNoituScore(Users, uid, points = 1, options = {}) {
+  const store = Users || defaultUsers;
+  if (!store?.getData || !store?.setData || !uid) return false;
+  try {
+    const record = await store.getData(String(uid));
+    const data = record?.data && typeof record.data === "object"
+      ? { ...record.data }
+      : (record && typeof record === "object" ? { ...record } : {});
+    const profile = data.noitu && typeof data.noitu === "object" ? { ...data.noitu } : {};
+    profile.points = Math.max(0, Number(profile.points) || 0) + Math.max(0, Number(points) || 0);
+    if (options.move) profile.moves = Math.max(0, Number(profile.moves) || 0) + 1;
+    if (options.botWin) profile.botWins = Math.max(0, Number(profile.botWins) || 0) + 1;
+    data.noitu = profile;
+    await store.setData(String(uid), data);
+    return profile;
+  } catch (error) {
+    console.error("[NOITU_SCORE]", error?.message || error);
+    return false;
+  }
+}
+
+function createSoloBotSession(threadId, uid, name = "Người chơi", random = Math.random) {
+  const result = game.start(threadId, uid, name);
+  if (!result.ok) return result;
+  const session = result.session;
+  const botUid = "johntran-ai:" + String(threadId);
+  const joined = game.join(threadId, botUid, "JOHNTRAN AI");
+  const opening = noituEngine.parsePhrase(noituBotAI.chooseOpeningPhrase(random));
+  if (!joined.ok || !opening) {
+    game.stop(threadId);
+    return { ok: false, code: "AI_INIT_FAILED" };
+  }
+  session.mode = "solo_bot";
+  session.humanUid = String(uid);
+  session.botUid = botUid;
+  session.currentPhrase = opening;
+  session.used = new Set([opening.normalized]);
+  session.history = [opening.display];
+  session.turnUid = String(uid);
+  return { ok: true, session };
+}
+
+async function startSoloBotGame({ api, event }) {
+  const uid = String(event?.data?.uidFrom || "");
+  const threadId = String(event?.threadId || "");
+  if (!uid || !threadId) return;
+  const name = String(event?.data?.dName || event?.data?.name || "Người chơi");
+  const result = createSoloBotSession(threadId, uid, name);
+  if (!result.ok) return send(api, event, "⚠️ Nhóm đang có ván Nối Từ. Hãy kết thúc ván hiện tại trước.");
+  return send(api, event,
+    "⚔️ NỐI TỪ SOLO — ĐẤU VỚI JOHNTRAN AI\n\n" +
+    "🧩 Từ mở màn: " + result.session.currentPhrase.display + "\n" +
+    "🤖 AI sẽ tự nối từ sau mỗi lượt của bạn.\n" +
+    "✅ Bạn ghi +1 điểm mỗi lượt đúng; nếu AI bí từ, bạn thắng +5⭐.\n" +
+    "👉 Trả lời trực tiếp bằng cụm từ 2–4 tiếng. Gõ stop để dừng."
+  );
+}
+
+async function playSoloBotTurn({ api, event, session, Users }) {
+  const reply = noituBotAI.chooseReply(session);
+  if (!reply) {
+    game.stop(session.threadId);
+    const score = await updateNoituScore(Users || defaultUsers, session.humanUid, 5, { botWin: true });
+    const rewardLine = score
+      ? "🎁 Đã cộng 5⭐ vào bảng điểm Nối Từ của bạn."
+      : "⚠️ Bạn thắng, nhưng chưa lưu được điểm. Hãy kiểm tra database rồi thử lại với Admin.";
+    await send(api, event,
+      "🏆 BẠN ĐÃ THẮNG JOHNTRAN AI!\n" +
+      "🤖 AI không tìm được cụm từ bắt đầu bằng tiếng " + session.currentPhrase.last + ".\n" +
+      "⭐ Thưởng: +5 điểm.\n" + rewardLine
+    );
+    return true;
+  }
+
+  const botResult = game.play(session.threadId, session.botUid, reply.display);
+  if (!botResult.ok) {
+    game.stop(session.threadId);
+    await send(api, event, "🏆 AI gặp lỗi nối từ. Bạn thắng ván này!");
+    await updateNoituScore(Users || defaultUsers, session.humanUid, 5, { botWin: true });
+    return true;
+  }
+  await send(api, event,
+    "🤖 JOHNTRAN AI: " + botResult.phrase.display + "\n" +
+    "🧩 Tiếng tiếp theo: " + botResult.phrase.last + "\n" +
+    "🎯 Đến lượt bạn. " + currentPlayerLine(session)
+  );
+  return true;
 }
 function ghepChuCardData(session) {
   return {
@@ -488,7 +581,7 @@ async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
   return true;
 }
 
-async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
+async function handleNoiTuText({ api, event, eventType, isSelf = false, Users }) {
   if ((eventType && eventType !== "message") || ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true)) return false;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
@@ -496,6 +589,7 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
   const session = game.get(threadId);
   // Only enrolled players are captured; everyone else keeps normal chat.
   if (!session || session.status !== "active" || !session.players?.has(uid)) return false;
+  if (session.mode === "solo_bot" && session.humanUid !== uid) return false;
 
   const content = getPlainMessage(event);
   if (!content) return false;
@@ -514,6 +608,11 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
   }
 
   if (["leave", "out", "quit"].includes(action)) {
+    if (session.mode === "solo_bot") {
+      game.stop(threadId);
+      await send(api, event, "👋 Bạn đã rời ván Solo. Không cộng hoặc trừ điểm.");
+      return true;
+    }
     const result = game.leave(threadId, uid);
     if (!result.ok) return true;
     await send(api, event, result.empty
@@ -527,6 +626,9 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
     if (!result.ok) {
       await send(api, event, result.code === "NOT_TURN" ? "⏳ Chưa đến lượt bạn." : "⚠️ Không thể bỏ lượt.");
       return true;
+    }
+    if (session.mode === "solo_bot" && result.nextPlayer?.uid === session.botUid) {
+      return playSoloBotTurn({ api, event, session, Users });
     }
     await send(api, event, "⏭️ Đã bỏ lượt. " + currentPlayerLine(game.get(threadId)));
     return true;
@@ -548,6 +650,10 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
     return true;
   }
 
+  await updateNoituScore(Users || defaultUsers, uid, 1, { move: true });
+  if (session.mode === "solo_bot" && result.nextPlayer?.uid === session.botUid) {
+    return playSoloBotTurn({ api, event, session, Users });
+  }
   const nextName = result.nextPlayer?.name || "người chơi tiếp theo";
   await send(api, event, "✅ " + result.phrase.display + " · +1 điểm. Đến lượt " + nextName + "!");
   return true;
@@ -582,7 +688,14 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   if (action === "room") return startNoituRoom({ api, event });
   if (action === "skip" && ghepChu.get(threadId)?.status === "active") return handleGhepChuText({ api, event: { ...event, data: { ...event.data, content: "skip" } } });
   if (action === "start" && noituRoom.get(threadId)?.status === "waiting") return startNoituRoomGame({ api, event });
-  if (action === "start" || action === "go") {
+  if (action === "go") {
+    const caro = require("../../core/runtime/services/games/caroService");
+    if (quickNoitu.get(threadId)?.status === "active" || noituRoom.get(threadId) || ghepChu.get(threadId)?.status === "active" || caro.get(threadId)) {
+      return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở Nối Từ Solo.");
+    }
+    return startSoloBotGame({ api, event });
+  }
+  if (action === "start") {
     const caro = require("../../core/runtime/services/games/caroService");
     if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước khi mở Nối Từ.");
     if (noituRoom.get(threadId)) return send(api, event, "⚠️ Nhóm đang có phòng Nối Từ. Hãy kết thúc phòng đó trước.");
@@ -614,6 +727,7 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
 
   if (action === "join") {
+    if (game.get(threadId)?.mode === "solo_bot") return send(api, event, "⚠️ Đây là ván Solo với AI, không nhận thêm người chơi.");
     const result = game.join(threadId, uid, event?.data?.dName || event?.data?.name || "Người chơi");
     if (!result.ok) {
       const messages = {
@@ -634,6 +748,10 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
 
   if (action === "leave") {
+    if (game.get(threadId)?.mode === "solo_bot") {
+      game.stop(threadId);
+      return send(api, event, "👋 Đã kết thúc ván Solo với AI. Không cộng hoặc trừ điểm.");
+    }
     const result = game.leave(threadId, uid);
     if (!result.ok) return send(api, event, result.code === "NO_GAME" ? "⚠️ Chưa có ván đang chạy." : "⚠️ Bạn chưa tham gia ván.");
     if (result.empty) return send(api, event, "👋 Bạn đã rời ván. Ván chơi đã kết thúc vì không còn người chơi.");
@@ -679,4 +797,4 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   return sendGuide(api, event, prefix);
 };
 module.exports.handleEvent = handleActiveGameText;
-module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage };
+module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn };
