@@ -23,7 +23,9 @@ const SECRET_PATTERNS = [
 
 function redact(value) {
   let output = String(value ?? "");
-  for (const pattern of SECRET_PATTERNS) output = output.replace(pattern, "$1***");
+  for (const pattern of SECRET_PATTERNS) {
+    output = output.replace(pattern, (_match, prefix) => (prefix || "") + "***");
+  }
   return output;
 }
 
