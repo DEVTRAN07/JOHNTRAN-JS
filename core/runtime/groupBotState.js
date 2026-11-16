@@ -23,9 +23,23 @@ function canRunCommandInGroup(threadInfo, commandName, args = []) {
   return isEnabled(threadInfo) || isAllowedControl(commandName, args);
 }
 
+function attachGroupBotState(groups, threadRecords) {
+  const enabledIds = new Set(
+    (Array.isArray(threadRecords) ? threadRecords : [])
+      .filter(record => isEnabled(record))
+      .map(record => String(record?.threadId || record?.id || ""))
+      .filter(Boolean)
+  );
+  return (Array.isArray(groups) ? groups : []).map(group => ({
+    ...group,
+    botEnabled: enabledIds.has(String(group?.gid || ""))
+  }));
+}
+
 module.exports = {
   isEnabled,
   isAllowedControl,
   isAllowedControlMessage,
-  canRunCommandInGroup
+  canRunCommandInGroup,
+  attachGroupBotState
 };
