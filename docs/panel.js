@@ -388,6 +388,60 @@ function updateGroupBotToggle(enabled) {
     ? "Bot sẽ phản hồi lệnh và xử lý sự kiện tự động trong nhóm."
     : "Bot đang im lặng: bỏ qua lệnh, tin nhắn điều hướng và sự kiện tự động.";
 }
+
+function renderGroupCards(emptyMessage = "") {
+  const grid = $("groupCardGrid");
+  if (!grid) return;
+
+  const groups = Array.isArray(state.groupList) ? state.groupList : [];
+  const selectedGid = String($("groupSelect")?.value || state.activeGroup || "");
+  const query = String($("groupSearch")?.value || "").trim().toLocaleLowerCase("vi");
+  const enabledCount = groups.filter(group => group.botEnabled === true).length;
+  const counter = $("groupCardCount");
+  if (counter) counter.textContent = groups.length + " nhóm · " + enabledCount + " đang bật";
+
+  if (!groups.length) {
+    grid.innerHTML = '<div class="group-card-empty">' +
+      $escape(emptyMessage || "Chưa có nhóm Zalo. Hãy kiểm tra bot đã đăng nhập và đang chạy.") +
+      '</div>';
+    return;
+  }
+
+  const filtered = groups.filter(group => {
+    const name = String(group.name || "").toLocaleLowerCase("vi");
+    const gid = String(group.gid || "").toLocaleLowerCase("vi");
+    return !query || name.includes(query) || gid.includes(query);
+  });
+  if (!filtered.length) {
+    grid.innerHTML = '<div class="group-card-empty">Không tìm thấy nhóm phù hợp với “' +
+      $escape(query) + '”.</div>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map(group => {
+    const gid = String(group.gid || "");
+    const name = String(group.name || gid || "Nhóm Zalo");
+    const avatarUrl = safeImage(group.avatar || group.avt || "");
+    const avatar = avatarUrl
+      ? '<span class="group-card-avatar"><img src="' + avatarUrl + '" alt="" loading="lazy"></span>'
+      : '<span class="group-card-avatar">' + $escape(initials(name)) + '</span>';
+    const members = number(group.totalMember || group.memberCount);
+    const memberLabel = members > 0 ? members.toLocaleString("vi-VN") + " thành viên" : "Chưa rõ thành viên";
+    const enabled = group.botEnabled === true;
+    const selected = gid === selectedGid;
+    return '<button type="button" class="group-card' + (selected ? ' selected' : '') +
+      '" data-group-id="' + $escape(gid) + '" aria-pressed="' + (selected ? "true" : "false") +
+      '" title="' + $escape(name) + '">' +
+      avatar +
+      '<span class="group-card-copy">' +
+        '<span class="group-card-name">' + $escape(name) + '</span>' +
+        '<span class="group-card-meta"><span>' + $escape(memberLabel) + '</span><span>·</span><span class="group-card-id">ID ' + $escape(gid) + '</span></span>' +
+        '<span class="group-card-status ' + (enabled ? 'is-on' : 'is-off') + '">' + (enabled ? 'BOT ĐANG BẬT' : 'BOT ĐANG TẮT') + '</span>' +
+      '</span>' +
+      '<span class="group-card-arrow" aria-hidden="true">›</span>' +
+    '</button>';
+  }).join("");
+}
 async function loadGroupOptions() {
   const bots = state.bots || [];
   const botSelect = $("groupBotSelect");
@@ -402,11 +456,13 @@ async function loadGroupOptions() {
   ).join("") : '<option value="">Chưa có bot</option>';
   botSelect.value = selectedBot;
   if (!selectedBot) {
+    state.groupList = [];
     $("groupBotToggleRow").hidden = true;
     groupSelect.innerHTML = '<option value="">Chưa có bot</option>';
     $("groupIdentityGrid").hidden = true;
     $("groupCommandList").innerHTML = '<div class="empty-state">Chưa có bot trong registry.</div>';
     $("groupHint").textContent = "Tạo bot trong mục Tổng quan trước.";
+    renderGroupCards("Chưa có bot trong registry.");
     return;
   }
   $("groupBotToggleRow").hidden = true;
@@ -418,7 +474,8 @@ async function loadGroupOptions() {
     state.groupBotProfile = { ...selectedBotRecord, ...(data.profile || {}) };
     const selectedBotOption = [...botSelect.options].find(option => option.value === selectedBot);
     if (selectedBotOption && data.profile?.displayName) selectedBotOption.textContent = data.profile.displayName;
-    state.groupList = data.groups?.list || [];
+    state.groupList = Array.isArray(data.groups?.list) ? data.groups.list : [];
+    renderGroupCards();
     renderGroupIdentities(state.groupBotProfile, null);
     const selectedGid = state.activeGroup && state.groupList.some(group => String(group.gid) === state.activeGroup)
       ? state.activeGroup : String(state.groupList[0]?.gid || "");
@@ -426,6 +483,7 @@ async function loadGroupOptions() {
       '<option value="' + $escape(group.gid) + '">' + $escape(group.name || group.gid) + '</option>'
     ).join("") : '<option value="">Bot chưa có nhóm</option>';
     groupSelect.value = selectedGid;
+    renderGroupCards();
     if (!selectedGid) {
       $("groupBotToggleRow").hidden = true;
       renderGroupIdentities(state.groupBotProfile, null);
@@ -436,9 +494,11 @@ async function loadGroupOptions() {
     }
     await loadGroupCommands();
   } catch (error) {
+    state.groupList = [];
     groupSelect.innerHTML = '<option value="">Không tải được nhóm</option>';
     $("groupCommandList").innerHTML = '<div class="empty-state">' + $escape(error.message) + '</div>';
     $("groupHint").textContent = "Bot cần đang chạy và đăng nhập Zalo để đọc danh sách nhóm.";
+    renderGroupCards(error.message);
   }
 }
 async function loadGroupCommands() {
@@ -453,6 +513,8 @@ async function loadGroupCommands() {
     const group = state.groupList.find(item => String(item.gid) === gid);
     state.selectedGroupBot = bot;
     state.activeGroup = gid;
+    if (group) group.botEnabled = data.botEnabled === true;
+    renderGroupCards();
     renderGroupIdentities(state.groupBotProfile || { name: bot }, group || { gid, name: gid });
     updateGroupBotToggle(data.botEnabled === true);
     $("groupHint").textContent = (group?.name || "Nhóm") + " · " + gid + " · " + disabled.size + " lệnh đang tắt.";
@@ -474,6 +536,9 @@ async function setGroupBotEnabled(enabled, checkbox) {
       method: "POST", body: jsonBody({ botEnabled: enabled })
     });
     updateGroupBotToggle(data.botEnabled === true);
+    const selectedGroup = state.groupList.find(group => String(group.gid) === String(gid));
+    if (selectedGroup) selectedGroup.botEnabled = data.botEnabled === true;
+    renderGroupCards();
     toast(enabled ? "Đã bật bot cho nhóm." : "Đã tắt bot cho nhóm; bot sẽ im lặng.", "success");
   } catch (error) {
     updateGroupBotToggle(!enabled);
@@ -822,6 +887,15 @@ function bindEvents() {
       renderCommands();
       return;
     }
+    const groupCard = event.target.closest("[data-group-id]");
+    if (groupCard) {
+      const gid = String(groupCard.dataset.groupId || "");
+      if (!gid || !state.groupList.some(group => String(group.gid) === gid)) return;
+      $("groupSelect").value = gid;
+      state.activeGroup = gid;
+      renderGroupCards();
+      return loadGroupCommands();
+    }
     const action = event.target.closest("[data-action]");
     if (action) {
       const kind = action.dataset.action;
@@ -861,13 +935,14 @@ function bindEvents() {
     if (el.id==="commandRole") renderCommands();
     if (el.id==="profileBotSelect") loadProfileData(el.value);
     if (el.id==="groupBotSelect") {state.selectedGroupBot=el.value;state.activeGroup="";loadGroupOptions();}
-    if (el.id==="groupSelect") loadGroupCommands();
+    if (el.id==="groupSelect") { renderGroupCards(); loadGroupCommands(); }
     if (el.id==="chatFontSize") state.chatStyle.font=el.value;
     if (el.id==="chatBotSelect") {closeThread();loadThreads();}
   });
   document.addEventListener("input",event=>{
     if(event.target.id==="threadSearch")renderThreads();
     if(event.target.id==="commandSearch")renderCommands();
+    if(event.target.id==="groupSearch")renderGroupCards();
   });
   $("settingsForm").addEventListener("submit",event=>{
     event.preventDefault();
