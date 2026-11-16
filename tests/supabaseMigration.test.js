@@ -46,6 +46,7 @@ function fakeSupabase(existingByTable = {}) {
       return {
         select() {
           return {
+            limit: async () => ({ data: [], error: null }),
             in: async (_column, ids) => ({
               data: ids.filter(id => existing.has(id)).map(id => ({ id })),
               error: null
@@ -108,6 +109,38 @@ test("Supabase migration imports missing rows across every table without overwri
     assert.equal(fixture.original.Threads["group-on"].data.bot_enabled, true);
     assert.deepEqual(JSON.parse(fs.readFileSync(fixture.sourceFile, "utf8")), fixture.original,
       "the source JSON backup must remain byte-for-byte logically unchanged");
+  } finally {
+    fs.rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+test("Supabase migration validates every destination table before writing any row", async () => {
+  const fixture = createFixture();
+  const upserts = [];
+  const client = {
+    from(table) {
+      return {
+        select() {
+          return {
+            limit: async () => ({
+              data: null,
+              error: table === "bot_metrics" ? { message: "relation does not exist" } : null
+            }),
+            in: async () => ({ data: [], error: null })
+          };
+        },
+        upsert(rows) {
+          return { select: async () => { upserts.push({ table, rows }); return { data: rows.map(row => ({ id: row.id })), error: null }; } };
+        }
+      };
+    }
+  };
+  try {
+    await assert.rejects(
+      migrateJsonToSupabase({ sourceFile: fixture.sourceFile, client, dryRun: false }),
+      /Supabase chưa sẵn sàng tại bảng bot_metrics/
+    );
+    assert.equal(upserts.length, 0, "must not write any table before all tables pass preflight");
   } finally {
     fs.rmSync(fixture.directory, { recursive: true, force: true });
   }
