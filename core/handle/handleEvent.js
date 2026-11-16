@@ -6,13 +6,15 @@ const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
 const { dispatchEvent } = require("../runtime/eventRegistry");
 const { createEventContext } = require("../runtime/eventContext");
+const { isEnabled: isGroupBotEnabled } = require("../runtime/groupBotState");
 
 function handleEvent(eventType, eventData, api, isSelf = false) {
   // Safety net: suppress every event source when this group has disabled the bot.
   // Use the synchronous hot cache so the event path never waits for a database round-trip.
   if (eventData?.type === ThreadType.Group && eventData?.threadId) {
     const thread = Threads.getCachedData?.(eventData.threadId);
-    if (thread?.data?.bot_enabled === false) return;
+    // Fail closed: an uncached/missing setting remains OFF until /bot on.
+    if (!isGroupBotEnabled(thread)) return;
   }
 
   return dispatchEvent({
