@@ -23,8 +23,9 @@ const {
   inspectGroupHistoryPage
 } = require("./topchat/wsBackfill");
 
-const RECONNECT_BASE_DELAY = 5000;
-const RECONNECT_MAX_DELAY = 60000;
+const RECONNECT_BASE_DELAY = Math.max(250, Number(process.env.JT_LISTENER_RECONNECT_BASE_MS) || 5000);
+const RECONNECT_MAX_DELAY = Math.max(RECONNECT_BASE_DELAY, Number(process.env.JT_LISTENER_RECONNECT_MAX_MS) || 60000);
+const RECONNECT_JITTER_RATIO = Math.max(0, Math.min(0.5, Number(process.env.JT_LISTENER_RECONNECT_JITTER) || 0.15));
 // Sau N lần đóng WS liên tiếp mà không kết nối lại được → thoát process,
 // supervisor (index.js / botManager) tự khởi động lại + đăng nhập lại từ đầu
 const CONNECT_FAIL_LIMIT = 3;
@@ -32,7 +33,7 @@ const WATCHDOG_INTERVAL = 30000;
 // 30 phút không có frame nào MỚI coi là half-open (nhóm im lặng vài phút là bình thường)
 const WATCHDOG_STALE_MS = 1800000;
 
-function computeReconnectDelay(attempt, baseMs = RECONNECT_BASE_DELAY, maxMs = RECONNECT_MAX_DELAY, jitterRatio = 0.15, random = Math.random) {
+function computeReconnectDelay(attempt, baseMs = RECONNECT_BASE_DELAY, maxMs = RECONNECT_MAX_DELAY, jitterRatio = RECONNECT_JITTER_RATIO, random = Math.random) {
   const step = Math.max(1, Math.floor(Number(attempt) || 1));
   const base = Math.max(1, Number(baseMs) || RECONNECT_BASE_DELAY);
   const maximum = Math.max(base, Number(maxMs) || RECONNECT_MAX_DELAY);
