@@ -866,8 +866,8 @@ async function loadSystem() {
         not_applicable:"Không áp dụng (không chạy trên Render)",
         unknown:"Chưa xác minh — chưa cấu hình JT_PERSISTENT_DIR",
         mount_not_verified:"Chưa xác minh được mount riêng tại đường dẫn này",
-        mount_detected_unverified:"Có mount riêng nhưng chưa cấu hình JT_DB_PERSISTENT_PATH",
-        database_outside_disk:"File DB nằm ngoài JT_DB_PERSISTENT_PATH",
+        mount_detected_unverified:"Có mount riêng nhưng chưa cấu hình JT_PERSISTENT_DIR",
+        database_outside_disk:"File DB nằm ngoài JT_PERSISTENT_DIR",
         mounted_and_used:"Mount riêng đã xác minh và file DB đang sử dụng disk"
       };
       const durabilityLabels = {
