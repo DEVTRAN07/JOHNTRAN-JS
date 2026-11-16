@@ -24,6 +24,9 @@ function collectAvatarUrls(type, data = {}) {
   if (type === "menu" || type === "menu-folder") {
     return [data.requesterAvatarUrl];
   }
+  if (type === "ghepchu") {
+    return [data.requesterAvatarUrl];
+  }
   if (type === "status") {
     return [data.botAvatar];
   }
