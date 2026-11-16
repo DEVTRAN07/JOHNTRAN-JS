@@ -454,7 +454,7 @@ async function loadGroupCommands() {
     state.selectedGroupBot = bot;
     state.activeGroup = gid;
     renderGroupIdentities(state.groupBotProfile || { name: bot }, group || { gid, name: gid });
-    updateGroupBotToggle(data.botEnabled !== false);
+    updateGroupBotToggle(data.botEnabled === true);
     $("groupHint").textContent = (group?.name || "Nhóm") + " · " + gid + " · " + disabled.size + " lệnh đang tắt.";
     $("groupCommandList").innerHTML = state.commands.map(command =>
       '<div class="group-command"><div><b>/' + $escape(command.name) + '</b><small>' + $escape(command.description || "Chưa có mô tả") + '</small></div><label class="switch"><input type="checkbox" data-action="toggle-command" data-command="' + $escape(command.name) + '" ' + (disabled.has(command.name) ? "" : "checked") + '><span></span></label></div>'
@@ -473,7 +473,7 @@ async function setGroupBotEnabled(enabled, checkbox) {
     const data = await api("/api/chat/" + enc(bot) + "/group-commands?gid=" + enc(gid), {
       method: "POST", body: jsonBody({ botEnabled: enabled })
     });
-    updateGroupBotToggle(data.botEnabled !== false);
+    updateGroupBotToggle(data.botEnabled === true);
     toast(enabled ? "Đã bật bot cho nhóm." : "Đã tắt bot cho nhóm; bot sẽ im lặng.", "success");
   } catch (error) {
     updateGroupBotToggle(!enabled);
