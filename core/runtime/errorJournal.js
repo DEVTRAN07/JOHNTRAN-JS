@@ -286,6 +286,56 @@ function createErrorJournal(options = {}) {
     return record("warn", message, context);
   }
 
+  function rotateSyncIfNeeded(incomingBytes) {
+    let currentSize = 0;
+    try { currentSize = fs.statSync(filePath).size; }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    if (currentSize + incomingBytes <= maxFileBytes) return;
+
+    try { fs.unlinkSync(filePath + "." + rotatedFiles); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    for (let index = rotatedFiles - 1; index >= 1; index--) {
+      try { fs.renameSync(filePath + "." + index, filePath + "." + (index + 1)); }
+      catch (error) { if (error.code !== "ENOENT") throw error; }
+    }
+    try { fs.renameSync(filePath, filePath + ".1"); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+  }
+
+  // Fatal runtime path: persist synchronously from uncaughtExceptionMonitor,
+  // because Node will keep its default exit behavior and async flushes may not run.
+  function recordFatalSync(message, context = {}) {
+    const entry = recordError(message, {
+      ...context,
+      source: context.source || "process-crash"
+    });
+    const line = JSON.stringify(entry) + "\n";
+
+    // Remove the current snapshot from the async queue; it is written below.
+    for (let index = pendingLines.length - 1; index >= 0; index--) {
+      try {
+        const queued = JSON.parse(pendingLines[index]);
+        if (queued.id === entry.id && Number(queued.count) === Number(entry.count)) {
+          pendingLines.splice(index, 1);
+          break;
+        }
+      } catch {}
+    }
+
+    try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      rotateSyncIfNeeded(Buffer.byteLength(line));
+      fs.appendFileSync(filePath, line, { encoding: "utf8", mode: 0o600 });
+      lastWriteAt = new Date(now()).toISOString();
+      lastWriteError = null;
+    } catch (error) {
+      lastWriteError = safeMessage(error.message || error);
+      if (pendingLines.length < MAX_PENDING_WRITES) pendingLines.push(line.trim());
+      else droppedWrites += 1;
+    }
+    return entry;
+  }
+
   function snapshot(limit = 50) {
     const maximum = Math.max(1, Math.min(maxRecent, Number(limit) || 50));
     const entries = recent.slice(-maximum).reverse().map(item => ({ ...item }));
@@ -340,6 +390,7 @@ function createErrorJournal(options = {}) {
     record,
     recordError,
     recordWarning,
+    recordFatalSync,
     snapshot,
     flush,
     loadRecent,
@@ -361,7 +412,7 @@ journal.loadRecent();
 // behavior. The journal is a side channel, not a mechanism to swallow crashes.
 if (typeof process.on === "function") {
   process.on("uncaughtExceptionMonitor", (error, origin) => {
-    journal.recordError(error?.stack || error?.message || error, {
+    journal.recordFatalSync(error?.stack || error?.message || error, {
       source: "process-crash",
       eventName: origin || "uncaughtException",
       code: error?.code
