@@ -310,7 +310,7 @@ async function handleRequest(req, res, url) {
       if (Object.prototype.hasOwnProperty.call(body, "botEnabled")) {
         if (typeof body.botEnabled !== "boolean") return json(400, { error: "botEnabled phải là true hoặc false" });
         data.bot_enabled = body.botEnabled;
-        await Threads.setData(gid, data);
+        await Threads.setDataAndWait(gid, data);
         return json(200, { gid, botEnabled: data.bot_enabled });
       }
 
