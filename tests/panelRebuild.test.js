@@ -212,3 +212,17 @@ test("group command proxy preserves the gid query string for POST updates", () =
   assert.match(server, /if \(req\.method === "POST"\) \{\s*req\.pipe\(proxyReq\)/);
   assert.match(bridge, /const gid = String\(url\.searchParams\.get\("gid"\)/);
 });
+
+
+test("database panel exposes protected durability diagnostics for Supabase and Render JSON", () => {
+  assert.match(server, /\/api\/database\/health/);
+  assert.match(server, /await dbUtils\.healthCheck\(\)/);
+  assert.match(databaseFacade, /function inspectPersistentDisk/);
+  assert.match(databaseFacade, /mounted_and_used/);
+  assert.match(databaseFacade, /databaseFileOnDisk/);
+  assert.match(js, /api\("\/api\/database\/health"\)/);
+  assert.match(js, /JT_PERSISTENT_DIR/);
+  assert.match(js, /Persistent Disk/);
+  assert.match(js, /bot_threads/);
+  assert.match(html, /id="databaseDetails"/);
+});
