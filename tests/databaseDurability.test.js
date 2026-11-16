@@ -6,6 +6,16 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 const { JsonStore } = require("../core/storage");
+const {
+  parseMountInfo,
+  getJsonPersistenceStatus
+} = require("../core/storage/diagnostics");
+const {
+  PERSISTENT_ROOT,
+  botPaths,
+  getStorageLayout,
+  _test: botManagerTest
+} = require("../panel/botManager");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-db-durability-"));
 const dbFile = path.join(tempDir, "store.json");
@@ -116,4 +126,70 @@ test("Supabase health check probes only the required bot_threads table and omits
   assert.equal(report.probe.tables.bot_threads.ok, true);
   assert.equal(Object.hasOwn(report, "serviceKey"), false);
   assert.equal(Object.hasOwn(report, "url"), false);
+});
+
+
+test("mountinfo parser verifies only a database path beneath a separate configured mount", () => {
+  const mountInfo = [
+    "29 20 0:26 / / rw,relatime - overlay overlay rw",
+    "61 29 8:1 / /var/data rw,relatime - ext4 /dev/vda1 rw"
+  ].join("\\n");
+  const mounts = parseMountInfo(mountInfo);
+  assert.equal(mounts.length, 2);
+  assert.equal(mounts[1].mountPoint, "/var/data");
+  const status = getJsonPersistenceStatus("/var/data/bots/main/store.json", {
+    RENDER:"true",
+    JT_PERSISTENT_DIR:"/var/data"
+  }, mountInfo);
+  assert.equal(status.status, "verified-mount");
+  assert.equal(status.confirmed, true);
+  assert.equal(status.mountPoint, "/var/data");
+});
+
+test("database outside JT_PERSISTENT_DIR is never reported as disk-backed", () => {
+  const mountInfo = "61 29 8:1 / /var/data rw,relatime - ext4 /dev/vda1 rw";
+  const status = getJsonPersistenceStatus("/opt/render/project/src/data/store.json", {
+    RENDER:"true",
+    JT_PERSISTENT_DIR:"/var/data"
+  }, mountInfo);
+  assert.equal(status.status, "database-outside-disk");
+  assert.equal(status.confirmed, false);
+});
+
+test("bot registry and child database paths follow JT_PERSISTENT_DIR", () => {
+  assert.equal(PERSISTENT_ROOT, path.resolve(tempDir));
+  assert.equal(botPaths("child-one").dbFile, path.join(tempDir, "bots", "child-one", "store.json"));
+  assert.equal(getStorageLayout().registryFile, path.join(tempDir, "data", "bots.json"));
+});
+
+test("legacy file migration copies without deleting or overwriting either source or destination", () => {
+  const source = path.join(tempDir, "legacy", "store.json");
+  const destination = path.join(tempDir, "persistent", "bots", "main", "store.json");
+  fs.mkdirSync(path.dirname(source), { recursive:true });
+  fs.writeFileSync(source, "{\"keep\":true}", "utf8");
+
+  assert.equal(botManagerTest.migrateFileIfMissing(source, destination), true);
+  assert.equal(fs.existsSync(source), true, "legacy source must remain intact");
+  assert.equal(fs.readFileSync(destination, "utf8"), "{\"keep\":true}");
+
+  fs.writeFileSync(source, "{\"keep\":false}", "utf8");
+  assert.equal(botManagerTest.migrateFileIfMissing(source, destination), false);
+  assert.equal(fs.readFileSync(destination, "utf8"), "{\"keep\":true}",
+    "an existing destination must never be overwritten");
+});
+
+test("corrupt JSON store fails closed and preserves the original file", () => {
+  const corruptFile = path.join(tempDir, "corrupt-store.json");
+  const original = "{ this is not valid JSON";
+  fs.writeFileSync(corruptFile, original, "utf8");
+  const store = new JsonStore(corruptFile, ["Threads"]);
+
+  assert.equal(store.getStatus().ok, false);
+  assert.match(store.getStatus().lastLoadError, /JSON|Unexpected|Expected/i);
+  assert.throws(
+    () => store.set("Threads", "threadId", "group-1", { bot_enabled:true }),
+    /từ chối ghi đè/
+  );
+  assert.equal(fs.readFileSync(corruptFile, "utf8"), original,
+    "a failed JSON parse must not be replaced by an empty store");
 });
