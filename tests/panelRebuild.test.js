@@ -100,6 +100,9 @@ test("Panel reads a cached live Zalo profile instead of showing the internal mai
   assert.match(js, /botEnabled:typeof g\.botEnabled==="boolean"\?g\.botEnabled:null/);
   assert.match(js, /thread-bot-state is-on/);
   assert.match(js, /thread-bot-state is-off/);
+  assert.match(js, /avatarHtml\(bot\.avatar, identity, "avatar-large"\)/);
+  assert.match(js, /system-bot-identity/);
+  assert.doesNotMatch(js, /"ID "\+bot\.name/);
   assert.match(html, /Đang tải tài khoản Zalo/);
 });
 
