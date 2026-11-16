@@ -218,6 +218,7 @@ function renderBots() {
   }
   $("botList").innerHTML = state.bots.map(bot => {
     const [label, cls] = botStatus(bot);
+    const isMainBot = bot.name === "main";
     const displayName = bot.displayName || "Tài khoản Zalo";
     const avatar = avatarHtml(bot.avatar, displayName, "bot-avatar");
     return '<article class="bot-row">' +
@@ -231,7 +232,7 @@ function renderBots() {
         '<button class="mini-action" data-action="bot-qr" data-bot="' + $escape(bot.name) + '">QR</button>' +
         '<button class="mini-action" data-action="bot-session" data-bot="' + $escape(bot.name) + '">Phiên</button>' +
         '<button class="mini-action" data-action="bot-logs" data-bot="' + $escape(bot.name) + '">Logs</button>' +
-        (main ? "" : '<button class="mini-action danger" data-action="bot-remove" data-bot="' + $escape(bot.name) + '">Xoá</button>') +
+        (isMainBot ? "" : '<button class="mini-action danger" data-action="bot-remove" data-bot="' + $escape(bot.name) + '">Xoá</button>') +
       '</div></article>';
   }).join("");
 }
