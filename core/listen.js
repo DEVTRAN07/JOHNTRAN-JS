@@ -6,6 +6,10 @@ const { updateMessageCache, getMessageCache } = require("../utils/index");
 const { ThreadType } = require("zalo-client");
 const { createCipherReadyGate, requestOldMessagesThen } = require("./topchat/historyBootstrap");
 const { createReconnectFailureTracker } = require("./topchat/reconnectState");
+const {
+  isEnabled: isGroupBotEnabled,
+  isAllowedControlMessage: isAllowedBotControlMessage
+} = require("./runtime/groupBotState");
 
 const Threads = require("./controller/controllerThreads");
 const panelBridge = require("./panelBridge");
@@ -131,15 +135,15 @@ function startListening(api) {
     // (selfListen: true → uidFrom bị rewrite thành uid bot = admin, cần flag rõ ràng)
     const allowSelfCommand = global.config.allow_self_command === true;
     const canRunCommand = !event.isSelf || allowSelfCommand;
-    const commandParts = typeof content === "string" ? content.trim().split(/\s+/) : [];
-    const isBotControlCommand = String(commandParts[0] || "").toLowerCase() === `${String(prefix).toLowerCase()}bot` && ["on", "status"].includes(String(commandParts[1] || "").toLowerCase());
+    const isGroupThread = event?.type === ThreadType.Group;
+    const groupBotEnabled = !isGroupThread || isGroupBotEnabled(threadInfo);
+    const isBotControlCommand = isAllowedBotControlMessage(content, prefix);
 
-    // Khi nhóm đã OFF: không chạy event, điều hướng hay bất kỳ lệnh nào khác.
-    // Chỉ /bot on và /bot status được đi qua khi nhóm OFF.
-    if (threadInfo?.bot_enabled === false && !(canRunCommand && isBotControlCommand)) return;
+    // Every group starts OFF. Only /bot on and /bot status pass until enabled.
+    if (isGroupThread && !groupBotEnabled && !(canRunCommand && isBotControlCommand)) return;
 
     const dispatchMessageEvents = () => {
-      if (threadInfo?.bot_enabled === false) return;
+      if (isGroupThread && !groupBotEnabled) return;
       try {
         handleEvent("message", event, api, event.isSelf === true);
       } catch (err) {
@@ -153,7 +157,7 @@ function startListening(api) {
       Promise.resolve(handleCommand(content, event, api, threadInfo, prefix, threadData)).catch((err) => {
         logger.log(`Lỗi xử lý lệnh: ${err.message}`, "error");
       });
-      if (threadInfo?.bot_enabled !== false) setImmediate(dispatchMessageEvents);
+      if (!isGroupThread || groupBotEnabled) setImmediate(dispatchMessageEvents);
       return;
     }
 
