@@ -334,14 +334,24 @@ async function loginWithCookie() {
     }
 }
 
+function markLoginSuccess(api, writeStats = saveBotStats) {
+    setLoginState('logged_in');
+    // The Panel reads BotStats to distinguish an authenticated cookie session
+    // from an online child process that is still waiting for QR confirmation.
+    writeStats('logged_in', {
+        loginMessage: 'Đã đăng nhập Zalo bằng Cookie + IMEI thành công',
+        loginMethod: 'cookie_imei'
+    });
+    return api;
+}
+
 async function login() {
     try {
         setLoginState('cookie_login');
         saveBotStats('cookie_login', { loginMessage: 'Đang đăng nhập bằng cookie...' });
         logger.log("Tiến hành login bằng Cookie", "info");
         const api = await loginWithCookie();
-        setLoginState('logged_in');
-        return api;
+        return markLoginSuccess(api);
     } catch (error) {
         if (!global.config.login_qrcode) {
             logger.log("Cookie không hợp lệ", "error");
@@ -367,3 +377,4 @@ module.exports.loginState = getLoginState;
 module.exports.resolveQrPath = resolveQrPath;
 module.exports.resolveAccountPath = resolveAccountPath;
 module.exports.saveBotStats = saveBotStats;
+module.exports.markLoginSuccess = markLoginSuccess;
