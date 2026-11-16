@@ -4,9 +4,11 @@ const game = require("../../core/runtime/services/games/noituService");
 const fs = require("fs");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const ghepChu = require("../../core/runtime/services/games/ghepchuService");
+const quickNoitu = require("../../core/runtime/services/games/noituQuickService");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const botVersion = require("../../package.json").version;
 const ghepChuTimers = new Map();
+const quickNoituTimers = new Map();
 
 module.exports.config = {
   name: "noitu",
@@ -24,6 +26,110 @@ module.exports.config = {
 const isAdmin = uid => (global.users?.admin || []).map(String).includes(String(uid));
 async function send(api, event, msg) {
   return api.sendMessage({ msg }, event.threadId, event.type);
+}
+
+function clearQuickNoituTimer(threadId) {
+  const timer = quickNoituTimers.get(String(threadId));
+  if (timer) clearTimeout(timer);
+  quickNoituTimers.delete(String(threadId));
+}
+
+async function finishQuickNoitu(api, event, session, caption = "⌛ Hết 60 giây!") {
+  clearQuickNoituTimer(event.threadId);
+  if (!session) return;
+  return send(api, event, [
+    caption,
+    "🏁 KẾT THÚC NỐI TỪ TỐC ĐỘ",
+    "👤 " + session.playerName,
+    "⭐ Điểm: " + session.score,
+    "✅ Đúng: " + session.correct + " · ❌ Sai: " + session.wrong
+  ].join("\n"));
+}
+
+function scheduleQuickNoituExpiry(api, event, threadId) {
+  clearQuickNoituTimer(threadId);
+  const session = quickNoitu.get(threadId);
+  if (!session || session.status !== "active") return;
+  const delay = Math.max(20, quickNoitu.remainingMs(session));
+  const timer = setTimeout(async () => {
+    const current = quickNoitu.get(threadId);
+    if (!current || current.status !== "active") return;
+    if (quickNoitu.remainingMs(current) > 0) {
+      scheduleQuickNoituExpiry(api, event, threadId);
+      return;
+    }
+    await finishQuickNoitu(api, event, quickNoitu.finish(threadId));
+  }, delay);
+  timer.unref?.();
+  quickNoituTimers.set(String(threadId), timer);
+}
+
+async function startQuickNoitu({ api, event }) {
+  const uid = String(event?.data?.uidFrom || "");
+  const threadId = String(event?.threadId || "");
+  if (!uid || !threadId) return;
+  const caro = require("../../core/runtime/services/games/caroService");
+  if (game.get(threadId)?.status === "active" || ghepChu.get(threadId)?.status === "active" || caro.get(threadId)) {
+    return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở Nối Từ Tốc Độ.");
+  }
+  const result = quickNoitu.start(threadId, uid, event?.data?.dName || event?.data?.name || "Người chơi");
+  if (!result.ok) return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ.");
+  scheduleQuickNoituExpiry(api, event, threadId);
+  return send(api, event,
+    "⚡ NỐI TỪ TỐC ĐỘ — 60 GIÂY\n" +
+    "🧩 Từ mở màn: " + result.session.game.currentPhrase.display + "\n" +
+    "👉 Trả lời trực tiếp bằng cụm 2–4 tiếng, bắt đầu bằng tiếng cuối của cụm hiện tại.\n" +
+    "✅ Đúng: +1 điểm, +1 giây · ❌ Sai: -5 giây.\n" +
+    "🛑 Gõ stop để kết thúc. Chỉ người mở ván được trả lời."
+  );
+}
+
+async function handleQuickNoituText({ api, event, eventType, isSelf = false }) {
+  if ((eventType && eventType !== "message") || ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true)) return false;
+  const threadId = String(event?.threadId || "");
+  const uid = String(event?.data?.uidFrom || "");
+  if (!threadId || !uid) return false;
+  const session = quickNoitu.get(threadId);
+  if (!session || session.status !== "active" || session.playerId !== uid) return false;
+
+  const content = getPlainMessage(event);
+  if (!content) return false;
+  const prefix = String(global.config?.prefix || "/");
+  if (content.startsWith(prefix)) return false;
+
+  const action = content.toLocaleLowerCase("vi-VN");
+  if (["stop", "cancel", "thua", "lose"].includes(action)) {
+    const result = quickNoitu.stop(threadId, uid);
+    if (!result.ok) return true;
+    await finishQuickNoitu(api, event, result.session, "🛑 Bạn đã kết thúc lượt chơi.");
+    return true;
+  }
+
+  const answer = action === "skip" ? session.game.currentPhrase.display : content;
+  const result = quickNoitu.submit(threadId, uid, answer);
+  if (result.code === "TIME_UP") {
+    await finishQuickNoitu(api, event, result.session, "⌛ Hết giờ!");
+    return true;
+  }
+  if (result.code === "NOT_PLAYER" || result.code === "NO_GAME") return false;
+
+  scheduleQuickNoituExpiry(api, event, threadId);
+  if (result.ok) {
+    await send(api, event,
+      "✅ " + result.phrase.display + " · +" + result.score + " điểm · +1s\n" +
+      "🧩 Từ tiếp theo phải bắt đầu bằng: " + result.phrase.last + "\n" +
+      "⏱️ Còn " + Math.ceil(result.remainingMs / 1000) + " giây."
+    );
+    return true;
+  }
+
+  const message = result.code === "WRONG_LINK"
+    ? "❌ Sai tiếng nối (cần bắt đầu bằng: " + result.expected + ")."
+    : result.code === "DUPLICATE"
+      ? "🔁 Cụm từ đã dùng rồi."
+      : "💬 Hãy nhập cụm từ tiếng Việt gồm 2–4 tiếng.";
+  await send(api, event, message + " Trừ 5 giây · Còn " + Math.ceil(result.remainingMs / 1000) + " giây.");
+  return true;
 }
 function help(prefix) {
   return [
@@ -168,6 +274,7 @@ async function startGhepChu({ api, event }) {
   if (caro.get(threadId)) {
     return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Ghép Chữ.");
   }
+  if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước.");
   const existing = ghepChu.get(threadId);
   if (existing?.status === "active" && ghepChu.remainingSeconds(existing) > 0) {
     scheduleGhepChuExpiry(api, event, threadId);
@@ -330,6 +437,7 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
 }
 
 async function handleActiveGameText(context) {
+  if (await handleQuickNoituText(context)) return true;
   if (await handleGhepChuText(context)) return true;
   if (await handleNoiTuText(context)) return true;
   return false;
@@ -352,9 +460,11 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   if (!action || action === "help") return sendGuide(api, event, prefix);
 
   if (action === "gc") return startGhepChu({ api, event });
+  if (action === "q") return startQuickNoitu({ api, event });
   if (action === "skip" && ghepChu.get(threadId)?.status === "active") return handleGhepChuText({ api, event: { ...event, data: { ...event.data, content: "skip" } } });
   if (action === "start" || action === "go") {
     const caro = require("../../core/runtime/services/games/caroService");
+    if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước khi mở Nối Từ.");
     if (ghepChu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Ghép Chữ. Hãy dừng ván đó trước khi mở Nối Từ.");
     if (caro.get(threadId)) return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Nối Từ.");
     const name = String(event?.data?.dName || event?.data?.name || "Người chơi");
@@ -392,6 +502,11 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
 
   if (action === "stop") {
+    const quickSession = quickNoitu.get(threadId);
+    if (quickSession?.status === "active" && quickSession.playerId === uid) {
+      const stopped = quickNoitu.stop(threadId, uid);
+      return finishQuickNoitu(api, event, stopped.session, "🛑 Bạn đã kết thúc lượt chơi.");
+    }
     const gcSession = ghepChu.get(threadId);
     if (gcSession?.status === "active" && gcSession.playerId === uid) {
       const stopped = ghepChu.stop(threadId, uid);
@@ -413,4 +528,4 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   return sendGuide(api, event, prefix);
 };
 module.exports.handleEvent = handleActiveGameText;
-module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage };
+module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage };
