@@ -2,7 +2,7 @@ const http = require("http");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { botPaths } = require("./botManager");
+const { botPaths, getStorageLayout } = require("./botManager");
 const { assertPanelToken, isPanelRequestAuthorized } = require("../utils/tokenSecurity");
 const { installMonitoring, httpMetricsMiddleware, register } = require("../core/monitoring");
 let dbUtils, storeDb;
@@ -280,9 +280,10 @@ function startPanel({ manager, config }) {
             node: process.version,
             uptimeMs: process.uptime() * 1000,
             memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
-            // Keep the legacy "supabase" field while adding a driver-neutral status.
+            // Keep the legacy "supabase" field while adding driver-neutral storage status.
             supabase: databaseStatus?.driver === "supabase" ? databaseStatus : null,
-            database: databaseStatus
+            database: databaseStatus,
+            storageLayout: getStorageLayout()
           });
         } catch (error) {
           return sendJson(res, 500, { error: error.message });
