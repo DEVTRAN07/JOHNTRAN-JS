@@ -32,6 +32,81 @@ function migrateFileIfMissing(source, destination) {
   return true;
 }
 
+function isInsideDirectory(filePath, directoryPath) {
+  const relative = path.relative(path.resolve(directoryPath), path.resolve(filePath));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+// A legacy single-bot install kept account.json/cookie.json beside JohnTran.js.
+// Panel mode runs the main bot from bots/main, so copy that session once when
+// the bot-specific account does not exist. Never overwrite a child session.
+function migrateLegacyMainSession(targetPaths = botPaths("main"), options = {}) {
+  const configured = options.sourceAccountFile ||
+    process.env.JT_ACCOUNT_FILE ||
+    global.config?.account_file ||
+    "account.json";
+  const sourceAccount = path.isAbsolute(String(configured))
+    ? String(configured)
+    : path.resolve(ROOT, String(configured));
+  const targetAccount = targetPaths.accountFile || path.join(targetPaths.dir, "account.json");
+
+  if (fs.existsSync(targetAccount) || !fs.existsSync(sourceAccount)) return [];
+  fs.mkdirSync(path.dirname(targetAccount), { recursive: true });
+
+  let account;
+  try {
+    account = JSON.parse(fs.readFileSync(sourceAccount, "utf8"));
+  } catch (error) {
+    logger.log(`Không thể đọc account.json cũ để chuyển phiên bot main: ${error.message}`, "warn");
+    return [];
+  }
+  if (!account || typeof account !== "object" || Array.isArray(account)) return [];
+
+  const copied = [];
+  const cookieName = typeof account.cookie === "string" && account.cookie.trim()
+    ? account.cookie.trim()
+    : "cookie.json";
+
+  if (!path.isAbsolute(cookieName)) {
+    const sourceCookie = path.resolve(path.dirname(sourceAccount), cookieName);
+    let targetCookie = path.resolve(path.dirname(targetAccount), cookieName);
+
+    // Never allow a relative cookie path to escape the per-bot directory.
+    if (!isInsideDirectory(targetCookie, targetPaths.dir)) {
+      targetCookie = path.join(targetPaths.dir, "cookie.json");
+      account.cookie = "cookie.json";
+    }
+
+    if (fs.existsSync(sourceCookie) && !fs.existsSync(targetCookie)) {
+      try {
+        fs.mkdirSync(path.dirname(targetCookie), { recursive: true });
+        fs.copyFileSync(sourceCookie, targetCookie, fs.constants.COPYFILE_EXCL);
+        copied.push(path.relative(targetPaths.dir, targetCookie));
+      } catch (error) {
+        logger.log(`Không thể chuyển cookie cũ cho bot main: ${error.message}`, "warn");
+        return [];
+      }
+    }
+  }
+
+  try {
+    if (account.cookie !== cookieName) {
+      fs.writeFileSync(targetAccount, JSON.stringify(account, null, 2), { flag: "wx" });
+    } else {
+      fs.copyFileSync(sourceAccount, targetAccount, fs.constants.COPYFILE_EXCL);
+    }
+    copied.push("account.json");
+    logger.log("Đã chuyển phiên Cookie + IMEI cũ vào bots/main (không ghi đè phiên đã có).", "info");
+    return copied;
+  } catch (error) {
+    for (const file of copied) {
+      try { fs.unlinkSync(path.join(targetPaths.dir, file)); } catch {}
+    }
+    logger.log(`Không thể chuyển account.json cũ cho bot main: ${error.message}`, "warn");
+    return [];
+  }
+}
+
 function readRegistry() {
   try {
     if (fs.existsSync(REGISTRY_FILE)) {
@@ -63,12 +138,13 @@ function writeRegistry(registry) {
 }
 
 function migrateLegacyBotFiles(name, targetPaths = botPaths(name)) {
-  if (PERSISTENT_ROOT === ROOT) return [];
-  const legacyDir = path.join(LEGACY_BOTS_DIR, name);
-  if (!fs.existsSync(legacyDir)) return [];
   fs.mkdirSync(targetPaths.dir, { recursive: true });
-
   const copied = [];
+  if (name === "main") copied.push(...migrateLegacyMainSession(targetPaths));
+  if (PERSISTENT_ROOT === ROOT) return copied;
+
+  const legacyDir = path.join(LEGACY_BOTS_DIR, name);
+  if (!fs.existsSync(legacyDir)) return copied;
   for (const file of ["store.json", "account.json", "cookie.json", "qr.png"]) {
     if (migrateFileIfMissing(path.join(legacyDir, file), path.join(targetPaths.dir, file))) copied.push(file);
   }
@@ -473,5 +549,5 @@ module.exports = {
   BOTS_DIR,
   PERSISTENT_ROOT,
   getStorageLayout,
-  _test: { migrateFileIfMissing, migrateLegacyBotFiles, readRegistry, writeRegistry }
+  _test: { migrateFileIfMissing, migrateLegacyBotFiles, migrateLegacyMainSession, readRegistry, writeRegistry }
 };
