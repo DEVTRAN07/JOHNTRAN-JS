@@ -265,7 +265,7 @@ async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
 }
 
 async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
-  if ((eventType && eventType !== "message") || isSelf || event?.isSelf) return false;
+  if ((eventType && eventType !== "message") || ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true)) return false;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
   if (!threadId || !uid) return false;
