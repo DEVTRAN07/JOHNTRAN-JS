@@ -22,6 +22,28 @@ test("rebuilt panel JavaScript parses without browser-side dependencies", () => 
   assert.doesNotThrow(() => new vm.Script(js, { filename: "docs/panel.js" }));
 });
 
+test("bot cards render their status, uptime, port and action controls", () => {
+  const start = js.indexOf("function renderBots()");
+  const end = js.indexOf("\\nfunction renderTopCommands", start);
+  assert.ok(start >= 0 && end > start, "renderBots function must be present");
+  const renderSource = js.slice(start, end);
+  const botList = { innerHTML: "" };
+  const renderBots = vm.runInNewContext("(" + renderSource + ")", {
+    state: { bots: [{ name: "main", displayName: "JOHNTRAN", pid: 123, uptimeMs: 60000, restarts: 0, bridgePort: 3901, autoRestart: true, hasQr: false }] },
+    $: () => botList,
+    botStatus: () => ["Đang chạy", "online"],
+    avatarHtml: () => '<span class="bot-avatar">JT</span>',
+    $escape: value => String(value ?? ""),
+    fmtUptime: () => "1 phút",
+    number: value => Number(value) || 0
+  });
+
+  renderBots();
+  for (const marker of ['class="bot-row"', 'class="status-label online"', "Uptime 1 phút", "PORT", "3901", "QR", 'data-action="bot-restart"', 'data-action="bot-logs"']) {
+    assert.ok(botList.innerHTML.includes(marker), "bot card is missing: " + marker);
+  }
+});
+
 test("new panel shell has all six views and their required mount points", () => {
   for (const view of ["overview", "chat", "commands", "groups", "profile", "system"]) {
     assert.match(html, new RegExp('id="view-' + view + '"'));
