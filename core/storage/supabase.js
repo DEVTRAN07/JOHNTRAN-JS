@@ -200,6 +200,8 @@ class SupabaseStore {
         const next = {};
         for (const row of data || []) next[String(row.id)] = { ...row, data: row.data || {} };
 
+        // A remote snapshot can be older than a local write still in flight
+        // or can have started before a newer mutation that already committed.
         // Preserve local rows touched while this SELECT was in flight, rows
         // whose writes were pending when it began, and writes still pending now.
         // This covers successful writes too: push() removes writeVersions on
