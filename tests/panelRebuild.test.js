@@ -31,7 +31,7 @@ test("new panel shell has all six views and their required mount points", () => 
     "commandFolders", "commandFolderTitle", "commandGrid", "commandStatusList",
     "groupBotSelect", "groupSelect", "groupCommandList",
     "profileDetails", "friendList", "profileGroupList", "systemDetails",
-    "databaseDetails", "systemBotList", "cacheDetails", "auditLog", "settingsDrawer", "modalBackdrop"
+    "databaseDetails", "systemBotList", "cacheDetails", "commandLatencyDetails", "auditLog", "settingsDrawer", "modalBackdrop"
   ]) {
     assert.ok(html.includes('id="' + id + '"'), "missing panel mount point: " + id);
   }
@@ -257,3 +257,28 @@ function bridgeSafeSource() {
   return fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
 }
 
+
+
+test("system panel exposes full command latency and handler latency metrics", () => {
+  assert.match(server, /commandLatency: metrics\.getCommandLatencyStats\?\.\(10\)/);
+  assert.match(server, /commandExecutionLatency: metrics\.getCommandExecutionLatencyStats\?\.\(10\)/);
+  assert.match(js, /m\.commandLatency/);
+  assert.match(js, /m\.commandExecutionLatency/);
+  assert.match(js, /P95/);
+  assert.match(html, /id="commandLatencyDetails"/);
+});
+
+test("menu shortcut and admin-group hot paths use cache invalidation", () => {
+  const folderMenu = fs.readFileSync(path.join(root, "core/runtime/folderMenu.js"), "utf8");
+  const loader = fs.readFileSync(path.join(root, "core/loader/loaderCommand.js"), "utf8");
+  const hotReload = fs.readFileSync(path.join(root, "core/hotReload.js"), "utf8");
+  const adminGroups = fs.readFileSync(path.join(root, "core/runtime/adminGroups.js"), "utf8");
+  const handler = fs.readFileSync(path.join(root, "core/handle/handleCommand.js"), "utf8");
+  assert.match(folderMenu, /function getMenuGroupIndex/);
+  assert.match(folderMenu, /invalidateMenuGroupIndex/);
+  assert.match(loader, /invalidateMenuGroupIndex\(global\.client\.commands\)/);
+  assert.match(hotReload, /invalidateMenuGroupIndex\(global\.client\.commands\)/);
+  assert.match(adminGroups, /DEFAULT_CACHE_TTL_MS/);
+  assert.match(handler, /require\("\.\.\/runtime\/adminGroups"\)/);
+  assert.doesNotMatch(handler, /readFileSync\(ADMIN_GROUPS_FILE/);
+});
