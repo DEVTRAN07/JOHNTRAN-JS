@@ -17,12 +17,21 @@ function isLoopbackHost(host) {
   return value === "localhost" || value === "127.0.0.1" || value === "::1";
 }
 
+function resolvePanelToken(config = {}, env = process.env) {
+  return String(
+    config?.panel?.token ||
+    env.JT_PANEL__TOKEN ||
+    env.JT_PANEL_TOKEN ||
+    ""
+  ).trim();
+}
+
 function assertPanelToken(token, host) {
   const value = typeof token === "string" ? token.trim() : "";
   if (isLoopbackHost(host)) return true;
   if (value.length < MIN_PUBLIC_TOKEN_LENGTH) {
     throw new Error(
-      "Panel đang bind ra mạng công khai nhưng JT_PANEL__TOKEN chưa được cấu hình hoặc quá ngắn. " +
+      "Panel đang bind ra mạng công khai nhưng JT_PANEL__TOKEN (hoặc alias JT_PANEL_TOKEN) chưa được cấu hình hoặc quá ngắn. " +
       "Hãy tạo token ngẫu nhiên tối thiểu 32 ký tự (khuyến nghị: openssl rand -hex 32)."
     );
   }
@@ -41,6 +50,7 @@ function isPanelRequestAuthorized(req, token, host) {
 
 module.exports = {
   MIN_PUBLIC_TOKEN_LENGTH,
+  resolvePanelToken,
   timingSafeStringEqual,
   isLoopbackHost,
   assertPanelToken,
