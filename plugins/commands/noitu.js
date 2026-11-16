@@ -1,16 +1,18 @@
 "use strict";
 
 const game = require("../../core/runtime/services/games/noituService");
+const fs = require("fs");
+const { renderCanvas } = require("../../core/canvas/workerRender");
 
 module.exports.config = {
   name: "noitu",
-  aliases: [],
+  aliases: ["nt"],
   version: "1.0.0",
   role: 0,
   author: "Wuang",
   description: "Game nối từ theo lượt trong nhóm",
   category: "Game",
-  usage: "noitu [start|join|leave|pass|stop|rank|help]",
+  usage: "nt [go|gc|q|room|bxh|check|words|on|off|reset]",
   cooldowns: 0,
   dependencies: {}
 };
@@ -21,20 +23,55 @@ async function send(api, event, msg) {
 }
 function help(prefix) {
   return [
-    "🔗 GAME NỐI TỪ", "",
-    "🎮 CÁCH CHƠI",
-    prefix + "noitu start — Tạo ván mới",
-    prefix + "noitu join — Tham gia ván",
-    prefix + "noitu leave — Rời ván",
-    prefix + "noitu pass — Bỏ lượt",
-    prefix + "noitu stop — Dừng ván (chủ ván/Admin)",
-    prefix + "noitu rank — Bảng xếp hạng", "",
-    "📌 Nối tiếng cuối của cụm trước với tiếng đầu của cụm sau.",
-    "📌 Cụm từ gồm 2–4 tiếng, không được dùng lại cụm đã xuất hiện.",
-    "📌 Người tạo ván đi trước; người khác dùng join để xếp lượt.", "",
-    "👉 Gõ " + prefix + "noitu start để bắt đầu!"
+    "@Wuang 📖 NỐI TỪ TIẾNG VIỆT - ĐẠI CHIẾN TỪ VỰNG",
+    "💤 Trạng thái: 🟢 BẬT",
+    "",
+    "🕹️ Chế độ chơi:",
+    `➜ ${prefix}nt go : Đấu Solo với Bot (thắng bot +5⭐)`,
+    `➜ ${prefix}nt q : Nối từ tốc độ 60s (đúng +1s, sai -5s)`,
+    `➜ ${prefix}nt gc : Ghép Chữ vui nhộn`,
+    `➜ ${prefix}nt room : Mở phòng đấu nhóm nhiều người (PVP)`,
+    "",
+    "👥 Phòng đấu nhóm:",
+    "➜ join <mã> : Vào phòng chờ (Ví dụ: join A1B2)",
+    "➜ start : Bắt đầu ván (Chủ phòng, hơn 2 người)",
+    "➜ stop / leave / lose / cancel / thua : Dừng ván hoặc rời phòng",
+    "➜ skip : Bỏ qua câu đố ghép chữ (-5s)",
+    "",
+    "🏆 Xếp hạng & tiện ích:",
+    `➜ ${prefix}nt bxh [gc | q | room | all] [tháng] : Bảng vàng cao thủ`,
+    `➜ ${prefix}nt check <từ> : Tra cứu ý nghĩa từ vựng`,
+    `➜ ${prefix}nt words : Xem tổng số từ vựng trong kho`,
+    "",
+    "🖥️ Quản trị:",
+    `➜ ${prefix}nt on / off : Bật hoặc Tắt game`,
+    `➜ ${prefix}nt reset [gc | q | room | all] : Đặt lại điểm tháng`,
+    "",
+    `👉 Gõ ${prefix}nt go hoặc ${prefix}nt gc để chơi ngay!`
   ].join("\n");
 }
+async function sendGuide(api, event, prefix) {
+  let imagePath;
+  try {
+    imagePath = await renderCanvas("noitu-guide", {}, { timeout: 20000, poolSize: 1 });
+    return await api.sendMessage({
+      msg: help(prefix),
+      attachments: [imagePath],
+      ttlKind: "card"
+    }, event.threadId, event.type);
+  } catch (error) {
+    console.error("[NOITU_GUIDE]", error?.stack || error);
+    return send(api, event, help(prefix));
+  } finally {
+    if (imagePath) {
+      const timer = setTimeout(() => {
+        try { fs.rmSync(imagePath, { force: true }); } catch {}
+      }, 60000);
+      timer.unref?.();
+    }
+  }
+}
+
 function currentPlayerLine(session) {
   const player = session?.players.get(session?.turnUid);
   return player ? "🎯 Lượt tiếp theo: " + player.name + "." : "";
@@ -52,8 +89,8 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   const threadId = String(event?.threadId || "");
   const prefix = global.config?.prefix || "/";
   if (!uid || !threadId) return;
-  const action = String(args[0] || "help").toLowerCase();
-  if (action === "help") return send(api, event, help(prefix));
+  const action = String(args[0] || "").trim().toLowerCase();
+  if (!action || action === "help") return sendGuide(api, event, prefix);
 
   if (action === "start" || action === "go") {
     const name = String(event?.data?.dName || event?.data?.name || "Người chơi");
@@ -61,14 +98,14 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
     if (!result.ok) return send(api, event, "⚠️ Nhóm đang có ván Nối Từ. Gõ join để vào lượt.");
     return send(api, event, "🔗 ĐÃ BẮT ĐẦU GAME NỐI TỪ\n\n🧩 Từ mở màn: " +
       result.session.currentPhrase.display + "\n👥 Người chơi: 1\n👉 Chủ ván nhập cụm từ bắt đầu bằng tiếng cuối của từ mở màn." +
-      "\n📌 Gõ " + prefix + "noitu join để những người khác tham gia.");
+      "\n📌 Gõ " + prefix + "nt join để những người khác tham gia.");
   }
 
   if (action === "join") {
     const result = game.join(threadId, uid, event?.data?.dName || event?.data?.name || "Người chơi");
     if (!result.ok) {
       const messages = {
-        NO_GAME: "⚠️ Chưa có ván. Gõ " + prefix + "noitu start để tạo ván.",
+        NO_GAME: "⚠️ Chưa có ván. Gõ " + prefix + "nt go để tạo ván.",
         ALREADY_JOINED: "Bạn đã ở trong ván."
       };
       return send(api, event, messages[result.code] || "⚠️ Không thể tham gia ván.");
@@ -104,6 +141,6 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
     const lines = rows.map((row, index) => (index + 1) + ". UID " + row.uid + " — " + row.points + " điểm");
     return send(api, event, "🏆 BẢNG XẾP HẠNG NỐI TỪ\n" + lines.join("\n"));
   }
-  return send(api, event, help(prefix));
+  return sendGuide(api, event, prefix);
 };
-module.exports._test = { help, leaderboard };
+module.exports._test = { help, leaderboard, sendGuide };
