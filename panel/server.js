@@ -274,7 +274,7 @@ function startPanel({ manager, config }) {
             processStatus: bot.processStatus || bot.status,
             restarts: Number(bot.restarts) || 0,
             flapping: bot.flapping === true,
-            events: journal.readJournalFile(botPaths(bot.name).errorLogFile, 60)
+            events: journal.readJournalFiles(botPaths(bot.name).errorLogFile, 60)
           }));
           const events = [
             ...(master.events || []),
