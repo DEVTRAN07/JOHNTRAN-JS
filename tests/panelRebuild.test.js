@@ -103,6 +103,14 @@ test("unavailable group storage is shown as UNKNOWN, never falsely as OFF", () =
   assert.match(js, /typeof group\.botEnabled !== "boolean"/);
 });
 
+test("group config routes check database readiness before creating any default-OFF group record", () => {
+  const routeStart = panelBridge.indexOf('if (route === "/group-commands")');
+  const readyCheck = panelBridge.indexOf("await ensureThreadStoreReady();", routeStart);
+  const firstGroupRead = panelBridge.indexOf("Threads.getData(gid)", routeStart);
+  assert.ok(routeStart >= 0 && readyCheck > routeStart && readyCheck < firstGroupRead);
+  assert.match(panelBridge, /Database nhóm chưa sẵn sàng/);
+});
+
 test("existing group settings keep the fast write path while explicit bot toggles await durable storage", () => {
   assert.match(controllerThreads, /setData: \(threadId, data\) =>/);
   assert.match(controllerThreads, /setDataAndWait: async \(threadId, data\) =>/);
