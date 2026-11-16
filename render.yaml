@@ -20,6 +20,12 @@ services:
       # same Persistent Disk already mounted above.
       - key: JT_PERSISTENT_DIR
         value: /opt/render/project/data
+      # Add these two values in Render Dashboard → Environment.
+      # sync:false prevents Blueprint commits from overwriting secret values.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
     disk:
       name: bot-data
       mountPath: /opt/render/project/data
