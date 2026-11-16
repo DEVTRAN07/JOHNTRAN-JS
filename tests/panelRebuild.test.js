@@ -221,7 +221,7 @@ test("database panel exposes protected durability diagnostics for Supabase and R
   assert.match(databaseFacade, /mounted_and_used/);
   assert.match(databaseFacade, /databaseFileOnDisk/);
   assert.match(js, /api\("\/api\/database\/health"\)/);
-  assert.match(js, /JT_PERSISTENT_DIR/);
+  assert.match(databaseFacade, /JT_PERSISTENT_DIR/);
   assert.match(js, /Persistent Disk/);
   assert.match(js, /bot_threads/);
   assert.match(html, /id="databaseDetails"/);
