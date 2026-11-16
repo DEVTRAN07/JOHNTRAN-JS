@@ -195,7 +195,7 @@ function renderBots() {
     const displayName = bot.displayName || bot.name;
     const avatar = avatarHtml(bot.avatar, displayName, "bot-avatar");
     return '<article class="bot-row">' +
-      '<div class="bot-identity">' + avatar + '<div><div class="bot-name">' + $escape(displayName) + (main ? ' <span class="role-tag">MASTER</span>' : '') + '</div><div class="bot-meta">ID ' + $escape(bot.name) + ' · PID ' + $escape(bot.pid || "—") + ' · ' + (bot.flapping ? '<span style="color:var(--red)">CRASH LOOP</span>' : (bot.sessionHint ? $escape(bot.sessionHint) : "JOHNTRAN instance")) + '</div></div></div>'
+      '<div class="bot-identity">' + avatar + '<div><div class="bot-name">' + $escape(displayName) + (main ? ' <span class="role-tag">MASTER</span>' : '') + '</div><div class="bot-meta">ID ' + $escape(bot.name) + ' · PID ' + $escape(bot.pid || "—") + ' · ' + (bot.flapping ? '<span style="color:var(--red)">CRASH LOOP</span>' : (bot.sessionHint ? $escape(bot.sessionHint) : "JOHNTRAN instance")) + '</div></div></div>' +
       '<div><div class="status-label ' + cls + '"><i class="dot"></i>' + $escape(label) + '</div><div class="bot-meta">Uptime ' + fmtUptime(bot.uptimeMs) + ' · restart ' + number(bot.restarts) + '</div></div>' +
       '<div class="bot-stats"><span>PORT <b>' + $escape(bot.bridgePort || "—") + '</b></span><span>QR <b>' + (bot.hasQr ? "READY" : "—") + '</b></span><label class="auto-restart"><input type="checkbox" data-action="auto-restart" data-bot="' + $escape(bot.name) + '" ' + (bot.autoRestart ? "checked" : "") + '> Auto restart</label></div>' +
       '<div class="bot-actions">' +
