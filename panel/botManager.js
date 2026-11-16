@@ -186,6 +186,7 @@ class BotInstance {
       // Re-check flags at execution time: Stop or disabling auto-restart may
       // have happened while this timer was waiting.
       if (this.stoppedByUser || !this.autoRestart || this.process) return;
+      logger.log(`Watchdog đang khởi động lại bot '${this.name}' sau sự cố.`, "warn", { source: "bot-restart-auto", bot: this.name });
       try {
         this.start();
       } catch (error) {
@@ -330,6 +331,7 @@ class BotInstance {
   }
 
   async restart() {
+    logger.log(`Có yêu cầu restart thủ công bot '${this.name}'.`, "warn", { source: "bot-restart-manual", bot: this.name });
     await this.stop();
     this.stoppedByUser = false;
     return this.start();
