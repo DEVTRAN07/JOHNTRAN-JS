@@ -216,6 +216,7 @@ const DEFAULTS = {
       // DNS-over-HTTPS bootstrap (không cần system DNS)
       "cloudflare-dns.com",
       "dns.google",
+      "dict.minhqnd.com",
     ]
   },
   services: {
