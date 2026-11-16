@@ -4,8 +4,13 @@ const { spawn } = require("child_process");
 const logger = require("../utils/logger");
 
 const ROOT = path.join(__dirname, "..");
-const BOTS_DIR = path.join(ROOT, "bots");
-const REGISTRY_FILE = path.join(ROOT, "data", "bots.json");
+const PERSISTENT_ROOT = String(process.env.JT_DB_PERSISTENT_PATH || "").trim()
+  ? path.resolve(process.env.JT_DB_PERSISTENT_PATH)
+  : ROOT;
+const BOTS_DIR = path.join(PERSISTENT_ROOT, "bots");
+const REGISTRY_FILE = path.join(PERSISTENT_ROOT, "data", "bots.json");
+const LEGACY_BOTS_DIR = path.join(ROOT, "bots");
+const LEGACY_REGISTRY_FILE = path.join(ROOT, "data", "bots.json");
 
 const MAX_LOG_LINES = 400;
 const SIGKILL_DELAY = 5000;
@@ -18,20 +23,72 @@ function ensureDirs() {
   fs.mkdirSync(path.dirname(REGISTRY_FILE), { recursive: true });
 }
 
+function migrateFileIfMissing(source, destination) {
+  if (!source || !destination || path.resolve(source) === path.resolve(destination)) return false;
+  if (!fs.existsSync(source) || fs.existsSync(destination)) return false;
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
+  return true;
+}
+
 function readRegistry() {
   try {
     if (fs.existsSync(REGISTRY_FILE)) {
       return JSON.parse(fs.readFileSync(REGISTRY_FILE, "utf8"));
     }
+    if (PERSISTENT_ROOT !== ROOT && fs.existsSync(LEGACY_REGISTRY_FILE)) {
+      const registry = JSON.parse(fs.readFileSync(LEGACY_REGISTRY_FILE, "utf8"));
+      migrateFileIfMissing(LEGACY_REGISTRY_FILE, REGISTRY_FILE);
+      logger.log("Đã sao chép registry bot cũ sang JT_DB_PERSISTENT_PATH; giữ nguyên file nguồn.", "info");
+      return registry;
+    }
   } catch (error) {
     logger.log(`Không thể đọc registry bot: ${error.message}`, "error");
+    throw new Error(`Registry bot bị lỗi; từ chối khởi tạo danh sách rỗng để tránh mất cấu hình: ${error.message}`);
   }
   return { bots: {} };
 }
 
 function writeRegistry(registry) {
   ensureDirs();
-  fs.writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2), "utf8");
+  const tmpFile = `${REGISTRY_FILE}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmpFile, JSON.stringify(registry, null, 2), "utf8");
+    fs.renameSync(tmpFile, REGISTRY_FILE);
+  } catch (error) {
+    try { fs.unlinkSync(tmpFile); } catch {}
+    throw error;
+  }
+}
+
+function migrateLegacyBotFiles(name, targetPaths = botPaths(name)) {
+  if (PERSISTENT_ROOT === ROOT) return [];
+  const legacyDir = path.join(LEGACY_BOTS_DIR, name);
+  if (!fs.existsSync(legacyDir)) return [];
+  fs.mkdirSync(targetPaths.dir, { recursive: true });
+
+  const copied = [];
+  for (const file of ["store.json", "account.json", "cookie.json", "qr.png"]) {
+    if (migrateFileIfMissing(path.join(legacyDir, file), path.join(targetPaths.dir, file))) copied.push(file);
+  }
+
+  // Preserve a custom relative cookie file referenced by account.json.
+  try {
+    const account = JSON.parse(fs.readFileSync(path.join(legacyDir, "account.json"), "utf8"));
+    const cookie = typeof account?.cookie === "string" ? account.cookie : "";
+    if (cookie && !path.isAbsolute(cookie)) {
+      const source = path.resolve(legacyDir, cookie);
+      const relative = path.relative(path.resolve(legacyDir), source);
+      if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+        if (migrateFileIfMissing(source, path.join(targetPaths.dir, relative))) copied.push(relative);
+      }
+    }
+  } catch { /* tài khoản có thể chưa có file hoặc dùng cookie path tuyệt đối */ }
+
+  if (copied.length) {
+    logger.log(`Đã sao chép dữ liệu bot '${name}' sang JT_DB_PERSISTENT_PATH: ${copied.join(", ")}. Giữ nguyên file nguồn.`, "info");
+  }
+  return copied;
 }
 
 function botDir(name) {
@@ -143,6 +200,7 @@ class BotInstance {
     this.cancelScheduledRestart();
     this.pruneRestartHistory();
     const paths = botPaths(this.name);
+    migrateLegacyBotFiles(this.name, paths);
     fs.mkdirSync(paths.dir, { recursive: true });
 
     const env = {
@@ -362,4 +420,12 @@ class BotManager {
   }
 }
 
-module.exports = { BotManager, BotInstance, botPaths, botDir, BOTS_DIR };
+module.exports = {
+  BotManager,
+  BotInstance,
+  botPaths,
+  botDir,
+  BOTS_DIR,
+  PERSISTENT_ROOT,
+  _test: { migrateFileIfMissing, migrateLegacyBotFiles, readRegistry, writeRegistry }
+};
