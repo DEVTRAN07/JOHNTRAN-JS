@@ -71,3 +71,30 @@ test("dispatcher isolates command failures and reports failure reaction", async 
   assert.ok(ctx.executionLatencies[0][1] >= 0);
   assert.match(ctx.logs[0][0], /broken/);
 });
+
+
+test("dispatcher setup failures are counted separately from plugin failures", async () => {
+  const ctx = createContext();
+  const event = Object.defineProperty({}, "data", {
+    get() { throw new Error("malformed event envelope"); }
+  });
+
+  await dispatchCommand({
+    command: { run: async () => { throw new Error("must not run"); } },
+    commandName: "malformed",
+    args: [],
+    event,
+    api: ctx.api,
+    logger: ctx.logger,
+    metrics: ctx.metrics,
+    Reactions: ctx.Reactions
+  });
+
+  assert.deepEqual(ctx.tracked, [[
+    "error",
+    { command: "malformed", source: "dispatcher" }
+  ]]);
+  assert.equal(ctx.executionLatencies.length, 1);
+  assert.equal(ctx.executionLatencies[0][0], "malformed");
+  assert.match(ctx.logs[0][0], /malformed event envelope/);
+});
