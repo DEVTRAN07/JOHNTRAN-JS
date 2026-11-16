@@ -96,9 +96,16 @@
     <div class="section-heading compact"><div><span class="eyebrow">TARGET GROUP</span><h3>Tài khoản và nhóm Zalo</h3></div></div>
     <form class="group-form" id="groupForm">
       <label>TÀI KHOẢN BOT<select id="groupBotSelect"><option value="">Đang tải bot…</option></select></label>
-      <label>NHÓM ZALO<select id="groupSelect"><option value="">Chọn bot trước</option></select></label>
-      <button class="button button-primary" type="submit">Tải cấu hình</button>
+      <label class="group-select-compat" aria-hidden="true">NHÓM ZALO<select id="groupSelect" tabindex="-1"><option value="">Chọn bot trước</option></select></label>
+      <button class="button button-primary" type="submit">Làm mới cấu hình</button>
     </form>
+    <div class="group-browser">
+      <div class="group-browser-head">
+        <div><span class="eyebrow">YOUR ZALO COMMUNITIES</span><h3>Danh sách nhóm</h3><small id="groupCardCount">Đang tải nhóm…</small></div>
+        <label class="group-search" for="groupSearch"><span>⌕</span><input id="groupSearch" type="search" placeholder="Tìm tên nhóm hoặc ID…" autocomplete="off"></label>
+      </div>
+      <div class="group-card-grid" id="groupCardGrid" aria-live="polite"><div class="empty-state">Đang tải nhóm từ Zalo…</div></div>
+    </div>
     <div class="group-identity-grid" id="groupIdentityGrid" hidden>
       <div class="group-identity-card" id="groupBotIdentity"></div>
       <div class="group-identity-card" id="selectedGroupIdentity"></div>
