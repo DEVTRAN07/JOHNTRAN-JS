@@ -8,7 +8,7 @@ const { ThreadType } = require("zalo-client");
 const stats = require("./stats");
 const logger = require("../utils/logger");
 const { wrapApi } = require("./message");
-const { attachGroupBotState } = require("./runtime/groupBotState");
+const { attachGroupBotState, getGroupBotStateSnapshot } = require("./runtime/groupBotState");
 
 // ===== Bộ nhớ tin nhắn: RAM + lưu đĩa (sống sót qua restart) =====
 // Zalo đã XOÁ API lịch sử nhóm (getGroupChatHistory → 404) nên panel chỉ
@@ -210,6 +210,21 @@ async function handleRequest(req, res, url) {
   };
 
   if (route === "/health") return json(200, { ok: true, pid: process.pid });
+
+  // Trạng thái bật/tắt nhóm rất nhẹ: chỉ đọc DB của bot con, không gọi lại Zalo API.
+  if (route === "/group-status") {
+    if (req.method !== "GET") return json(405, { error: "Method không hỗ trợ" });
+    try {
+      const Threads = require("./controller/controllerThreads");
+      return json(200, {
+        groups: getGroupBotStateSnapshot(Threads.getAll()),
+        updatedAt: Date.now()
+      });
+    } catch (error) {
+      logger.log(`[panel bridge] Không đọc được snapshot trạng thái nhóm: ${error.message}`, "warn");
+      return json(503, { error: "Không đọc được cấu hình trạng thái nhóm" });
+    }
+  }
 
   // Danh sách bạn bè + nhóm (+ hồ sơ) — dùng cache 5 phút của core/stats
   if (route === "/threads") {
