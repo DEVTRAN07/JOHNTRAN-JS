@@ -370,6 +370,8 @@ test("Render CI waits for live deployment state and verifies the deployed servic
   const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
   assert.match(workflow, /timeout-minutes: 20/);
   assert.match(workflow, /services\/\$\{service_id\}\/deploys\/\$\{deploy_id\}/);
+  assert.match(workflow, /deploys\?limit=20/);
+  assert.match(workflow, /select\(\.commit\.id\? == \$sha\)/);
   assert.match(workflow, /\[\[ "\$deploy_status" == "live" \]\]/);
   assert.match(workflow, /serviceDetails\.url/);
   assert.match(workflow, /\$service_url\/health/);
