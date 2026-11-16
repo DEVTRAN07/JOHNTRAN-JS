@@ -40,8 +40,8 @@ test("panel frontend is self-hosted and has no external runtime dependency", () 
 });
 
 test("V4 theme is self-hosted and group browser exposes status filters and sorting", () => {
-  assert.match(html, /href="panel\\.v4\\.css"/);
-  assert.match(server, /"\\/panel\\.v4\\.css": "panel\\.v4\\.css"/);
+  assert.match(html, /href="panel\.v4\.css"/);
+  assert.match(server, /"\/panel\.v4\.css": "panel\.v4\.css"/);
   assert.match(v4css, /group-filter-tabs/);
   assert.match(v4css, /group-sort/);
   for (const filter of ["all", "on", "off"]) {
@@ -54,19 +54,19 @@ test("V4 theme is self-hosted and group browser exposes status filters and sorti
 
 test("group status polling uses a lightweight authenticated bot bridge route", () => {
   const bridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
-  assert.match(server, /group-commands\\|group-status/);
+  assert.match(server, /group-commands\|group-status/);
   assert.match(bridge, /route === "\/group-status"/);
-  assert.match(bridge, /getGroupBotStateSnapshot\\(Threads\\.getAll\\(\\)\\)/);
+  assert.match(bridge, /getGroupBotStateSnapshot\(Threads\.getAll\(\)\)/);
   assert.match(js, /\/group-status/);
-  assert.match(js, /}, 15000\\)/);
-  assert.match(js, /document\\.visibilityState === "visible"/);
+  assert.match(js, /}, 15000\)/);
+  assert.match(js, /document\.visibilityState === "visible"/);
 });
 
 test("group avatars are lazy-loaded and failed images degrade to initials without full-card refresh", () => {
   assert.match(js, /loading="lazy" decoding="async" fetchpriority="low"/);
-  assert.match(js, /failedGroupAvatarUrls\\.add\\(key\\)/);
+  assert.match(js, /failedGroupAvatarUrls\.add\(key\)/);
   assert.match(js, /function syncGroupCardStatuses/);
-  assert.match(v4css, /group-card-avatar img\\.loaded/);
+  assert.match(v4css, /group-card-avatar img\.loaded/);
 });
 
 test("dashboard keeps using the existing protected panel API and bridge routes", () => {
