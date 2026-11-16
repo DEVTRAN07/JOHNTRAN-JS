@@ -36,8 +36,15 @@ function getBoardRecallTargets(response) {
 function rememberBoardResponse(threadId, response) {
   const key = String(threadId);
   const targets = getBoardRecallTargets(response);
-  if (targets.length) boardCards.set(key, targets);
-  else boardCards.delete(key);
+  if (!targets.length) return 0;
+
+  // Preserve IDs of older cards that Zalo temporarily failed to recall.
+  const pending = boardCards.get(key) || [];
+  const unique = new Map();
+  for (const target of [...pending, ...targets]) {
+    unique.set(String(target.msgId) + ":" + String(target.cliMsgId), target);
+  }
+  boardCards.set(key, [...unique.values()]);
   return targets.length;
 }
 
