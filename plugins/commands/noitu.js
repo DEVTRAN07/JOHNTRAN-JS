@@ -24,7 +24,7 @@ module.exports.config = {
   author: "Wuang",
   description: "Game nối từ theo lượt trong nhóm",
   category: "Game",
-  usage: "nt [go|gc|q|room|bxh|check|words|on|off|reset]",
+  usage: "nt [go|classic|gc|q|room|bxh|check|words|on|off|reset]",
   cooldowns: 0,
   dependencies: {}
 };
@@ -261,6 +261,7 @@ function help(prefix, enabled = true) {
     "",
     "🕹️ Chế độ chơi:",
     `➜ ${prefix}nt go : Đấu Solo với Bot (thắng bot +5⭐)`,
+    `➜ ${prefix}nt classic : Nối Từ theo lượt nhiều người`,
     `➜ ${prefix}nt q : Nối từ tốc độ 60s (đúng +1s, sai -5s)`,
     `➜ ${prefix}nt gc : Ghép Chữ vui nhộn`,
     `➜ ${prefix}nt room : Mở phòng đấu nhóm nhiều người (PVP)`,
@@ -272,13 +273,13 @@ function help(prefix, enabled = true) {
     "➜ skip : Bỏ qua câu đố ghép chữ (-5s)",
     "",
     "🏆 Xếp hạng & tiện ích:",
-    `➜ ${prefix}nt bxh [gc | q | room | all] [tháng] : Bảng vàng cao thủ`,
+    `➜ ${prefix}nt bxh [solo | classic | gc | q | room | all] [YYYY-MM] : Bảng vàng cao thủ`,
     `➜ ${prefix}nt check <từ> : Tra cứu ý nghĩa từ vựng`,
     `➜ ${prefix}nt words : Xem số từ đang được nạp trong kho`,
     "",
     "🖥️ Quản trị:",
     `➜ ${prefix}nt on / off : Bật hoặc Tắt game`,
-    `➜ ${prefix}nt reset [gc | q | room | all] : Reset BXH theo chế độ`,
+    `➜ ${prefix}nt reset [solo | classic | gc | q | room | all] : Reset BXH theo chế độ`,
     "",
     `👉 Gõ ${prefix}nt go hoặc ${prefix}nt gc để chơi ngay!`
   ].join("\n");
@@ -504,6 +505,9 @@ async function startGhepChu({ api, event }) {
   if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước.");
   if (noituRoom.get(threadId)) return send(api, event, "⚠️ Nhóm đang có phòng Nối Từ. Hãy kết thúc phòng trước.");
   const existing = ghepChu.get(threadId);
+  if (existing?.status === "starting") {
+    return send(api, event, "⏳ Ván Ghép Chữ đang khởi tạo. Chờ card câu đố xuất hiện nhé!");
+  }
   if (existing?.status === "active" && ghepChu.remainingSeconds(existing) > 0) {
     scheduleGhepChuExpiry(api, event, threadId);
     return sendGhepChuCard(api, event, existing, "🎮 Ván Ghép Chữ đang diễn ra — tiếp tục thử sức nhé!");
@@ -583,6 +587,7 @@ async function handleGhepChuText({ api, event, eventType, isSelf = false, Users 
   }
 
   const result = await ghepChu.submit(threadId, uid, content);
+  if (result.code === "BUSY") return true;
   if (result.code === "TIME_UP") {
     await finishGhepChu(api, event, result.session, "⌛ Hết giờ! Đây là kết quả ván Ghép Chữ.");
     return true;
@@ -774,6 +779,7 @@ async function resetNoituScores(Users, mode = "all") {
         months[month] = row;
       }
       profile.months = months;
+      if (mode === "solo") profile.botWins = 0;
       data.noitu = profile;
     }
     await Users.setData(uid, data);
@@ -833,7 +839,8 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   }
 
   if (action === "words") {
-    try { await ghepChu.refreshApiWordPool(); } catch { /* cache vẫn dùng được */ }
+    // Report the current pool immediately; replenish it in the background.
+    void ghepChu.refreshApiWordPool().catch(() => {});
     const stats = ghepChu.getDictionaryStats();
     return send(api, event,
       "📚 KHO TỪ VỰNG JOHNTRAN\n" +
@@ -841,6 +848,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
       "🛟 Từ dự phòng: " + stats.fallbackWords + "\n" +
       "📦 Tổng mục từ đang có trong cache: " + stats.totalCached + "\n" +
       "🌐 Nguồn tra cứu: " + stats.source + "\n" +
+      (stats.apiCached < stats.apiPoolLimit ? "🔄 API đang được nạp thêm ở chế độ nền.\\n" : "") +
       "ℹ️ Đây là số từ đang nạp trong bộ nhớ, không phải tổng quy mô toàn bộ từ điển API."
     );
   }
@@ -848,8 +856,8 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   if (action === "reset") {
     if (!isAdmin(uid)) return send(api, event, "⛔ Chỉ Admin bot mới được reset BXH Nối Từ.");
     const mode = String(args[1] || "all").toLowerCase();
-    if (!["gc", "q", "room", "all"].includes(mode)) {
-      return send(api, event, "⚠️ Cách dùng: " + prefix + "nt reset [gc|q|room|all]");
+    if (!["solo", "classic", "gc", "q", "room", "all"].includes(mode)) {
+      return send(api, event, "⚠️ Cách dùng: " + prefix + "nt reset [solo|classic|gc|q|room|all]");
     }
     try {
       const count = await resetNoituScores(Users || defaultUsers, mode);
@@ -859,7 +867,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     }
   }
 
-  if (["gc", "q", "room", "go", "start", "join"].includes(action) && !isNoituEnabled(Threads || defaultThreads, threadId)) {
+  if (["gc", "q", "room", "go", "classic", "start", "join"].includes(action) && !isNoituEnabled(Threads || defaultThreads, threadId)) {
     return send(api, event, "🚫 Game Nối Từ đang tắt trong nhóm này. Admin dùng " + prefix + "nt on để bật lại.");
   }
 
@@ -868,6 +876,9 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   if (action === "room") return startNoituRoom({ api, event });
   if (action === "skip" && ghepChu.get(threadId)?.status === "active") return handleGhepChuText({ api, event: { ...event, data: { ...event.data, content: "skip" } } });
   if (action === "start" && noituRoom.get(threadId)?.status === "waiting") return startNoituRoomGame({ api, event });
+  if (action === "start") {
+    return send(api, event, "⚠️ Chưa có phòng PvP đang chờ. Gõ " + prefix + "nt room để tạo phòng, hoặc " + prefix + "nt classic để chơi Nối Từ theo lượt.");
+  }
   if (action === "go") {
     const caro = require("../../core/runtime/services/games/caroService");
     if (quickNoitu.get(threadId)?.status === "active" || noituRoom.get(threadId) || ghepChu.get(threadId)?.status === "active" || caro.get(threadId)) {
@@ -875,7 +886,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     }
     return startSoloBotGame({ api, event });
   }
-  if (action === "start") {
+  if (action === "classic") {
     const caro = require("../../core/runtime/services/games/caroService");
     if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước khi mở Nối Từ.");
     if (noituRoom.get(threadId)) return send(api, event, "⚠️ Nhóm đang có phòng Nối Từ. Hãy kết thúc phòng đó trước.");
@@ -973,7 +984,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   }
 
   if (action === "rank" || action === "bxh") {
-    const allowedModes = ["gc", "q", "room", "all"];
+    const allowedModes = ["solo", "classic", "gc", "q", "room", "all"];
     const mode = allowedModes.includes(String(args[1] || "").toLowerCase())
       ? String(args[1]).toLowerCase()
       : "all";
