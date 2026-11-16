@@ -4,8 +4,8 @@ const { spawn } = require("child_process");
 const logger = require("../utils/logger");
 
 const ROOT = path.join(__dirname, "..");
-const PERSISTENT_ROOT = String(process.env.JT_DB_PERSISTENT_PATH || "").trim()
-  ? path.resolve(process.env.JT_DB_PERSISTENT_PATH)
+const PERSISTENT_ROOT = String(process.env.JT_PERSISTENT_DIR || process.env.JT_DB_PERSISTENT_PATH || "").trim()
+  ? path.resolve(process.env.JT_PERSISTENT_DIR)
   : ROOT;
 const BOTS_DIR = path.join(PERSISTENT_ROOT, "bots");
 const REGISTRY_FILE = path.join(PERSISTENT_ROOT, "data", "bots.json");
@@ -39,7 +39,7 @@ function readRegistry() {
     if (PERSISTENT_ROOT !== ROOT && fs.existsSync(LEGACY_REGISTRY_FILE)) {
       const registry = JSON.parse(fs.readFileSync(LEGACY_REGISTRY_FILE, "utf8"));
       migrateFileIfMissing(LEGACY_REGISTRY_FILE, REGISTRY_FILE);
-      logger.log("Đã sao chép registry bot cũ sang JT_DB_PERSISTENT_PATH; giữ nguyên file nguồn.", "info");
+      logger.log("Đã sao chép registry bot cũ sang JT_PERSISTENT_DIR; giữ nguyên file nguồn.", "info");
       return registry;
     }
   } catch (error) {
@@ -86,7 +86,7 @@ function migrateLegacyBotFiles(name, targetPaths = botPaths(name)) {
   } catch { /* tài khoản có thể chưa có file hoặc dùng cookie path tuyệt đối */ }
 
   if (copied.length) {
-    logger.log(`Đã sao chép dữ liệu bot '${name}' sang JT_DB_PERSISTENT_PATH: ${copied.join(", ")}. Giữ nguyên file nguồn.`, "info");
+    logger.log(`Đã sao chép dữ liệu bot '${name}' sang JT_PERSISTENT_DIR: ${copied.join(", ")}. Giữ nguyên file nguồn.`, "info");
   }
   return copied;
 }
