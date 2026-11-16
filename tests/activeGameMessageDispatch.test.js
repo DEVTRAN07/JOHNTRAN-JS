@@ -23,7 +23,7 @@ test("an enrolled word-game answer is consumed before normal message event plugi
     async sendMessage() { return { ok: true }; }
   };
   global.client = {
-    commands: new Map([["noitu", command]]),
+    commands: new Map(),
     events: new Map([["normal-message", {
       config: { event_type: ["message"] },
       async run() { normalEventCalls++; }
