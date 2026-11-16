@@ -311,7 +311,7 @@ test("nt help card reflects the persisted group state", () => {
 });
 
 
-test("nt go limits malformed-answer hints to once per human turn", async () => {
+test("nt go limits malformed-answer hints to once per solo session", async () => {
   const previousConfig = global.config;
   global.config = { allow_self_command: false, prefix: "/" };
   const session = command._test.createSoloBotSession("solo-invalid-hint", "p1", "Player", () => 0).session;
@@ -334,7 +334,8 @@ test("nt go limits malformed-answer hints to once per human turn", async () => {
 
     session.moves += 1;
     assert.equal(await command._test.handleNoiTuText(context("again")), true);
-    assert.equal(sent.length, 2, "a new turn may show the hint again");
+    assert.equal(await command._test.handleNoiTuText(context("still chatting")), true);
+    assert.equal(sent.length, 1, "the reminder must not repeat on later turns in the same solo session");
   } finally {
     gameService.sessions.delete("solo-invalid-hint");
     if (previousConfig === undefined) delete global.config;
