@@ -19,7 +19,7 @@ function redact(data) {
   if (typeof data !== "string") return data;
   let output = data;
   for (const pattern of SECRET_PATTERNS) {
-    output = output.replace(pattern, "$1***");
+    output = output.replace(pattern, (_match, prefix) => (prefix || "") + "***");
   }
   return output;
 }
