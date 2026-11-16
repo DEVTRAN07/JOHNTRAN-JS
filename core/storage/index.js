@@ -11,6 +11,9 @@ class JsonStore {
     this.data = {};
     this.flushTimer = null;
     this.pendingFlush = false;
+    this.lastFlushAt = 0;
+    this.lastFlushError = null;
+    this.lastLoadError = null;
     this.loaded = false;
     this.loadError = null;
     this.lastFlushError = null;
