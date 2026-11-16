@@ -13,6 +13,7 @@ const v4css = fs.readFileSync(path.join(root, "docs/panel.v4.css"), "utf8");
 const js = fs.readFileSync(path.join(root, "docs/panel.js"), "utf8");
 const server = fs.readFileSync(path.join(root, "panel/server.js"), "utf8");
 const controllerThreads = fs.readFileSync(path.join(root, "core/controller/controllerThreads.js"), "utf8");
+const threadService = fs.readFileSync(path.join(root, "core/runtime/services/threadService.js"), "utf8");
 const databaseAdapter = fs.readFileSync(path.join(root, "core/runtime/adapters/database.js"), "utf8");
 const databaseFacade = fs.readFileSync(path.join(root, "utils/db.js"), "utf8");
 const supabaseStore = fs.readFileSync(path.join(root, "core/storage/supabase.js"), "utf8");
@@ -162,7 +163,8 @@ test("existing group settings keep the fast write path while explicit bot toggle
   assert.match(panelBridge, /Threads\.setBotEnabled\(gid, body\.botEnabled\)/);
   assert.match(controllerThreads, /setBotEnabled: async \(threadId, enabled\)/);
   assert.match(controllerThreads, /bot_enabled: storedEnabled/);
-  assert.match(controllerThreads, /setBotEnabled: async \(threadId, enabled\)/);
+  assert.match(threadService, /setBotEnabled\(\.\.\.args\)/);
+  assert.match(threadService, /controller\.setBotEnabled\(\.\.\.args\)/);
   assert.match(fs.readFileSync(path.join(root, "plugins/commands/bot.js"), "utf8"), /Threads\.setBotEnabled\(threadId, enabled\)/);
 });
 
