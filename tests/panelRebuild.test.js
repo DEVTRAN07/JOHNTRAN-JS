@@ -33,6 +33,7 @@ test("bot cards render their status, uptime, port and action controls", () => {
   const renderSource = js.slice(start, end);
   const botList = { innerHTML: "" };
   const renderBots = vm.runInNewContext("(" + renderSource + ")", {
+    main: true,
     state: { bots: [{ name: "main", displayName: "JOHNTRAN Zalo", avatar: "https://example.com/bot.png", uid: "zalo-uid", pid: 123, uptimeMs: 60000, restarts: 0, bridgePort: 3901, autoRestart: true, hasQr: false }] },
     $: () => botList,
     botStatus: () => ["Đang chạy", "online"],
