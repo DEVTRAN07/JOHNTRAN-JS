@@ -346,3 +346,120 @@ test("nt go limits malformed-answer hints to once per solo session", async () =>
     else global.config = previousConfig;
   }
 });
+
+
+test("Nối Từ help advertises Solo and Classic score controls", () => {
+  const guide = command._test.help("/");
+  assert.match(guide, /nt classic/);
+  assert.match(guide, /bxh \[solo \| classic/);
+  assert.match(guide, /reset \[solo \| classic/);
+});
+
+test("Solo scores appear in their own leaderboard", async () => {
+  const Users = makeNoituUsers({
+    solo: { name: "Solo Player", noitu: { points: 8, botWins: 1, modes: { solo: 8 }, months: {} } },
+    other: { name: "Other", noitu: { points: 4, modes: { gc: 4 }, months: {} } }
+  });
+  const sent = [];
+  const previousConfig = global.config;
+  global.config = { prefix: "/" };
+  try {
+    await command.run({
+      args: ["bxh", "solo"],
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: { threadId: "solo-rank-command", type: 2, data: { uidFrom: "viewer" } },
+      Users,
+      Threads: { getCachedData() { return { data: { noitu_enabled: true } }; } }
+    });
+    assert.match(sent[0].msg, /BẢNG XẾP HẠNG NỐI TỪ SOLO/);
+    assert.match(sent[0].msg, /Solo Player — 8 điểm/);
+    assert.doesNotMatch(sent[0].msg, /Other — 4 điểm/);
+  } finally {
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
+
+test("reset Solo clears its points and AI wins while preserving other modes", async () => {
+  const Users = makeNoituUsers({
+    player: {
+      name: "Player",
+      noitu: {
+        points: 15,
+        botWins: 2,
+        moves: 7,
+        modes: { solo: 8, gc: 7 },
+        months: { "2026-11": { solo: 8, gc: 7, all: 15 } }
+      }
+    }
+  });
+  const previousConfig = global.config;
+  const previousUsers = global.users;
+  global.config = { prefix: "/" };
+  global.users = { admin: ["admin"], support: [] };
+  const sent = [];
+  try {
+    await command.run({
+      args: ["reset", "solo"],
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: { threadId: "solo-reset-command", type: 2, data: { uidFrom: "admin" } },
+      Users,
+      Threads: { getCachedData() { return { data: { noitu_enabled: true } }; } }
+    });
+    const profile = Users.records.get("player").noitu;
+    assert.equal(profile.points, 7);
+    assert.equal(profile.modes.solo, 0);
+    assert.equal(profile.modes.gc, 7);
+    assert.equal(profile.botWins, 0);
+    assert.equal(profile.moves, 7);
+    assert.equal(profile.months["2026-11"].all, 7);
+    assert.match(sent[0].msg, /SOLO/);
+  } finally {
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+  if (previousUsers === undefined) delete global.users;
+  else global.users = previousUsers;
+});
+
+test("nt start without a waiting PvP room does not create a classic game implicitly", async () => {
+  const sent = [];
+  const threadId = "start-without-room";
+  const previousConfig = global.config;
+  global.config = { prefix: "/" };
+  try {
+    await command.run({
+      args: ["start"],
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: { threadId, type: 2, data: { uidFrom: "player-1" } },
+      Threads: { getCachedData() { return { data: { noitu_enabled: true } }; } }
+    });
+    assert.match(sent[0].msg, /nt room/);
+    assert.equal(gameService.get(threadId), null);
+  } finally {
+    gameService.sessions.delete(threadId);
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
+
+test("nt classic remains available as the explicit legacy turn-based mode", async () => {
+  const sent = [];
+  const threadId = "classic-start-command";
+  const previousConfig = global.config;
+  global.config = { prefix: "/" };
+  try {
+    await command.run({
+      args: ["classic"],
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: { threadId, type: 2, data: { uidFrom: "player-1", dName: "Player" } },
+      Threads: { getCachedData() { return { data: { noitu_enabled: true } }; } }
+    });
+    assert.ok(gameService.get(threadId));
+    assert.match(sent[0].msg, /ĐÃ BẮT ĐẦU GAME NỐI TỪ/);
+  } finally {
+    gameService.stop(threadId);
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
