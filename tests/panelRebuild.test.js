@@ -93,7 +93,13 @@ test("Panel reads a cached live Zalo profile instead of showing the internal mai
   assert.match(server, /probeBridgeProfile\(out, bridgeToken\)/);
   assert.match(server, /threads\|profile\|messages/);
   assert.match(js, /function renderBotSelectors\(\)/);
-  assert.match(js, /bot\.displayName \|\| bot\.name/);
+  assert.match(js, /function getBotDisplayName\(nameOrBot\)/);
+  assert.match(js, /getBotDisplayName\(bot\)/);
+  assert.match(server, /profile\.displayName \|\| profile\.zaloName \|\| "Tài khoản Zalo"/);
+  assert.doesNotMatch(js, /botProfile\?\.name \|\| "Tài khoản bot"/);
+  assert.match(js, /botEnabled:typeof g\.botEnabled==="boolean"\?g\.botEnabled:null/);
+  assert.match(js, /thread-bot-state is-on/);
+  assert.match(js, /thread-bot-state is-off/);
   assert.match(html, /Đang tải tài khoản Zalo/);
 });
 
@@ -127,6 +133,29 @@ test("group toggles wait for durable storage and pending Supabase writes survive
   assert.match(databaseFacade, /async saveDataAndWait/);
   assert.match(supabaseStore, /async setAndWait/);
   assert.match(supabaseStore, /A remote snapshot can be older than a local write still in flight/);
+});
+
+test("idle group ON state survives hot-cache expiry and is warmed from persisted storage at startup", () => {
+  const cache = require("../core/cache");
+  assert.match(cache ? fs.readFileSync(path.join(root, "core/cache.js"), "utf8") : "", /durableThreadCache = new LRUCache\(\{ max: 10000, ttl: Infinity \}\)/);
+  assert.match(controllerThreads, /durableThreadCache\.get\(key\)/);
+  assert.match(controllerThreads, /return rememberThreadRecord\(record, key\)/);
+  assert.match(johnTran, /threadController\.getAll\(\)/);
+  assert.match(johnTran, /nạp trạng thái bot của/);
+
+  const gid = "durable-group-cache-test";
+  const record = { threadId: gid, data: { bot_enabled: true } };
+  cache.threadCache.set(gid, record, 0);
+  cache.durableThreadCache.set(gid, record);
+  try {
+    assert.equal(cache.threadCache.get(gid), undefined, "ordinary hot cache should expire");
+    cache.durableThreadCache.pruneExpired();
+    assert.equal(cache.durableThreadCache.get(gid)?.data?.bot_enabled, true,
+      "the last committed ON flag must survive hot-cache cleanup");
+  } finally {
+    cache.threadCache.invalidate(gid);
+    cache.durableThreadCache.invalidate(gid);
+  }
 });
 
 test("bulk group actions are explicit, confirmed and rate-limited", () => {
