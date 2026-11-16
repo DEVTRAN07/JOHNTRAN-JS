@@ -4,6 +4,7 @@ const fs = require("fs");
 const stats = require("../../core/stats");
 const { collectDeviceMetrics } = require("../../core/runtime/deviceMetrics");
 const { renderCanvas } = require("../../core/canvas/workerRender");
+const { isEnabled: isGroupBotEnabled } = require("../../core/runtime/groupBotState");
 
 module.exports.config = {
   name: "status",
@@ -23,8 +24,8 @@ function currentGroup(api, event, Threads, threadData) {
   // Zalo ThreadType.User = 0 and ThreadType.Group = 1.
   const isPrivate = Number(event?.type) === 0;
   const record = threadData || Threads.getCachedData?.(id) || null;
-  // Bot is enabled by default; only explicit false means disabled.
-  const enabled = record?.data?.bot_enabled !== false;
+  // A group is OFF unless /bot on explicitly set bot_enabled=true.
+  const enabled = isPrivate || isGroupBotEnabled(record);
 
   const cachedInfo = !isPrivate ? stats.getCachedGroupInfo(id) : null;
   const cachedGroup = cachedInfo?.gridInfoMap?.[id];
