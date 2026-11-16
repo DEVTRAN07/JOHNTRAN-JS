@@ -12,6 +12,10 @@ const css = fs.readFileSync(path.join(root, "docs/panel.css"), "utf8");
 const v4css = fs.readFileSync(path.join(root, "docs/panel.v4.css"), "utf8");
 const js = fs.readFileSync(path.join(root, "docs/panel.js"), "utf8");
 const server = fs.readFileSync(path.join(root, "panel/server.js"), "utf8");
+const controllerThreads = fs.readFileSync(path.join(root, "core/controller/controllerThreads.js"), "utf8");
+const databaseAdapter = fs.readFileSync(path.join(root, "core/runtime/adapters/database.js"), "utf8");
+const databaseFacade = fs.readFileSync(path.join(root, "utils/db.js"), "utf8");
+const supabaseStore = fs.readFileSync(path.join(root, "core/storage/supabase.js"), "utf8");
 
 test("rebuilt panel JavaScript parses without browser-side dependencies", () => {
   assert.doesNotThrow(() => new vm.Script(js, { filename: "docs/panel.js" }));
@@ -67,6 +71,28 @@ test("group avatars are lazy-loaded and failed images degrade to initials withou
   assert.match(js, /failedGroupAvatarUrls\.add\(key\)/);
   assert.match(js, /function syncGroupCardStatuses/);
   assert.match(v4css, /group-card-avatar img\.loaded/);
+});
+
+test("group toggles wait for durable storage and pending Supabase writes survive stale sync", () => {
+  assert.match(controllerThreads, /saveDataAndWait\\("Threads", "threadId", key, record\\.data\\)/);
+  assert.match(databaseAdapter, /saveDataAndWait/);
+  assert.match(databaseFacade, /async saveDataAndWait/);
+  assert.match(supabaseStore, /async setAndWait/);
+  assert.match(supabaseStore, /A remote snapshot can be older than a local write still in flight/);
+});
+
+test("bulk group actions are explicit, confirmed and rate-limited", () => {
+  for (const id of ["groupSelectVisible", "groupBulkCount", "groupClearSelection"]) {
+    assert.ok(html.includes('id="' + id + '"'), "missing bulk control: " + id);
+  }
+  assert.match(html, /data-group-bulk-action="on"/);
+  assert.match(html, /data-group-bulk-action="off"/);
+  assert.match(js, /state\\.selectedGroupIds/);
+  assert.match(js, /window\\.confirm\\(/);
+  assert.match(js, /offset \\+= 4/);
+  assert.match(js, /groupBulkFlight/);
+  assert.match(v4css, /group-bulk-bar/);
+  assert.match(v4css, /group-card-select/);
 });
 
 test("dashboard keeps using the existing protected panel API and bridge routes", () => {
