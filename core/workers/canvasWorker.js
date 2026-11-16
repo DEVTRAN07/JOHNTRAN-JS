@@ -11,6 +11,7 @@ async function renderToPath(type, data) {
     case "menu": return require("../canvas/menu").renderMenuGrid(data || {});
     case "menu-folder": return require("../canvas/menu").renderFolderCard(data || {});
     case "noitu-guide": return require("../canvas/noituGuide").renderNoituGuide(data || {});
+    case "ghepchu": return require("../canvas/ghepchu").renderGhepChu(data || {});
     case "status": return require("../canvas/status").renderStatus(data || {});
     case "bot-groups": return require("../canvas/botGroups").renderBotGroups(data || {});
     case "topchat": return require("../canvas/topchat").renderTopChat(data || {});
