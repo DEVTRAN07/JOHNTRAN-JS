@@ -202,14 +202,21 @@ class SupabaseStore {
         }
         this.mirror[storeTable] = next;
       }
-      if (firstError && !anySuccess) {
-        this.consecutiveFailures += 1; this.syncError = firstError; this.classified = firstClassified;
+      if (firstError) {
+        this.consecutiveFailures += 1;
+        this.syncError = firstError;
+        this.classified = firstClassified;
         this.nextSyncDelay = Math.min(SYNC_INTERVAL * Math.pow(2, this.consecutiveFailures), BACKOFF_CAP);
+        // Partial success is still degraded: slow the next full snapshot too.
         this.scheduleInterval(this.nextSyncDelay);
-        throw new Error(firstError);
+        if (!anySuccess) throw new Error(firstError);
+      } else {
+        this.consecutiveFailures = 0;
+        this.syncError = null;
+        this.classified = null;
+        this.nextSyncDelay = SYNC_INTERVAL;
+        this.scheduleInterval(SYNC_INTERVAL);
       }
-      if (firstError) { this.consecutiveFailures += 1; this.syncError = firstError; this.classified = firstClassified; }
-      else { this.consecutiveFailures = 0; this.syncError = null; this.classified = null; this.nextSyncDelay = SYNC_INTERVAL; this.scheduleInterval(SYNC_INTERVAL); }
       this.lastSyncAt = Date.now();
       return true;
     })().finally(() => { this.syncing = null; });
@@ -391,6 +398,7 @@ class SupabaseStore {
       lastSyncAgeMs: this.lastSyncAt ? Math.max(0, Date.now() - this.lastSyncAt) : null,
       syncError: this.syncError,
       consecutiveFailures: this.consecutiveFailures,
+      nextSyncDelayMs: this.nextSyncDelay,
       classified: this.classified,
       tableCounts,
       pendingWrites: this.writeVersions.size,
