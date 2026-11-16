@@ -122,3 +122,34 @@ test("watchdog uses a rolling crash window and spawn errors are recoverable", as
     cleanup(name);
   }
 });
+
+
+test("unexpected bot exits use exponential restart backoff before the crash-window limit", async () => {
+  const name = "__test_exponential_restart_backoff__";
+  const { bot, children } = createHarness(name, {
+    restartDelayMs: 20,
+    maxRestartDelayMs: 80,
+    restartWindowMs: 1000,
+    maxRestartsInWindow: 4
+  });
+
+  try {
+    bot.start();
+    children[0].emit("close", 1, null);
+    const firstDelay = bot.nextRestartAt - Date.now();
+    assert.ok(firstDelay <= 20 && firstDelay >= 0);
+
+    await sleep(30);
+    assert.equal(children.length, 2, "the first restart should happen after the base delay");
+    children[1].emit("close", 1, null);
+    const secondDelay = bot.nextRestartAt - Date.now();
+
+    assert.ok(secondDelay >= 30 && secondDelay <= 45,
+      "the second restart delay should double while remaining bounded");
+    assert.equal(bot.toJSON().restartCountInWindow, 2);
+    assert.equal(bot.toJSON().flapping, false);
+  } finally {
+    await bot.stop();
+    cleanup(name);
+  }
+});
