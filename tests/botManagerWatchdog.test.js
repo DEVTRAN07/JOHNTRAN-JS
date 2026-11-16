@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const { EventEmitter } = require("node:events");
-const { BotInstance, botDir } = require("../panel/botManager");
+const { BotInstance, BotManager, botDir, _test: botManagerTest } = require("../panel/botManager");
 
 function createHarness(name, options = {}) {
   const children = [];
@@ -181,5 +181,71 @@ test("a stable bot runtime resets consecutive restart delay but not the rolling 
   } finally {
     await bot.stop();
     cleanup(name);
+  }
+});
+
+
+test("Panel startAll rehydrates every registered bot and skips running instances", async () => {
+  const first = createHarness("__test_start_all_main__");
+  const second = createHarness("__test_start_all_child__");
+  const manager = Object.create(BotManager.prototype);
+  manager.bots = new Map([["main", first.bot], ["child", second.bot]]);
+
+  try {
+    const started = manager.startAll();
+    assert.deepEqual(started.started, ["__test_start_all_main__", "__test_start_all_child__"]);
+    assert.deepEqual(started.errors, []);
+    assert.equal(first.children.length, 1);
+    assert.equal(second.children.length, 1);
+
+    const repeated = manager.startAll();
+    assert.deepEqual(repeated.started, []);
+    assert.deepEqual(repeated.skipped, ["__test_start_all_main__", "__test_start_all_child__"]);
+    assert.equal(first.children.length, 1);
+    assert.equal(second.children.length, 1);
+  } finally {
+    await first.bot.stop();
+    await second.bot.stop();
+  }
+});
+
+test("legacy root Cookie + IMEI session is copied into bots/main without overwriting", () => {
+  const root = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "johntran-legacy-login-"));
+  const sourceDir = path.join(root, "legacy");
+  const targetDir = path.join(root, "bots", "main");
+  const sourceAccount = path.join(sourceDir, "account.json");
+  const sourceCookie = path.join(sourceDir, "private", "session.json");
+  const targetAccount = path.join(targetDir, "account.json");
+  const targetCookie = path.join(targetDir, "private", "session.json");
+
+  try {
+    fs.mkdirSync(path.dirname(sourceCookie), { recursive: true });
+    fs.writeFileSync(sourceAccount, JSON.stringify({
+      imei: "test-imei",
+      userAgent: "test-agent",
+      cookie: "private/session.json"
+    }));
+    fs.writeFileSync(sourceCookie, JSON.stringify([{ name: "test", value: "not-a-real-session" }]));
+
+    const copied = botManagerTest.migrateLegacyMainSession({
+      dir: targetDir,
+      accountFile: targetAccount
+    }, { sourceAccountFile: sourceAccount });
+
+    assert.ok(copied.includes("account.json"));
+    assert.ok(copied.includes(path.join("private", "session.json")));
+    assert.equal(JSON.parse(fs.readFileSync(targetAccount, "utf8")).imei, "test-imei");
+    assert.equal(fs.readFileSync(targetCookie, "utf8"), fs.readFileSync(sourceCookie, "utf8"));
+    assert.ok(fs.existsSync(sourceAccount), "migration must preserve the legacy account source");
+
+    fs.writeFileSync(targetAccount, JSON.stringify({ imei: "new-child-imei", cookie: "cookie.json" }));
+    const second = botManagerTest.migrateLegacyMainSession({
+      dir: targetDir,
+      accountFile: targetAccount
+    }, { sourceAccountFile: sourceAccount });
+    assert.deepEqual(second, []);
+    assert.equal(JSON.parse(fs.readFileSync(targetAccount, "utf8")).imei, "new-child-imei");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
