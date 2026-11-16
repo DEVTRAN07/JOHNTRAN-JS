@@ -16,6 +16,7 @@ class JsonStore {
     this.lastLoadError = null;
     this.loaded = false;
     this.loadError = null;
+    this.lastLoadError = null;
     this.lastFlushError = null;
     this.lastWriteAt = 0;
     this.lastFlushAt = 0;
@@ -51,6 +52,7 @@ class JsonStore {
       this.loaded = true;
     } catch (error) {
       this.loadError = error.message || String(error);
+      this.lastLoadError = this.loadError;
       this.loaded = false;
       logger.log(`Không thể đọc ${this.file}: ${this.loadError}. Tạm khóa ghi để tránh ghi đè database gốc.`, "error");
     }
@@ -158,6 +160,7 @@ class JsonStore {
       lastWriteAt: this.lastWriteAt || null,
       lastFlushAt: this.lastFlushAt || null,
       loadError: this.loadError,
+      lastLoadError: this.lastLoadError || this.loadError,
       lastFlushError: this.lastFlushError,
       persistence: getJsonPersistenceStatus(this.file)
     };
