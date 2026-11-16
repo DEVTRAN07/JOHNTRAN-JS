@@ -117,3 +117,19 @@ test("canvas worker renders the status card off the main thread", async () => {
     try { fs.unlinkSync(outputPath); } catch {}
   }
 });
+
+
+test("canvas worker renders a dedicated noitu welcome banner", async () => {
+  const outputPath = await renderCanvas("noitu-guide", {}, { timeout: 20000, poolSize: 1 });
+  try {
+    const png = fs.readFileSync(outputPath);
+    assert.ok(png.length > 1000, "Nối Từ welcome banner should contain image data");
+    assert.equal(
+      png.subarray(0, 8).toString("hex"),
+      "89504e470d0a1a0a",
+      "Nối Từ welcome banner should be a PNG"
+    );
+  } finally {
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+});
