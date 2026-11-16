@@ -4,6 +4,7 @@ const {
   timingSafeStringEqual,
   isLoopbackHost,
   assertPanelToken,
+  resolvePanelToken,
   isPanelRequestAuthorized,
 } = require("../utils/tokenSecurity");
 
@@ -21,6 +22,21 @@ test("recognizes only loopback bind addresses as local", () => {
   assert.equal(isLoopbackHost("::1"), true);
   assert.equal(isLoopbackHost("0.0.0.0"), false);
   assert.equal(isLoopbackHost("192.168.1.10"), false);
+});
+
+test("resolves Panel token from canonical and compatibility environment names", () => {
+  const strong = "p".repeat(64);
+  assert.equal(resolvePanelToken({}, { JT_PANEL__TOKEN: strong }), strong);
+  assert.equal(resolvePanelToken({}, { JT_PANEL_TOKEN: strong }), strong);
+  assert.equal(
+    resolvePanelToken({}, { JT_PANEL__TOKEN: "canonical", JT_PANEL_TOKEN: "alias" }),
+    "canonical"
+  );
+  assert.equal(
+    resolvePanelToken({ panel: { token: "config-token" } }, { JT_PANEL__TOKEN: strong }),
+    "config-token"
+  );
+  assert.equal(resolvePanelToken({}, {}), "");
 });
 
 test("requires a strong token for a public Panel bind", () => {
