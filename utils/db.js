@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("fs");
 const logger = require("./logger");
 const { JsonStore } = require("../core/storage");
 const { SupabaseStore } = require("../core/storage/supabase");
@@ -19,7 +20,22 @@ if (!forceJson && SUPABASE_URL && SUPABASE_KEY) {
   if (forceJson && (SUPABASE_URL || SUPABASE_KEY)) {
     logger.log("Database: forced JSON store (JT_DB_DRIVER/SUPABASE_DISABLE) mặc dù Supabase env có sẵn", "warn");
   }
-  const dbFile = process.env.JT_DB_FILE || path.join(__dirname, "..", "data", "store.json");
+  const persistentRoot = String(process.env.JT_DB_PERSISTENT_PATH || "").trim();
+  const defaultDbFile = persistentRoot
+    ? path.join(path.resolve(persistentRoot), "store.json")
+    : path.join(__dirname, "..", "data", "store.json");
+  const dbFile = process.env.JT_DB_FILE || defaultDbFile;
+  const legacyDbFile = path.join(__dirname, "..", "data", "store.json");
+
+  // One-time, non-destructive migration when a Render disk is configured.
+  // Never overwrite an existing destination or remove the legacy copy.
+  if (persistentRoot && !process.env.JT_DB_FILE && path.resolve(legacyDbFile) !== path.resolve(dbFile) &&
+      fs.existsSync(legacyDbFile) && !fs.existsSync(dbFile)) {
+    fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+    fs.copyFileSync(legacyDbFile, dbFile, fs.constants.COPYFILE_EXCL);
+    logger.log("Đã sao chép database JSON cũ sang JT_DB_PERSISTENT_PATH (giữ nguyên file nguồn).", "info");
+  }
+
   db = new JsonStore(dbFile, ["Users", "Threads", "Metrics", "BotStats"]);
   logger.log(`Database: JSON store (${dbFile})`, "info");
   if (process.env.RENDER) {
