@@ -45,7 +45,7 @@ async function sendStatusCard({ api, event, reply, thread }) {
   try {
     imagePath = await renderCanvas("events", {
       mode: "status",
-      prefix: global.config.prefix || "/",
+      prefix: (global.config?.prefix || "/") || "/",
       events: EVENTS.map(item => ({
         key: item.key,
         label: item.label,
@@ -63,7 +63,7 @@ async function sendStatusCard({ api, event, reply, thread }) {
 }
 
 async function sendHostsCard({ api, event, reply, hosts }) {
-  const prefix = global.config.prefix || "/";
+  const prefix = (global.config?.prefix || "/") || "/";
   const fallback = "Danh sách host được phép:\n" + (hosts.length ? hosts.map(host => "• " + host).join("\n") : "Chưa thêm host nào. Bot đang dùng danh sách mặc định.") +
     "\n\nThêm host: " + prefix + "events guard allow <host>";
   let imagePath;
@@ -104,7 +104,7 @@ module.exports.run = async function ({ api, event, args, Threads, reply }) {
   }
 
   if (action !== "on" && action !== "off") {
-    return reply.error("Thiếu trạng thái. Dùng: " + global.config.prefix + "events " + target.key + " on|off");
+    return reply.error("Thiếu trạng thái. Dùng: " + (global.config?.prefix || "/") + "events " + target.key + " on|off");
   }
 
   const thread = (await Threads.getData(threadId)).data || {};

@@ -168,7 +168,7 @@ function renderThemeSettings(data = {}) {
   const palette = menuPalette.getPalette();
   const presets = Array.isArray(data.presets) ? data.presets.slice(0, 8) : [];
   const rows = Math.max(1, Math.ceil(presets.length / 2));
-  const bodyHeight = S(180 + rows * 118);
+  const bodyHeight = S(220 + rows * 118);
   const result = theme.newCanvas(W, bodyHeight);
   const ctx = result.ctx;
   drawBackdrop(ctx, W, bodyHeight, palette);
