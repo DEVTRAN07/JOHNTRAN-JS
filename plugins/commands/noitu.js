@@ -382,7 +382,8 @@ async function startSoloBotGame({ api, event }) {
 }
 
 async function playSoloBotTurn({ api, event, session, Users }) {
-  const reply = noituBotAI.chooseReply(session);
+  let reply = noituBotAI.chooseReply(session);
+  if (!reply) reply = await noituBotAI.findDynamicReply(session, { timeoutMs: 700 });
   if (!reply) {
     game.stop(session.threadId);
     const score = await updateNoituScore(Users || defaultUsers, session.humanUid, 5, { botWin: true, mode: "solo" });
