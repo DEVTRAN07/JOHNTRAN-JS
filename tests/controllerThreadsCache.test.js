@@ -45,6 +45,28 @@ test("setDataAndWait resolves only after the enabled group flag is on disk", asy
   assert.equal(persisted.data.bot_enabled, true);
 });
 
+test("partial group settings updates preserve bot_enabled until an explicit OFF write", async () => {
+  const threadId = "thread-cache-group-preserve-" + process.pid;
+
+  await Threads.setDataAndWait(threadId, { bot_enabled: true, prefix: "/" });
+  await Threads.setData(threadId, { anti_link: true });
+  let current = await Threads.getData(threadId);
+
+  assert.equal(current.data.anti_link, true);
+  assert.equal(current.data.bot_enabled, true,
+    "an older command saving only anti settings must not turn the bot OFF");
+
+  await Threads.setData(threadId, { bot_enabled: false, anti_link: true });
+  current = await Threads.getData(threadId);
+  assert.equal(current.data.bot_enabled, false,
+    "an explicit manual OFF must still turn the bot OFF");
+
+  await db.flush();
+  threadCache.invalidate(threadId);
+  const persisted = await Threads.getData(threadId);
+  assert.equal(persisted.data.bot_enabled, false);
+});
+
 test("createData initializes the same record shape as persisted rows", async () => {
   const threadId = "thread-cache-create-" + process.pid;
   const created = await Threads.createData(threadId, { anti_link: false, anti_spam: true });
