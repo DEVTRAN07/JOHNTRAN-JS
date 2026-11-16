@@ -759,8 +759,12 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
 
   if (action === "pass") {
+    const session = game.get(threadId);
     const result = game.pass(threadId, uid);
     if (!result.ok) return send(api, event, result.code === "NOT_TURN" ? "⏳ Chưa đến lượt bạn." : "⚠️ Bạn chưa tham gia ván.");
+    if (session?.mode === "solo_bot" && result.nextPlayer?.uid === session.botUid) {
+      return playSoloBotTurn({ api, event, session, Users });
+    }
     return send(api, event, "⏭️ Đã bỏ lượt.\n" + currentPlayerLine(game.get(threadId)));
   }
 
