@@ -42,7 +42,8 @@ test("nt go answers plain text without a prefix", async () => {
       type: 2,
       data: { uidFrom: "player-1", content: "sinh viên" }
     },
-    eventType: "message"
+    eventType: "message",
+    Users: { async getData() { return { data: {} }; }, async setData() {} }
   });
   assert.equal(consumed, true);
   assert.equal(session.moves, 1);
@@ -67,7 +68,8 @@ test("nt go accepts self-listen answers only when allow_self_command is enabled"
         data: { uidFrom: "bot-owner", content: "sinh viên" }
       },
       eventType: "message",
-      isSelf: true
+      isSelf: true,
+      Users: { async getData() { return { data: {} }; }, async setData() {} }
     });
     assert.equal(consumed, true);
     assert.equal(session.moves, 1);
