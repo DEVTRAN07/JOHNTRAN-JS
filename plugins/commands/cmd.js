@@ -3,6 +3,7 @@ const path=require("path"),fs=require("fs");
 const loaderCommand=require("../../core/loader/loaderCommand");
 const folderMenu=require("../../core/runtime/folderMenu");
 const {invalidate}=require("../../core/runtime/commandRegistry");
+const {invalidateMenuGroupIndex}=folderMenu;
 module.exports.config={name:"command",aliases:["cmd"],version:"2.0.0",role:2,author:"JOHNTRAN",description:"Quản lý lệnh theo cấu trúc menu mới",category:"MyBot",usage:"cmd <list|folders|info|load|unload|reload>",cooldowns:2};
 function send(api,event,msg){return api.sendMessage({msg},event.threadId,event.type);}
 function findCommand(name){const key=String(name||"").toLowerCase();for(const [id,mod] of global.client.commands){if(id===key||mod?.config?.name===key||(mod?.config?.aliases||[]).includes(key))return {id,mod};}return null;}
@@ -29,7 +30,7 @@ module.exports.run=async function({api,event,args}){
  }
  if(action==="unload"){
   const found=findCommand(name);if(!found)return send(api,event,"Lệnh chưa được tải: "+name);
-  global.client.commands.delete(found.id);delete require.cache[require.resolve(path.join(__dirname,found.id+".js"))];invalidate(global.client.commands);
+  global.client.commands.delete(found.id);delete require.cache[require.resolve(path.join(__dirname,found.id+".js"))];invalidate(global.client.commands);invalidateMenuGroupIndex(global.client.commands);
   return send(api,event,"Đã gỡ lệnh "+found.id+".");
  }
  return send(api,event,"JOHNTRAN · COMMAND CENTER\n/cmd list — Danh sách thư mục menu mới\n/cmd folders — Toàn bộ lệnh\n/cmd info <lệnh> — Chi tiết lệnh\n/cmd load <file> — Tải lệnh\n/cmd reload <file> — Nạp lại lệnh\n/cmd unload <lệnh> — Gỡ lệnh");
