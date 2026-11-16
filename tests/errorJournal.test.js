@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { after, test } = require("node:test");
-const { createErrorJournal, readJournalFile } = require("../core/runtime/errorJournal");
+const { createErrorJournal, readJournalFile, normalizeContext } = require("../core/runtime/errorJournal");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-error-journal-"));
 const files = [];
@@ -99,4 +99,14 @@ test("error journal bounds its in-memory recent ring", () => {
   assert.equal(snapshot.events.length, 10);
   assert.equal(snapshot.summary.unique, 10);
   assert.equal(snapshot.summary.warnings, 10);
+});
+
+
+test("private user conversations never store sender IDs as group IDs", () => {
+  const normalized = normalizeContext({
+    source: "command",
+    isGroup: false,
+    groupId: "private-user-uid-123"
+  });
+  assert.equal(normalized.groupId, "");
 });
