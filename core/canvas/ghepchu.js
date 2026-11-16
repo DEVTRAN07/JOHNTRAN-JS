@@ -13,12 +13,60 @@ let templatePromise = null;
 
 function getTemplate() {
   if (!templatePromise) {
-    templatePromise = loadImage(TEMPLATE_PATH).catch(error => {
-      templatePromise = null;
-      throw error;
-    });
+    // Template artwork is optional at runtime. A missing asset must not make
+    // the game unusable; render a native fallback canvas instead.
+    templatePromise = loadImage(TEMPLATE_PATH).catch(() => null);
   }
   return templatePromise;
+}
+
+function drawFallbackTemplate(ctx) {
+  const background = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
+  background.addColorStop(0, "#071629");
+  background.addColorStop(0.52, "#102b4b");
+  background.addColorStop(1, "#061321");
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  roundedRect(ctx, 24, 24, WIDTH - 48, HEIGHT - 48, 32);
+  ctx.fillStyle = "rgba(8, 24, 43, 0.9)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(100, 178, 239, 0.7)";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  drawText(ctx, "JOHNTRAN · GAME CENTER", 640, 82, {
+    size: 24, color: "#8fcaff", weight: "800", align: "center"
+  });
+  drawText(ctx, "GHÉP CHỮ", 640, 126, {
+    size: 42, color: "#f4f8ff", weight: "800", align: "center", shadow: true
+  });
+  drawText(ctx, "Sắp xếp các chữ cái để tìm từ tiếng Việt", 640, 164, {
+    size: 20, color: "#bad5ee", weight: "600", align: "center"
+  });
+
+  const boxes = [
+    { x: 250, label: "THỜI GIAN" },
+    { x: 520, label: "ĐIỂM SỐ" },
+    { x: 790, label: "CHUỖI ĐÚNG" }
+  ];
+  for (const box of boxes) {
+    roundedRect(ctx, box.x, 177, 240, 78, 16);
+    ctx.fillStyle = "rgba(20, 54, 88, 0.92)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(91, 161, 220, 0.65)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    drawText(ctx, box.label, box.x + 120, 203, {
+      size: 16, color: "#9fc9ed", weight: "700", align: "center"
+    });
+  }
+
+  roundedRect(ctx, 285, 285, 710, 168, 22);
+  ctx.fillStyle = "rgba(5, 19, 35, 0.85)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(84, 155, 219, 0.55)";
+  ctx.stroke();
 }
 
 function roundedRect(ctx, x, y, width, height, radius) {
@@ -203,9 +251,10 @@ async function renderGhepChu(data = {}) {
   const ctx = canvas.getContext("2d");
   const template = await getTemplate();
 
-  // Exact image supplied by the user is the game-card master, not a loose
-  // redesign. Dynamic values are drawn over the original art and layout.
-  ctx.drawImage(template, 0, 0, WIDTH, HEIGHT);
+  // Prefer the supplied master artwork when it is present. Production builds
+  // that omit the optional image still get a complete, legible game card.
+  if (template) ctx.drawImage(template, 0, 0, WIDTH, HEIGHT);
+  else drawFallbackTemplate(ctx);
 
   const remaining = Math.max(0, Number(data.remainingSeconds) || 0);
   drawStatValue(ctx, 410, remaining + "s", remaining <= 15 ? "#ff8752" : "#95caff", 150);
