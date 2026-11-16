@@ -7,7 +7,8 @@ const {
   isEnabled: isGroupBotEnabled,
   isAllowedControl,
   isAllowedControlMessage,
-  canRunCommandInGroup
+  canRunCommandInGroup,
+  attachGroupBotState
 } = require("../core/runtime/groupBotState");
 
 test("realtime messages may execute commands", () => {
@@ -38,4 +39,28 @@ test("only /bot on and /bot status can run while a group is OFF", () => {
   assert.equal(isAllowedControlMessage("/bot on", "/"), true);
   assert.equal(isAllowedControlMessage("/menu", "/"), false);
   assert.equal(isAllowedControlMessage("!bot on", "/"), false);
+});
+
+test("group browser state is ON only for records explicitly enabled in the selected bot DB", () => {
+  const groups = [
+    { gid: "group-on", name: "Enabled group", totalMember: 10 },
+    { gid: "group-off", name: "Disabled group", totalMember: 20 },
+    { gid: "group-legacy", name: "Legacy group", totalMember: 30 },
+    { gid: "group-untracked", name: "Untracked group", totalMember: 40 }
+  ];
+  const threads = [
+    { threadId: "group-on", data: { bot_enabled: true } },
+    { threadId: "group-off", data: { bot_enabled: false } },
+    { threadId: "group-legacy", data: {} }
+  ];
+
+  const result = attachGroupBotState(groups, threads);
+  assert.deepEqual(result.map(group => [group.gid, group.botEnabled]), [
+    ["group-on", true],
+    ["group-off", false],
+    ["group-legacy", false],
+    ["group-untracked", false]
+  ]);
+  assert.equal(result[0].avatar, undefined);
+  assert.equal(result[0].totalMember, 10);
 });
