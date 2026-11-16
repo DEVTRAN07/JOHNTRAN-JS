@@ -114,3 +114,48 @@ test("new thread records persist bot_enabled=false by default", async () => {
   const cached = Threads.getCachedData(threadId);
   assert.equal(cached.data.bot_enabled, false);
 });
+
+
+test("an enabled group remains ON from the last-known mirror when a later DB sync is degraded", async () => {
+  const backend = db.db;
+  const originalGetStatus = backend.getStatus;
+  const threadId = "thread-cache-retain-on-" + process.pid;
+  const unknownThreadId = "thread-cache-no-default-while-degraded-" + process.pid;
+
+  await Threads.setDataAndWait(threadId, { bot_enabled: true, prefix: "/" });
+  // Simulate the five-minute thread LRU expiry without waiting in the test.
+  threadCache.set(threadId, {
+    id: threadId,
+    threadId,
+    data: { bot_enabled: true, prefix: "/" }
+  }, -1);
+
+  backend.getStatus = () => ({
+    ok: false,
+    lastSyncAt: Date.now() - 60000,
+    syncError: "temporary Supabase network timeout"
+  });
+
+  try {
+    const lastKnown = Threads.getCachedData(threadId);
+    assert.equal(lastKnown?.data?.bot_enabled, true,
+      "cache expiry and a later network error must not make an existing enabled group OFF");
+
+    assert.equal(Threads.getCachedData(unknownThreadId), null,
+      "an unknown group must remain fail-closed while storage is degraded");
+    assert.equal(db.hasData("Threads", "threadId", unknownThreadId), false,
+      "do not synthesize a default-OFF row while storage cannot confirm it");
+
+    await assert.rejects(
+      Threads.setDataAndWait(threadId, { bot_enabled: false }),
+      /temporary Supabase network timeout/,
+      "configuration writes must still fail instead of pretending the DB accepted them"
+    );
+    assert.equal(db.getData("Threads", "threadId", threadId).data.bot_enabled, true,
+      "a rejected OFF write must not change the last-known enabled state");
+  } finally {
+    backend.getStatus = originalGetStatus;
+    threadCache.invalidate(threadId);
+    threadCache.invalidate(unknownThreadId);
+  }
+});
