@@ -364,3 +364,14 @@ test("production deployment verifier never sends messages or mutates bot configu
   assert.doesNotMatch(verifier, /\/api\/chat\/.*\/send/);
   assert.doesNotMatch(verifier, /method: "POST"/);
 });
+
+
+test("Render CI waits for live deployment state and verifies the deployed service health", () => {
+  const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
+  assert.match(workflow, /timeout-minutes: 20/);
+  assert.match(workflow, /services\/\$\{service_id\}\/deploys\/\$\{deploy_id\}/);
+  assert.match(workflow, /\[\[ "\$deploy_status" == "live" \]\]/);
+  assert.match(workflow, /serviceDetails\.url/);
+  assert.match(workflow, /\$service_url\/health/);
+  assert.match(workflow, /build_failed\|pre_deploy_failed\|update_failed\|canceled/);
+});
