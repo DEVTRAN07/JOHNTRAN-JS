@@ -24,6 +24,8 @@ jobs:
       - run: npm test
       - run: node scripts/test-commands.js
       - run: node scripts/test-all.js
+      - name: Benchmark hot command paths
+        run: npm run benchmark:hotpath
       - name: Render actual canvas previews
         if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'feature/unified-canvas')
         run: node scripts/render-canvas-previews.js
