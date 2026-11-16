@@ -379,5 +379,8 @@ test("Render CI waits for live deployment state and verifies the deployed servic
   assert.match(workflow, /JT_PERSISTENT_DIR/);
   assert.match(workflow, /linked Environment Group variables/);
   assert.match(workflow, /loggedIn=false/);
+  assert.match(workflow, /database: driver=supabase, sync=healthy/);
+  assert.match(workflow, /Production is still using JSON, not Supabase/);
+  assert.match(workflow, /consecutiveFailures/);
   assert.match(workflow, /build_failed\|pre_deploy_failed\|update_failed\|canceled/);
 });
