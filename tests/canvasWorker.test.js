@@ -133,3 +133,57 @@ test("canvas worker renders a dedicated noitu welcome banner", async () => {
     try { fs.unlinkSync(outputPath); } catch {}
   }
 });
+
+
+test("canvas worker renders the live ghép chữ game card", async () => {
+  const outputPath = await renderCanvas("ghepchu", {
+    status: "active",
+    remainingSeconds: 84,
+    score: 20,
+    streak: 2,
+    bestStreak: 2,
+    correct: 2,
+    skipped: 1,
+    playerName: "Wuang",
+    requesterAvatarUrl: "",
+    letters: ["t", "r", "í", "t", "u", "ệ"],
+    clue: "Khả năng suy nghĩ, hiểu biết và nhận thức.",
+    version: "4.0.0",
+    botName: "JOHNTRAN"
+  }, { timeout: 20000, poolSize: 1 });
+  try {
+    const png = fs.readFileSync(outputPath);
+    assert.ok(png.length > 1000, "ghép chữ card should contain image data");
+    assert.equal(
+      png.subarray(0, 8).toString("hex"),
+      "89504e470d0a1a0a",
+      "ghép chữ card should be a PNG"
+    );
+  } finally {
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+});
+
+test("canvas worker renders the finished ghép chữ result card", async () => {
+  const outputPath = await renderCanvas("ghepchu", {
+    status: "finished",
+    remainingSeconds: 0,
+    score: 40,
+    streak: 1,
+    bestStreak: 3,
+    correct: 4,
+    skipped: 2,
+    playerName: "Wuang",
+    letters: [],
+    clue: "",
+    version: "4.0.0",
+    botName: "JOHNTRAN"
+  }, { timeout: 20000, poolSize: 1 });
+  try {
+    const png = fs.readFileSync(outputPath);
+    assert.ok(png.length > 1000);
+    assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  } finally {
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+});
