@@ -131,7 +131,11 @@ module.exports.run = async function ({ api, event, args, Threads, reply }) {
   }
 
   data.bot_enabled = enabled;
-  await (Threads.setDataAndWait || Threads.setData).call(Threads, threadId, data);
+  if (typeof Threads.setBotEnabled === "function") {
+    await Threads.setBotEnabled(threadId, enabled);
+  } else {
+    await (Threads.setDataAndWait || Threads.setData).call(Threads, threadId, data);
+  }
 
   return reply.success(
     enabled
