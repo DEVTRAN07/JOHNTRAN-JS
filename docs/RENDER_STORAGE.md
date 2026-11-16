@@ -71,6 +71,16 @@ Sau đó kiểm tra thực tế: bật một nhóm bằng `/bot on`, tải lại
 Trước khi đổi mount path hoặc đổi loại database, hãy sao lưu các file hiện tại. Cơ chế migration chỉ sao chép file khi đích chưa tồn tại và cố ý giữ bản nguồn; không tự hợp nhất hai bản database đã tồn tại. Nếu cả đích lẫn nguồn đều có dữ liệu mới, dừng migration và so sánh/khôi phục thủ công trước khi chọn file chuẩn.
 
 
+## Deploy verification trong GitHub Actions
+
+Workflow CI hiện:
+1. Chỉ kích hoạt deploy sau khi test, test lệnh, test tổng và benchmark đều đạt.
+2. Lưu deploy ID do Render trả về.
+3. Poll Render API đến khi deploy có trạng thái `live`; các trạng thái build/update thất bại hoặc bị hủy làm job fail.
+4. Lấy public URL của service từ Render API và gọi `/health` để xác nhận tiến trình mới đã phản hồi payload hợp lệ.
+
+Vì vậy, trạng thái Deploy job thành công có nghĩa là Render đã báo deploy `live` và health endpoint trả lời hợp lệ. Nó **không** tự xác nhận Zalo đã đăng nhập, Panel token hoạt động, Supabase đã healthy hay Disk thực tế đã được mount/đang lưu file. Dùng script verify có Panel token để kiểm tra sâu các API quản trị và xem kết quả Persistent Disk trong Panel.
+
 ## 6. Kiểm tra production chỉ đọc
 
 Sau khi deploy và xác nhận Environment, chạy:
