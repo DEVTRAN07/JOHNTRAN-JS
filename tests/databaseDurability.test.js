@@ -133,7 +133,7 @@ test("mountinfo parser verifies only a database path beneath a separate configur
   const mountInfo = [
     "29 20 0:26 / / rw,relatime - overlay overlay rw",
     "61 29 8:1 / /var/data rw,relatime - ext4 /dev/vda1 rw"
-  ].join("\\n");
+  ].join("\n");
   const mounts = parseMountInfo(mountInfo);
   assert.equal(mounts.length, 2);
   assert.equal(mounts[1].mountPoint, "/var/data");
