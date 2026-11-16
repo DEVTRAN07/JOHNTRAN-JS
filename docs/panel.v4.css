@@ -335,3 +335,89 @@ select:focus,input:focus,textarea:focus{border-color:rgba(201,168,106,.55)}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
+
+/* Step 2 · Real Zalo group browser */
+#view-groups .group-config{padding:19px}
+#view-groups .group-form{grid-template-columns:minmax(220px,360px) auto;align-items:end}
+#view-groups .group-select-compat{
+  position:absolute!important;width:1px!important;height:1px!important;
+  padding:0!important;margin:-1px!important;overflow:hidden!important;
+  clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important
+}
+.group-browser{margin:20px 0 7px}
+.group-browser-head{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+  margin-bottom:13px
+}
+.group-browser-head h3{font:700 14px Manrope,sans-serif;margin:5px 0 3px}
+.group-browser-head small{display:block;font-size:9px;color:var(--muted-2)}
+.group-search{
+  width:min(340px,48%);height:36px;display:flex;align-items:center;gap:9px;
+  padding:0 11px;border:1px solid var(--line);border-radius:7px;
+  background:#101923;color:var(--muted)
+}
+.group-search:focus-within{border-color:rgba(201,168,106,.55);box-shadow:0 0 0 3px rgba(201,168,106,.07)}
+.group-search>span{font-size:18px;line-height:1}
+.group-search input{
+  width:100%;height:100%;padding:0;border:0;outline:0;box-shadow:none;
+  background:transparent;font-size:10px;color:var(--text)
+}
+.group-search input:focus{border:0;outline:0}
+.group-card-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));
+  gap:10px;align-items:stretch
+}
+.group-card{
+  width:100%;min-width:0;min-height:92px;display:flex;align-items:center;gap:12px;
+  padding:13px;text-align:left;border:1px solid var(--line);border-radius:9px;
+  background:linear-gradient(145deg,#17222e,#141c26);cursor:pointer;
+  transition:border-color .16s,background .16s,transform .16s,box-shadow .16s
+}
+.group-card:hover{
+  border-color:rgba(201,168,106,.38);background:linear-gradient(145deg,#1c2a38,#17212c);
+  transform:translateY(-1px);box-shadow:0 9px 24px rgba(0,0,0,.16)
+}
+.group-card.selected{
+  border-color:rgba(201,168,106,.72);
+  background:linear-gradient(145deg,rgba(201,168,106,.13),#17212c 70%);
+  box-shadow:inset 0 0 0 1px rgba(201,168,106,.13),0 7px 24px rgba(0,0,0,.12)
+}
+.group-card .group-card-avatar{
+  width:44px;height:44px;flex:0 0 44px;border-radius:11px;
+  border:1px solid rgba(255,255,255,.11);background:#283646;
+  display:grid;place-items:center;overflow:hidden;color:var(--accent-hi);
+  font:800 12px Manrope,sans-serif
+}
+.group-card .group-card-avatar img{width:100%;height:100%;object-fit:cover}
+.group-card-copy{display:grid;gap:5px;min-width:0;flex:1}
+.group-card-name{
+  display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font:700 10px Manrope,sans-serif;color:var(--text)
+}
+.group-card-meta{
+  display:flex;align-items:center;gap:7px;min-width:0;
+  color:var(--muted-2);font-size:8px
+}
+.group-card-meta span{white-space:nowrap}
+.group-card-meta .group-card-id{overflow:hidden;text-overflow:ellipsis}
+.group-card-status{
+  display:inline-flex;align-items:center;gap:5px;width:max-content;
+  padding:4px 6px;border-radius:5px;font:800 7px Manrope,sans-serif;letter-spacing:.45px
+}
+.group-card-status:before{content:"";width:5px;height:5px;border-radius:50%;background:#8190a0}
+.group-card-status.is-on{background:rgba(109,206,164,.12);color:#91dbb7}
+.group-card-status.is-on:before{background:var(--green);box-shadow:0 0 7px rgba(109,206,164,.5)}
+.group-card-status.is-off{background:rgba(129,144,160,.12);color:#aab5c2}
+.group-card-arrow{color:#617183;font-size:15px;align-self:center;margin-left:2px}
+.group-card.selected .group-card-arrow{color:var(--accent-hi)}
+.group-card-empty{
+  grid-column:1/-1;padding:28px 15px;text-align:center;
+  border:1px dashed var(--line-strong);border-radius:9px;color:var(--muted-2);
+  font-size:10px;line-height:1.6
+}
+@media(max-width:680px){
+  #view-groups .group-form{grid-template-columns:1fr}
+  .group-browser-head{align-items:stretch;flex-direction:column}
+  .group-search{width:100%}
+  .group-card-grid{grid-template-columns:1fr}
+}
