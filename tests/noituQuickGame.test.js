@@ -14,7 +14,7 @@ test("quick Nối Từ starts with a 60-second clock and awards one point plus o
   const result = quick.submit("quick-service-1", "p1", "sinh viên", 2000);
   assert.equal(result.ok, true);
   assert.equal(result.score, 1);
-  assert.equal(result.remainingMs, 61000);
+  assert.equal(result.remainingMs, 60000);
   assert.equal(result.session.game.currentPhrase.display, "sinh viên");
   quick.finish("quick-service-1");
 });
@@ -25,7 +25,7 @@ test("quick Nối Từ deducts five seconds for a wrong answer", () => {
   assert.equal(result.ok, false);
   assert.equal(result.code, "WRONG_LINK");
   assert.equal(result.expected, "sinh");
-  assert.equal(result.remainingMs, 55000);
+  assert.equal(result.remainingMs, 54000);
   quick.finish("quick-service-2");
 });
 
