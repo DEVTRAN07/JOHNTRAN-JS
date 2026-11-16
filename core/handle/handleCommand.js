@@ -229,6 +229,18 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
 
   try {
     return await runCommandPipeline(messageText, event, api, threadInfo, prefix, threadData);
+  } catch (error) {
+    // Dispatcher isolates command.run() failures itself. Errors reaching this
+    // boundary originate in the earlier pipeline (parsing, permissions, data,
+    // or reply setup), so record them here once and preserve the listener's log.
+    if (isCommandMessage) {
+      try {
+        metrics.track?.("error", { command: commandName, source: "pipeline" });
+      } catch {
+        // Telemetry must never replace the original command error.
+      }
+    }
+    throw error;
   } finally {
     // End-to-end latency includes parse/lookup, permissions, cooldowns, data
     // loading, command.run() and awaited replies, including early-return paths.
