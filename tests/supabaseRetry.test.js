@@ -8,6 +8,7 @@ function makeStore(executePrepared) {
   const store = Object.create(SupabaseStore.prototype);
   store.retryQueue = new Map();
   store.writeVersions = new Map();
+  store.mutationVersions = new Map();
   store.writeChains = new Map();
   store.writeSequence = 0;
   store.retryFlush = null;
@@ -239,4 +240,57 @@ test("Supabase partial table failures increase the next sync interval", async ()
   assert.equal(scheduled.at(-1), store.nextSyncDelay);
   assert.equal(store.getStatus().nextSyncDelayMs, store.nextSyncDelay);
   assert.match(store.getStatus().syncError, /fetch failed/);
+});
+
+
+test("Supabase stale in-flight SELECT cannot roll back an already acknowledged bot_enabled write", async () => {
+  let signalSnapshotStarted;
+  let releaseSnapshot;
+  const snapshotStarted = new Promise(resolve => { signalSnapshotStarted = resolve; });
+  const staleSnapshot = new Promise(resolve => { releaseSnapshot = resolve; });
+  let remoteEnabled = false;
+
+  const store = makeStore(async (name, table) => {
+    if (name === "selectMirror" && table === "bot_threads") {
+      signalSnapshotStarted();
+      await staleSnapshot;
+      return {
+        data: [{ id: "group-idle-race", data: { bot_enabled: remoteEnabled } }],
+        error: null
+      };
+    }
+    if (name === "upsert") {
+      remoteEnabled = true;
+      return { error: null };
+    }
+    return { data: [], error: null };
+  });
+  store.mirror = {
+    Users: {},
+    Threads: {
+      "group-idle-race": { id: "group-idle-race", data: { bot_enabled: false } }
+    },
+    Metrics: {}
+  };
+  store.scheduleInterval = () => {};
+
+  const syncing = store.sync();
+  await snapshotStarted;
+
+  await store.setAndWait("Threads", "threadId", "group-idle-race", { bot_enabled: true });
+  assert.equal(store.writeVersions.has("bot_threads:group-idle-race"), false,
+    "the database write has already been acknowledged");
+  assert.equal(store.mutationVersions.has("bot_threads:group-idle-race"), true,
+    "the local version must remain guarded until a later snapshot catches up");
+
+  releaseSnapshot();
+  await syncing;
+
+  assert.equal(store.mirror.Threads["group-idle-race"].data.bot_enabled, true,
+    "a SELECT started before /bot on must not replace the confirmed ON value");
+
+  await store.sync();
+  assert.equal(store.mirror.Threads["group-idle-race"].data.bot_enabled, true);
+  assert.equal(store.mutationVersions.has("bot_threads:group-idle-race"), false,
+    "a snapshot started after the committed write can retire its guard");
 });
