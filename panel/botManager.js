@@ -486,6 +486,29 @@ class BotManager {
     return [...this.bots.values()].map((bot) => bot.toJSON());
   }
 
+  // Rehydrate every registered bot after a Panel master restart/redeploy.
+  // Registry membership is the desired set of managed instances; process
+  // objects themselves are intentionally not persisted across deployments.
+  startAll() {
+    const started = [];
+    const skipped = [];
+    const errors = [];
+    for (const bot of this.bots.values()) {
+      if (bot.process) {
+        skipped.push(bot.name);
+        continue;
+      }
+      try {
+        bot.start();
+        started.push(bot.name);
+      } catch (error) {
+        errors.push({ name: bot.name, error: error.message || String(error) });
+        logger.log(`Không thể tự khởi động bot đã đăng ký '${bot.name}': ${error.message || error}`, "error", { source: "bot-manager-autostart", bot: bot.name });
+      }
+    }
+    return { started, skipped, errors };
+  }
+
   get(name) {
     return this.bots.get(name) || null;
   }
