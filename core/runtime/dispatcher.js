@@ -1,6 +1,7 @@
 "use strict";
 
 const { performance } = require("node:perf_hooks");
+const { ThreadType } = require("zalo-client");
 
 /**
  * Executes a resolved command using the legacy plugin contract.
@@ -59,7 +60,7 @@ async function dispatchCommand({
       });
       reactAuto(Reactions.OK);
     } catch (error) {
-      logger.log(`Lỗi khi xử lý lệnh '${commandName}': ${error.message}`, "error");
+      logger.log(`Lỗi khi xử lý lệnh '${commandName}': ${error.message}`, "error", { source: "command", commandName, isGroup: event?.type === ThreadType.Group, groupId: event?.type === ThreadType.Group ? event?.threadId : "" });
       metrics?.track?.("error", { command: commandName });
       reactAuto(Reactions.CRY);
       try {
