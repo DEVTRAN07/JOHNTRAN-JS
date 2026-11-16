@@ -5,27 +5,44 @@ const os = require("node:os");
 const path = require("node:path");
 const { after, test } = require("node:test");
 const workerRender = require("../core/canvas/workerRender");
+
+const previousConfig = global.config;
+const previousUsers = global.users;
 const originalRender = workerRender.renderCanvas;
 const calls = [];
+
 workerRender.renderCanvas = async (type, data) => {
   const file = path.join(os.tmpdir(), "jt-admin-command-" + process.pid + "-" + calls.length + ".png");
   fs.writeFileSync(file, "mock");
   calls.push({ type, data, file });
   return file;
 };
+
 const adminCommand = require("../plugins/commands/admin");
+
 after(() => {
   workerRender.renderCanvas = originalRender;
-  for (const call of calls) { try { fs.unlinkSync(call.file); } catch {} }
+  if (previousConfig === undefined) delete global.config;
+  else global.config = previousConfig;
+  if (previousUsers === undefined) delete global.users;
+  else global.users = previousUsers;
+  for (const call of calls) {
+    try { fs.unlinkSync(call.file); } catch {}
+  }
 });
+
 function mockApi(sent) {
   return {
-    async sendMessage(payload, threadId, type) { sent.push({ payload, threadId, type }); return { ok: true }; },
+    async sendMessage(payload, threadId, type) {
+      sent.push({ payload, threadId, type });
+      return { ok: true };
+    },
     async getUserInfo(uid) {
       return { changed_profiles: { [uid]: { displayName: "User " + uid } } };
     }
   };
 }
+
 function mockReply() {
   return {
     card: async spec => { throw new Error("unexpected fallback card: " + JSON.stringify(spec)); },
@@ -45,6 +62,7 @@ test("/admin help sends a menu-style Canvas card", async () => {
     Threads: {},
     reply: mockReply()
   });
+
   const call = calls.find(item => item.type === "admin" && item.data.meta === "ADMIN GUIDE");
   assert.ok(call);
   assert.equal(sent[0].payload.ttlKind, "card");
@@ -62,6 +80,7 @@ test("/admin list shows Admin and Support entries in a Canvas card", async () =>
     Threads: {},
     reply: mockReply()
   });
+
   const call = calls.find(item => item.type === "admin" && item.data.meta === "ADMIN DIRECTORY");
   assert.ok(call);
   assert.equal(call.data.sections[0].items.length, 2);
@@ -84,6 +103,14 @@ test("/admin permission toggles remain quick text replies, not Canvas", async ()
     },
     reply: mockReply()
   });
+
   assert.equal(thread.admin_only, true);
   assert.equal(calls.some(item => item.type === "admin"), false);
+});
+
+test("admin Canvas renderer is registered in the worker", () => {
+  const renderer = require("../core/canvas/settings");
+  const workerSource = fs.readFileSync(require.resolve("../core/workers/canvasWorker"), "utf8");
+  assert.equal(typeof renderer.renderAdminCard, "function");
+  assert.match(workerSource, /case "admin":\s*return require\("\.\.\/canvas\/settings"\)\.renderAdminCard/);
 });
