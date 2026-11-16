@@ -71,6 +71,26 @@ test("/bot on waits for durable storage before confirming the group is enabled",
   assert.equal(replySent, true);
 });
 
+test("/bot off uses the dedicated intentional switch operation", async () => {
+  const ctx = createContext(true);
+  let explicitOff = false;
+  const Threads = {
+    getData: async () => ({ data: { ...ctx.data } }),
+    setBotEnabled: async (_id, enabled) => {
+      explicitOff = enabled === false;
+      ctx.data.bot_enabled = enabled === true;
+    }
+  };
+
+  await command.run({
+    event: { threadId: "group-explicit-off", type: ThreadType.Group },
+    args: ["off"], Threads, reply: ctx.reply
+  });
+
+  assert.equal(explicitOff, true);
+  assert.equal(ctx.data.bot_enabled, false);
+});
+
 test("/bot on restores a group previously switched off", async () => {
   const ctx = createContext(false);
   await command.run({
