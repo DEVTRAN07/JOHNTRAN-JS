@@ -220,8 +220,14 @@ async function handleRequest(req, res, url) {
     ]);
     // Lấy trạng thái từ đúng DB của bot con. Nhóm chưa có record hoặc thiếu
     // bot_enabled luôn OFF; tuyệt đối không suy ra ON từ việc nhóm tồn tại.
-    const Threads = require("./controller/controllerThreads");
-    const groupsWithState = attachGroupBotState(groups.list || [], Threads.getAll());
+    let threadRecords = [];
+    try {
+      const Threads = require("./controller/controllerThreads");
+      threadRecords = Threads.getAll();
+    } catch (error) {
+      logger.log(`[panel bridge] Không đọc được cấu hình trạng thái nhóm: ${error.message}`, "warn");
+    }
+    const groupsWithState = attachGroupBotState(groups.list || [], threadRecords);
     // Kèm tin cuối (từ ring) để panel hiện preview giống Zalo
     const withLast = (item, key) => {
       const last = getMessages(String(item[key]), 1)[0];
