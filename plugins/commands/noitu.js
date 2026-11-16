@@ -5,6 +5,7 @@ const fs = require("fs");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const ghepChu = require("../../core/runtime/services/games/ghepchuService");
 const quickNoitu = require("../../core/runtime/services/games/noituQuickService");
+const noituRoom = require("../../core/runtime/services/games/noituRoomService");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const botVersion = require("../../package.json").version;
 const ghepChuTimers = new Map();
@@ -64,12 +65,127 @@ function scheduleQuickNoituExpiry(api, event, threadId) {
   quickNoituTimers.set(String(threadId), timer);
 }
 
+async function startNoituRoom({ api, event }) {
+  const uid = String(event?.data?.uidFrom || "");
+  const threadId = String(event?.threadId || "");
+  if (!uid || !threadId) return;
+  const caro = require("../../core/runtime/services/games/caroService");
+  if (game.get(threadId)?.status === "active" || ghepChu.get(threadId)?.status === "active" ||
+      quickNoitu.get(threadId)?.status === "active" || caro.get(threadId)) {
+    return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở phòng Nối Từ.");
+  }
+  const result = noituRoom.create(threadId, uid, event?.data?.dName || event?.data?.name || "Người chơi");
+  if (!result.ok) {
+    if (result.code === "ROOM_EXISTS") {
+      return send(api, event, "⚠️ Phòng đã tồn tại: " + result.room.code + " · " +
+        result.room.players.length + "/" + result.room.maxPlayers + " người. Gõ /nt join " + result.room.code + " để tham gia.");
+    }
+    return send(api, event, "⚠️ Không thể tạo phòng Nối Từ.");
+  }
+  return send(api, event,
+    "🏠 PHÒNG NỐI TỪ PvP ĐÃ TẠO\n" +
+    "🔑 Mã phòng: " + result.room.code + "\n" +
+    "👑 Chủ phòng: " + result.room.ownerName + "\n" +
+    "👥 Người chơi: 1/" + result.room.maxPlayers + "\n\n" +
+    "👉 Thành viên nhập /nt join " + result.room.code + " để tham gia.\n" +
+    "▶️ Chủ phòng nhập /nt start khi có ít nhất 2 người."
+  );
+}
+
+async function startNoituRoomGame({ api, event }) {
+  const result = noituRoom.start(event.threadId, event?.data?.uidFrom);
+  if (!result.ok) {
+    const messages = {
+      NO_ROOM: "⚠️ Chưa có phòng. Gõ /nt room để tạo phòng.",
+      NOT_OWNER: "⛔ Chỉ chủ phòng mới được bắt đầu.",
+      NEED_TWO_PLAYERS: "👥 Cần ít nhất 2 người chơi mới bắt đầu được."
+    };
+    return send(api, event, messages[result.code] || "⚠️ Phòng không thể bắt đầu.");
+  }
+  const gameSession = result.game;
+  const names = [...gameSession.players.values()].map((player, index) => (index + 1) + ". " + player.name).join("\n");
+  return send(api, event,
+    "⚔️ NỐI TỪ PvP — BẮT ĐẦU!\n" +
+    "🔑 Phòng: " + result.room.code + "\n" +
+    "👥 Người chơi:\n" + names + "\n\n" +
+    "🧩 Từ mở màn: " + gameSession.currentPhrase.display + "\n" +
+    "👉 Trả lời trực tiếp theo lượt, mỗi cụm gồm 2–4 tiếng.\n" +
+    currentPlayerLine(gameSession)
+  );
+}
+
+async function handleNoituRoomText({ api, event, eventType, isSelf = false }) {
+  if ((eventType && eventType !== "message") || ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true)) return false;
+  const threadId = String(event?.threadId || "");
+  const uid = String(event?.data?.uidFrom || "");
+  if (!threadId || !uid) return false;
+  const room = noituRoom.get(threadId);
+  if (!room || room.status !== "active" || !room.players?.has(uid)) return false;
+  const content = getPlainMessage(event);
+  if (!content) return false;
+  const prefix = String(global.config?.prefix || "/");
+  if (content.startsWith(prefix)) return false;
+
+  const action = content.toLocaleLowerCase("vi-VN");
+  if (["stop", "cancel", "thua", "lose"].includes(action)) {
+    if (room.ownerId !== uid && !isAdmin(uid)) {
+      await send(api, event, "⛔ Chỉ chủ phòng hoặc Admin mới được hủy ván.");
+      return true;
+    }
+    noituRoom.stop(threadId, room.ownerId);
+    await send(api, event, "🛑 Đã hủy phòng Nối Từ. Không cộng/trừ điểm.");
+    return true;
+  }
+  if (["leave", "out", "quit"].includes(action)) {
+    const result = noituRoom.leave(threadId, uid);
+    if (!result.ok) return true;
+    if (result.gameOver) {
+      await send(api, event, "🏁 Ván Nối Từ kết thúc vì số người chơi còn lại dưới 2.");
+    } else {
+      await send(api, event, "👋 " + (result.player?.name || "Người chơi") + " đã rời phòng. " +
+        (result.room ? currentPlayerLine(result.room.game) : ""));
+    }
+    return true;
+  }
+  if (action === "pass" || action === "skip") {
+    const result = noituRoom.pass(threadId, uid);
+    if (!result.ok) {
+      await send(api, event, result.code === "NOT_TURN"
+        ? "⏳ Chưa đến lượt bạn."
+        : "⚠️ Không thể bỏ lượt lúc này.");
+      return true;
+    }
+    await send(api, event, "⏭️ Đã bỏ lượt. " + currentPlayerLine(room.game));
+    return true;
+  }
+
+  const result = noituRoom.play(threadId, uid, content);
+  if (!result.ok) {
+    if (result.code === "NOT_TURN") {
+      const current = room.game?.players?.get(result.currentUid);
+      await send(api, event, "⏳ Đang đến lượt " + (current?.name || "người chơi khác") + ".");
+    } else if (result.code === "WRONG_LINK") {
+      await send(api, event, "❌ Cụm tiếp theo phải bắt đầu bằng tiếng " + result.expected + ".");
+    } else if (result.code === "DUPLICATE") {
+      await send(api, event, "🔁 Cụm từ này đã được dùng rồi.");
+    } else if (result.code === "INVALID_PHRASE") {
+      await send(api, event, "💬 Hãy nhập cụm từ tiếng Việt gồm 2–4 tiếng.");
+    }
+    return true;
+  }
+  await send(api, event,
+    "✅ " + result.phrase.display + " · +1 điểm.\n" +
+    "🎯 Đến lượt " + (result.nextPlayer?.name || "người chơi tiếp theo") + "."
+  );
+  return true;
+}
+
 async function startQuickNoitu({ api, event }) {
   const uid = String(event?.data?.uidFrom || "");
   const threadId = String(event?.threadId || "");
   if (!uid || !threadId) return;
   const caro = require("../../core/runtime/services/games/caroService");
-  if (game.get(threadId)?.status === "active" || ghepChu.get(threadId)?.status === "active" || caro.get(threadId)) {
+  if (game.get(threadId)?.status === "active" || ghepChu.get(threadId)?.status === "active" || noituRoom.get(threadId) || caro.get(threadId)) {
     return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở Nối Từ Tốc Độ.");
   }
   const result = quickNoitu.start(threadId, uid, event?.data?.dName || event?.data?.name || "Người chơi");
@@ -143,9 +259,9 @@ function help(prefix) {
     `➜ ${prefix}nt room : Mở phòng đấu nhóm nhiều người (PVP)`,
     "",
     "👥 Phòng đấu nhóm:",
-    "➜ join <mã> : Vào phòng chờ (Ví dụ: join A1B2)",
-    "➜ start : Bắt đầu ván (Chủ phòng, hơn 2 người)",
-    "➜ stop / leave / lose / cancel / thua : Dừng ván hoặc rời phòng",
+    `➜ ${prefix}nt join <mã> : Vào phòng chờ (Ví dụ: ${prefix}nt join A1B2)`,
+    `➜ ${prefix}nt start : Chủ phòng bắt đầu ván (từ 2 người)`,
+    `➜ ${prefix}nt leave / stop : Rời phòng hoặc hủy ván`,
     "➜ skip : Bỏ qua câu đố ghép chữ (-5s)",
     "",
     "🏆 Xếp hạng & tiện ích:",
@@ -275,6 +391,7 @@ async function startGhepChu({ api, event }) {
     return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Ghép Chữ.");
   }
   if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước.");
+  if (noituRoom.get(threadId)) return send(api, event, "⚠️ Nhóm đang có phòng Nối Từ. Hãy kết thúc phòng trước.");
   const existing = ghepChu.get(threadId);
   if (existing?.status === "active" && ghepChu.remainingSeconds(existing) > 0) {
     scheduleGhepChuExpiry(api, event, threadId);
@@ -437,6 +554,7 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false }) {
 }
 
 async function handleActiveGameText(context) {
+  if (await handleNoituRoomText(context)) return true;
   if (await handleQuickNoituText(context)) return true;
   if (await handleGhepChuText(context)) return true;
   if (await handleNoiTuText(context)) return true;
@@ -461,10 +579,13 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
 
   if (action === "gc") return startGhepChu({ api, event });
   if (action === "q") return startQuickNoitu({ api, event });
+  if (action === "room") return startNoituRoom({ api, event });
   if (action === "skip" && ghepChu.get(threadId)?.status === "active") return handleGhepChuText({ api, event: { ...event, data: { ...event.data, content: "skip" } } });
+  if (action === "start" && noituRoom.get(threadId)?.status === "waiting") return startNoituRoomGame({ api, event });
   if (action === "start" || action === "go") {
     const caro = require("../../core/runtime/services/games/caroService");
     if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước khi mở Nối Từ.");
+    if (noituRoom.get(threadId)) return send(api, event, "⚠️ Nhóm đang có phòng Nối Từ. Hãy kết thúc phòng đó trước.");
     if (ghepChu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Ghép Chữ. Hãy dừng ván đó trước khi mở Nối Từ.");
     if (caro.get(threadId)) return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Nối Từ.");
     const name = String(event?.data?.dName || event?.data?.name || "Người chơi");
@@ -473,6 +594,23 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
     return send(api, event, "🔗 ĐÃ BẮT ĐẦU GAME NỐI TỪ\n\n🧩 Từ mở màn: " +
       result.session.currentPhrase.display + "\n👥 Người chơi: 1\n👉 Chủ ván nhập cụm từ bắt đầu bằng tiếng cuối của từ mở màn." +
       "\n📌 Gõ " + prefix + "nt join để những người khác tham gia.");
+  }
+
+  if (action === "join" && args[1]) {
+    const result = noituRoom.join(threadId, args[1], uid, event?.data?.dName || event?.data?.name || "Người chơi");
+    if (!result.ok) {
+      const messages = {
+        ROOM_NOT_FOUND: "⚠️ Không tìm thấy mã phòng.",
+        WRONG_GROUP: "⚠️ Mã phòng này thuộc nhóm khác.",
+        NOT_WAITING: "⚠️ Phòng đã bắt đầu hoặc đã đóng.",
+        ALREADY_JOINED: "Bạn đã ở trong phòng.",
+        FULL: "⚠️ Phòng đã đủ 8 người."
+      };
+      return send(api, event, messages[result.code] || "⚠️ Không thể tham gia phòng.");
+    }
+    return send(api, event, "✅ " + result.player.name + " đã tham gia phòng " + result.room.code +
+      " (" + result.room.players.length + "/" + result.room.maxPlayers + ").\n" +
+      "👑 Chủ phòng: " + result.room.ownerName + ". Gõ /nt start khi đủ người.");
   }
 
   if (action === "join") {
@@ -486,6 +624,13 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
     }
     return send(api, event, "✅ " + result.player.name + " đã tham gia. Hiện có " +
       result.count + " người chơi.\n" + currentPlayerLine(game.get(threadId)));
+  }
+
+  if (action === "leave" && noituRoom.get(threadId)) {
+    const result = noituRoom.leave(threadId, uid);
+    if (!result.ok) return send(api, event, "⚠️ Bạn không ở trong phòng Nối Từ.");
+    if (result.gameOver) return send(api, event, "🏁 Phòng Nối Từ kết thúc vì không còn đủ người chơi.");
+    return send(api, event, "👋 Đã rời phòng Nối Từ.");
   }
 
   if (action === "leave") {
@@ -502,6 +647,12 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
 
   if (action === "stop") {
+    const room = noituRoom.get(threadId);
+    if (room) {
+      if (room.ownerId !== uid && !isAdmin(uid)) return send(api, event, "⛔ Chỉ chủ phòng hoặc Admin mới được hủy phòng.");
+      noituRoom.stop(threadId, room.ownerId);
+      return send(api, event, "🛑 Đã hủy phòng Nối Từ.");
+    }
     const quickSession = quickNoitu.get(threadId);
     if (quickSession?.status === "active" && quickSession.playerId === uid) {
       const stopped = quickNoitu.stop(threadId, uid);
@@ -528,4 +679,4 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   return sendGuide(api, event, prefix);
 };
 module.exports.handleEvent = handleActiveGameText;
-module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage };
+module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage };
