@@ -793,7 +793,8 @@ async function loadProfiles() {
     const selected = names.includes(state.selectedProfile) ? state.selectedProfile :
       (names.includes("main") ? "main" : names[0] || "");
     state.selectedProfile = selected;
-    $("profileBotSelect").innerHTML = names.length ? names.map(name=>'<option value="'+$escape(name)+'">'+$escape(name)+'</option>').join("") : '<option value="">Chưa có bot</option>';
+    const botLabels = new Map((state.bots || []).map(bot => [bot.name, bot.displayName || bot.name]));
+    $("profileBotSelect").innerHTML = names.length ? names.map(name=>'<option value="'+$escape(name)+'">'+$escape(botLabels.get(name) || state.botStats[name]?.profile?.displayName || name)+'</option>').join("") : '<option value="">Chưa có bot</option>';
     $("profileBotSelect").value = selected;
     await loadProfileData(selected);
   } catch (error) {
