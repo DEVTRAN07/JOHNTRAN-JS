@@ -15,6 +15,8 @@ const MAX_MESSAGE_LENGTH = 1200;
 
 const SECRET_PATTERNS = [
   /([?&](?:st|e|sig|sign|token|key|apiKey|api_key|secret|password|client_secret|access_token|imei)=)[^&\s"'\x60]*/gi,
+  /((?:SUPABASE_SERVICE_KEY|JT_BRIDGE_TOKEN|JT_PANEL__TOKEN|API_KEY|SECRET_KEY|ACCESS_TOKEN|REFRESH_TOKEN)\s*[:=]\s*)[^\s,;]+/gi,
+  /((?:cookie|set-cookie|authorization)\s*[:=]\s*)[^,\r\n]+/gi,
   /(Bearer\s+)[A-Za-z0-9._-]+/gi,
   /\b(AIza[0-9A-Za-z_-]{20,})/g
 ];
