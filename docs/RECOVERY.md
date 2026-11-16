@@ -28,7 +28,7 @@ Có thể điều chỉnh:
 ## 2. Supervisor bot con
 
 - Manual Stop không tính là crash và không được tự bật lại.
-- Restart tự động tăng delay theo số crash gần đây: base mặc định 3 giây, sau đó 6, 12, 24, 48 giây, giới hạn 60 giây.
+- Restart tự động tăng delay theo số crash liên tiếp: base mặc định 3 giây, sau đó 6, 12, 24, 48 giây, giới hạn 60 giây. Nếu bot đã chạy ổn định ít nhất 5 phút, bộ đếm backoff liên tiếp được reset; bộ đếm crash trong cửa sổ 10 phút vẫn giữ nguyên.
 - Tối đa 5 lần thoát bất thường trong cửa sổ trượt 10 phút. Khi vượt giới hạn, bot vào cooldown tới khi cửa sổ được làm mới rồi mới thử lại.
 - Trạng thái có `restartCountInWindow`, `flapping`, `nextRestartAt`, `lastExitAt` và `lastExitReason` để Panel giải thích tình trạng.
 - Restart thủ công vẫn hoạt động như cũ và không thay đổi cài đặt ON/OFF của nhóm.
