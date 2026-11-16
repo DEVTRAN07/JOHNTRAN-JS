@@ -81,7 +81,21 @@ jobs:
             "https://api.render.com/v1/services/${service_id}/deploys")"
           deploy_id="$(jq -r '.id // empty' <<< "$deploy_response")"
           if [[ -z "$deploy_id" ]]; then
-            echo "::error::Render accepted no verifiable deploy ID. Response: $deploy_response"
+            echo "Render accepted the deploy without returning an ID (queued behind another deploy); looking up the requested commit."
+            for attempt in $(seq 1 30); do
+              deploys="$(curl --fail --silent --show-error --max-time 20 \
+                -H "Authorization: Bearer ${RENDER_API_KEY}" \
+                "https://api.render.com/v1/services/${service_id}/deploys?limit=20")"
+              deploy_id="$(jq -r --arg sha "${GITHUB_SHA}" '
+                [.[] | .deploy? | select(.commit.id? == $sha) | .id?] | first // empty
+              ' <<< "$deploys")"
+              if [[ -n "$deploy_id" ]]; then break; fi
+              echo "Waiting for Render to register queued commit $GITHUB_SHA ($attempt/30)."
+              sleep 5
+            done
+          fi
+          if [[ -z "$deploy_id" ]]; then
+            echo "::error::Could not find a Render deployment for commit $GITHUB_SHA."
             exit 1
           fi
           echo "Render deploy ID: $deploy_id"
