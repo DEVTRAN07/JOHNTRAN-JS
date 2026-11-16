@@ -3,30 +3,43 @@
 const engine = require("./noituEngine");
 
 const OPENING_PHRASES = Object.freeze([
-  "học sinh",
-  "bông hoa",
-  "bầu trời",
-  "trường học",
-  "bóng đá",
-  "nước biển",
-  "cây xanh",
-  "cá voi",
-  "mưa rào",
-  "bàn học"
+  "học sinh", "bông hoa", "bầu trời", "trường học", "bóng đá",
+  "nước biển", "cây xanh", "cá voi", "mưa rào", "bàn học"
 ]);
 
-// Compact local reply graph keeps the AI response fast and deterministic
-// offline. Every suggestion is still checked by the same engine as players.
+// Keys use the engine's accent-insensitive syllable normalization.
 const REPLY_BANK = Object.freeze({
   sinh: ["sinh viên", "sinh nhật", "sinh học"],
   hoa: ["hoa hồng", "hoa quả", "hoa lá"],
-  trời: ["trời xanh", "trời mưa", "trời nắng"],
-  học: ["học tập", "học hành", "học phí"],
-  đá: ["đá bóng", "đá cầu", "đá quý"],
-  biển: ["biển cả", "biển xanh", "biển đảo"],
+  troi: ["trời xanh", "trời mưa", "trời nắng"],
+  hoc: ["học tập", "học hành", "học phí"],
+  da: ["đá bóng", "đá cầu", "đá quý"],
+  bien: ["biển cả", "biển xanh", "biển đảo"],
   xanh: ["xanh mát", "xanh tươi", "xanh biếc"],
   voi: ["voi rừng", "voi con", "voi châu á"],
-  rào: ["rào chắn", "rào cản", "rào giậu"]
+  rao: ["rào chắn", "rào cản", "rào giậu"],
+  vien: ["viên chức", "viên mãn", "viên ngọc"],
+  chuc: ["chức năng", "chức vụ", "chức trách"],
+  nang: ["năng lượng", "năng suất", "năng động"],
+  luong: ["lượng tử", "lượng giác"],
+  tu: ["tử tế", "tử vi", "tử số"],
+  te: ["tế nhị", "tế bào"],
+  nhi: ["nhịp điệu", "nhị phân"],
+  dieu: ["điệu nhạc", "điệu bộ", "điệu nhảy"],
+  nhac: ["nhạc cụ", "nhạc sĩ"],
+  cu: ["cụ thể", "cụ già"],
+  the: ["thể thao", "thể chất"],
+  thao: ["thao trường", "thao tác"],
+  truong: ["trường đời", "trường học"],
+  tap: ["tập trung", "tập luyện"],
+  trung: ["trung tâm", "trung thực"],
+  tam: ["tâm lý", "tâm hồn"],
+  ly: ["lý tưởng", "lý do"],
+  tuong: ["tưởng tượng", "tượng trưng"],
+  trung: ["trung tâm", "trung thực"],
+  thuc: ["thực tế", "thực hành"],
+  hanh: ["hành động", "hành trình"],
+  dong: ["đồng hồ", "đồng ý"]
 });
 
 function pickIndex(length, random = Math.random) {
