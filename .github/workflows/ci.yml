@@ -153,6 +153,9 @@ jobs:
             if health="$(curl --fail --silent --show-error --max-time 10 "$service_url/health" 2>/dev/null)"; then
               if jq -e '(.status == "ok" or .status == "starting") and ((.uptimeMs | type) == "number" or (.uptimeSeconds | type) == "number")' >/dev/null <<< "$health"; then
                 echo "PASS  public /health: status=$(jq -r '.status' <<< "$health"), loggedIn=$(jq -r '.loggedIn // false' <<< "$health")"
+                if jq -e '.botSummary | type == "object"' >/dev/null <<< "$health"; then
+                  echo "Panel bots: total=$(jq -r '.botSummary.total' <<< "$health"), running=$(jq -r '.botSummary.running' <<< "$health"), loggedIn=$(jq -r '.botSummary.loggedIn' <<< "$health"), waitingLogin=$(jq -r '.botSummary.waitingLogin' <<< "$health"), failed=$(jq -r '.botSummary.failed' <<< "$health")"
+                fi
                 db_driver="$(jq -r '.supabase.driver // "unknown"' <<< "$health")"
                 db_ok="$(jq -r '.supabase.ok // false' <<< "$health")"
                 db_failures="$(jq -r '.supabase.consecutiveFailures // 0' <<< "$health")"
@@ -166,7 +169,7 @@ jobs:
                   echo "::warning::Could not determine database driver from public health payload."
                 fi
                 if [[ "$(jq -r '.loggedIn // false' <<< "$health")" != "true" ]]; then
-                  echo "::warning::The service is live but the Zalo session is not logged in yet (loggedIn=false). Complete the login/QR flow before expecting bot commands to work."
+                  echo "::warning::The service is live but no managed Zalo bot session is logged in yet (loggedIn=false). Check the Panel bot QR/login state before expecting chat/group features to work."
                 fi
                 healthy=1
                 break
