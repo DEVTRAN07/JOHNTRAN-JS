@@ -337,11 +337,26 @@ class BotInstance {
     const child = this.spawnProcess(process.execPath, [path.join(ROOT, "JohnTran.js")], {
       cwd: ROOT,
       env,
-      stdio: ["ignore", "pipe", "pipe"]
+      // IPC lets the child report the actual bridge port when its preferred port is occupied.
+      stdio: ["ignore", "pipe", "pipe", "ipc"]
     });
 
     this.process = child;
     this.startedAt = Date.now();
+
+    child.on?.("message", (message) => {
+      if (!message || message.type !== "jt:panel-bridge-ready") return;
+      const actualPort = Number(message.port);
+      if (!Number.isInteger(actualPort) || actualPort < 1 || actualPort > 65535) return;
+      const previousPort = this.bridgePort;
+      this.bridgePort = actualPort;
+      this.pushLog(`[bridge] Panel bridge sẵn sàng tại 127.0.0.1:${actualPort}`);
+      if (previousPort !== actualPort) {
+        logger.log(`Bot con '${this.name}' cập nhật bridge port ${previousPort} → ${actualPort}.`, "info", {
+          source: "bot-bridge-ready", bot: this.name
+        });
+      }
+    });
     this.stoppedByUser = false;
 
     const prefix = `[${this.name}]`;
