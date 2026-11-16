@@ -309,3 +309,35 @@ test("nt help card reflects the persisted group state", () => {
   assert.match(command._test.help("/", false), /Trạng thái: 🔴 TẮT/);
   assert.match(command._test.help("/", true), /Trạng thái: 🟢 BẬT/);
 });
+
+
+test("nt go limits malformed-answer hints to once per human turn", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_command: false, prefix: "/" };
+  const session = command._test.createSoloBotSession("solo-invalid-hint", "p1", "Player", () => 0).session;
+  const sent = [];
+  const context = content => ({
+    api: { async sendMessage(payload) { sent.push(payload); } },
+    event: {
+      threadId: "solo-invalid-hint",
+      type: 1,
+      data: { uidFrom: "p1", content }
+    },
+    eventType: "message"
+  });
+
+  try {
+    assert.equal(await command._test.handleNoiTuText(context("hello")), true);
+    assert.equal(await command._test.handleNoiTuText(context("hi")), true);
+    assert.equal(sent.length, 1, "repeated malformed text in one turn must not spam the hint");
+    assert.match(sent[0].msg, /2–4 tiếng/);
+
+    session.moves += 1;
+    assert.equal(await command._test.handleNoiTuText(context("again")), true);
+    assert.equal(sent.length, 2, "a new turn may show the hint again");
+  } finally {
+    gameService.sessions.delete("solo-invalid-hint");
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});

@@ -664,7 +664,12 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false, Users })
     } else if (result.code === "DUPLICATE") {
       await send(api, event, "🔁 Cụm từ này đã được dùng rồi. Nghĩ cụm khác nhé!");
     } else if (result.code === "INVALID_PHRASE") {
-      await send(api, event, "💬 Hãy trả lời bằng một cụm từ tiếng Việt gồm 2–4 tiếng.");
+      // The solo game sees every plain-text message from its enrolled player.
+      // Only show the format hint once per turn, not for every casual chat line.
+      if (session.invalidPhraseNoticeAtMove !== session.moves) {
+        session.invalidPhraseNoticeAtMove = session.moves;
+        await send(api, event, "💬 Hãy trả lời bằng một cụm từ tiếng Việt gồm 2–4 tiếng.");
+      }
     }
     return true;
   }
