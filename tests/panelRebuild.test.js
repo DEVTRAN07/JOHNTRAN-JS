@@ -226,3 +226,34 @@ test("database panel exposes protected durability diagnostics for Supabase and R
   assert.match(js, /bot_threads/);
   assert.match(html, /id="databaseDetails"/);
 });
+
+test("system view checks storage in each logged-in child bot and the bot registry", () => {
+  const bridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
+  const botManager = fs.readFileSync(path.join(root, "panel/botManager.js"), "utf8");
+  assert.match(server, /group-status\|storage-status/);
+  assert.match(server, /storageLayout: getStorageLayout\(\)/);
+  assert.match(bridge, /route === "\/storage-status"/);
+  assert.match(html, /id="botStorageDetails"/);
+  assert.match(js, /\/storage-status/);
+  assert.match(js, /Độ bền registry/);
+  assert.match(js, /Math\.min\(3,state\.bots\.length\)/);
+  assert.match(botManager, /process\.env\.JT_PERSISTENT_DIR/);
+  assert.match(botManager, /migrateLegacyBotFiles\(this\.name, paths\)/);
+  assert.match(botManager, /migrateFileIfMissing/);
+});
+
+test("storage diagnostics never reveal Supabase secrets or silently replace a legacy registry", () => {
+  const diagnostics = fs.readFileSync(path.join(root, "core/storage/diagnostics.js"), "utf8");
+  const botManager = fs.readFileSync(path.join(root, "panel/botManager.js"), "utf8");
+  assert.match(diagnostics, /JT_PERSISTENT_DIR/);
+  assert.match(diagnostics, /verified-mount/);
+  assert.match(botManager, /fs\.constants\.COPYFILE_EXCL/);
+  assert.match(botManager, /Giữ nguyên file nguồn/);
+  assert.match(botManager, /from \"\.\.\/core\/storage\/diagnostics\"/);
+  assert.doesNotMatch(bridgeSafeSource(), /SUPABASE_SERVICE_KEY|SUPABASE_ANON_KEY/);
+});
+
+function bridgeSafeSource() {
+  return fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
+}
+
