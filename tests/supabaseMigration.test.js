@@ -123,7 +123,7 @@ test("Supabase migration rejects missing credentials before attempting a real im
         supabaseUrl: "",
         serviceKey: ""
       }),
-      /SUPABASE_URL và SUPABASE_SERVICE_KEY/
+      /SUPABASE_URL và SUPABASE_SECRET_KEY/
     );
   } finally {
     fs.rmSync(fixture.directory, { recursive: true, force: true });
