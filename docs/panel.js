@@ -10,6 +10,7 @@ const state = {
   adminGroups: [], selectedThread: null, messages: [],
   threadFilter: "all", chatStyle: { b:false, i:false, u:false, s:false, color:"", font:"" },
   groupFilter: "all", groupSort: "name-asc", groupStatusFlight: false,
+  groupBulkFlight: false, selectedGroupIds: new Set(),
   failedGroupAvatarUrls: new Set(),
   timers: { refresh:null, messages:null, threads:null, logs:null, qr:null, groupStatus:null, groupSearch:null },
   modalKind: "", modalBot: "", mutedThreads: readMuted()
@@ -412,6 +413,7 @@ function renderGroupCards(emptyMessage = "") {
     grid.innerHTML = '<div class="group-card-empty">' +
       $escape(emptyMessage || "Chưa có nhóm Zalo. Hãy kiểm tra bot đã đăng nhập và đang chạy.") +
       '</div>';
+    updateGroupBulkControls([]);
     return;
   }
 
@@ -445,6 +447,7 @@ function renderGroupCards(emptyMessage = "") {
       filter === "off" ? "Không có nhóm nào đang tắt bot phù hợp." :
       "Không tìm thấy nhóm phù hợp với “" + query + "”.";
     grid.innerHTML = '<div class="group-card-empty">' + $escape(message) + '</div>';
+    updateGroupBulkControls([]);
     return;
   }
 
@@ -461,18 +464,113 @@ function renderGroupCards(emptyMessage = "") {
     const memberLabel = members > 0 ? members.toLocaleString("vi-VN") + " thành viên" : "Chưa rõ thành viên";
     const enabled = group.botEnabled === true;
     const selected = gid === selectedGid;
-    return '<button type="button" class="group-card' + (selected ? ' selected' : '') +
-      '" data-group-id="' + $escape(gid) + '" aria-pressed="' + (selected ? "true" : "false") +
-      '" title="' + $escape(name) + '">' +
-      avatar +
-      '<span class="group-card-copy">' +
-        '<span class="group-card-name">' + $escape(name) + '</span>' +
-        '<span class="group-card-meta"><span>' + $escape(memberLabel) + '</span><span>·</span><span class="group-card-id">ID ' + $escape(gid) + '</span></span>' +
-        '<span class="group-card-status ' + (enabled ? 'is-on' : 'is-off') + '">' + (enabled ? 'BOT ĐANG BẬT' : 'BOT ĐANG TẮT') + '</span>' +
-      '</span>' +
-      '<span class="group-card-arrow" aria-hidden="true">›</span>' +
-    '</button>';
+    const bulkSelected = state.selectedGroupIds.has(gid);
+    return '<div class="group-card-item">' +
+      '<label class="group-card-select" title="Chọn nhóm ' + $escape(name) + '">' +
+        '<input type="checkbox" data-group-select="' + $escape(gid) + '"' + (bulkSelected ? ' checked' : '') + ' aria-label="Chọn nhóm ' + $escape(name) + '">' +
+        '<span>Chọn nhóm</span>' +
+      '</label>' +
+      '<button type="button" class="group-card' + (selected ? ' selected' : '') + (bulkSelected ? ' selected-bulk' : '') +
+        '" data-group-id="' + $escape(gid) + '" aria-pressed="' + (selected ? "true" : "false") +
+        '" title="' + $escape(name) + '">' +
+        avatar +
+        '<span class="group-card-copy">' +
+          '<span class="group-card-name">' + $escape(name) + '</span>' +
+          '<span class="group-card-meta"><span>' + $escape(memberLabel) + '</span><span>·</span><span class="group-card-id">ID ' + $escape(gid) + '</span></span>' +
+          '<span class="group-card-status ' + (enabled ? 'is-on' : 'is-off') + '">' + (enabled ? 'BOT ĐANG BẬT' : 'BOT ĐANG TẮT') + '</span>' +
+        '</span>' +
+        '<span class="group-card-arrow" aria-hidden="true">›</span>' +
+      '</button>' +
+    '</div>';
   }).join("");
+  updateGroupBulkControls(filtered.map(group => String(group.gid || "")));
+}
+
+function updateGroupBulkControls(visibleIds = []) {
+  const selected = new Set(
+    (state.groupList || [])
+      .map(group => String(group.gid || ""))
+      .filter(gid => gid && state.selectedGroupIds.has(gid))
+  );
+  state.selectedGroupIds = selected;
+  const count = selected.size;
+  const counter = $("groupBulkCount");
+  if (counter) counter.textContent = count + " nhóm đã chọn";
+
+  document.querySelectorAll("[data-group-bulk-action]").forEach(button => {
+    button.disabled = count === 0 || state.groupBulkFlight;
+  });
+  const clearButton = $("groupClearSelection");
+  if (clearButton) clearButton.disabled = count === 0 || state.groupBulkFlight;
+
+  const master = $("groupSelectVisible");
+  if (master) {
+    const visible = [...new Set(visibleIds)].filter(Boolean);
+    const selectedVisible = visible.filter(gid => selected.has(gid)).length;
+    master.checked = visible.length > 0 && selectedVisible === visible.length;
+    master.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
+    master.disabled = visible.length === 0 || state.groupBulkFlight;
+  }
+}
+
+async function setGroupBotsBulk(enabled) {
+  if (state.groupBulkFlight) return;
+  const bot = $("groupBotSelect")?.value || state.selectedGroupBot;
+  const selected = (state.groupList || []).filter(group =>
+    state.selectedGroupIds.has(String(group.gid || ""))
+  );
+  if (!bot || !selected.length) return;
+
+  const action = enabled ? "BẬT" : "TẮT";
+  if (!window.confirm("Bạn sắp " + action + " bot cho " + selected.length +
+      " nhóm đã chọn. Bạn có chắc chắn muốn tiếp tục?")) return;
+
+  state.groupBulkFlight = true;
+  updateGroupBulkControls([...document.querySelectorAll("#groupCardGrid [data-group-id]")].map(card => card.dataset.groupId));
+  const failures = [];
+  let succeeded = 0;
+
+  try {
+    // Limit concurrent writes so a large selection does not overwhelm the bot DB.
+    for (let offset = 0; offset < selected.length; offset += 4) {
+      const batch = selected.slice(offset, offset + 4);
+      const results = await Promise.all(batch.map(async group => {
+        const gid = String(group.gid || "");
+        try {
+          const data = await api("/api/chat/" + enc(bot) + "/group-commands?gid=" + enc(gid), {
+            method:"POST", body:jsonBody({ botEnabled:enabled })
+          });
+          group.botEnabled = data.botEnabled === true;
+          state.selectedGroupIds.delete(gid);
+          succeeded += 1;
+          return { ok:true, gid };
+        } catch (error) {
+          failures.push((group.name || gid) + ": " + error.message);
+          return { ok:false, gid, error };
+        }
+      }));
+      // Paint each completed batch rather than waiting for the whole selection.
+      syncGroupCardStatuses();
+    }
+  } finally {
+    state.groupBulkFlight = false;
+  }
+
+  renderGroupCards();
+  const activeGid = String($("groupSelect")?.value || state.activeGroup || "");
+  const activeGroup = state.groupList.find(group => String(group.gid) === activeGid);
+  if (activeGroup && !$("groupBotToggleRow").hidden) {
+    updateGroupBotToggle(activeGroup.botEnabled === true);
+  }
+  if (failures.length) {
+    $("groupHint").textContent = "Đã cập nhật " + succeeded + "/" + selected.length +
+      " nhóm. Chưa cập nhật được: " + failures.join(" · ");
+    toast(succeeded + " nhóm thành công, " + failures.length + " nhóm lỗi. Có thể chọn lại nhóm lỗi để thử lại.", "warning");
+  } else {
+    $("groupHint").textContent = "Đã " + (enabled ? "bật" : "tắt") +
+      " bot thành công cho " + succeeded + " nhóm đã chọn.";
+    toast("Đã " + (enabled ? "bật" : "tắt") + " bot cho " + succeeded + " nhóm.", "success");
+  }
 }
 
 function syncGroupCardStatuses() {
@@ -984,6 +1082,15 @@ function bindEvents() {
       renderCommands();
       return;
     }
+    const groupBulkAction = event.target.closest("[data-group-bulk-action]");
+    if (groupBulkAction) {
+      return setGroupBotsBulk(groupBulkAction.dataset.groupBulkAction === "on");
+    }
+    if (event.target.closest("#groupClearSelection")) {
+      state.selectedGroupIds.clear();
+      renderGroupCards();
+      return;
+    }
     const groupFilter = event.target.closest("[data-group-filter]");
     if (groupFilter) {
       state.groupFilter = groupFilter.dataset.groupFilter || "all";
@@ -1053,7 +1160,26 @@ function bindEvents() {
     if (el.matches('[data-action="toggle-command"]')) toggleGroupCommand(el.dataset.command,el.checked,el);
     if (el.id==="commandRole") renderCommands();
     if (el.id==="profileBotSelect") loadProfileData(el.value);
-    if (el.id==="groupBotSelect") {state.selectedGroupBot=el.value;state.activeGroup="";loadGroupOptions();}
+    if (el.id==="groupBotSelect") {
+      if (state.selectedGroupBot !== el.value) state.selectedGroupIds.clear();
+      state.selectedGroupBot=el.value;state.activeGroup="";loadGroupOptions();
+    }
+    if (el.matches("[data-group-select]")) {
+      const gid=String(el.dataset.groupSelect || "");
+      if (gid) {
+        if (el.checked) state.selectedGroupIds.add(gid);
+        else state.selectedGroupIds.delete(gid);
+      }
+      renderGroupCards();
+    }
+    if (el.id==="groupSelectVisible") {
+      const visible=[...document.querySelectorAll("#groupCardGrid [data-group-id]")].map(card=>String(card.dataset.groupId || ""));
+      for (const gid of visible) {
+        if (el.checked) state.selectedGroupIds.add(gid);
+        else state.selectedGroupIds.delete(gid);
+      }
+      renderGroupCards();
+    }
     if (el.id==="groupSelect") { renderGroupCards(); loadGroupCommands(); }
     if (el.id==="groupSort") { state.groupSort=el.value || "name-asc"; renderGroupCards(); }
     if (el.id==="chatFontSize") state.chatStyle.font=el.value;
