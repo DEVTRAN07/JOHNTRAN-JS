@@ -4,9 +4,8 @@ const { spawn } = require("child_process");
 const logger = require("../utils/logger");
 
 const ROOT = path.join(__dirname, "..");
-const PERSISTENT_ROOT = String(process.env.JT_PERSISTENT_DIR || process.env.JT_DB_PERSISTENT_PATH || "").trim()
-  ? path.resolve(process.env.JT_PERSISTENT_DIR)
-  : ROOT;
+const PERSISTENT_DIR = String(process.env.JT_PERSISTENT_DIR || process.env.JT_DB_PERSISTENT_PATH || "").trim();
+const PERSISTENT_ROOT = PERSISTENT_DIR ? path.resolve(PERSISTENT_DIR) : ROOT;
 const BOTS_DIR = path.join(PERSISTENT_ROOT, "bots");
 const REGISTRY_FILE = path.join(PERSISTENT_ROOT, "data", "bots.json");
 const LEGACY_BOTS_DIR = path.join(ROOT, "bots");
