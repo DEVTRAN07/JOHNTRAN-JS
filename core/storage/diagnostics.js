@@ -54,7 +54,7 @@ function readMountInfo() {
 function getJsonPersistenceStatus(filePath, env = process.env, mountInfoText = readMountInfo()) {
   const resolvedFile = path.resolve(filePath);
   const isRender = Boolean(env.RENDER || env.RENDER_SERVICE_ID);
-  const configuredRoot = String(env.JT_DB_PERSISTENT_PATH || "").trim();
+  const configuredRoot = String(env.JT_PERSISTENT_DIR || env.JT_PERSISTENT_DIR || "").trim();
 
   if (!isRender) {
     return {
@@ -82,8 +82,8 @@ function getJsonPersistenceStatus(filePath, env = process.env, mountInfoText = r
       mountPoint: hasSeparateMount ? currentMount.mountPoint : null,
       fsType: hasSeparateMount ? currentMount.fsType : null,
       message: hasSeparateMount
-        ? "Có filesystem mount riêng tại vị trí database, nhưng chưa khai báo JT_DB_PERSISTENT_PATH để xác minh đường dẫn."
-        : "Chưa khai báo JT_DB_PERSISTENT_PATH. Chưa thể xác nhận JSON database nằm trên Persistent Disk của Render."
+        ? "Có filesystem mount riêng tại vị trí database, nhưng chưa khai báo JT_PERSISTENT_DIR để xác minh đường dẫn."
+        : "Chưa khai báo JT_PERSISTENT_DIR. Chưa thể xác nhận JSON database nằm trên Persistent Disk của Render."
     };
   }
 
@@ -95,7 +95,7 @@ function getJsonPersistenceStatus(filePath, env = process.env, mountInfoText = r
       configuredRoot: root,
       mountPoint: null,
       fsType: null,
-      message: "JT_DB_FILE nằm ngoài JT_DB_PERSISTENT_PATH; dữ liệu JSON hiện không được đặt trong vùng lưu trữ đã khai báo."
+      message: "JT_DB_FILE nằm ngoài JT_PERSISTENT_DIR; dữ liệu JSON hiện không được đặt trong vùng lưu trữ đã khai báo."
     };
   }
 
@@ -113,7 +113,7 @@ function getJsonPersistenceStatus(filePath, env = process.env, mountInfoText = r
       configuredRoot: root,
       mountPoint: mount?.mountPoint || null,
       fsType: mount?.fsType || null,
-      message: "Đã khai báo JT_DB_PERSISTENT_PATH nhưng không phát hiện được mount riêng tại đường dẫn đó. Hãy đối chiếu chính xác với Disk Mount Path trên Render."
+      message: "Đã khai báo JT_PERSISTENT_DIR nhưng không phát hiện được mount riêng tại đường dẫn đó. Hãy đối chiếu chính xác với Disk Mount Path trên Render."
     };
   }
 
@@ -123,7 +123,7 @@ function getJsonPersistenceStatus(filePath, env = process.env, mountInfoText = r
     configuredRoot: root,
     mountPoint: mount.mountPoint,
     fsType: mount.fsType,
-    message: "Database nằm dưới JT_DB_PERSISTENT_PATH và đường dẫn này thuộc một filesystem mount riêng."
+    message: "Database nằm dưới JT_PERSISTENT_DIR và đường dẫn này thuộc một filesystem mount riêng."
   };
 }
 
