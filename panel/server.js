@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { botPaths, getStorageLayout } = require("./botManager");
 const { assertPanelToken, isPanelRequestAuthorized, resolvePanelToken } = require("../utils/tokenSecurity");
+const { probeBridgeHealth } = require("./bridgeHealth");
 const { installMonitoring, httpMetricsMiddleware, register } = require("../core/monitoring");
 let dbUtils, storeDb;
 try { dbUtils = require("../utils/db"); storeDb = dbUtils.db || dbUtils; } catch { dbUtils = null; storeDb = null; }
@@ -147,6 +148,36 @@ function enrichBot(bot) {
   return out;
 }
 
+async function enrichBotLive(bot, bridgeToken = "") {
+  const out = enrichBot(bot);
+  if (out.processStatus !== "online" || !out.bridgePort) return out;
+
+  const health = await probeBridgeHealth(out, bridgeToken);
+  if (!health) {
+    out.bridgeConnected = false;
+    return out;
+  }
+
+  out.bridgeConnected = true;
+  out.bridgePid = health.pid;
+  if (health.loggedIn) {
+    // BotStats may be delayed or stale while Supabase mirrors synchronize.
+    // The authenticated child bridge is the runtime source of truth.
+    out.loginState = "logged_in";
+    out.status = "online";
+    out.displayStatus = "online";
+    out.sessionHint = "Phiên Zalo đang hoạt động qua Cookie + IMEI hoặc phiên đã lưu.";
+  } else if (out.loginState === "logged_in") {
+    // A stale BotStats row must not make the Panel send requests to an
+    // unauthenticated or still-starting child process.
+    out.loginState = "starting";
+    out.status = "starting";
+    out.displayStatus = "starting";
+    delete out.sessionHint;
+  }
+  return out;
+}
+
 function startPanel({ manager, config }) {
   const token = resolvePanelToken(config, process.env);
   const port = Number(process.env.PORT) || Number(config?.panel?.port) || 3000;
@@ -256,7 +287,7 @@ function startPanel({ manager, config }) {
 
       if (pathname === "/api/bots" && req.method === "GET") {
         await maybeSyncStore();
-        const bots = manager.list().map(enrichBot);
+        const bots = await Promise.all(manager.list().map(bot => enrichBotLive(bot, bridgeToken)));
         return sendJson(res, 200, { bots, master: { botCount: bots.length, uptimeMs: process.uptime() * 1000 } });
       }
 
@@ -461,11 +492,13 @@ function startPanel({ manager, config }) {
           for (const bot of manager.list()) {
             const row = findBotStatsRow(bot.name);
             const data = row ? (row.data || row) : {};
+            const live = await enrichBotLive(bot, bridgeToken);
             stats[bot.name] = {
               ...data,
               updatedAt: data.updatedAt || row?.updatedAt || row?.updated_at || null,
-              loginState: data.loginState || enrichBot(bot).loginState || null,
-              processStatus: bot.processStatus || bot.status
+              loginState: live.loginState || data.loginState || null,
+              processStatus: bot.processStatus || bot.status,
+              bridgeConnected: live.bridgeConnected === true
             };
           }
           return sendJson(res, 200, { stats, bots: manager.list().map(enrichBot) });
@@ -517,7 +550,7 @@ function startPanel({ manager, config }) {
         if (!botName) return sendJson(res, 400, { error: "Thiếu tên bot" });
         const rawBot = manager.list().find((b) => b.name === botName);
         if (!rawBot?.bridgePort) return sendJson(res, 404, { error: "Chưa biết cổng cầu nối của bot" });
-        const bot = enrichBot(rawBot);
+        const bot = await enrichBotLive(rawBot, bridgeToken);
         if (bot.loginState !== "logged_in") {
           const statsRow = findBotStatsRow(botName);
           const stats = statsRow?.data || statsRow || {};
@@ -576,7 +609,7 @@ function startPanel({ manager, config }) {
         let supabaseStatus = null;
         try { supabaseStatus = storeDb && typeof storeDb.getStatus === "function" ? storeDb.getStatus() : null; } catch { supabaseStatus = null; }
         const managedBots = manager && typeof manager.list === "function"
-          ? manager.list().map(enrichBot)
+          ? await Promise.all(manager.list().map(bot => enrichBotLive(bot, bridgeToken)))
           : null;
         const botSummary = managedBots ? {
           total: managedBots.length,
@@ -652,7 +685,7 @@ function startPanel({ manager, config }) {
             if (!hasQr) {
               const json = { error: "Chưa có QR (bot chưa chạy hoặc đã đăng nhập)", hasQr: false };
               if (bot) {
-                const enriched = enrichBot(bot.toJSON());
+                const enriched = await enrichBotLive(bot.toJSON(), bridgeToken);
                 if (enriched.loginState) json.loginState = enriched.loginState;
                 if (enriched.status === "failed") json.reason = "Đăng nhập thất bại";
               }
@@ -674,7 +707,7 @@ function startPanel({ manager, config }) {
       if (sessMatch) {
         const name = sessMatch[1];
         const paths = botPaths(name);
-        const enriched = enrichBot(manager.get(name)?.toJSON() || { name, status: "offline" });
+        const enriched = await enrichBotLive(manager.get(name)?.toJSON() || { name, status: "offline" }, bridgeToken);
         const hasAccount = fs.existsSync(paths.accountFile);
         const cookiePath = path.join(paths.dir, "cookie.json");
         const hasCookie = fs.existsSync(cookiePath);
