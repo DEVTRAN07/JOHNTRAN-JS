@@ -153,3 +153,33 @@ test("unexpected bot exits use exponential restart backoff before the crash-wind
     cleanup(name);
   }
 });
+
+
+test("a stable bot runtime resets consecutive restart delay but not the rolling crash guard", async () => {
+  const name = "__test_stable_runtime_resets_backoff__";
+  const { bot, children } = createHarness(name, {
+    restartDelayMs: 10,
+    maxRestartDelayMs: 80,
+    stableRuntimeResetMs: 12,
+    restartWindowMs: 1000,
+    maxRestartsInWindow: 4
+  });
+
+  try {
+    bot.start();
+    children[0].emit("close", 1, null);
+    await sleep(20);
+    assert.equal(children.length, 2);
+
+    await sleep(15);
+    children[1].emit("close", 1, null);
+
+    assert.equal(bot.restartAttempt, 1, "a stable run starts a fresh consecutive backoff sequence");
+    assert.equal(bot.toJSON().restartCountInWindow, 2,
+      "both exits still count toward the rolling crash window");
+    assert.ok(bot.nextRestartAt - Date.now() <= 10);
+  } finally {
+    await bot.stop();
+    cleanup(name);
+  }
+});
