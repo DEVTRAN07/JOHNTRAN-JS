@@ -9,6 +9,7 @@ const noituRoom = require("../../core/runtime/services/games/noituRoomService");
 const noituBotAI = require("../../core/games/noituBotAI");
 const noituEngine = require("../../core/games/noituEngine");
 const defaultUsers = require("../../core/runtime/services/userService");
+const defaultThreads = require("../../core/runtime/services/threadService");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const botVersion = require("../../package.json").version;
 const ghepChuTimers = new Map();
@@ -176,7 +177,7 @@ async function handleNoituRoomText({ api, event, eventType, isSelf = false, User
     }
     return true;
   }
-  await updateNoituScore(Users || defaultUsers, uid, 1, { move: true });
+  await updateNoituScore(Users || defaultUsers, uid, 1, { move: true, mode: "room" });
   await send(api, event,
     "✅ " + result.phrase.display + " · +1 điểm.\n" +
     "🎯 Đến lượt " + (result.nextPlayer?.name || "người chơi tiếp theo") + "."
@@ -204,7 +205,7 @@ async function startQuickNoitu({ api, event }) {
   );
 }
 
-async function handleQuickNoituText({ api, event, eventType, isSelf = false }) {
+async function handleQuickNoituText({ api, event, eventType, isSelf = false, Users }) {
   if ((eventType && eventType !== "message") || ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true)) return false;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
@@ -235,6 +236,7 @@ async function handleQuickNoituText({ api, event, eventType, isSelf = false }) {
 
   scheduleQuickNoituExpiry(api, event, threadId);
   if (result.ok) {
+    await updateNoituScore(Users || defaultUsers, uid, 1, { move: true, mode: "q" });
     await send(api, event,
       "✅ " + result.phrase.display + " · +" + result.score + " điểm · +1s\n" +
       "🧩 Từ tiếp theo phải bắt đầu bằng: " + result.phrase.last + "\n" +
@@ -307,6 +309,10 @@ function currentPlayerLine(session) {
   return player ? "🎯 Lượt tiếp theo: " + player.name + "." : "";
 }
 
+function currentMonthKey(now = Date.now()) {
+  return new Date(now + 7 * 60 * 60 * 1000).toISOString().slice(0, 7);
+}
+
 async function updateNoituScore(Users, uid, points = 1, options = {}) {
   const store = Users || defaultUsers;
   if (!store?.getData || !store?.setData || !uid) return false;
@@ -316,9 +322,19 @@ async function updateNoituScore(Users, uid, points = 1, options = {}) {
       ? { ...record.data }
       : (record && typeof record === "object" ? { ...record } : {});
     const profile = data.noitu && typeof data.noitu === "object" ? { ...data.noitu } : {};
-    profile.points = Math.max(0, Number(profile.points) || 0) + Math.max(0, Number(points) || 0);
+    const delta = Math.max(0, Number(points) || 0);
+    profile.points = Math.max(0, Number(profile.points) || 0) + delta;
     if (options.move) profile.moves = Math.max(0, Number(profile.moves) || 0) + 1;
     if (options.botWin) profile.botWins = Math.max(0, Number(profile.botWins) || 0) + 1;
+    if (options.mode && options.mode !== "all") {
+      profile.modes = { ...(profile.modes || {}) };
+      profile.modes[options.mode] = Math.max(0, Number(profile.modes[options.mode]) || 0) + delta;
+      const month = currentMonthKey();
+      profile.months = { ...(profile.months || {}) };
+      profile.months[month] = { ...(profile.months[month] || {}) };
+      profile.months[month][options.mode] = Math.max(0, Number(profile.months[month][options.mode]) || 0) + delta;
+      profile.months[month].all = Math.max(0, Number(profile.months[month].all) || 0) + delta;
+    }
     data.noitu = profile;
     await store.setData(String(uid), data);
     return profile;
@@ -369,7 +385,7 @@ async function playSoloBotTurn({ api, event, session, Users }) {
   const reply = noituBotAI.chooseReply(session);
   if (!reply) {
     game.stop(session.threadId);
-    const score = await updateNoituScore(Users || defaultUsers, session.humanUid, 5, { botWin: true });
+    const score = await updateNoituScore(Users || defaultUsers, session.humanUid, 5, { botWin: true, mode: "solo" });
     const rewardLine = score
       ? "🎁 Đã cộng 5⭐ vào bảng điểm Nối Từ của bạn."
       : "⚠️ Bạn thắng, nhưng chưa lưu được điểm. Hãy kiểm tra database rồi thử lại với Admin.";
@@ -385,7 +401,7 @@ async function playSoloBotTurn({ api, event, session, Users }) {
   if (!botResult.ok) {
     game.stop(session.threadId);
     await send(api, event, "🏆 AI gặp lỗi nối từ. Bạn thắng ván này!");
-    await updateNoituScore(Users || defaultUsers, session.humanUid, 5, { botWin: true });
+    await updateNoituScore(Users || defaultUsers, session.humanUid, 5, { botWin: true, mode: "solo" });
     return true;
   }
   await send(api, event,
@@ -530,7 +546,7 @@ function getPlainMessage(event) {
   return "";
 }
 
-async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
+async function handleGhepChuText({ api, event, eventType, isSelf = false, Users }) {
   if ((eventType && eventType !== "message") || ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true)) return false;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
@@ -576,6 +592,7 @@ async function handleGhepChuText({ api, event, eventType, isSelf = false }) {
     return true;
   }
 
+  await updateNoituScore(Users || defaultUsers, uid, result.points, { move: true, mode: "gc" });
   scheduleGhepChuExpiry(api, event, threadId);
   await sendGhepChuCard(api, event, result.session, `✅ Chính xác: ${result.completedAnswer}! +${result.points} điểm.`);
   return true;
@@ -650,7 +667,7 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false, Users })
     return true;
   }
 
-  await updateNoituScore(Users || defaultUsers, uid, 1, { move: true });
+  await updateNoituScore(Users || defaultUsers, uid, 1, { move: true, mode: session.mode === "solo_bot" ? "solo" : "classic" });
   if (session.mode === "solo_bot" && result.nextPlayer?.uid === session.botUid) {
     return playSoloBotTurn({ api, event, session, Users });
   }
@@ -659,7 +676,40 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false, Users })
   return true;
 }
 
+function isNoituEnabled(Threads, threadId) {
+  const record = Threads?.getCachedData?.(String(threadId));
+  const data = record?.data || record || {};
+  return data.noitu_enabled !== false;
+}
+
+async function setNoituEnabled(Threads, threadId, enabled) {
+  const record = await Threads.getData(String(threadId));
+  const data = { ...(record?.data || {}), noitu_enabled: Boolean(enabled) };
+  if (typeof Threads.setDataAndWait === "function") {
+    await Threads.setDataAndWait(String(threadId), data);
+  } else {
+    await Threads.setData(String(threadId), data);
+  }
+  return Boolean(enabled);
+}
+
+function stopNoituGames(threadId) {
+  const classic = game.get(threadId);
+  if (classic) game.stop(threadId);
+
+  const quick = quickNoitu.get(threadId);
+  if (quick) quickNoitu.stop(threadId, quick.playerId);
+  clearQuickNoituTimer(threadId);
+
+  const gc = ghepChu.get(threadId);
+  if (gc) ghepChu.stop(threadId, gc.playerId);
+  clearGhepChuTimer(threadId);
+
+  if (noituRoom.get(threadId)) noituRoom.finish(threadId);
+}
+
 async function handleActiveGameText(context) {
+  if (!isNoituEnabled(context.Threads || defaultThreads, context.event?.threadId)) return false;
   if (await handleNoituRoomText(context)) return true;
   if (await handleQuickNoituText(context)) return true;
   if (await handleGhepChuText(context)) return true;
@@ -667,21 +717,139 @@ async function handleActiveGameText(context) {
   return false;
 }
 
-async function leaderboard(Users) {
+async function leaderboard(Users, mode = "all", month = null) {
   if (!Users?.getAll) return [];
-  return Users.getAll().map(row => ({
-    uid: String(row.userId),
-    points: Math.max(0, Number(row?.data?.noitu?.points) || 0)
-  })).filter(row => row.points > 0).sort((a, b) => b.points - a.points).slice(0, 10);
+  const rows = Users.getAll().map(row => {
+    const profile = row?.data?.noitu || {};
+    const points = month
+      ? Number(profile.months?.[month]?.[mode] ?? (mode === "all" ? profile.months?.[month]?.all : 0)) || 0
+      : (mode === "all"
+        ? Number(profile.points) || 0
+        : Number(profile.modes?.[mode]) || 0);
+    return {
+      uid: String(row.userId || ""),
+      name: String(profile.name || row?.data?.name || row.userId || "Người chơi"),
+      points: Math.max(0, points),
+      moves: Math.max(0, Number(profile.moves) || 0),
+      botWins: Math.max(0, Number(profile.botWins) || 0)
+    };
+  });
+  return rows.filter(row => row.uid && row.points > 0)
+    .sort((a, b) => b.points - a.points || b.moves - a.moves)
+    .slice(0, 10);
 }
 
-module.exports.run = async function ({ args = [], api, event, Users }) {
+async function resetNoituScores(Users, mode = "all") {
+  if (!Users?.getAll || !Users?.getData || !Users?.setData) return 0;
+  const ids = Users.getAll().map(row => String(row.userId || "")).filter(Boolean);
+  let changed = 0;
+  for (const uid of ids) {
+    const record = await Users.getData(uid);
+    const data = record?.data && typeof record.data === "object" ? { ...record.data } : {};
+    const profile = data.noitu && typeof data.noitu === "object" ? { ...data.noitu } : null;
+    if (!profile) continue;
+
+    if (mode === "all") {
+      delete data.noitu;
+    } else {
+      const modes = { ...(profile.modes || {}) };
+      const removed = Math.max(0, Number(modes[mode]) || 0);
+      modes[mode] = 0;
+      profile.points = Math.max(0, (Number(profile.points) || 0) - removed);
+      profile.modes = modes;
+      const months = { ...(profile.months || {}) };
+      for (const [month, original] of Object.entries(months)) {
+        const row = { ...(original || {}) };
+        const monthRemoved = Math.max(0, Number(row[mode]) || 0);
+        row[mode] = 0;
+        row.all = Math.max(0, (Number(row.all) || 0) - monthRemoved);
+        months[month] = row;
+      }
+      profile.months = months;
+      data.noitu = profile;
+    }
+    await Users.setData(uid, data);
+    changed++;
+  }
+  return changed;
+}
+
+async function checkNoituWord(term) {
+  const normalized = ghepChu.normalizePhrase(term);
+  if (!normalized) return null;
+  try {
+    const entry = await ghepChu.lookupVietnameseTerm(normalized);
+    if (entry) return entry;
+  } catch { /* fallback below */ }
+  const fallback = ghepChu.FALLBACK_WORD_BANK.find(item =>
+    ghepChu.normalizePhrase(item.answer) === normalized
+  );
+  return fallback
+    ? { answer: fallback.answer, definition: fallback.definition, dictionarySource: "Kho dự phòng JOHNTRAN", source: "fallback" }
+    : null;
+}
+
+module.exports.run = async function ({ args = [], api, event, Users, Threads }) {
   const uid = String(event?.data?.uidFrom || "");
   const threadId = String(event?.threadId || "");
   const prefix = global.config?.prefix || "/";
   if (!uid || !threadId) return;
   const action = String(args[0] || "").trim().toLowerCase();
   if (!action || action === "help") return sendGuide(api, event, prefix);
+
+  if (action === "on" || action === "off") {
+    if (!isAdmin(uid)) return send(api, event, "⛔ Chỉ Admin bot mới được bật/tắt Nối Từ.");
+    try {
+      await setNoituEnabled(Threads || defaultThreads, threadId, action === "on");
+      if (action === "off") stopNoituGames(threadId);
+      return send(api, event, action === "on"
+        ? "✅ Đã bật Nối Từ trong nhóm hiện tại."
+        : "🚫 Đã tắt Nối Từ trong nhóm hiện tại. Các ván đang chạy đã được hủy.");
+    } catch (error) {
+      return send(api, event, "❌ Không thể lưu trạng thái Nối Từ: " + (error?.message || error));
+    }
+  }
+
+  if (action === "check") {
+    const term = args.slice(1).join(" ").trim();
+    if (!term) return send(api, event, "📖 Cách dùng: " + prefix + "nt check <từ hoặc cụm từ>");
+    if (term.length > 80) return send(api, event, "⚠️ Từ cần tra cứu quá dài.");
+    const entry = await checkNoituWord(term);
+    if (!entry) return send(api, event, "🔎 Không tìm thấy nghĩa tiếng Việt cho: " + term);
+    return send(api, event,
+      "📖 TRA CỨU TỪ VỰNG\n" +
+      "🔤 " + entry.answer + "\n" +
+      "💡 " + entry.definition + "\n" +
+      "📚 Nguồn: " + entry.dictionarySource
+    );
+  }
+
+  if (action === "words") {
+    try { await ghepChu.refreshApiWordPool(); } catch { /* cache vẫn dùng được */ }
+    const stats = ghepChu.getDictionaryStats();
+    return send(api, event,
+      "📚 KHO TỪ VỰNG JOHNTRAN\n" +
+      "⚡ Từ API đã nạp: " + stats.apiCached + "/" + stats.apiPoolLimit + "\n" +
+      "🛟 Từ dự phòng: " + stats.fallbackWords + "\n" +
+      "📦 Tổng mục từ đang có trong cache: " + stats.totalCached + "\n" +
+      "🌐 Nguồn tra cứu: " + stats.source + "\n" +
+      "ℹ️ Đây là số từ đang nạp trong bộ nhớ, không phải tổng quy mô toàn bộ từ điển API."
+    );
+  }
+
+  if (action === "reset") {
+    if (!isAdmin(uid)) return send(api, event, "⛔ Chỉ Admin bot mới được reset BXH Nối Từ.");
+    const mode = String(args[1] || "all").toLowerCase();
+    if (!["gc", "q", "room", "all"].includes(mode)) {
+      return send(api, event, "⚠️ Cách dùng: " + prefix + "nt reset [gc|q|room|all]");
+    }
+    try {
+      const count = await resetNoituScores(Users || defaultUsers, mode);
+      return send(api, event, "✅ Đã reset điểm Nối Từ chế độ " + mode.toUpperCase() + " của " + count + " người dùng.");
+    } catch (error) {
+      return send(api, event, "❌ Reset BXH thất bại: " + (error?.message || error));
+    }
+  }
 
   if (action === "gc") return startGhepChu({ api, event });
   if (action === "q") return startQuickNoitu({ api, event });
@@ -793,12 +961,26 @@ module.exports.run = async function ({ args = [], api, event, Users }) {
   }
 
   if (action === "rank" || action === "bxh") {
-    const rows = await leaderboard(Users);
-    if (!rows.length) return send(api, event, "🏆 Chưa có dữ liệu xếp hạng Nối Từ.");
-    const lines = rows.map((row, index) => (index + 1) + ". UID " + row.uid + " — " + row.points + " điểm");
-    return send(api, event, "🏆 BẢNG XẾP HẠNG NỐI TỪ\n" + lines.join("\n"));
+    const allowedModes = ["gc", "q", "room", "all"];
+    const mode = allowedModes.includes(String(args[1] || "").toLowerCase())
+      ? String(args[1]).toLowerCase()
+      : "all";
+    const monthToken = args.slice(1).find(value => /^\d{4}-\d{2}$/.test(String(value)));
+    const monthKeyword = args.slice(1).some(value => ["thang", "tháng", "month"].includes(String(value).toLowerCase()));
+    const month = monthToken || (monthKeyword ? currentMonthKey() : null);
+    const rows = await leaderboard(Users || defaultUsers, mode, month);
+    if (!rows.length) return send(api, event,
+      "🏆 Chưa có dữ liệu BXH Nối Từ " + mode.toUpperCase() + (month ? " tháng " + month : "") + ".");
+    const lines = rows.map((row, index) =>
+      (index + 1) + ". " + row.name + " — " + row.points + " điểm" +
+      (mode === "all" && row.botWins ? " · " + row.botWins + " lần thắng AI" : "")
+    );
+    return send(api, event,
+      "🏆 BẢNG XẾP HẠNG NỐI TỪ " + mode.toUpperCase() + (month ? " • " + month : "") +
+      "\n\n" + lines.join("\n")
+    );
   }
   return sendGuide(api, event, prefix);
 };
 module.exports.handleEvent = handleActiveGameText;
-module.exports._test = { help, leaderboard, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn };
+module.exports._test = { help, leaderboard, resetNoituScores, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn, isNoituEnabled, setNoituEnabled, stopNoituGames, checkNoituWord, currentMonthKey };
