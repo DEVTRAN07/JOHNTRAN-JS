@@ -967,6 +967,49 @@ async function loadSystem() {
     const entries = Object.entries(tables);
     $("cacheDetails").innerHTML = entries.length ? entries.map(([name,item])=>'<div class="cache-row"><span>'+$escape(name)+'</span><b>'+number(item.hits)+' hit / '+number(item.misses)+' miss</b></div>').join("") : '<div class="cache-row"><span>Total hits</span><b>'+number(cache.total)+'</b></div>';
 
+    let errorsData = { summary: {}, events: [], bots: [] };
+    try {
+      errorsData = await api("/api/errors");
+    } catch (error) {
+      errorsData.unavailable = error.message || "Không đọc được nhật ký lỗi";
+    }
+    const errorSummary = errorsData.summary || {};
+    const errorHeader =
+      '<div class="error-monitor-stats">' +
+      '<div><b>' + number(errorSummary.errors || 0) + '</b><small>Lỗi</small></div>' +
+      '<div><b>' + number(errorSummary.warnings || 0) + '</b><small>Cảnh báo</small></div>' +
+      '<div><b>' + number(errorSummary.deduplicated || 0) + '</b><small>Lỗi lặp đã gộp</small></div>' +
+      '<div><b>' + number(errorSummary.unique || 0) + '</b><small>Sự kiện riêng</small></div>' +
+      '</div>';
+    const botErrorRows = (errorsData.bots || []).map(bot => {
+      const stateLabel = bot.flapping ? "Đang flapping" : (bot.processStatus || "unknown");
+      const stateClass = bot.flapping ? "is-warning" : "is-neutral";
+      return '<div class="error-bot-row"><b>' + $escape(bot.name) + '</b><span>' +
+        $escape(stateLabel) + '</span><small>Restart: ' + number(bot.restarts) + '</small></div>';
+    }).join("");
+    const eventRows = (errorsData.events || []).slice(0, 40).map(event => {
+      const date = event.timestamp ? new Date(event.timestamp).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }) : "—";
+      const level = event.level === "warn" ? "CẢNH BÁO" : "LỖI";
+      const levelClass = event.level === "warn" ? "is-warning" : "is-error";
+      const labels = [
+        event.bot ? "Bot " + event.bot : "",
+        event.command ? "/" + event.command : "",
+        event.event ? event.event : "",
+        event.groupId ? "Nhóm " + event.groupId : ""
+      ].filter(Boolean).join(" · ");
+      return '<article class="error-monitor-item">' +
+        '<div class="error-monitor-top"><span class="error-level ' + levelClass + '">' + level + '</span>' +
+        '<time>' + $escape(date) + '</time><b>' + $escape("×" + number(event.count || 1)) + '</b></div>' +
+        '<div class="error-monitor-message">' + $escape(event.message || "Không có nội dung") + '</div>' +
+        '<div class="error-monitor-context">' + $escape(labels || event.source || "runtime") +
+        ' · nguồn ' + $escape(event.source || "runtime") + '</div></article>';
+    }).join("");
+    $("errorMonitorSummary").innerHTML = errorsData.unavailable
+      ? '<div class="empty-state">' + $escape(errorsData.unavailable) + '</div>'
+      : errorHeader + '<div class="error-bot-list">' + (botErrorRows || '<small>Chưa có bot con</small>') + '</div>';
+    $("errorMonitorList").innerHTML = eventRows ||
+      '<div class="empty-state">' + (errorsData.unavailable ? $escape(errorsData.unavailable) : "Chưa ghi nhận lỗi hoặc cảnh báo gần đây.") + '</div>';
+
     const executions = new Map((m.commandExecutionLatency || []).map(item => [item.command, item]));
     const latencyRows = Array.isArray(m.commandLatency) ? m.commandLatency : [];
     const latencySummary = m.latency || {};
