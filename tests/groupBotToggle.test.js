@@ -41,6 +41,36 @@ test("/bot off disables the current group only", async () => {
   assert.equal(ctx.messages.at(-1).type, "success");
 });
 
+test("/bot on waits for durable storage before confirming the group is enabled", async () => {
+  const ctx = createContext(false);
+  let finishSave;
+  let replySent = false;
+  const Threads = {
+    getData: async () => ({ data: { ...ctx.data } }),
+    setDataAndWait: async (_id, next) => {
+      await new Promise(resolve => { finishSave = resolve; });
+      Object.assign(ctx.data, next);
+    }
+  };
+  const reply = {
+    ...ctx.reply,
+    success: message => { replySent = true; ctx.messages.push({ type:"success", message }); }
+  };
+
+  const pending = command.run({
+    event: { threadId:"group-await-save", type:ThreadType.Group },
+    args:["on"], Threads, reply
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(typeof finishSave, "function");
+  assert.equal(replySent, false, "success must not be sent before the DB confirms the write");
+
+  finishSave();
+  await pending;
+  assert.equal(ctx.data.bot_enabled, true);
+  assert.equal(replySent, true);
+});
+
 test("/bot on restores a group previously switched off", async () => {
   const ctx = createContext(false);
   await command.run({
