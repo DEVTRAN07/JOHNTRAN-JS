@@ -571,7 +571,7 @@ function sendJson(res, status, data) {
 
 
 // Serve panel UI (docs/) trực tiếp từ host bot — không cần GitHub Pages
-const STATIC_FILES = { "/": "panel.html", "/panel": "panel.html", "/panel.html": "panel.html", "/status": "index.html", "/index.html": "index.html" };
+const STATIC_FILES = { "/": "panel.html", "/panel": "panel.html", "/panel.html": "panel.html", "/status": "index.html", "/index.html": "index.html", "/panel.v4.css": "panel.v4.css" };
 function serveStatic(pathname, res) {
   const docDir = path.resolve(__dirname, "..", "docs");
   let filePath = null;
