@@ -61,8 +61,11 @@ test("quick plain-text handler only consumes answers from the active player", as
     assert.match(sent[0].msg, /sinh viên/);
     assert.match(sent[0].msg, /\+1 điểm/);
   } finally {
-    quick.finish("quick-handler-1");
-    for (const timer of []) clearTimeout(timer);
+    await command._test.handleQuickNoituText({
+      api,
+      event: { threadId: "quick-handler-1", type: 2, data: { uidFrom: "p1", content: "stop" } },
+      eventType: "message"
+    });
     if (previousConfig === undefined) delete global.config;
     else global.config = previousConfig;
   }
