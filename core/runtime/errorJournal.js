@@ -183,19 +183,22 @@ function createErrorJournal(options = {}) {
   async function flush() {
     if (flushing) return;
     flushing = true;
+    let inFlight = [];
     try {
       while (pendingLines.length) {
-        const batch = pendingLines.splice(0, 100);
-        const payload = batch.join("\n") + "\n";
+        inFlight = pendingLines.splice(0, 100);
+        const payload = inFlight.join("\n") + "\n";
         await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
         await rotateIfNeeded(Buffer.byteLength(payload));
         await fs.promises.appendFile(filePath, payload, { encoding: "utf8", mode: 0o600 });
+        inFlight = [];
         lastWriteAt = new Date(now()).toISOString();
         lastWriteError = null;
       }
     } catch (error) {
       lastWriteError = safeMessage(error.message || error);
-      // Do not block the message listener or grow an unbounded retry queue.
+      // Keep failed writes for the next incoming error / explicit flush attempt.
+      if (inFlight.length) pendingLines.unshift(...inFlight);
       if (pendingLines.length > MAX_PENDING_WRITES) {
         droppedWrites += pendingLines.length - MAX_PENDING_WRITES;
         pendingLines.splice(0, pendingLines.length - MAX_PENDING_WRITES);
