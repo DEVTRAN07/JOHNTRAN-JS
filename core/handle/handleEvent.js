@@ -20,7 +20,8 @@ async function handleEvent(eventType, eventData, api, isSelf = false) {
   // Active mini-games get first refusal on plain-text answers. Only a user
   // enrolled in the matching session can consume a message; unrelated group
   // conversations continue through the regular event plugins unchanged.
-  if (eventType === "message" && !isSelf && !eventData?.isSelf) {
+  const allowSelfGameMessages = global.config?.allow_self_command === true;
+  if (eventType === "message" && ((!isSelf && !eventData?.isSelf) || allowSelfGameMessages)) {
     // Load the game consumer directly. Do not rely on command-registry timing:
     // the listener may receive plain text immediately after a command reload.
     try {
