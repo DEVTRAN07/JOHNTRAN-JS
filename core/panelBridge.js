@@ -8,6 +8,7 @@ const { ThreadType } = require("zalo-client");
 const stats = require("./stats");
 const logger = require("../utils/logger");
 const { wrapApi } = require("./message");
+const { attachGroupBotState } = require("./runtime/groupBotState");
 
 // ===== Bộ nhớ tin nhắn: RAM + lưu đĩa (sống sót qua restart) =====
 // Zalo đã XOÁ API lịch sử nhóm (getGroupChatHistory → 404) nên panel chỉ
@@ -217,6 +218,10 @@ async function handleRequest(req, res, url) {
       stats.getGroups(apiRef),
       stats.getProfile(apiRef)
     ]);
+    // Lấy trạng thái từ đúng DB của bot con. Nhóm chưa có record hoặc thiếu
+    // bot_enabled luôn OFF; tuyệt đối không suy ra ON từ việc nhóm tồn tại.
+    const Threads = require("./controller/controllerThreads");
+    const groupsWithState = attachGroupBotState(groups.list || [], Threads.getAll());
     // Kèm tin cuối (từ ring) để panel hiện preview giống Zalo
     const withLast = (item, key) => {
       const last = getMessages(String(item[key]), 1)[0];
@@ -224,7 +229,7 @@ async function handleRequest(req, res, url) {
     };
     return json(200, {
       friends: { ...friends, list: (friends.list || []).map((f) => withLast(f, "uid")) },
-      groups: { ...groups, list: (groups.list || []).map((g) => withLast(g, "gid")) },
+      groups: { ...groups, list: groupsWithState.map((g) => withLast(g, "gid")) },
       profile,
       adminGroups: readAdminGroups()
     });
