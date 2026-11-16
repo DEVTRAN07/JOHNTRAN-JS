@@ -22,6 +22,10 @@ function createDatabaseAdapter(backend) {
   return {
     getData(...args) { return backend.getData(...args); },
     saveData(...args) { return backend.saveData(...args); },
+    saveDataAndWait(...args) {
+      if (typeof backend.saveDataAndWait === "function") return backend.saveDataAndWait(...args);
+      return backend.saveData(...args);
+    },
     hasData(...args) { return backend.hasData(...args); },
     delData(...args) { return backend.delData(...args); },
     allData(...args) { return backend.allData(...args); },
