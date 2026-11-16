@@ -519,7 +519,18 @@ function startPanel({ manager, config }) {
         if (!rawBot?.bridgePort) return sendJson(res, 404, { error: "Chưa biết cổng cầu nối của bot" });
         const bot = enrichBot(rawBot);
         if (bot.loginState !== "logged_in") {
-          return sendJson(res, 409, { error: `Bot "${botName}" chưa đăng nhập Zalo — đang chờ quét QR`, loginState: bot.loginState, requireLogin: true });
+          const statsRow = findBotStatsRow(botName);
+          const stats = statsRow?.data || statsRow || {};
+          const loginState = bot.loginState || stats.loginState || "unknown";
+          const loginMessage = String(stats.loginMessage || "").trim();
+          const processStatus = bot.processStatus || bot.status || "unknown";
+          const reason = processStatus !== "online"
+            ? `Tiến trình bot "${botName}" hiện ${processStatus}; kiểm tra log và khởi động lại bot.`
+            : loginMessage || `Bot "${botName}" chưa đăng nhập Zalo (trạng thái: ${loginState}). Hãy mở mục QR để hoàn tất đăng nhập.`;
+          return sendJson(res, 409, {
+            error: reason, bot: botName, processStatus, loginState,
+            loginMessage: loginMessage || null, requireLogin: true
+          });
         }
 
         const route = match?.[2] || "send"; // bot bridge route
@@ -564,10 +575,24 @@ function startPanel({ manager, config }) {
         await maybeSyncStore();
         let supabaseStatus = null;
         try { supabaseStatus = storeDb && typeof storeDb.getStatus === "function" ? storeDb.getStatus() : null; } catch { supabaseStatus = null; }
+        const managedBots = manager && typeof manager.list === "function"
+          ? manager.list().map(enrichBot)
+          : null;
+        const botSummary = managedBots ? {
+          total: managedBots.length,
+          running: managedBots.filter(bot => bot.processStatus === "online").length,
+          loggedIn: managedBots.filter(bot => bot.loginState === "logged_in").length,
+          waitingLogin: managedBots.filter(bot => ["qr_pending", "qr_scanned", "cookie_login", "starting", "waiting_login", "unknown", null].includes(bot.loginState)).length,
+          failed: managedBots.filter(bot => bot.loginState === "failed" || bot.processStatus === "offline").length
+        } : null;
+        const loggedIn = botSummary ? botSummary.loggedIn > 0 : Boolean(global.api);
         return sendJson(res, 200, {
-          status: global.api ? "ok" : "starting",
+          // Panel master is intentionally not a Zalo session; managed child
+          // bot sessions determine login readiness when running in Panel mode.
+          status: manager ? "ok" : (global.api ? "ok" : "starting"),
           bot: global.config?.name_bot || "bot",
-          loggedIn: Boolean(global.api),
+          loggedIn,
+          ...(botSummary ? { botSummary } : {}),
           commands: global.client?.commands?.size || 0,
           uptimeMs: process.uptime() * 1000,
           memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
