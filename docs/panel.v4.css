@@ -501,3 +501,33 @@ select:focus,input:focus,textarea:focus{border-color:rgba(201,168,106,.55)}
 }
 .group-card-status.is-unknown{background:rgba(231,178,91,.12);color:#eac27f}
 .group-card-status.is-unknown:before{background:#d9aa5c;box-shadow:0 0 6px rgba(217,170,92,.35)}
+
+/* Step 5 · Database and persistent storage diagnostics */
+.storage-child-heading{
+  display:flex;flex-direction:column;gap:3px;
+  margin:18px 0 9px;padding-top:14px;border-top:1px solid var(--line)
+}
+.storage-child-heading h4{margin:0;color:var(--text);font-size:11px;font-weight:700}
+.bot-storage-list{display:grid;gap:7px}
+.bot-storage-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+  background:rgba(11,18,26,.42);min-width:0
+}
+.bot-storage-row>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.bot-storage-row b{color:var(--text);font-size:10px}
+.bot-storage-row small{
+  color:var(--muted-2);font-size:9px;line-height:1.45;
+  overflow-wrap:anywhere
+}
+.storage-state{
+  flex:0 0 auto;max-width:42%;padding:4px 7px;border-radius:5px;
+  font-size:8px;font-weight:700;text-align:center
+}
+.storage-state.is-ok{background:rgba(109,206,164,.13);color:#91dbb7}
+.storage-state.is-warning{background:rgba(231,178,91,.13);color:#eac27f}
+.storage-state.is-unknown{background:rgba(129,144,160,.12);color:#aab5c2}
+@media(max-width:680px){
+  .bot-storage-row{align-items:flex-start;flex-direction:column}
+  .storage-state{max-width:100%}
+}
