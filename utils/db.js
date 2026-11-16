@@ -26,6 +26,18 @@ if (!forceJson && SUPABASE_URL && SUPABASE_KEY) {
   // trực tiếp trong mount path để tránh ghi nhầm vào filesystem tạm của Render.
   dbFile = process.env.JT_DB_FILE ||
     (PERSISTENT_DIR ? path.join(PERSISTENT_DIR, "store.json") : path.join(__dirname, "..", "data", "store.json"));
+
+  // Copy the old master JSON database into the configured disk on first use.
+  // The source is retained, and an existing destination is never overwritten.
+  const legacyDbFile = path.join(__dirname, "..", "data", "store.json");
+  if (PERSISTENT_DIR && !process.env.JT_DB_FILE &&
+      path.resolve(legacyDbFile) !== path.resolve(dbFile) &&
+      fs.existsSync(legacyDbFile) && !fs.existsSync(dbFile)) {
+    fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+    fs.copyFileSync(legacyDbFile, dbFile, fs.constants.COPYFILE_EXCL);
+    logger.log("Đã sao chép master store.json sang JT_PERSISTENT_DIR; giữ nguyên file nguồn.", "info");
+  }
+
   db = new JsonStore(dbFile, ["Users", "Threads", "Metrics", "BotStats"]);
   logger.log(`Database: JSON store (${dbFile})`, "info");
   if (process.env.RENDER) {
