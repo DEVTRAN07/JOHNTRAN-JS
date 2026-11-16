@@ -28,15 +28,14 @@ function getExistingRecord(threadId) {
 function preserveBotEnabled(threadId, inputData) {
   const input = inputData && typeof inputData === "object" ? inputData : {};
   const existing = getExistingRecord(threadId);
-  const wasEnabled = existing?.data?.bot_enabled === true;
-  const requestedEnabled = input.bot_enabled === true;
+  const storedEnabled = existing?.data?.bot_enabled === true;
 
-  // ON is sticky: ordinary settings writes (including stale full snapshots
-  // carrying false) may never switch an enabled group OFF. Only setBotEnabled
-  // is allowed to perform an intentional OFF operation.
+  // The persisted flag is authoritative for all ordinary settings writes.
+  // Ignore both stale true and stale false snapshots: only setBotEnabled may
+  // intentionally change the group's ON/OFF state.
   return {
     ...input,
-    bot_enabled: wasEnabled || requestedEnabled
+    bot_enabled: storedEnabled
   };
 }
 
