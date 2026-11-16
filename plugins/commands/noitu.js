@@ -273,11 +273,11 @@ function help(prefix) {
     "🏆 Xếp hạng & tiện ích:",
     `➜ ${prefix}nt bxh [gc | q | room | all] [tháng] : Bảng vàng cao thủ`,
     `➜ ${prefix}nt check <từ> : Tra cứu ý nghĩa từ vựng`,
-    `➜ ${prefix}nt words : Xem tổng số từ vựng trong kho`,
+    `➜ ${prefix}nt words : Xem số từ đang được nạp trong kho`,
     "",
     "🖥️ Quản trị:",
     `➜ ${prefix}nt on / off : Bật hoặc Tắt game`,
-    `➜ ${prefix}nt reset [gc | q | room | all] : Đặt lại điểm tháng`,
+    `➜ ${prefix}nt reset [gc | q | room | all] : Reset BXH theo chế độ`,
     "",
     `👉 Gõ ${prefix}nt go hoặc ${prefix}nt gc để chơi ngay!`
   ].join("\n");
@@ -849,6 +849,10 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     } catch (error) {
       return send(api, event, "❌ Reset BXH thất bại: " + (error?.message || error));
     }
+  }
+
+  if (["gc", "q", "room", "go", "start", "join"].includes(action) && !isNoituEnabled(Threads || defaultThreads, threadId)) {
+    return send(api, event, "🚫 Game Nối Từ đang tắt trong nhóm này. Admin dùng " + prefix + "nt on để bật lại.");
   }
 
   if (action === "gc") return startGhepChu({ api, event });
