@@ -72,6 +72,4 @@ function withRequesterMention(event, payload) {
   };
 }
 
-module.exports = { buildRequesterMention, withRequesterMention };
-
 module.exports = { extractMentions, firstMention, buildRequesterMention, withRequesterMention };
