@@ -130,6 +130,22 @@ test("Supabase sync preserves a pending bot_enabled write when the remote snapsh
     "a pending local delete must not be resurrected by an older snapshot");
 });
 
+test("Supabase reports missing bot_threads as unhealthy instead of silently defaulting every group OFF", async () => {
+  const store = makeStore(async (_name, table) => ({
+    data: table === "bot_threads" ? null : [],
+    error: table === "bot_threads" ? { message: 'Could not find the table "public.bot_threads" in the schema cache' } : null
+  }));
+  store.mirror = { Users: {}, Threads: {}, Metrics: {} };
+  store.scheduleInterval = () => {};
+
+  await store.sync();
+
+  const status = store.getStatus();
+  assert.equal(status.ok, false);
+  assert.equal(status.classified, "config");
+  assert.match(status.syncError, /bot_threads/);
+});
+
 test("critical group-setting writes wait for Supabase acknowledgement", async () => {
   let finishWrite;
   const store = makeStore(async (name) => {
