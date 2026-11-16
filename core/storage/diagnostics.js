@@ -54,7 +54,7 @@ function readMountInfo() {
 function getJsonPersistenceStatus(filePath, env = process.env, mountInfoText = readMountInfo()) {
   const resolvedFile = path.resolve(filePath);
   const isRender = Boolean(env.RENDER || env.RENDER_SERVICE_ID);
-  const configuredRoot = String(env.JT_PERSISTENT_DIR || env.JT_PERSISTENT_DIR || "").trim();
+  const configuredRoot = String(env.JT_PERSISTENT_DIR || env.JT_DB_PERSISTENT_PATH || "").trim();
 
   if (!isRender) {
     return {
