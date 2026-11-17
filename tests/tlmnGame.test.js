@@ -874,13 +874,13 @@ test("TLMN GameVH Thối 3 Bích: the player who covers the penultimate play res
     to: "b",
     amount: 26 * room.bet * 2,
     reason: "thoi-ba-bich",
-    receivedAmount: 49400,
-    fee: 2600
+    receivedAmount: 247000,
+    fee: 13000
   }]);
   assert.equal(room.settlement.winnerUid, "b");
-  assert.equal(room.settlement.net.a, -52000);
-  assert.equal(room.settlement.net.b, 49400);
-  assert.equal(room.settlement.houseFee, 2600);
+  assert.equal(room.settlement.net.a, -260000);
+  assert.equal(room.settlement.net.b, 247000);
+  assert.equal(room.settlement.houseFee, 13000);
   assert.equal(Object.values(room.settlement.net).reduce((sum, value) => sum + value, 0),
     -room.settlement.houseFee);
   assert.equal(room.chopEvents.length, 0, "the special 3♠ rescue is not charged again as an ordinary chop");
