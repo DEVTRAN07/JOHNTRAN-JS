@@ -959,7 +959,7 @@ function chooseAiMove(room, uid) {
   const hand = room?.hands?.[String(uid)] || [];
   if (!hand.length) return null;
 
-  const mustContainThreeOfSpades = Number(room.playedCount) === 0;
+  const mustContainThreeOfSpades = false;
   let best = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
@@ -1471,7 +1471,7 @@ async function startRoom({ api, event, Users, Threads }) {
   await sendGroupRoom(api, event, result.room,
     room.practice
       ? "🎮 Đã chia bài luyện tập cho Admin. AI sẽ tự tìm nước đánh hợp lệ, không tự động nhường lượt."
-      : "🎮 Đã chia bài cho từng người. Người có 3♠ đi trước.");
+      : "🎮 Đã chia bài cho từng người. Người mở đầu được chọn ngẫu nhiên hoặc là người thắng ván trước.");
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, Users, Threads, room);
   scheduleAiTurn(api, Users, Threads, room);
