@@ -20,19 +20,22 @@ function addPracticeBots(threadId, room) {
 test("TLMN practice room persists its practice flag and AI seat metadata", () => {
   const groupId = "tlmn-ai-restore-test";
   const created = game.create(groupId, { uid: "human", name: "Admin" }, {
-    practice: true
+    practice: true,
+    practiceWinnerUid: "human"
   });
   assert.equal(created.ok, true);
   addPracticeBots(groupId, created.room);
 
   const saved = game.serialize(game.get(groupId));
   assert.equal(saved.practice, true);
+  assert.equal(saved.practiceWinnerUid, "human");
   assert.equal(saved.players.filter(player => player.ai).length, 3);
 
   game.removeRoom(groupId);
   const restored = game.restore(saved);
   assert.ok(restored);
   assert.equal(restored.practice, true);
+  assert.equal(restored.practiceWinnerUid, "human");
   assert.equal(restored.players.filter(player => player.ai).length, 3);
   game.removeRoom(groupId);
 });
