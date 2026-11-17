@@ -734,3 +734,198 @@ test("Sâm uses white-hand type priority before comparing same-type high cards",
     game.removeRoom(threadId);
   }
 });
+
+
+function makeMemoryUsers(initialBalances = {}) {
+  const records = new Map(Object.entries(initialBalances).map(([uid, coins]) => [uid, {
+    tlmn: {
+      coins, games: 0, wins: 0, losses: 0,
+      transactions: [], pendingTransfers: []
+    }
+  }]));
+  return {
+    records,
+    async getData(uid) {
+      return { data: structuredClone(records.get(String(uid)) || {}) };
+    },
+    async setDataAndWait(uid, data) {
+      records.set(String(uid), structuredClone(data));
+      return true;
+    }
+  };
+}
+
+function makeMemoryThreads() {
+  const records = new Map();
+  return {
+    records,
+    async getData(threadId) {
+      return { data: structuredClone(records.get(String(threadId)) || {}) };
+    },
+    async setDataAndWait(threadId, data) {
+      records.set(String(threadId), structuredClone(data));
+      return true;
+    },
+    getAll() {
+      return [...records.entries()].map(([threadId, data]) => ({
+        threadId, data: structuredClone(data)
+      }));
+    }
+  };
+}
+
+test("Sâm creates a stable game token and preserves it through room restore", () => {
+  const threadId = "sam-stable-game-token";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81608" });
+  assert.equal(created.ok, true);
+  assert.match(created.state.gameToken, /^[0-9a-f-]{36}$/i);
+  const token = created.state.gameToken;
+  const saved = game.serialize(threadId);
+  game.removeRoom(threadId);
+  const restored = game.restore(saved);
+  assert.ok(restored);
+  assert.equal(restored.gameToken, token);
+  game.removeRoom(threadId);
+});
+
+test("Sâm refunds a reservation that is still only in lockPending after a crash", async () => {
+  const threadId = "sam-pending-only-refund";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81609", stake: 100 });
+  game.join(threadId, "81609", { uid: "b", name: "B" });
+  const reserveId = "reserve:81609:pending-only:a";
+  const room = created.state;
+  room.lockTransactionId = "pending-only";
+  room.locked = {};
+  room.lockPending = { a: { amount: 25000, transactionId: reserveId } };
+
+  const Users = makeMemoryUsers({ a: 75000, b: 100000 });
+  const a = Users.records.get("a");
+  a.tlmn.transactions.push(reserveId);
+  Users.records.set("a", a);
+  const Threads = makeMemoryThreads();
+
+  const refunded = await command._test.refundSamWallets(Users, room, Threads);
+  assert.equal(refunded, true);
+  assert.equal(Users.records.get("a").tlmn.coins, 100000);
+  assert.deepEqual(room.locked, {});
+  assert.deepEqual(room.lockPending, {});
+  assert.equal(room.lockTransactionId, null);
+  game.removeRoom(threadId);
+});
+
+test("Sâm non-owner stop cannot refund or unlock the players' escrow", async () => {
+  const threadId = "sam-stop-authorization";
+  const created = game.create(threadId, { uid: "owner", name: "Chủ bàn" }, { id: "81610", stake: 100 });
+  game.join(threadId, "81610", { uid: "guest", name: "Khách" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "owner", () => 0.21); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.lockTransactionId = "active-escrow";
+  room.locked = { owner: 25000, guest: 25000 };
+  room.lockPending = {};
+  const Users = makeMemoryUsers({ owner: 75000, guest: 75000 });
+  const Threads = makeMemoryThreads();
+  const sent = [];
+  const api = {
+    async sendMessage(payload, threadId, type) {
+      sent.push({ payload, threadId, type });
+      return true;
+    }
+  };
+
+  await command._test.runCommand({
+    args: ["stop"], api, Users, Threads,
+    event: {
+      threadId, type: 1,
+      data: { uidFrom: "intruder", dName: "Người lạ" }
+    }
+  });
+
+  assert.equal(Users.records.get("owner").tlmn.coins, 75000);
+  assert.equal(Users.records.get("guest").tlmn.coins, 75000);
+  assert.equal(game.get(threadId).status, "playing");
+  assert.deepEqual(game.get(threadId).locked, { owner: 25000, guest: 25000 });
+  game.removeRoom(threadId);
+});
+
+test("Sâm owner leaving a waiting room recovers an interrupted pending reservation", async () => {
+  const threadId = "sam-owner-leave-pending";
+  const created = game.create(threadId, { uid: "owner", name: "Chủ bàn" }, { id: "81611", stake: 100 });
+  game.join(threadId, "81611", { uid: "guest", name: "Khách" });
+  const room = created.state;
+  room.lockTransactionId = "leave-pending";
+  const reserveId = "reserve:81611:leave-pending:owner";
+  room.locked = {};
+  room.lockPending = { owner: { amount: 25000, transactionId: reserveId } };
+
+  const Users = makeMemoryUsers({ owner: 75000, guest: 100000 });
+  const owner = Users.records.get("owner");
+  owner.tlmn.transactions.push(reserveId);
+  Users.records.set("owner", owner);
+  const Threads = makeMemoryThreads();
+  const api = { async sendMessage() { return true; } };
+
+  await command._test.runCommand({
+    args: ["leave"], api, Users, Threads,
+    event: { threadId, type: 1, data: { uidFrom: "owner", dName: "Chủ bàn" } }
+  });
+
+  assert.equal(Users.records.get("owner").tlmn.coins, 100000);
+  assert.equal(game.get(threadId), null);
+  assert.equal(Threads.records.get(threadId)?.sam_room, undefined);
+});
+
+test("Sâm settlement retry after restart reuses the same transaction IDs", async () => {
+  const threadId = "sam-settlement-retry-token";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81612", stake: 100 });
+  game.join(threadId, "81612", { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.29); }
+  finally { engine.detectWhiteHand = originalDetector; }
+  const room = started.state;
+  const stableToken = room.gameToken;
+  room.locked = { a: 25000, b: 25000 };
+  room.lockPending = {};
+  game.finish(room, "a");
+
+  const Users = makeMemoryUsers({ a: 75000, b: 75000 });
+  const Threads = makeMemoryThreads();
+  let failBOnce = true;
+  const originalSet = Users.setDataAndWait.bind(Users);
+  Users.setDataAndWait = async (uid, data) => {
+    if (uid === "b" && failBOnce) {
+      failBOnce = false;
+      throw new Error("simulated database write failure");
+    }
+    return originalSet(uid, data);
+  };
+
+  await assert.rejects(
+    command._test.settleSamWallets(Users, room, Threads),
+    /simulated database write failure/
+  );
+  assert.equal(Users.records.get("a").tlmn.coins, 100000 + Number(room.settlement.net.a));
+  assert.equal(room.settled, false);
+
+  const saved = Threads.records.get(threadId)?.sam_room;
+  assert.ok(saved);
+  game.removeRoom(threadId);
+  const restored = game.restore(saved);
+  assert.ok(restored);
+  assert.equal(restored.gameToken, stableToken);
+
+  Users.setDataAndWait = originalSet;
+  const retry = await command._test.settleSamWallets(Users, restored, Threads);
+  assert.equal(retry.ok, true);
+  assert.equal(restored.settled, true);
+  assert.equal(Users.records.get("a").tlmn.coins, 100000 + Number(restored.settlement.net.a));
+  assert.equal(Users.records.get("a").tlmn.games, 1);
+  assert.equal(Users.records.get("b").tlmn.games, 1);
+  game.removeRoom(threadId);
+});
