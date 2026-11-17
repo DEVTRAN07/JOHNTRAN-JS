@@ -84,7 +84,7 @@ function create(threadId, owner, options = {}) {
     currentCombo: null, passed: new Set(), playedCount: 0,
     finishOrder: [], results: null, winnerUid: null, whiteHand: null,
     samCallerUid: null, samCallerHasPlayed: false, samStatus: null, samBlockedByUid: null,
-    stake: Math.max(1000, Math.floor(Number(options.stake) || 5000)),
+    stake: Math.max(100, Math.floor(Number(options.stake) || 300)),
     playedByUid: {},
     chopEvents: [],
     baoOneViolations: [],
