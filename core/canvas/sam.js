@@ -348,6 +348,8 @@ function renderHand(data = {}) {
 function renderSam(data = {}) {
   theme.initFonts();
   theme.ensureTheme();
+  if (data.view !== "table") return renderHand(data);
+
   const width = theme.WIDTH;
   const scale = width / 1080;
   const px = value => Math.round(value * scale);
@@ -371,8 +373,7 @@ function renderSam(data = {}) {
   ctx.lineWidth = px(2);
   ctx.stroke();
 
-  if (data.view === "table") renderTable(ctx, width, px(780), scale, data);
-  else return renderHand(data);
+  renderTable(ctx, width, px(780), scale, data);
   return theme.save(canvas, "sam");
 }
 
