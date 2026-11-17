@@ -583,8 +583,12 @@ function restore(saved) {
     : null;
 
   const placementPartition = [...activeUids, ...finishOrder, ...forfeitUids];
-  if (placementPartition.length !== players.length ||
-      new Set(placementPartition).size !== players.length) return null;
+  if (saved.status === "waiting") {
+    if (placementPartition.length) return null;
+  } else if (placementPartition.length !== players.length ||
+      new Set(placementPartition).size !== players.length) {
+    return null;
+  }
 
   if (saved.status === "playing") {
     if (!activeUids.length || !activeUids.includes(String(saved.turnUid))) return null;
