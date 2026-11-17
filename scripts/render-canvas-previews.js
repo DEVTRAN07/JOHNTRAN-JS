@@ -299,7 +299,7 @@ async function main() {
   // in canvasWorker. They are shown separately as inactive/reference designs.
   const legacyProfile = require("../core/canvas/profile");
   await saveDirect(
-    "13-legacy-profile-zalo-reference",
+    "17-legacy-profile-zalo-reference",
     legacyProfile.renderProfile({
       skin: "zalo",
       title: "MrQ · Preview",
@@ -311,7 +311,7 @@ async function main() {
   );
 
   await saveDirect(
-    "14-legacy-avatar-reference",
+    "18-legacy-avatar-reference",
     legacyProfile.renderAvatarCard({
       skin: "zalo",
       title: "MrQ · Preview",
