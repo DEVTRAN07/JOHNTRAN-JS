@@ -140,3 +140,62 @@ test("GameVH TLMN: a higher straight can block a kết 3 bích played inside a s
   ));
   game.removeRoom(groupId);
 });
+
+
+test("GameVH TLMN chop chain charges the last player whose hàng is cut with the accumulated amount", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const groupId = "tlmn-chop-chain-settlement";
+  const created = game.create(groupId, { uid: "a", name: "A" });
+  game.join(groupId, created.room.id, { uid: "b", name: "B" });
+  game.join(groupId, created.room.id, { uid: "c", name: "C" });
+  const started = game.start(groupId, "a", () => 0.41);
+  const room = started.state;
+
+  const card = (rank, suit) => ({ rank, suit, id: String(rank) + suit });
+  room.status = "playing";
+  room.activeUids = ["a", "b", "c"];
+  room.finishOrder = [];
+  room.forfeitUids = [];
+  room.hands = {
+    a: [card(15, "b"), card(9, "b")],
+    b: [
+      card(3, "b"), card(3, "ch"), card(4, "b"), card(4, "ch"),
+      card(5, "b"), card(5, "ch"), card(10, "b")
+    ],
+    c: [
+      card(3, "c"), card(3, "r"), card(4, "c"), card(4, "r"),
+      card(5, "c"), card(5, "r"), card(6, "c"), card(6, "r"),
+      card(11, "b")
+    ]
+  };
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.playedCount = 0;
+  room.passed = new Set();
+  room.trickParticipants = [];
+  room.chopEvents = [];
+  room.chopChainUnits = 0;
+  room.chopChainTwoUnits = 0;
+  room.chopChainEventIndex = null;
+  room.trickTwoUnits = 0;
+
+  const two = game.play(groupId, "a", "2b");
+  assert.equal(two.ok, true);
+  const threePairRun = game.play(groupId, "b", "3b3ch4b4ch5b5ch");
+  assert.equal(threePairRun.ok, true);
+  const fourPairRun = game.play(groupId, "c", "3c3r4c4r5c5r6c6r");
+  assert.equal(fourPairRun.ok, true);
+
+  assert.equal(room.chopEvents.length, 1);
+  assert.deepEqual(room.chopEvents[0], {
+    from: "b", to: "c", amount: 12 * room.bet, reason: "chop-chain"
+  });
+  const settlement = game.calculateSettlement(room);
+  assert.ok(settlement.transfers.some(item =>
+    item.from === "b" && item.to === "c" && item.amount === 12 * room.bet
+  ));
+  assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
+  game.removeRoom(groupId);
+});
