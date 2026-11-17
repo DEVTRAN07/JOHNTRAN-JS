@@ -1,14 +1,11 @@
 "use strict";
 
-const fs = require("fs");
 
 const { loadImage } = require("canvas");
 const avatarCache = require("./avatarCache");
 const theme = require("./theme");
 const menuPalette = require("./menuPalette");
 const { drawCategoryIcon } = require("./menuIcons");
-const os = require("os");
-const path = require("path");
 
 function rounded(ctx, x, y, w, h, r) {
   const radius = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -198,16 +195,6 @@ function drawBotIcon(ctx, cx, cy, size, color) {
   ctx.beginPath(); ctx.arc(cx - size * 0.13, cy, theme.S(1.4), 0, Math.PI * 2);
   ctx.arc(cx + size * 0.13, cy, theme.S(1.4), 0, Math.PI * 2); ctx.fill();
   ctx.restore();
-}
-
-function saveMainMenuImage(canvas) {
-  const filePath = path.join(
-    os.tmpdir(),
-    "jt_menu_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".png"
-  );
-  // The /menu attachment is a finished card, not a screenshot inside a Mac window.
-  fs.writeFileSync(filePath, canvas.toBuffer("image/png"));
-  return filePath;
 }
 
 function getMainMenuPalette() {
@@ -479,7 +466,7 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, p
   drawBotIcon(ctx, W - margin - S(73), footerY + footerH / 2, S(16), palette.accent);
   drawText(ctx, "v" + (botVersion || "1.0.2"), W - margin - S(8), footerY + S(32), 11, palette.accent, true, "right");
 
-  return saveMainMenuImage(result.canvas);
+  return theme.save(result.canvas, "menu");
 }
 
 const FOLDER_ICON_ALIASES = Object.freeze({ utility: "public", group: "manager", bot: "mybot", special: "hidden" });
