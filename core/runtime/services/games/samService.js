@@ -91,7 +91,7 @@ function create(threadId, owner, options = {}) {
     chopEvents: [],
     activeChopChain: null,
     baoOneViolations: [],
-    settlement: null,
+    settlement: null, settled: false,
     createdAt: Number(options.now) || Date.now(), startedAt: null, finishedAt: null
   };
   roomsByThread.set(key, room);
@@ -473,6 +473,7 @@ function restore(saved) {
   if (!ids.has(String(saved.ownerId || ""))) return null;
   const room = {
     ...saved,
+    settled: saved.settled === true,
     gameToken: String(saved.gameToken || saved.lockTransactionId || saved.id),
     threadId: String(saved.threadId), id: String(saved.id),
     ownerId: String(saved.ownerId), ownerName: String(saved.ownerName || ""),
