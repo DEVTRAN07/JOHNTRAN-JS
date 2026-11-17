@@ -180,7 +180,7 @@ async function persistRoom(Threads, threadId) {
     const record = await Threads.getData(String(threadId));
     const data = record?.data && typeof record.data === "object" ? { ...record.data } : {};
     const room = game.get(String(threadId));
-    if (room && room.status !== "cancelled") data.sam_room = game.serialize(room);
+    if (room && room.status !== "cancelled" && room.status !== "finished") data.sam_room = game.serialize(room);
     else delete data.sam_room;
     if (typeof Threads.setDataAndWait === "function") await Threads.setDataAndWait(String(threadId), data);
     else await Threads.setData(String(threadId), data);
@@ -343,9 +343,11 @@ async function finishGame(context, room, notice = "") {
     "👉 Gõ !sam go để mở bàn Sâm mới."
   ].join("\n"));
   await persistRoom(Threads, room.threadId);
+  const cleanupRoomId = room.id;
   const cleanup = setTimeout(async () => {
     if (cleanupTimers.get(room.threadId) !== cleanup) return;
     cleanupTimers.delete(room.threadId);
+    if (game.get(room.threadId)?.id !== cleanupRoomId) return;
     game.removeRoom(room.threadId);
     await persistRoom(Threads, room.threadId);
   }, 15000);
@@ -553,6 +555,7 @@ async function handleIncomingImpl(context = {}) {
   const threadId = String(event?.threadId || "");
   const room = await restoreRoom(Threads, threadId);
   if (!room) return false;
+  if (room.status === "playing") scheduleTurn(context, room);
   const lower = engine.normalizeText(content);
   if (lower === "start" && room.status === "waiting") {
     await startRoom(context);
