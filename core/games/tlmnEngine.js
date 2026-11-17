@@ -82,7 +82,7 @@ function dealCards(playerIds, random = Math.random) {
     hands[ids[index % ids.length]].push(deck[index]);
   }
   for (const uid of ids) hands[uid] = sortHand(hands[uid]);
-  const firstPlayerId = ids.find(uid => hands[uid].some(card => card.id === "3b"));
+  const firstPlayerId = ids[Math.max(0, Math.min(ids.length - 1, Math.floor(random() * ids.length)))];
   return {
     hands,
     firstPlayerId,
