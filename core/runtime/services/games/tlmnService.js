@@ -675,6 +675,7 @@ function pass(threadId, uid) {
     }
     room.currentCombo = null;
     room.trickParticipants = [];
+    room.trickTwoUnits = 0;
     room.chopChainUnits = 0;
     room.chopChainEventIndex = null;
     if (room.threeSpadesBlockedByUid) {
@@ -755,6 +756,7 @@ function leave(threadId, uid) {
       room.currentCombo = null;
       room.lastPlay = null;
       room.passed.clear();
+      room.trickTwoUnits = 0;
       room.chopChainUnits = 0;
       room.chopChainEventIndex = null;
       room.turnUid = leaderStillPlaying ? previousLeader : nextActive(room, previousLeader);
