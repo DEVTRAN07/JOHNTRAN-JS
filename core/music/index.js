@@ -82,9 +82,11 @@ async function resolve(providerName, track, options = {}) {
   return task;
 }
 
-function setPending(key, providerName, tracks, query = "", page = 1) {
+function setPending(key, providerName, tracks, query = "", page = 1, options = {}) {
   const ttl = global.config?.music?.cache_ttl || 300000;
-  pendingCache.set(key, { providerName, tracks, query, page }, ttl);
+  const pending = { providerName, tracks, query, page };
+  if (options.quality === 128 || options.quality === 320) pending.quality = options.quality;
+  pendingCache.set(key, pending, ttl);
 }
 
 function getPending(key) {

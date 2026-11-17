@@ -221,7 +221,9 @@ async function runMusic(providerName, { api, event, args, reply }) {
       ? (current >= totalPages ? 1 : current + 1)
       : (current <= 1 ? totalPages : current - 1);
 
-    music.setPending(key, providerName, pending.tracks, pending.query, page);
+    music.setPending(key, providerName, pending.tracks, pending.query, page, {
+      quality: pending.quality
+    });
     return showResults(api, threadId, type, provider, pending.query, pending.tracks, page);
   }
 

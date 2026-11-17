@@ -52,3 +52,38 @@ test("/scl selection preserves the quality chosen during search", async () => {
     music.clearPending(key);
   }
 });
+
+
+test("/scl next/prev keeps the selected quality in the pending result", async () => {
+  const threadId = "scl-quality-nav-test";
+  const uid = "music-user-nav";
+  const tracks = Array.from({ length: 9 }, (_, index) => ({ id: "track-" + index, title: "Track " + index }));
+  const key = music.pickKey(threadId, uid);
+  const original = {
+    getPending: music.getPending,
+    setPending: music.setPending,
+    getProvider: music.getProvider
+  };
+  let captured = null;
+  const pending = { providerName: "scl", tracks, query: "test", page: 1, quality: 320 };
+
+  music.getPending = () => pending;
+  music.setPending = (...args) => { captured = args; };
+  music.getProvider = () => ({ name: "scl", label: "SoundCloud" });
+
+  try {
+    await musicCommand.runMusic("scl", {
+      api: { async sendMessage() {} },
+      event: { threadId, type: 1, data: { uidFrom: uid } },
+      args: ["next"],
+      reply: { async error(message) { throw new Error(message); } }
+    });
+    assert.equal(captured?.[4], 2, "next should move to page two");
+    assert.deepEqual(captured?.[5], { quality: 320 });
+  } finally {
+    music.getPending = original.getPending;
+    music.setPending = original.setPending;
+    music.getProvider = original.getProvider;
+    music.clearPending(key);
+  }
+});
