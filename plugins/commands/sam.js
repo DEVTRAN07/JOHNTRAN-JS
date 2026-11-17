@@ -374,6 +374,7 @@ function help(prefix = "!") {
     prefix + "sam go — Mở bàn hoặc tham gia bàn đang chờ",
     prefix + "sam open — Tương tự go, mở/tham gia bàn",
     prefix + "sam join <mã> — Vào bàn theo mã 5 số",
+    prefix + "sam cuoc <số> — Đặt cược 1K–1M xu (mặc định 5K)",
     prefix + "sam start — Chủ bàn bắt đầu (2–4 người)",
     prefix + "sam baosam — Báo Sâm trước nước đầu tiên",
     prefix + "sam leave — Rời bàn",
@@ -384,8 +385,10 @@ function help(prefix = "!") {
     "Mỗi người nhận 10 lá. Ăn trắng: sảnh 10 lá, tứ quý 2, 10 lá cùng màu, 3 sám cô hoặc 5 đôi.",
     "Đánh: 3b • doi 7 • sam 9 • tuquy 5 • sanh 345 • chon 1,2 • pass",
     "Nếu không ai báo Sâm, người có 3♠ mở đầu. Báo Sâm trước nước đầu tiên thì người báo được đánh trước.",
-    "Tứ quý chặn 1 lá 2. Sảnh từ 3 lá liên tiếp, không dùng 2; không có đôi thông.",
-    "Còn 1 lá sẽ được bot báo cả bàn. Báo Sâm bị chặn sẽ bị LỦNG SÂM."
+    "Tứ quý chặn 1 lá 2 và tứ quý nhỏ hơn. Không được dùng 2 làm lá cuối để về.",
+    "Còn 1 lá sẽ được bot báo cả bàn. Báo Sâm bị chặn sẽ bị LỦNG SÂM.",
+    "Tính xu: bài còn × cược; thối 2 +15 cược/lá; thối tứ quý +15 cược; cóng +15 cược; báo Sâm thành công ăn 20 cược mỗi nhà, báo Sâm thất bại đền 20 cược cho người chặn.",
+    "Cược được giữ trước khi chia bài; hủy bàn hoặc lỗi gửi bài sẽ hoàn lại. Tiền dùng chung ví xu TLMN."
   ].join("\n");
 }
 
