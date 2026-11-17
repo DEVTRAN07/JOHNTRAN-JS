@@ -69,6 +69,7 @@ function snapshot(room) {
     playedCount: room.playedCount,
     threeSpadesFinisherUid: room.threeSpadesFinisherUid || null,
     threeSpadesBlockedByUid: room.threeSpadesBlockedByUid || null,
+    threeSpadesAttemptUid: room.threeSpadesAttemptUid || null,
     createdAt: room.createdAt,
     startedAt: room.startedAt,
     finishedAt: room.finishedAt,
@@ -110,6 +111,7 @@ function create(threadId, owner, options = {}) {
     trickParticipants: [],
     threeSpadesFinisherUid: null,
     threeSpadesBlockedByUid: null,
+    threeSpadesAttemptUid: null,
     threeSpadesBlockEvents: [],
     chopEvents: [],
     settlement: null,
@@ -495,6 +497,18 @@ function finishRoom(room) {
   return room.results;
 }
 
+function addThreeSpadesBlockParticipant(room, uid) {
+  const from = String(room.threeSpadesAttemptUid || "");
+  const target = String(uid || "");
+  if (!from || !target || from === target || !room.threeSpadesBlockedByUid) return;
+  room.threeSpadesBlockEvents ||= [];
+  if (room.threeSpadesBlockEvents.some(item => item.from === from && item.to === target)) return;
+  room.threeSpadesBlockEvents.push({
+    from, to: target,
+    amount: 26 * Math.max(1, Number(room.bet) || 5000)
+  });
+}
+
 function advanceAfterMove(room, uid) {
   room.lastPlayerUid = uid;
   room.passed.clear();
@@ -517,6 +531,7 @@ function play(threadId, uid, input) {
   const previousLeader = room.lastPlayerUid;
   if (!room.currentCombo) room.trickParticipants = [];
   if (!room.trickParticipants.includes(actor)) room.trickParticipants.push(actor);
+  addThreeSpadesBlockParticipant(room, actor);
 
   const combo = validation.combo;
   const chops = previousCombo && previousLeader && (
@@ -552,13 +567,9 @@ function play(threadId, uid, input) {
   if (previousCombo?.type === "single" && previousCombo.mainRank === 3 &&
       room.threeSpadesFinisherUid && previousLeader === room.threeSpadesFinisherUid) {
     room.threeSpadesBlockedByUid = actor;
-    const participants = [...new Set(room.trickParticipants)];
-    room.threeSpadesBlockEvents ||= [];
-    for (const uid of participants) {
-      if (uid !== room.threeSpadesFinisherUid) room.threeSpadesBlockEvents.push({
-        from: room.threeSpadesFinisherUid, to: uid,
-        amount: 26 * Math.max(1, Number(room.bet) || 5000)
-      });
+    room.threeSpadesAttemptUid = room.threeSpadesFinisherUid;
+    for (const uid of [...new Set(room.trickParticipants)]) {
+      addThreeSpadesBlockParticipant(room, uid);
     }
     room.finishOrder = room.finishOrder.filter(uid => uid !== room.threeSpadesFinisherUid);
     room.forfeitUids ||= [];
@@ -585,6 +596,7 @@ function play(threadId, uid, input) {
     room.activeUids = room.activeUids.filter(value => value !== actor);
     if (combo.cards.some(card => card.id === "3b")) {
       room.threeSpadesFinisherUid = actor;
+      room.threeSpadesAttemptUid = actor;
       room.threeSpadesBlockedByUid = null;
     } else if (!room.threeSpadesFinisherUid) {
       finishRoom(room);
@@ -617,6 +629,8 @@ function pass(threadId, uid) {
   if (!room.currentCombo || !room.lastPlayerUid) return { ok: false, code: "CANNOT_PASS_ON_LEAD" };
   if (room.lastPlayerUid === actor) return { ok: false, code: "LEADER_CANNOT_PASS" };
 
+  if (!room.trickParticipants.includes(actor)) room.trickParticipants.push(actor);
+  addThreeSpadesBlockParticipant(room, actor);
   room.passed.add(actor);
   const leaderStillPlaying = room.activeUids.includes(room.lastPlayerUid);
   const requiredPasses = room.activeUids.length - (leaderStillPlaying ? 1 : 0);
@@ -628,6 +642,10 @@ function pass(threadId, uid) {
     }
     room.currentCombo = null;
     room.trickParticipants = [];
+    if (room.threeSpadesBlockedByUid) {
+      room.threeSpadesBlockedByUid = null;
+      room.threeSpadesAttemptUid = null;
+    }
     room.lastPlay = null;
     room.passed.clear();
     room.turnUid = room.activeUids.includes(previousLeader)
@@ -749,6 +767,7 @@ function serialize(roomOrThreadId) {
     trickParticipants: [...(room.trickParticipants || [])],
     threeSpadesFinisherUid: room.threeSpadesFinisherUid || null,
     threeSpadesBlockedByUid: room.threeSpadesBlockedByUid || null,
+    threeSpadesAttemptUid: room.threeSpadesAttemptUid || null,
     threeSpadesBlockEvents: (room.threeSpadesBlockEvents || []).map(item => ({ ...item })),
     chopEvents: (room.chopEvents || []).map(item => ({ ...item })),
     settlement: room.settlement ? JSON.parse(JSON.stringify(room.settlement)) : null,
