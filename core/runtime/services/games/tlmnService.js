@@ -629,9 +629,7 @@ function timeoutTurn(threadId, uid) {
     return { ok: false, code: "NO_GAME" };
   }
   const hand = room.hands?.[String(uid)] || [];
-  const card = room.playedCount === 0
-    ? hand.find(item => item.id === "3b")
-    : engine.sortHand(hand)[0];
+  const card = engine.sortHand(hand)[0];
   if (!card) return { ok: false, code: "NO_VALID_CARD" };
   const played = play(threadId, uid, engine.cardCode(card));
   return played.ok ? { ...played, action: "play", timedOut: true } : played;
