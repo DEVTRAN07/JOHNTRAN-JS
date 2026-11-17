@@ -402,15 +402,19 @@ test("GameVH TLMN blocked kết 3 bích charges only players who joined the fina
   const settlement = game.calculateSettlement(room);
   assert.ok(settlement.transfers.some(item =>
     item.from === "a" && item.to === "b" && item.amount === 26000 &&
+    item.receivedAmount === 24700 && item.fee === 1300 &&
     item.reason === "chan-ket-ba-bich"
   ));
   assert.ok(settlement.transfers.some(item =>
     item.from === "a" && item.to === "c" && item.amount === 26000 &&
+    item.receivedAmount === 24700 && item.fee === 1300 &&
     item.reason === "chan-ket-ba-bich"
   ));
   assert.equal(settlement.transfers.some(item =>
     item.from === "a" && item.to === "d" && item.reason === "chan-ket-ba-bich"
   ), false);
+  assert.equal(settlement.houseFee, 2600);
+  assert.deepEqual(settlement.net, { a: -52000, b: 24700, c: 24700, d: 0 });
 });
 
 
