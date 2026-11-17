@@ -494,3 +494,76 @@ test("GameVH TLMN white-hand priority and payouts match all eight official categ
     assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
   }
 });
+
+
+test("TLMN service rejects play and pass while cancellation is refunding escrow", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const groupId = "tlmn-cancel-pending-guards";
+  const created = game.create(groupId, { uid: "a", name: "A" }, { code: "83762", bet: 1000 });
+  assert.equal(created.ok, true);
+  game.join(groupId, created.room.id, { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(groupId, "a", () => 0.51); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  const handBefore = JSON.stringify(room.hands);
+  const turnBefore = room.turnUid;
+  room.cancelPending = true;
+
+  assert.equal(game.play(groupId, room.turnUid, "3b").code, "CANCEL_PENDING");
+  assert.equal(game.pass(groupId, room.turnUid).code, "CANCEL_PENDING");
+  assert.equal(JSON.stringify(room.hands), handBefore);
+  assert.equal(room.turnUid, turnBefore);
+  game.removeRoom(groupId);
+});
+
+test("TLMN non-player cannot trigger escrow refund by issuing leave", async () => {
+  const rendererPath = require.resolve("../core/canvas/workerRender");
+  require.cache[rendererPath] = {
+    id: rendererPath, filename: rendererPath, loaded: true,
+    exports: { renderCanvas: async () => "/tmp/tlmn-wallet-test.png" }
+  };
+  const command = require("../plugins/commands/tlmn");
+  const game = require("../core/runtime/services/games/tlmnService");
+  const groupId = "tlmn-outsider-leave-escrow";
+  const created = game.create(groupId, { uid: "a", name: "A" }, { code: "83763", bet: 1000 });
+  game.join(groupId, created.room.id, { uid: "b", name: "B" });
+
+  const reserveId = "reserve:83763:waiting:a";
+  created.state.lockTransactionId = "waiting";
+  created.state.locked = {};
+  created.state.lockPending = {
+    a: { amount: 100000, transactionId: reserveId }
+  };
+
+  const records = new Map([
+    ["a", { tlmn: { coins: 900000, games: 0, wins: 0, losses: 0, transactions: [reserveId] } }],
+    ["b", { tlmn: { coins: 1000000, games: 0, wins: 0, losses: 0, transactions: [] } }]
+  ]);
+  const Users = {
+    async getData(uid) { return { data: structuredClone(records.get(String(uid)) || {}) }; },
+    async setDataAndWait(uid, data) { records.set(String(uid), structuredClone(data)); return true; }
+  };
+  const threads = new Map();
+  const Threads = {
+    async getData(id) { return { data: structuredClone(threads.get(String(id)) || {}) }; },
+    async setDataAndWait(id, data) { threads.set(String(id), structuredClone(data)); return true; }
+  };
+  const api = { async sendMessage() { return true; } };
+
+  await command._test.doLeave({
+    api, Users, Threads,
+    event: { threadId: groupId, type: 1, data: { uidFrom: "outsider", dName: "Người lạ" } }
+  });
+
+  assert.equal(records.get("a").tlmn.coins, 900000);
+  assert.equal(records.get("b").tlmn.coins, 1000000);
+  assert.ok(game.get(groupId));
+  assert.deepEqual(game.get(groupId).lockPending, {
+    a: { amount: 100000, transactionId: reserveId }
+  });
+  game.removeRoom(groupId);
+});
