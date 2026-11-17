@@ -304,6 +304,10 @@ function canBeat(candidate, current) {
       (candidate.mainRank === current.mainRank && candidate.highSuit > current.highSuit);
   }
 
+  if (candidate.type === "fourKind" && current.type === "fourKind") {
+    return candidate.mainRank > current.mainRank;
+  }
+
   const targetIsTwo = current.type === "single" && current.mainRank === 15;
   const targetIsTwoPair = current.type === "pair" && current.mainRank === 15;
   if (candidate.type === "pairRun" && candidate.length >= 3 && targetIsTwo) return true;
@@ -338,11 +342,19 @@ function removeCards(hand, playedCards) {
   return (hand || []).filter(card => !ids.has(card.id));
 }
 
-const WHITE_HAND_PRIORITY = Object.freeze(["dragonStraight", "fourTwos", "sixPairs"]);
+const WHITE_HAND_PRIORITY = Object.freeze([
+  "dragonStraight", "sixPairRun", "fourTriples", "twoFourKinds",
+  "twelveSameSuit", "fivePairRun", "fourTwos", "sixPairs"
+]);
 const WHITE_HAND_LABEL = Object.freeze({
   dragonStraight: "SẢNH RỒNG 3 ĐẾN A",
-  sixPairs: "6 ĐÔI",
-  fourTwos: "TỨ QUÝ 2"
+  sixPairRun: "6 ĐÔI THÔNG",
+  fourTriples: "4 BỘ BA",
+  twoFourKinds: "2 TỨ QUÝ",
+  twelveSameSuit: "12 LÁ ĐỒNG CHẤT",
+  fivePairRun: "5 ĐÔI THÔNG",
+  fourTwos: "TỨ QUÝ 2",
+  sixPairs: "6 ĐÔI"
 });
 
 function detectWhiteHand(hand) {
@@ -350,15 +362,58 @@ function detectWhiteHand(hand) {
   if (cards.length !== 13) return null;
   const counts = new Map();
   for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
-  const ranks = [...counts.keys()];
-  const pairUnits = [...counts.values()].reduce((sum, count) => sum + Math.floor(count / 2), 0);
+  const ranks = [...counts.keys()].sort((a, b) => a - b);
+  const priorities = [];
+  const hasRun = length => {
+    const paired = ranks.filter(rank => rank !== 15 && (counts.get(rank) || 0) >= 2);
+    for (let i = 0; i <= paired.length - length; i += 1) {
+      const run = paired.slice(i, i + length);
+      if (run.every((rank, index) => index === 0 || rank === run[index - 1] + 1)) return true;
+    }
+    return false;
+  };
   const hasDragon = Array.from({ length: 12 }, (_, index) => index + 3)
     .every(rank => counts.has(rank));
-  const priorities = [];
   if (hasDragon) priorities.push("dragonStraight");
-  if (pairUnits >= 6) priorities.push("sixPairs");
+  if (hasRun(6)) priorities.push("sixPairRun");
+  if ([...counts.values()].filter(count => count >= 3).length >= 4) priorities.push("fourTriples");
+  if ([...counts.values()].filter(count => count === 4).length >= 2) priorities.push("twoFourKinds");
+  if (cards.some(card => card.suit === "b") &&
+      ["b", "ch", "r", "c"].some(suit => cards.filter(card => card.suit === suit).length >= 12)) {
+    priorities.push("twelveSameSuit");
+  }
+  if (hasRun(5)) priorities.push("fivePairRun");
   if ((counts.get(15) || 0) === 4) priorities.push("fourTwos");
+  const pairUnits = [...counts.values()].reduce((sum, count) => sum + Math.floor(count / 2), 0);
+  if (pairUnits >= 6) priorities.push("sixPairs");
   return WHITE_HAND_PRIORITY.find(type => priorities.includes(type)) || null;
+}
+
+function whiteHandHighCard(hand, type) {
+  const cards = sortHand(hand);
+  if (type === "sixPairRun" || type === "fivePairRun") {
+    const length = type === "sixPairRun" ? 6 : 5;
+    const paired = [...new Set(cards.filter(card => card.rank !== 15 &&
+      cards.filter(other => other.rank === card.rank).length >= 2).map(card => card.rank))].sort((a, b) => a - b);
+    let highest = null;
+    for (let i = 0; i <= paired.length - length; i += 1) {
+      const run = paired.slice(i, i + length);
+      if (run.every((rank, index) => index === 0 || rank === run[index - 1] + 1)) {
+        highest = Math.max(highest || 0, run[run.length - 1]);
+      }
+    }
+    if (highest) return cards.filter(card => card.rank === highest).sort(compareCards).slice(-1)[0];
+  }
+  return cards[cards.length - 1] || null;
+}
+
+function compareWhiteHands(handA, typeA, handB, typeB) {
+  const priority = WHITE_HAND_PRIORITY.indexOf(typeA) - WHITE_HAND_PRIORITY.indexOf(typeB);
+  if (priority) return priority;
+  const a = whiteHandHighCard(handA, typeA);
+  const b = whiteHandHighCard(handB, typeB);
+  if (!a || !b) return 0;
+  return compareCards(b, a);
 }
 
 function rankLabel(rank) {
@@ -379,6 +434,6 @@ module.exports = {
   parseCardCode, compareCards, sortHand, shuffleDeck, dealCards,
   normalizeText, parseRank, parseRankSequence, parsePlayText,
   analyzeCombo, COMBO_LABEL, canBeat, validatePlay, removeCards,
-  WHITE_HAND_PRIORITY, WHITE_HAND_LABEL, detectWhiteHand,
+  WHITE_HAND_PRIORITY, WHITE_HAND_LABEL, detectWhiteHand, compareWhiteHands,
   rankLabel, cardLabel, formatCards
 };
