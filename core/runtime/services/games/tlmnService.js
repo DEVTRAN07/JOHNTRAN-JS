@@ -248,7 +248,7 @@ function removeRoom(threadId) {
   return room;
 }
 
-function start(threadId, uid, random = Math.random, options = {}) {
+function start(threadId, uid, random = Math.random) {
   const room = get(threadId);
   if (!room) return { ok: false, code: "NO_ROOM" };
   if (room.status !== "waiting") return { ok: false, code: "ALREADY_STARTED" };
@@ -257,43 +257,35 @@ function start(threadId, uid, random = Math.random, options = {}) {
   if (room.players.length > MAX_PLAYERS) return { ok: false, code: "FULL" };
 
   const dealt = engine.dealCards(room.players.map(player => player.uid), random);
-  const adminUids = new Set(
-    (Array.isArray(options.adminUids) ? options.adminUids : []).map(value => String(value))
-  );
-  // In practice mode the owner remains the priority player. In a human room,
-  // the command layer supplies the Admin UIDs currently seated at this table.
-  // Prefer an Admin owner; otherwise use the first Admin in seat order.
-  const seatedAdmin = room.players.find(player => adminUids.has(String(player.uid)));
-  const priorityUid = room.practice && room.practiceWinnerUid &&
-    room.players.some(player => player.uid === String(room.practiceWinnerUid))
-    ? String(room.practiceWinnerUid)
-    : seatedAdmin ? String(seatedAdmin.uid) : null;
 
-  if (priorityUid && dealt.hands[priorityUid]) {
-    // A priority hand contains 3♠ plus the 12 highest cards. This applies to
-    // the AI sandbox and to human tables where an Admin is seated. Tables
-    // without an Admin keep the ordinary shuffled deal.
-    const threeOfSpades = { rank: 3, suit: "b", id: "3b" };
-    const strongestCards = engine.sortHand(
-      engine.createDeck().filter(card => card.id !== "3b")
-    ).reverse().slice(0, 12);
-    const priorityHand = engine.sortHand([threeOfSpades, ...strongestCards]);
-    const priorityCardIds = new Set(priorityHand.map(card => card.id));
-    const remaining = engine.shuffleDeck(random).filter(card => !priorityCardIds.has(card.id));
-    const opponentUids = room.players
-      .map(player => String(player.uid))
-      .filter(playerUid => playerUid !== priorityUid);
-    const priorityHands = { [priorityUid]: priorityHand };
-    for (const opponentUid of opponentUids) {
-      priorityHands[opponentUid] = engine.sortHand(remaining.splice(0, 13));
+  // Only the explicitly requested, no-coin Admin practice room receives a
+  // curated training hand. Every human table always keeps the fair shuffled deal.
+  if (room.practice && room.practiceWinnerUid &&
+      room.players.length >= MIN_PLAYERS && dealt.hands[room.practiceWinnerUid]) {
+    const winnerUid = String(room.practiceWinnerUid);
+    const deck = engine.createDeck();
+    const takeHighest = (rank, count) =>
+      engine.sortHand(deck.filter(card => card.rank === rank)).slice(-count);
+    const practiceHand = engine.sortHand([
+      { rank: 3, suit: "b", id: "3b" },
+      ...takeHighest(15, 3),
+      ...takeHighest(14, 3),
+      ...takeHighest(13, 2),
+      ...takeHighest(12, 2),
+      ...takeHighest(11, 2)
+    ]);
+    const usedIds = new Set(practiceHand.map(card => card.id));
+    const remaining = engine.shuffleDeck(random).filter(card => !usedIds.has(card.id));
+    const opponents = room.players.map(item => String(item.uid)).filter(id => id !== winnerUid);
+    const hands = { [winnerUid]: practiceHand };
+    for (const opponentUid of opponents) {
+      hands[opponentUid] = engine.sortHand(remaining.splice(0, 13));
     }
-    dealt.hands = priorityHands;
+    dealt.hands = hands;
     dealt.remainingDeck = remaining;
-    dealt.firstPlayerId = priorityUid;
-    room.adminPriorityUid = room.practice ? null : priorityUid;
-  } else {
-    room.adminPriorityUid = null;
+    dealt.firstPlayerId = winnerUid;
   }
+
 
   room.hands = dealt.hands;
   room.deckLeft = dealt.remainingDeck.length;
