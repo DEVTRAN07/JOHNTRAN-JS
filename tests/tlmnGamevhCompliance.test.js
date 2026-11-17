@@ -68,4 +68,21 @@ test("GameVH TLMN compares straights by the suit of their highest card only", ()
     engine.analyzeCombo(higherLowerCardOnly),
     engine.analyzeCombo(lowerTopCard)
   ), false, "a high suit on a lower card must not beat the higher top card");
+
+  const currentPairRun = [
+    { rank: 3, suit: "b", id: "3b" }, { rank: 3, suit: "c", id: "3c" },
+    { rank: 4, suit: "b", id: "4b" }, { rank: 4, suit: "ch", id: "4ch" },
+    { rank: 5, suit: "b", id: "5b" }, { rank: 5, suit: "ch", id: "5ch" }
+  ];
+  const strongerPairRun = [
+    { rank: 3, suit: "b", id: "3b" }, { rank: 3, suit: "ch", id: "3ch" },
+    { rank: 4, suit: "b", id: "4b" }, { rank: 4, suit: "ch", id: "4ch" },
+    { rank: 5, suit: "b", id: "5b" }, { rank: 5, suit: "r", id: "5r" }
+  ];
+  assert.equal(engine.analyzeCombo(currentPairRun).highSuit, 1);
+  assert.equal(engine.analyzeCombo(strongerPairRun).highSuit, 2);
+  assert.equal(engine.canBeat(
+    engine.analyzeCombo(strongerPairRun),
+    engine.analyzeCombo(currentPairRun)
+  ), true, "pair runs also compare the suit of their highest-rank pair");
 });
