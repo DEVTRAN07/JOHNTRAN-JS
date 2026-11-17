@@ -124,7 +124,7 @@ test("TLMN AI passes when it cannot beat the current single", () => {
   assert.equal(command._test.chooseAiMove(room, "cpu"), null);
 });
 
-test("TLMN practice deals Admin a strong hand while AI still answers normally", () => {
+test("TLMN practice gives Admin a strong hand without a white-hand pattern", () => {
   const groupId = "tlmn-ai-admin-strong-hand";
   const created = game.create(groupId, { uid: "admin", name: "Admin" }, {
     practice: true,
@@ -136,11 +136,18 @@ test("TLMN practice deals Admin a strong hand while AI still answers normally", 
   assert.equal(started.ok, true);
 
   const room = game.get(groupId);
+  const hand = room.hands.admin;
   assert.equal(room.turnUid, "admin");
-  assert.ok(room.hands.admin.some(card => card.id === "3b"));
-  assert.equal(room.hands.admin.filter(card => card.rank === 15).length, 4);
-  assert.equal(room.hands.admin.filter(card => card.rank === 14).length, 4);
-  assert.equal(room.hands.admin.filter(card => card.rank === 13).length, 4);
+  assert.equal(hand.length, 13);
+  assert.ok(hand.some(card => card.id === "3b"));
+  assert.equal(hand.filter(card => card.rank === 15).length, 3);
+  assert.equal(hand.filter(card => card.rank === 14).length, 3);
+  assert.equal(hand.filter(card => card.rank === 13).length, 2);
+  assert.equal(hand.filter(card => card.rank === 12).length, 2);
+  assert.equal(hand.filter(card => card.rank === 11).length, 2);
+  const pairUnits = [...new Set(hand.map(card => card.rank))]
+    .reduce((sum, rank) => sum + Math.floor(hand.filter(card => card.rank === rank).length / 2), 0);
+  assert.equal(pairUnits, 5, "practice hand must stay below the common six-pair white hand");
 
   const aiUid = room.players.find(player => player.ai).uid;
   const aiHand = [
@@ -154,10 +161,7 @@ test("TLMN practice deals Admin a strong hand while AI still answers normally", 
     playedCount: 1,
     lastPlayerUid: "admin",
     currentCombo: {
-      type: "single",
-      length: 1,
-      mainRank: 3,
-      highSuit: 0,
+      type: "single", length: 1, mainRank: 3, highSuit: 0,
       cards: [{ rank: 3, suit: "b", id: "3b" }]
     },
     hands: { [aiUid]: aiHand }
@@ -166,46 +170,34 @@ test("TLMN practice deals Admin a strong hand while AI still answers normally", 
   assert.ok(response, "AI must not automatically yield to Admin");
   assert.equal(engine.validatePlay(aiHand, response.cards, responseRoom.currentCombo).ok, true);
   assert.ok(response.cards.some(card => card.rank > 3));
-
   game.removeRoom(groupId);
 });
 
-test("TLMN gives the strongest hand to an Admin seated in a human table", () => {
-  const groupId = "tlmn-real-room-admin-priority";
+test("TLMN human tables always keep the fair shuffled deal, including with an Admin seated", () => {
+  const groupId = "tlmn-real-room-fair-admin-deal";
   const created = game.create(groupId, { uid: "host", name: "Chủ bàn" }, {
     practice: false
   });
   assert.equal(created.ok, true);
-  const players = [
-    { uid: "admin", name: "Admin" },
-    { uid: "player-3", name: "Người chơi 3" },
-    { uid: "player-4", name: "Người chơi 4" }
-  ];
-  for (const player of players) {
-    assert.equal(game.join(groupId, created.room.id, player).ok, true);
+  const playerIds = ["host", "admin", "player-3", "player-4"];
+  for (const uid of playerIds.slice(1)) {
+    assert.equal(game.join(groupId, created.room.id, { uid, name: uid }).ok, true);
   }
 
-  const started = game.start(groupId, "host", () => 0.317, {
-    adminUids: ["admin"]
-  });
+  const expected = engine.dealCards(playerIds, () => 0.317).hands.admin
+    .map(card => card.id);
+  const started = game.start(groupId, "host", () => 0.317);
   assert.equal(started.ok, true);
-  const room = started.state;
-  assert.equal(room.practice, false);
-  assert.equal(room.turnUid, "admin");
-  assert.equal(room.adminPriorityUid, "admin");
-  assert.ok(room.hands.admin.some(card => card.id === "3b"));
-  assert.equal(room.hands.admin.filter(card => card.rank === 15).length, 4);
-  assert.equal(room.hands.admin.filter(card => card.rank === 14).length, 4);
-  assert.equal(room.hands.admin.filter(card => card.rank === 13).length, 4);
-
-  for (const player of room.players.filter(item => item.uid !== "admin")) {
-    assert.equal(room.hands[player.uid].length, 13);
-    assert.equal(room.hands[player.uid].some(card => card.rank >= 13), false);
-  }
+  assert.deepEqual(
+    started.state.hands.admin.map(card => card.id),
+    expected,
+    "real-money tables must not manipulate card distribution for Admin"
+  );
+  assert.equal(started.state.adminPriorityUid, undefined);
   game.removeRoom(groupId);
 });
 
-test("TLMN tables with no seated Admin keep the normal fair shuffled deal", () => {
+test("TLMN table without Admin also keeps the ordinary shuffled deal", () => {
   const groupId = "tlmn-real-room-no-admin-fair-deal";
   const created = game.create(groupId, { uid: "host", name: "Chủ bàn" }, {
     practice: false
@@ -218,14 +210,9 @@ test("TLMN tables with no seated Admin keep the normal fair shuffled deal", () =
 
   const expected = engine.dealCards(playerIds, () => 0.317).hands.host
     .map(card => card.id);
-  const started = game.start(groupId, "host", () => 0.317, { adminUids: [] });
+  const started = game.start(groupId, "host", () => 0.317);
   assert.equal(started.ok, true);
-  assert.deepEqual(
-    started.state.hands.host.map(card => card.id),
-    expected,
-    "a table without an Admin must keep the normal shuffled deal"
-  );
-  assert.equal(started.state.adminPriorityUid, null);
+  assert.deepEqual(started.state.hands.host.map(card => card.id), expected);
   game.removeRoom(groupId);
 });
 
