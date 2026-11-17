@@ -170,6 +170,30 @@ test("round automatically becomes finished after its deadline", async () => {
 });
 
 
+
+test("repeated wrong Ghép Chữ answers are notified only once in the same puzzle round", async () => {
+  const command = require("../plugins/commands/noitu");
+  const threadId = "ghepchu-wrong-notice-throttle";
+  const started = await game.start(threadId, "gc-player", "GC Player", "", {
+    getJson: async () => ({ data: { suggestions: [] } })
+  });
+  assert.equal(started.ok, true);
+  const sent = [];
+  const context = content => ({
+    api: { async sendMessage(payload) { sent.push(payload); } },
+    event: { threadId, type: 2, data: { uidFrom: "gc-player", content } },
+    eventType: "message"
+  });
+  try {
+    await command._test.handleGhepChuText(context("đáp án sai một"));
+    await command._test.handleGhepChuText(context("đáp án sai hai"));
+    assert.equal(sent.filter(item => /Chưa đúng rồi/.test(item.msg)).length, 1);
+  } finally {
+    game.remove(threadId);
+    game.clearDictionaryCache();
+  }
+});
+
 test("term lookup supports a single Vietnamese word for nt check", async () => {
   const entry = await game.lookupVietnameseTerm("xin", { getJson: mockDictionary });
   assert.equal(entry.answer, "xin");

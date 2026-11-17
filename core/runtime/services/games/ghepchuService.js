@@ -288,7 +288,7 @@ async function lookupVietnameseTerm(term, options = {}) {
   const url = API_BASE + "/lookup?word=" + encodeURIComponent(key) +
     "&lang=vi&def_lang=vi";
   const response = await getHttpJson(options)(url, {
-    timeout: API_TIMEOUT_MS,
+    timeout: getApiTimeout(options),
     retries: 0,
     headers: { Accept: "application/json" }
   });

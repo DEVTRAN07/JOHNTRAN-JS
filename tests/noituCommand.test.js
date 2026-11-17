@@ -214,6 +214,143 @@ function makeNoituUsers(initial = {}) {
   };
 }
 
+
+const noituBotAI = require("../core/games/noituBotAI");
+const { Reactions } = require("zalo-client");
+
+test("Solo Nối Từ has curated meanings for the opening phrase and AI reply bank", () => {
+  assert.match(noituBotAI.getCuratedMeaning("từ chức").definition, /Rời bỏ chức vụ/);
+  assert.match(noituBotAI.getCuratedMeaning("sinh viên").definition, /đại học/);
+  assert.equal(noituBotAI.getCuratedMeaning("sinh blabla"), null);
+});
+
+test("Solo answer without a dictionary meaning is rejected and counts as one mistake", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_command: false, prefix: "/" };
+  const threadId = "solo-meaning-required";
+  const session = command._test.createSoloBotSession(threadId, "meaning-player", "Meaning Player", () => 0).session;
+  gameService.sessions.set(threadId, session);
+  session.soloTurnEndsAt = Date.now() + 60000;
+  const original = noituBotAI.getPhraseMeaning;
+  noituBotAI.getPhraseMeaning = async () => null;
+  const sent = [];
+  try {
+    const consumed = await command._test.handleSoloBotText({
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: { threadId, type: 2, data: { uidFrom: "meaning-player", content: "sinh blabla" } },
+      Users: { async getData() { return { data: {} }; }, async setData() {} },
+      session
+    });
+    assert.equal(consumed, true);
+    assert.equal(session.moves, 0);
+    assert.equal(session.soloWrongAttempts, 1);
+    assert.match(sent[0].msg, /Không tìm thấy ý nghĩa hợp lệ/);
+  } finally {
+    noituBotAI.getPhraseMeaning = original;
+    command._test.stopNoituGames(threadId);
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
+
+test("third Solo mistake ends the game and tags the player with a real mention", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_command: false, prefix: "/" };
+  const threadId = "solo-three-strikes";
+  const session = command._test.createSoloBotSession(threadId, "strike-player", "Strike Player", () => 0).session;
+  gameService.sessions.set(threadId, session);
+  session.soloTurnEndsAt = Date.now() + 60000;
+  session.soloWrongAttempts = 2;
+  const sent = [];
+  const original = noituBotAI.getPhraseMeaning;
+  noituBotAI.getPhraseMeaning = async () => null;
+  try {
+    await command._test.handleSoloBotText({
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: { threadId, type: 2, data: { uidFrom: "strike-player", content: "sinh blabla" } },
+      session
+    });
+    assert.equal(gameService.get(threadId), null);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].msg, /đã thua ván Nối Từ Solo/i);
+    assert.deepEqual(sent[0].mentions, [{ pos: 0, uid: "strike-player", len: "@Strike Player".length }]);
+  } finally {
+    noituBotAI.getPhraseMeaning = original;
+    command._test.stopNoituGames(threadId);
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
+
+test("Solo timeout applies zero-star penalty and tags the actual player uid", async () => {
+  const threadId = "solo-timeout-test";
+  const session = command._test.createSoloBotSession(threadId, "timeout-player", "Timeout Player", () => 0).session;
+  gameService.sessions.set(threadId, session);
+  session.threadType = 2;
+  const undoCalls = [];
+  const sent = [];
+  session.lastBotResponse = { message: { msgId: "prompt-1", cliMsgId: "client-1" } };
+  const api = {
+    async undo(payload, tid, type) { undoCalls.push({ payload, tid, type }); },
+    async sendMessage(payload) { sent.push(payload); }
+  };
+  try {
+    assert.equal(await command._test.finishSoloTimeout(api, {
+      threadId, type: 2, data: { uidFrom: "timeout-player", dName: "Timeout Player" }
+    }, session), true);
+    assert.equal(gameService.get(threadId), null);
+    assert.equal(undoCalls.length, 1);
+    assert.match(sent[0].msg, /Hết giờ/);
+    assert.match(sent[0].msg, /-0⭐/);
+    assert.deepEqual(sent[0].mentions, [{ pos: 0, uid: "timeout-player", len: "@Timeout Player".length }]);
+  } finally {
+    command._test.stopNoituGames(threadId);
+  }
+});
+
+test("Solo prompt replacement recalls the previous bot message and timer reaction uses Zalo message ids", async () => {
+  const threadId = "solo-recall-reaction";
+  const session = command._test.createSoloBotSession(threadId, "recall-player", "Recall Player", () => 0).session;
+  gameService.sessions.set(threadId, session);
+  session.threadType = 2;
+  session.lastBotResponse = { message: { msgId: "old-msg", cliMsgId: "old-client" } };
+  const undoCalls = [];
+  const reactionCalls = [];
+  const api = {
+    async undo(payload, tid, type) { undoCalls.push({ payload, tid, type }); },
+    async addReaction(icon, destination) { reactionCalls.push({ icon, destination }); }
+  };
+  try {
+    assert.equal(await command._test.recallSoloLastPrompt(api, session), true);
+    assert.equal(undoCalls[0].payload.msgId, "old-msg");
+    session.lastBotResponse = { message: { msgId: "new-msg", cliMsgId: "new-client" } };
+    assert.equal(await command._test.addSoloPromptReaction(api, { type: 2 }, session, Reactions.SLEEPY), true);
+    assert.equal(reactionCalls[0].icon, Reactions.SLEEPY);
+    assert.deepEqual(reactionCalls[0].destination, {
+      data: { msgId: "new-msg", cliMsgId: "new-client" },
+      threadId,
+      type: 2
+    });
+  } finally {
+    command._test.stopNoituGames(threadId);
+  }
+});
+
+test("Solo timer starts with a sixty-second turn and uses the prompt message", () => {
+  const threadId = "solo-schedule-timer";
+  const session = command._test.createSoloBotSession(threadId, "timer-player", "Timer Player", () => 0).session;
+  gameService.sessions.set(threadId, session);
+  session.lastBotResponse = { message: { msgId: "timer-msg", cliMsgId: "timer-client" } };
+  try {
+    command._test.scheduleSoloTurn({ addReaction() {} }, {
+      threadId, type: 2, data: { uidFrom: "timer-player" }
+    }, session);
+    assert.equal(session.soloTurnEndsAt - session.soloTurnStartedAt, 60000);
+  } finally {
+    command._test.stopNoituGames(threadId);
+  }
+});
+
 test("Nối Từ score updates aggregate, per-mode and monthly rankings", async () => {
   const Users = makeNoituUsers();
   await command._test.updateNoituScore(Users, "score-user", 10, { mode: "gc", move: true });
