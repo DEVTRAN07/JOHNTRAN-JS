@@ -1,5 +1,7 @@
 "use strict";
 
+const fs = require("fs");
+
 const { loadImage } = require("canvas");
 const avatarCache = require("./avatarCache");
 const theme = require("./theme");
