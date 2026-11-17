@@ -1928,7 +1928,7 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
 module.exports._test = {
   parseAmount, formatMoney, normalizeWallet, tierForCoins,
   isAiUid, privateDestination, sendPrivateHand, chooseAiMove, chooseQuickMove,
-  shouldSendMoveError, sendMoveHint, scheduleAiTurn, tableCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
+  shouldSendMoveError, sendMoveHint, scheduleAiTurn, tableCaption, buildTurnMentionCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,
   finalizeRoomCleanup, recallRoomCards, recallPrivateHand, withRoomActionLock
