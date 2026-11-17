@@ -7,7 +7,18 @@ after(async () => { await workerPool.shutdown(); });
 const assert = require("node:assert/strict");
 const { performance } = require("node:perf_hooks");
 
+// This suite measures command orchestration and non-blocking metadata lookups.
+ // Canvas rendering has dedicated worker/design tests; exclude cold worker startup
+ // from the menu's one-second API fast-path assertion.
+const workerRender = require("../core/canvas/workerRender");
+const originalRenderCanvas = workerRender.renderCanvas;
+let menuRenderCount = 0;
+workerRender.renderCanvas = async () => {
+  menuRenderCount += 1;
+  return require("node:path").join(require("node:os").tmpdir(), "jt-menu-fast-test.png");
+};
 const menuCommand = require("../plugins/commands/menu");
+workerRender.renderCanvas = originalRenderCanvas;
 const statusCommand = require("../plugins/commands/status");
 
 global.config = { prefix: "/", name_bot: "JOHNTRAN" };
@@ -45,6 +56,7 @@ test("menu creates and sends its card under one second without waiting for profi
   const elapsed = performance.now() - started;
 
   assert.ok(elapsed < 1000, `menu fast path took ${elapsed.toFixed(1)}ms`);
+  assert.equal(menuRenderCount, 1, "menu must still request a canvas card");
 });
 
 test("status creates and sends its card under one second without waiting for Zalo metadata", async () => {
