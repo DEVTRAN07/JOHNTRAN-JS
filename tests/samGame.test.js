@@ -508,11 +508,11 @@ test("Sâm multi-chop chain pays the accumulated 15-stake amount to the final cu
 
   assert.equal(room.chopEvents.length, 1);
   assert.deepEqual(room.chopEvents[0], {
-    from: "a", to: "c", amount: 30000, reason: "chop-chain"
+    from: "b", to: "c", amount: 30000, reason: "chop-chain"
   });
   const settlement = game.calculateSettlement(room);
   assert.ok(settlement.transfers.some(item =>
-    item.from === "a" && item.to === "c" && item.amount === 30000 && item.reason === "chop-chain"
+    item.from === "b" && item.to === "c" && item.amount === 30000 && item.reason === "chop-chain"
   ));
   assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
   game.removeRoom(threadId);
