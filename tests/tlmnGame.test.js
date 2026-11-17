@@ -466,8 +466,9 @@ test("TLMN wallet: GameVH 3 Bich fee is debited from the gross payout and reconc
   const afterWinner = await command._test.readWallet(Users, "winner-fee");
   const afterLoser = await command._test.readWallet(Users, "loser-fee");
   assert.equal(result.length, 2);
-  assert.equal(afterWinner.coins, beforeWinner.coins + 500000 + 4750);
-  assert.equal(afterLoser.coins, beforeLoser.coins + 500000 - 5000);
+  assert.equal(afterWinner.coins, beforeWinner.coins + 600000 + 4750);
+  assert.equal(afterLoser.coins, beforeLoser.coins + 600000 - 5000);
+  assert.equal(command._test.RESERVE_MULTIPLIER, 120);
   assert.equal(room.settled, true);
   game.removeRoom("tlmn-fee-settlement");
 });
