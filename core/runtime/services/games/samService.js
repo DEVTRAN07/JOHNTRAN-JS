@@ -282,7 +282,11 @@ function play(threadId, uid, input) {
   if (!validation.ok) return validation;
 
   const combo = validation.combo;
-  if (engine.removeCards(hand, combo.cards).length === 0 &&
+  const remainingHand = engine.removeCards(hand, combo.cards);
+  if (remainingHand.length === 1 && Number(remainingHand[0]?.rank) === 15) {
+    return { ok: false, code: "CANNOT_LEAVE_TWO_LAST" };
+  }
+  if (remainingHand.length === 0 &&
       combo.cards.some(card => Number(card.rank) === 15)) {
     return { ok: false, code: "CANNOT_FINISH_WITH_TWO" };
   }
