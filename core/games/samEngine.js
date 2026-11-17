@@ -189,8 +189,11 @@ function analyzeCombo(inputCards) {
 function canBeat(candidate, current) {
   if (!candidate || !current) return Boolean(candidate);
   if (candidate.type === "fourKind" && current.type === "single" && current.mainRank === 15) return true;
+  if (candidate.type === "fourKind" && current.type === "fourKind") {
+    return candidate.mainRank > current.mainRank;
+  }
   if (candidate.type !== current.type || candidate.length !== current.length) return false;
-  // Theo luật Sâm Lốc: chất không dùng để phân định độ lớn thông thường.
+  // Sâm so rank, không dùng chất để phân định khi cùng hạng.
   return candidate.mainRank > current.mainRank;
 }
 
