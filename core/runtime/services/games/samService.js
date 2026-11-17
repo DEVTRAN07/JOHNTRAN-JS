@@ -469,7 +469,9 @@ function restore(saved) {
   const ids = new Set(players.map(item => item.uid));
   if (!ids.has(String(saved.ownerId || ""))) return null;
   const room = {
-    ...saved, threadId: String(saved.threadId), id: String(saved.id),
+    ...saved,
+    gameToken: String(saved.gameToken || saved.lockTransactionId || saved.id),
+    threadId: String(saved.threadId), id: String(saved.id),
     ownerId: String(saved.ownerId), ownerName: String(saved.ownerName || ""),
     players, hands: saved.hands && typeof saved.hands === "object" ? saved.hands : null,
     passed: new Set(Array.isArray(saved.passed) ? saved.passed.map(String).filter(uid => ids.has(uid)) : []),
