@@ -254,6 +254,7 @@ function nextPlayer(room, uid) {
 function play(threadId, uid, input) {
   const room = get(threadId);
   if (!room || room.status !== "playing") return { ok: false, code: "NO_GAME" };
+  if (room.cancelPending) return { ok: false, code: "CANCEL_PENDING" };
   const actor = String(uid);
   if (!room.hands?.[actor]) return { ok: false, code: "NOT_PLAYER" };
   if (room.turnUid !== actor) return { ok: false, code: "NOT_TURN" };
@@ -352,6 +353,7 @@ function play(threadId, uid, input) {
 function pass(threadId, uid) {
   const room = get(threadId);
   if (!room || room.status !== "playing") return { ok: false, code: "NO_GAME" };
+  if (room.cancelPending) return { ok: false, code: "CANCEL_PENDING" };
   const actor = String(uid);
   if (!room.hands?.[actor]) return { ok: false, code: "NOT_PLAYER" };
   if (room.turnUid !== actor) return { ok: false, code: "NOT_TURN" };
@@ -375,6 +377,7 @@ function pass(threadId, uid) {
 function callSam(threadId, uid) {
   const room = get(threadId);
   if (!room || room.status !== "playing") return { ok: false, code: "NO_GAME" };
+  if (room.cancelPending) return { ok: false, code: "CANCEL_PENDING" };
   if (!room.hands?.[String(uid)]) return { ok: false, code: "NOT_PLAYER" };
   if (room.playedCount !== 0 || room.samStatus) return { ok: false, code: "TOO_LATE" };
   room.samCallerUid = String(uid);
