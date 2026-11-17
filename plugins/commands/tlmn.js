@@ -645,7 +645,7 @@ function help(prefix) {
     "⚔️ CHẶT",
     "3 đôi thông chặt 2 và 3 đôi thông nhỏ hơn.",
     "Tứ quý chặt 2, 3 đôi thông và tứ quý nhỏ hơn.",
-    "4 đôi thông chặt 2, 3 đôi thông, tứ quý và 4 đôi thông nhỏ hơn.",
+    "4 đôi thông chặt 2, đôi 2, 3 đôi thông, tứ quý và 4 đôi thông nhỏ hơn.",
     "",
     "💰 THỐI / CHẶT (đơn vị cược)",
     "Rác 1 • 2 đen thối 2 / chặt 3 • 2 đỏ thối 4 / chặt 6.",
