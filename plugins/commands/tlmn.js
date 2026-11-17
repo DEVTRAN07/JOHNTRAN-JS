@@ -12,6 +12,7 @@ const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const DEFAULT_COINS = 100000;
 const MIN_BET = 1000;
 const MAX_BET = 10000000;
+const MAX_RESERVE = 300000000;
 const groupCards = new Map();
 const privateCards = new Map();
 const walletLocks = new Map();
@@ -428,7 +429,10 @@ async function reserveRoomWallets(Users, room, onChange = null) {
       !Number.isSafeInteger(room.bet) || room.bet < MIN_BET || room.bet > MAX_BET) {
     return { ok: false, storageError: true };
   }
-  const reserve = room.bet * (room.players.length - 1);
+  const reserve = Number(room.reservePerPlayer) || room.bet * (room.players.length - 1);
+  if (!Number.isSafeInteger(reserve) || reserve <= 0 || reserve > MAX_RESERVE) {
+    return { ok: false, storageError: true };
+  }
   room.locked ||= {};
   room.lockPending ||= {};
   if (!await reconcilePendingReservations(Users, room, onChange)) {
