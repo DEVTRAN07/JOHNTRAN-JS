@@ -551,7 +551,6 @@ function play(threadId, uid, input) {
   if (!room.currentCombo) {
     room.trickParticipants = [];
     room.trickTwoUnits = 0;
-    room.trickTwoUnits = 0;
     room.chopChainUnits = 0;
     room.chopChainEventIndex = null;
   }
