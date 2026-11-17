@@ -501,7 +501,7 @@ async function settleRoomWallets(Users, room, results) {
   if (!Number.isSafeInteger(netTotal) || netTotal !== 0) {
     throw new Error("Sổ thối/chặt không cân bằng; không chốt xu.");
   }
-  const requiredLock = 26 * (room.players.length - 1) * Number(room.bet);
+  const requiredLock = 100 * Number(room.bet);
   if (!Number.isSafeInteger(requiredLock) || requiredLock <= 0 ||
       room.players.some(item => Number(room.locked?.[item.uid]) !== requiredLock)) {
     throw new Error("Thiếu khoản ký quỹ 100 cược/người; giữ nguyên bàn để đối soát.");
