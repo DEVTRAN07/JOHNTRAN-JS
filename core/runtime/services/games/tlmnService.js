@@ -967,5 +967,6 @@ module.exports = {
   get, getByCode, isBusy, snapshot, create, join, joinWaiting,
   updateBet, updateMode, watchLobby, watchTurn, timeoutTurn, resetToWaiting,
   removeRoom, start, play, pass, leave, stop, cancel, finishRoom, listActive, serialize, restore,
+  calculateSettlement, calculateLeftoverPenalty,
   _test: { resolveWhiteHand }
 };
