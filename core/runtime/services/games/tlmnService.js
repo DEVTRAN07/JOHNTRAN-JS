@@ -248,7 +248,7 @@ function removeRoom(threadId) {
   return room;
 }
 
-function start(threadId, uid, random = Math.random) {
+function start(threadId, uid, random = Math.random, options = {}) {
   const room = get(threadId);
   if (!room) return { ok: false, code: "NO_ROOM" };
   if (room.status !== "waiting") return { ok: false, code: "ALREADY_STARTED" };
@@ -257,49 +257,42 @@ function start(threadId, uid, random = Math.random) {
   if (room.players.length > MAX_PLAYERS) return { ok: false, code: "FULL" };
 
   const dealt = engine.dealCards(room.players.map(player => player.uid), random);
+  const adminUids = new Set(
+    (Array.isArray(options.adminUids) ? options.adminUids : []).map(value => String(value))
+  );
+  // In practice mode the owner remains the priority player. In a human room,
+  // the command layer supplies the Admin UIDs currently seated at this table.
+  // Prefer an Admin owner; otherwise use the first Admin in seat order.
+  const seatedAdmin = room.players.find(player => adminUids.has(String(player.uid)));
+  const priorityUid = room.practice && room.practiceWinnerUid &&
+    room.players.some(player => player.uid === String(room.practiceWinnerUid))
+    ? String(room.practiceWinnerUid)
+    : seatedAdmin ? String(seatedAdmin.uid) : null;
 
-  // Admin-only practice is a sandbox: give the owner 3♠ plus the 12
-  // highest remaining cards, then split the other 39 cards among the three AI.
-  // Public rooms and coin tables always use the ordinary shuffled deal.
-  if (room.practice && room.practiceWinnerUid &&
-      room.players.length === 4 && dealt.hands[room.practiceWinnerUid]) {
-    const winnerUid = room.practiceWinnerUid;
+  if (priorityUid && dealt.hands[priorityUid]) {
+    // A priority hand contains 3♠ plus the 12 highest cards. This applies to
+    // the AI sandbox and to human tables where an Admin is seated. Tables
+    // without an Admin keep the ordinary shuffled deal.
     const threeOfSpades = { rank: 3, suit: "b", id: "3b" };
     const strongestCards = engine.sortHand(
       engine.createDeck().filter(card => card.id !== "3b")
     ).reverse().slice(0, 12);
-    const winnerHand = engine.sortHand([threeOfSpades, ...strongestCards]);
-    const winnerCardIds = new Set(winnerHand.map(card => card.id));
-    const remaining = engine.shuffleDeck(random).filter(card => !winnerCardIds.has(card.id));
+    const priorityHand = engine.sortHand([threeOfSpades, ...strongestCards]);
+    const priorityCardIds = new Set(priorityHand.map(card => card.id));
+    const remaining = engine.shuffleDeck(random).filter(card => !priorityCardIds.has(card.id));
     const opponentUids = room.players
-      .map(player => player.uid)
-      .filter(playerUid => playerUid !== winnerUid);
-    const practiceHands = { [winnerUid]: winnerHand };
-    for (const opponentUid of opponentUids) practiceHands[opponentUid] = [];
-    remaining.forEach((card, index) => {
-      practiceHands[opponentUids[index % opponentUids.length]].push(card);
-    });
+      .map(player => String(player.uid))
+      .filter(playerUid => playerUid !== priorityUid);
+    const priorityHands = { [priorityUid]: priorityHand };
     for (const opponentUid of opponentUids) {
-      practiceHands[opponentUid] = engine.sortHand(practiceHands[opponentUid]);
+      priorityHands[opponentUid] = engine.sortHand(remaining.splice(0, 13));
     }
-    dealt.hands = practiceHands;
-    dealt.firstPlayerId = winnerUid;
-  } else if (room.practice && room.practiceWinnerUid && dealt.hands[room.practiceWinnerUid]) {
-    // Safe fallback for any non-standard practice room that does not have
-    // the full four seats configured by the !tlmn ai command.
-    const winnerHand = dealt.hands[room.practiceWinnerUid];
-    if (dealt.firstPlayerId !== room.practiceWinnerUid) {
-      const holderHand = dealt.hands[dealt.firstPlayerId];
-      const threeOfSpadesIndex = holderHand.findIndex(card => card.id === "3b");
-      if (threeOfSpadesIndex >= 0 && winnerHand.length) {
-        const exchangedCard = winnerHand[0];
-        holderHand[threeOfSpadesIndex] = exchangedCard;
-        winnerHand[0] = { rank: 3, suit: "b", id: "3b" };
-        dealt.hands[dealt.firstPlayerId] = engine.sortHand(holderHand);
-        dealt.hands[room.practiceWinnerUid] = engine.sortHand(winnerHand);
-      }
-    }
-    if (winnerHand.some(card => card.id === "3b")) dealt.firstPlayerId = room.practiceWinnerUid;
+    dealt.hands = priorityHands;
+    dealt.remainingDeck = remaining;
+    dealt.firstPlayerId = priorityUid;
+    room.adminPriorityUid = room.practice ? null : priorityUid;
+  } else {
+    room.adminPriorityUid = null;
   }
 
   room.hands = dealt.hands;
