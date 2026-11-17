@@ -273,7 +273,7 @@ async function main() {
     "Active outputs:",
     "01 menu, 02 menu folder, 03 topchat, 04 status, 05 /card profile,",
     "06 music search, 07 now playing, 08-11 reply.card variants, 12 generic card,",
-    "13 Sâm Lốc private hand card."
+    "13 Sâm Lốc private hand card.",
     "",
     "Reference only (not mapped into canvasWorker):",
     "13-14 legacy profile and avatar renderer previews."
