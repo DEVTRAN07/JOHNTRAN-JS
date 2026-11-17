@@ -413,8 +413,8 @@ test("TLMN wallet: settlement is idempotent and statistics are atomic with payou
   const room = game.create("tlmn-settlement", { uid: "winner" }).state;
   game.join("tlmn-settlement", room.id, { uid: "loser" });
   room.bet = 5000;
-  room.reservePerPlayer = 120 * room.bet;
-  room.locked = { winner: 600000, loser: 600000 };
+  room.reservePerPlayer = 100 * room.bet;
+  room.locked = { winner: 500000, loser: 500000 };
   room.hands = { winner: [], loser: [{ rank: 3, suit: "b", id: "3b" }] };
   room.settlement = {
     bet: 5000, winnerUid: "winner",
@@ -449,8 +449,8 @@ test("TLMN wallet: GameVH 3 Bich fee is debited from the gross payout and reconc
   const room = game.create("tlmn-fee-settlement", { uid: "winner-fee" }).state;
   game.join("tlmn-fee-settlement", room.id, { uid: "loser-fee" });
   room.bet = 5000;
-  room.reservePerPlayer = 120 * room.bet;
-  room.locked = { "winner-fee": 600000, "loser-fee": 600000 };
+  room.reservePerPlayer = 100 * room.bet;
+  room.locked = { "winner-fee": 500000, "loser-fee": 500000 };
   room.settlement = {
     bet: 5000,
     winnerUid: "winner-fee",
@@ -466,9 +466,9 @@ test("TLMN wallet: GameVH 3 Bich fee is debited from the gross payout and reconc
   const afterWinner = await command._test.readWallet(Users, "winner-fee");
   const afterLoser = await command._test.readWallet(Users, "loser-fee");
   assert.equal(result.length, 2);
-  assert.equal(afterWinner.coins, beforeWinner.coins + 600000 + 4750);
-  assert.equal(afterLoser.coins, beforeLoser.coins + 600000 - 5000);
-  assert.equal(command._test.RESERVE_MULTIPLIER, 120);
+  assert.equal(afterWinner.coins, beforeWinner.coins + 500000 + 4750);
+  assert.equal(afterLoser.coins, beforeLoser.coins + 500000 - 5000);
+  assert.equal(command._test.RESERVE_MULTIPLIER, 100);
   assert.equal(room.settled, true);
   game.removeRoom("tlmn-fee-settlement");
 });
