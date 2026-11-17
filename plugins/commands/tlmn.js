@@ -999,7 +999,7 @@ function chooseAiMove(room, uid) {
 function chooseQuickMove(room, uid) {
   const hand = room?.hands?.[String(uid)] || [];
   if (!hand.length) return null;
-  const mustContainThreeOfSpades = Number(room.playedCount) === 0;
+  const mustContainThreeOfSpades = false;
   const priorities = { pairRun: 90, straight: 75, fourKind: 70, triple: 45, pair: 30, single: 10 };
   let best = null;
   let bestScore = Number.NEGATIVE_INFINITY;
