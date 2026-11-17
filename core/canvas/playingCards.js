@@ -21,7 +21,8 @@ function drawLabel(ctx, value, x, y, scale, options = {}) {
   ctx.fillStyle = options.color || "#17211e";
   ctx.textAlign = options.align || "left";
   ctx.textBaseline = options.baseline || "alphabetic";
-  ctx.fillText(String(value ?? ""), x, y, options.maxWidth || undefined);
+  if (options.maxWidth) ctx.fillText(String(value ?? ""), x, y, options.maxWidth);
+  else ctx.fillText(String(value ?? ""), x, y);
   ctx.restore();
 }
 
