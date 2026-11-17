@@ -484,16 +484,27 @@ function calculateSettlement(room) {
       room.threeSpadesFinisherUid && !room.threeSpadesBlockedByUid
         ? room.threeSpadesFinisherUid : room.finishOrder?.[0] || ""));
   const transfers = [];
-  const add = (from, to, amount, reason) => {
+  let houseFee = 0;
+  const add = (from, to, amount, reason, feeRate = 0) => {
     const value = Math.max(0, Math.floor(Number(amount) || 0));
-    if (from && to && from !== to && value) transfers.push({ from, to, amount: value, reason });
+    if (!from || !to || from === to || !value) return;
+    const fee = feeRate > 0
+      ? Math.min(value, Math.floor(value * Math.min(1, feeRate)))
+      : 0;
+    const transfer = { from, to, amount: value, reason };
+    if (fee) {
+      transfer.receivedAmount = value - fee;
+      transfer.fee = fee;
+      houseFee += fee;
+    }
+    transfers.push(transfer);
   };
   if (hasThreeSpadesThoi) {
     // GameVH's "Thối 3 Bích": if the player who just played is left holding
     // only 3♠ and another player covers that play, the blocker rescues the
     // table and receives 26 stakes per other player (not a normal chop fee).
     add(room.threeSpadesThoiUid, room.threeSpadesRescuerUid,
-      26 * bet * Math.max(1, players.length - 1), "thoi-ba-bich");
+      26 * bet * Math.max(1, players.length - 1), "thoi-ba-bich", 0.05);
   } else if (room.whiteHand) {
     const multiplier = {
       dragonStraight: 9, sixPairRun: 8, fourTriples: 7, twoFourKinds: 6,
@@ -504,7 +515,7 @@ function calculateSettlement(room) {
     }
   } else if (room.threeSpadesFinisherUid && !room.threeSpadesBlockedByUid) {
     for (const item of players) if (item.uid !== winnerUid) {
-      add(item.uid, winnerUid, 26 * bet, "ket-ba-bich");
+      add(item.uid, winnerUid, 26 * bet, "ket-ba-bich", 0.05);
     }
   } else {
     for (const item of players) {
@@ -519,9 +530,9 @@ function calculateSettlement(room) {
   const net = Object.fromEntries(players.map(item => [String(item.uid), 0]));
   for (const transfer of transfers) {
     net[transfer.from] -= transfer.amount;
-    net[transfer.to] += transfer.amount;
+    net[transfer.to] += Number(transfer.receivedAmount ?? transfer.amount);
   }
-  return { bet, winnerUid, transfers, net, calculatedAt: Date.now() };
+  return { bet, winnerUid, transfers, net, houseFee, calculatedAt: Date.now() };
 }
 
 function finishRoom(room) {
