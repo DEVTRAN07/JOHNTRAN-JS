@@ -71,11 +71,11 @@ function drawPlayingCard(ctx, card, x, y, w, h, scale, options = {}) {
     size: options.small ? 15 : 18, weight: 900, color: suit.color, align: "right"
   });
   if (Number.isInteger(options.index) && options.index > 0) {
-    roundPanel(ctx, x + w - 23 * scale, y + 5 * scale,
+    roundPanel(ctx, x + w - 34 * scale, y + 5 * scale,
       18 * scale, 18 * scale, 6 * scale,
       premium ? "#8c5b0c" : "#07574f",
       premium ? "#ffd875" : "#55e5c4");
-    drawText(ctx, String(options.index), x + w - 14 * scale,
+    drawText(ctx, String(options.index), x + w - 25 * scale,
       y + 18 * scale, scale, {
         size: 10, weight: 900, color: "#fff9e9", align: "center"
       });
