@@ -1196,6 +1196,12 @@ async function endGame(api, event, Users, roomState, Threads) {
     return sendText(api, event, [
       "🏁 KẾT THÚC VÁN LUYỆN TẬP VS AI #" + room.id,
       "",
+      ...(room.whiteHand ? [
+        "✨ ĂN TRẮNG: " +
+          (room.players.find(item => item.uid === room.whiteHand.uid)?.name || "Admin") +
+          " — " + (engine.WHITE_HAND_LABEL[room.whiteHand.type] || room.whiteHand.type),
+        ""
+      ] : []),
       ...rows.map(row => (row.place === 1 ? "👑 " : "• ") +
         row.place + ". " + row.name + " — còn " + row.cardsLeft + " lá"),
       "",
@@ -1218,6 +1224,14 @@ async function endGame(api, event, Users, roomState, Threads) {
     "🏁 KẾT THÚC VÁN #" + room.id + " 🏁",
     ""
   ];
+  if (room.whiteHand) {
+    const winner = room.players.find(item => item.uid === room.whiteHand.uid);
+    lines.push(
+      "✨ ĂN TRẮNG: " + (winner?.name || "Người chơi") + " — " +
+        (engine.WHITE_HAND_LABEL[room.whiteHand.type] || room.whiteHand.type) + ".",
+      ""
+    );
+  }
   for (const result of payoutLines) {
     const sign = result.change > 0 ? "+" : "";
     lines.push(
@@ -1446,6 +1460,10 @@ async function startRoom({ api, event, Users, Threads }) {
       (room.practice ? "đây là ván luyện tập nên không có xu cược." :
         refunded ? "xu cược đã hoàn." : "khoản hoàn cược đang được đồng bộ.") +
       " Người chơi hãy mở chat riêng với bot và bật nhận tin nhắn người lạ, sau đó chủ phòng có thể start lại.");
+    return;
+  }
+  if (room.status === "finished" && room.whiteHand) {
+    await endGame(api, event, Users, room, Threads);
     return;
   }
   await sendGroupRoom(api, event, result.room,
