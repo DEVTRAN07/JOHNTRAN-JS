@@ -362,6 +362,33 @@ test("Sâm does not allow finishing the hand with a 2", () => {
   game.removeRoom(threadId);
 });
 
+test("Sâm forbids a move that leaves only one 2 in the player's hand", () => {
+  const threadId = "sam-no-two-as-last-card";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81621" });
+  assert.equal(created.ok, true);
+  game.join(threadId, "81621", { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.27); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = { a: [card(3), card(15)], b: [card(4)] };
+  room.turnUid = "a";
+  room.playedCount = 0;
+  const beforeHand = room.hands.a.map(item => item.id);
+  const beforeTurn = room.turnUid;
+  const result = game.play(threadId, "a", "3b");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "CANNOT_LEAVE_TWO_LAST");
+  assert.deepEqual(room.hands.a.map(item => item.id), beforeHand);
+  assert.equal(room.turnUid, beforeTurn);
+  assert.equal(room.playedCount, 0);
+  game.removeRoom(threadId);
+});
+
 test("Sâm computes card-left, thối heo and cóng charges in the shared stake unit", () => {
   const room = {
     stake: 5000,
