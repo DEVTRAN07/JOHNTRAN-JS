@@ -2,7 +2,9 @@ const { parentPort } = require("worker_threads");
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
-const ffmpegPath = require("ffmpeg-static");
+const ffmpegStatic = require("ffmpeg-static");
+const { resolveFfmpegPath } = require("../music/ffmpegPath");
+const ffmpegPath = resolveFfmpegPath({ staticPath: ffmpegStatic });
 
 const IDLE_EXIT_MS = 20000;
 
@@ -28,11 +30,14 @@ parentPort.on("message", async (payload) => {
 
     const mp3Path = path.join(path.dirname(videoPath), "audio_" + Date.now() + ".mp3");
 
+    if (!ffmpegPath) {
+      throw new Error("Không tìm thấy FFmpeg. Hãy cài FFmpeg hệ thống hoặc cung cấp ffmpeg-static/FFMPEG_PATH.");
+    }
     await new Promise((resolve, reject) => {
       execFile(
         ffmpegPath,
         ["-y", "-i", videoPath, "-vn", "-acodec", "libmp3lame", "-b:a", "128k", mp3Path],
-        { maxBuffer: 64 * 1024 * 1024 },
+        { timeout: 150000, maxBuffer: 64 * 1024 * 1024 },
         (error) => {
           if (error) {
             reject(new Error((error.message || "").split("\n").slice(-2).join(" ") || "ffmpeg lỗi"));

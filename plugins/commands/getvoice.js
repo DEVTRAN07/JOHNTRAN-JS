@@ -10,6 +10,23 @@ const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
 const { enqueue } = require("../../core/jobQueue");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegStatic = require("ffmpeg-static");
+const { resolveFfmpegPath } = require("../../core/music/ffmpegPath");
+
+function resolveAudioFfmpegPath(options = {}) {
+  return resolveFfmpegPath({
+    ...options,
+    staticPath: options.staticPath === undefined ? ffmpegStatic : options.staticPath
+  });
+}
+
+function configureFfmpeg(options = {}) {
+  const binary = resolveAudioFfmpegPath(options);
+  if (binary) ffmpeg.setFfmpegPath(binary);
+  return binary;
+}
+
+// Keep the same binary for fluent-ffmpeg and direct stream probing.
+const ffmpegBin = configureFfmpeg();
 
 module.exports.config = {
   name: "getvoice",
@@ -26,18 +43,26 @@ module.exports.config = {
 
 function convertMp3ToAac(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
+    const binary = configureFfmpeg();
+    if (!binary) {
+      reject(new Error("Không tìm thấy FFmpeg. Hãy cài FFmpeg hệ thống hoặc cung cấp ffmpeg-static/FFMPEG_PATH."));
+      return;
+    }
     ffmpeg(inputPath)
       .output(outputPath)
       .audioCodec("aac")
-      .on("end", () => {
-        resolve(outputPath);
-      })
-      .on("error", (err) => {
-        reject(err);
-      })
+      .audioBitrate("128k")
+      .on("end", () => resolve(outputPath))
+      .on("error", reject)
       .run();
   });
 }
+
+module.exports._test = {
+  resolveAudioFfmpegPath,
+  configureFfmpeg,
+  ffmpegBin
+};
 
 module.exports.run = async function ({ api, event }) {
   const { threadId, type } = event;
@@ -63,9 +88,21 @@ module.exports.run = async function ({ api, event }) {
 
     // 2) Kiểm tra có tiếng không (ffmpeg -i in stream ra stderr)
     const { execFile } = require("child_process");
-    const ffmpegBin = require("ffmpeg-static");
-    const info = await new Promise((resolve) => {
-      execFile(ffmpegBin, ["-i", videoPath], { maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const probeBinary = configureFfmpeg();
+    if (!probeBinary) {
+      throw new Error("Không tìm thấy FFmpeg. Hãy cài FFmpeg hệ thống hoặc cung cấp ffmpeg-static/FFMPEG_PATH.");
+    }
+    const info = await new Promise((resolve, reject) => {
+      execFile(probeBinary, ["-hide_banner", "-i", videoPath], {
+        timeout: 20000,
+        maxBuffer: 16 * 1024 * 1024
+      }, (error, stdout, stderr) => {
+        // ffmpeg exits non-zero for the probe-only -i invocation; its output
+        // still contains stream metadata. Reject only an actual spawn/timeout failure.
+        if (error && (error.code === "ENOENT" || error.killed || error.signal)) {
+          reject(error);
+          return;
+        }
         resolve((stderr || "") + "\n" + (stdout || ""));
       });
     });
