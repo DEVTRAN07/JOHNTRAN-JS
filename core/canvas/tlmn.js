@@ -67,97 +67,206 @@ function drawPlayingCard(ctx, card, x, y, w, h, scale, options = {}) {
   ctx.restore();
 }
 
+function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
+  const px = value => Math.round(value * scale);
+  const active = Boolean(item && isTurn);
+  roundPanel(ctx, x, y, w, h, px(16),
+    active ? "rgba(73,7,16,.97)" : "rgba(24,2,8,.88)",
+    active ? "#34e6b0" : "rgba(255,205,92,.52)");
+
+  const avatarX = x + px(42);
+  const avatarY = y + h / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(avatarX, avatarY, px(25), 0, Math.PI * 2);
+  ctx.fillStyle = active ? "#164d3c" : "#3e1a20";
+  ctx.fill();
+  ctx.lineWidth = px(2);
+  ctx.strokeStyle = active ? "#44edba" : "#b88c50";
+  ctx.stroke();
+  drawText(ctx, item
+    ? String(item.name || "P").trim().slice(0, 1).toUpperCase()
+    : "+",
+    avatarX, avatarY + px(8), scale, {
+      size: 22, weight: 900, color: "#fff1ce", align: "center"
+    });
+  ctx.restore();
+
+  if (!item) {
+    drawText(ctx, "GHẾ TRỐNG", x + px(78), y + h / 2 + px(5), scale, {
+      size: 13, weight: 900, color: "#91a49a"
+    });
+    drawText(ctx, "ĐANG MỞ", x + w - px(16), y + h / 2 + px(5), scale, {
+      size: 10, weight: 800, color: "#c6a76d", align: "right"
+    });
+    return;
+  }
+
+  const name = String(item.name || "Người chơi");
+  const compact = w < px(260);
+  const nameWidth = Math.max(px(68), w - px(compact ? 108 : 150));
+  drawText(ctx, name.length > 22 ? name.slice(0, 20) + "…" : name,
+    x + px(80), y + px(37), scale, {
+      size: 15, weight: 900, color: "#fff3dc", maxWidth: nameWidth
+    });
+  const count = item.handCount == null ? "ĐANG CHỜ" : item.handCount + " LÁ";
+  drawText(ctx, count, x + px(80), y + px(68), scale, {
+    size: 11, weight: 800, color: active ? "#ffe17d" : "#b7c7bd"
+  });
+  if (active && compact) {
+    drawText(ctx, "▶", x + w - px(14), y + px(68), scale, {
+      size: 14, weight: 900, color: "#43e8b5", align: "right"
+    });
+  } else if (active) {
+    roundPanel(ctx, x + w - px(102), y + px(22), px(84), px(34), px(10),
+      "#08764f", "#43e8b5");
+    drawText(ctx, "LƯỢT", x + w - px(60), y + px(45), scale, {
+      size: 10, weight: 900, color: "#fff6dc", align: "center"
+    });
+  } else if (item.place > 0) {
+    drawText(ctx, "HẠNG " + item.place, x + w - px(16), y + px(48), scale, {
+      size: 10, weight: 900, color: "#d9bc79", align: "right"
+    });
+  } else {
+    drawText(ctx, "NGƯỜI CHƠI " + (index + 1), x + w - px(16), y + px(48), scale, {
+      size: 9, weight: 800, color: "#9eaa9e", align: "right"
+    });
+  }
+}
+
+function seatLayout(playerCount) {
+  if (Number(playerCount) >= 4) {
+    return [
+      { x: 370, y: 174, w: 340, h: 92 },
+      { x: 34, y: 378, w: 194, h: 100 },
+      { x: 852, y: 378, w: 194, h: 100 },
+      { x: 370, y: 568, w: 340, h: 92 }
+    ];
+  }
+  if (Number(playerCount) === 3) {
+    return [
+      { x: 370, y: 174, w: 340, h: 92 },
+      { x: 105, y: 568, w: 320, h: 92 },
+      { x: 655, y: 568, w: 320, h: 92 }
+    ];
+  }
+  return [
+    { x: 370, y: 174, w: 340, h: 92 },
+    { x: 370, y: 568, w: 340, h: 92 }
+  ];
+}
+
 function renderTable(ctx, width, height, scale, data) {
   const room = data.room || {};
   const players = Array.isArray(room.players) ? room.players : [];
   const px = value => Math.round(value * scale);
+
   drawText(ctx, "JOHNTRAN  /  ROYAL GAME ROOM", px(58), px(52), scale, {
     size: 12, weight: 900, color: "#ffd34f"
   });
-  drawText(ctx, "TIẾN LÊN MIỀN NAM", width / 2, px(113), scale, {
-    size: 39, weight: 900, color: "#f8f2d9", align: "center"
+  drawText(ctx, "TIẾN LÊN MIỀN NAM", width / 2, px(108), scale, {
+    size: 37, weight: 900, color: "#fff3d8", align: "center"
   });
   drawText(ctx, "BÀN #" + String(room.id || "-----") + "   •   CƯỢC " +
     String(room.bet || 5000).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "$   •   " +
     (room.mode === "demla" ? "ĐẾM LÁ" : "NHẤT NHÌ BA BÉT"),
-    width / 2, px(148), scale, {
-      size: 13, weight: 800, color: "#b5d8c9", align: "center"
+    width / 2, px(145), scale, {
+      size: 13, weight: 800, color: "#c4dbc9", align: "center"
     });
+
+  const positions = seatLayout(players.length);
+
+  positions.forEach((position, index) => {
+    const item = players[index] || null;
+    drawSeat(ctx, item, px(position.x), px(position.y), px(position.w),
+      px(position.h), scale, index, Boolean(item && item.uid === room.turnUid));
+  });
+
+  const tableX = players.length >= 4 ? px(240) : px(180);
+  const tableY = px(306);
+  const tableW = width - tableX * 2;
+  const tableH = px(244);
+
+  // Raised oval felt table with a distinct gold rail and soft inner highlight.
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(width / 2, tableY + tableH / 2, tableW * .49, tableH * .50, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(10,0,4,.35)";
+  ctx.fill();
+  ctx.lineWidth = px(5);
+  ctx.strokeStyle = "rgba(235,190,93,.78)";
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(width / 2, tableY + tableH / 2, tableW * .47, tableH * .465, 0, 0, Math.PI * 2);
+  ctx.lineWidth = px(1.5);
+  ctx.strokeStyle = "rgba(255,231,164,.35)";
+  ctx.stroke();
+  ctx.restore();
+
+  drawText(ctx, "BÀI TRÊN BÀN", width / 2, tableY + px(43), scale, {
+    size: 14, weight: 900, color: "#ffe19b", align: "center"
+  });
+
+  const lastPlay = room.lastPlay;
+  if (lastPlay && Array.isArray(lastPlay.cards) && lastPlay.cards.length) {
+    drawText(ctx, (lastPlay.name || "Người chơi") + " VỪA ĐÁNH",
+      width / 2, tableY + px(72), scale, {
+        size: 12, weight: 900, color: "#f8ead0", align: "center"
+      });
+    const cards = lastPlay.cards.slice(0, 13);
+    const cardGap = px(5);
+    const available = tableW - px(54);
+    const cardW = Math.min(px(48), Math.floor((available - cardGap * (cards.length - 1)) / cards.length));
+    const cardH = px(100);
+    const total = cards.length * cardW + (cards.length - 1) * cardGap;
+    const startX = (width - total) / 2;
+    cards.forEach((card, index) => drawPlayingCard(ctx, card,
+      startX + index * (cardW + cardGap), tableY + px(88),
+      cardW, cardH, scale, { small: true }));
+    const combo = room.currentCombo;
+    if (combo) {
+      const label = String(combo.type || "BÀI").toUpperCase().replace("PAIRRUN", "ĐÔI THÔNG")
+        .replace("FOURKIND", "TỨ QUÝ").replace("STRAIGHT", "SẢNH")
+        .replace("SINGLE", "LẺ").replace("PAIR", "ĐÔI").replace("TRIPLE", "SÁM CÔ");
+      drawText(ctx, label + (combo.type === "pairRun" ? " " + combo.length + " ĐÔI" : ""),
+        width / 2, tableY + tableH - px(17), scale, {
+          size: 10, weight: 900, color: "#ffda7e", align: "center"
+        });
+    }
+  } else {
+    const title = room.status === "waiting"
+      ? "MỜI NGƯỜI CHƠI THAM GIA"
+      : room.playedCount === 0 ? "NGƯỜI CÓ 3♠ ĐI TRƯỚC" : "CHƯA CÓ BÀI TRÊN BÀN";
+    drawText(ctx, title, width / 2, tableY + px(133), scale, {
+      size: 17, weight: 900, color: "#f4dfb0", align: "center"
+    });
+    drawText(ctx, room.status === "waiting"
+      ? "GỬI: join " + String(room.id || "-----")
+      : "ĐÁNH BỘ ĐẦU TIÊN ĐỂ MỞ VÒNG",
+      width / 2, tableY + px(164), scale, {
+        size: 11, weight: 800, color: "#a8d2bc", align: "center"
+      });
+  }
+
   if (room.status === "waiting") {
     roundPanel(ctx, width - px(170), px(28), px(112), px(42), px(12), "#087a3d", "#e7d77a");
     drawText(ctx, "◷ 60s", width - px(114), px(56), scale, {
       size: 15, weight: 900, color: "#fff6d4", align: "center"
     });
-  }
-
-  const margin = px(58);
-  const gap = px(16);
-  const panelY = px(196);
-  const panelH = px(112);
-  const panelW = (width - margin * 2 - gap * 3) / 4;
-  for (let index = 0; index < 4; index += 1) {
-    const item = players[index];
-    const x = margin + index * (panelW + gap);
-    const isTurn = item && item.uid === room.turnUid;
-    roundPanel(ctx, x, panelY, panelW, panelH, px(13),
-      isTurn ? "rgba(91,5,15,.94)" : "rgba(30,0,8,.58)",
-      isTurn ? "#20e3a4" : "rgba(255,197,48,.35)");
-    drawText(ctx, item ? (index + 1) + ". " + item.name : "CHỖ TRỐNG",
-      x + px(14), panelY + px(33), scale, {
-        size: 13, weight: 900, color: item ? "#f4edda" : "#82968c",
-        maxWidth: panelW - px(28)
-      });
-    drawText(ctx, item ? (item.handCount == null ? "ĐANG CHỜ" : item.handCount + " LÁ CÒN LẠI") : "MỜI THAM GIA",
-      x + px(14), panelY + px(63), scale, {
-        size: 11, weight: 800, color: isTurn ? "#ffe17a" : "#a3b8ad"
-      });
-    if (isTurn) {
-      drawText(ctx, "LƯỢT ĐÁNH", x + px(14), panelY + px(88), scale, {
-        size: 10, weight: 900, color: "#f5d37e"
-      });
-    }
-  }
-
-  roundPanel(ctx, margin, px(340), width - margin * 2, px(250), px(18),
-    "rgba(68,2,12,.82)", "rgba(255,197,48,.50)");
-  drawText(ctx, "BÀI TRÊN BÀN", width / 2, px(383), scale, {
-    size: 14, weight: 900, color: "#8de8c5", align: "center"
-  });
-  const lastPlay = room.lastPlay;
-  if (lastPlay && Array.isArray(lastPlay.cards) && lastPlay.cards.length) {
-    drawText(ctx, (lastPlay.name || "Người chơi") + " vừa đánh",
-      width / 2, px(414), scale, {
-        size: 13, weight: 800, color: "#f8efd8", align: "center"
-      });
-    const cards = lastPlay.cards.slice(0, 12);
-    const cardW = px(70);
-    const cardH = px(112);
-    const cardGap = px(10);
-    const total = cards.length * cardW + (cards.length - 1) * cardGap;
-    const startX = (width - total) / 2;
-    cards.forEach((card, index) => drawPlayingCard(ctx, card,
-      startX + index * (cardW + cardGap), px(438), cardW, cardH, scale, { small: true }));
-  } else {
-    drawText(ctx, room.status === "waiting" ? "ĐANG CHỜ NGƯỜI CHƠI THAM GIA" : "CHƯA CÓ LÁ BÀI NÀO ĐƯỢC ĐÁNH",
-      width / 2, px(478), scale, {
-        size: 17, weight: 900, color: "#d8c99d", align: "center"
-      });
-    drawText(ctx, room.status === "waiting" ? "GỬI: join " + String(room.id || "-----") : "NGƯỜI CÓ 3♠ ĐI TRƯỚC",
-      width / 2, px(512), scale, {
-        size: 12, weight: 800, color: "#77b79c", align: "center"
+  } else if (room.turnUid) {
+    const current = players.find(item => item.uid === room.turnUid);
+    drawText(ctx, "⏳ LƯỢT CỦA " + String(current?.name || "NGƯỜI CHƠI").toUpperCase() + "  •  60 GIÂY",
+      width / 2, px(700), scale, {
+        size: 11, weight: 900, color: "#ffe19b", align: "center"
       });
   }
 
   const footer = room.status === "waiting"
     ? "CHỦ PHÒNG BẤM START KHI CÓ TỪ 2 ĐẾN 4 NGƯỜI"
-    : "BÀI RIÊNG ĐƯỢC GỬI QUA TIN NHẮN RIÊNG • NHÓM CHỈ HIỆN LƯỢT ĐÁNH";
-  drawText(ctx, footer, width / 2, px(667), scale, {
-    size: 11, weight: 900, color: "#ffd34f", align: "center"
+    : "BÀI RIÊNG QUA INBOX  •  NHÓM CHỈ HIỆN LÁ BÀI ĐƯỢC ĐÁNH";
+  drawText(ctx, footer, width / 2, px(744), scale, {
+    size: 10, weight: 900, color: "#e5c780", align: "center"
   });
-  drawText(ctx, "♠  ♥  ♦  ♣     JOHNTRAN • SÒNG BÀI HOÀNG GIA",
-    width / 2, px(720), scale, {
-      size: 10, weight: 800, color: "#8ba79a", align: "center"
-    });
 }
 
 function renderHand(ctx, width, height, scale, data) {
@@ -253,4 +362,4 @@ function renderTlmn(data = {}) {
   return theme.save(canvas, "tlmn");
 }
 
-module.exports = { renderTlmn, _test: { suitInfo, rankText } };
+module.exports = { renderTlmn, _test: { suitInfo, rankText, seatLayout } };

@@ -485,3 +485,137 @@ test("TLMN settlement: missing buy-in is rejected without minting coins", async 
   assert.equal((await command._test.readWallet(Users, "no-buyin-b")).coins, 100000);
   game.removeRoom("tlmn-no-buyin");
 });
+
+
+test("TLMN private card: leaving a round recalls the departing player's hand", async () => {
+  const room = game.create("tlmn-private-revoke", { uid: "owner" }).state;
+  game.join("tlmn-private-revoke", room.id, { uid: "guest" });
+  room.messageCards.private.guest = [{ msgId: "hand-msg", cliMsgId: "hand-cli" }];
+  const recalled = [];
+  const api = {
+    async undo(target, threadId, type) {
+      recalled.push({ target, threadId, type });
+      return true;
+    }
+  };
+  assert.equal(await command._test.recallPrivateHand(api, room, "guest"), true);
+  assert.equal(recalled.length, 1);
+  assert.equal(recalled[0].target.msgId, "hand-msg");
+  assert.equal(room.messageCards.private.guest, undefined);
+  game.removeRoom("tlmn-private-revoke");
+});
+
+test("TLMN renderer: table layout provides seats around the center for 2, 3, and 4 players", () => {
+  const renderer = require("../core/canvas/tlmn");
+  for (const count of [2, 3, 4]) {
+    const players = Array.from({ length: count }, (_, index) => ({
+      uid: "seat-" + index,
+      name: "Player " + index,
+      handCount: 13
+    }));
+    const layout = renderer._test.seatLayout(count);
+    assert.equal(layout.length, count);
+    assert.equal(new Set(layout.map(seat => seat.x + ":" + seat.y)).size, count);
+    assert.ok(layout.every(seat => seat.w > 0 && seat.h > 0));
+  }
+});
+
+
+test("TLMN turn UX: pass refreshes the passer's private hand without a second DM", async () => {
+  const groupId = "tlmn-pass-hand-refresh";
+  const sent = [];
+  const api = {
+    async sendMessage(payload, threadId, type) {
+      const msgId = "pass-" + (sent.length + 1);
+      sent.push({ payload, threadId: String(threadId), type, msgId });
+      return { message: { msgId, cliMsgId: "cli-" + msgId } };
+    },
+    async undo() { return true; }
+  };
+  const threadRows = new Map([[groupId, { bot_enabled: true }]]);
+  const Threads = {
+    async getData(id) { return { data: { ...(threadRows.get(String(id)) || {}) } }; },
+    async setDataAndWait(id, data) { threadRows.set(String(id), { ...data }); },
+    async setData(id, data) { threadRows.set(String(id), { ...data }); },
+    getCachedData(id) { return { data: { ...(threadRows.get(String(id)) || {}) } }; }
+  };
+  const Users = {
+    async getData() { return { data: {} }; },
+    async setDataAndWait() {}
+  };
+  const created = game.create(groupId, { uid: "pass-owner", name: "Owner" });
+  game.join(groupId, created.room.id, { uid: "pass-a", name: "Player A" });
+  game.join(groupId, created.room.id, { uid: "pass-b", name: "Player B" });
+  game.start(groupId, "pass-owner", () => 0.37);
+  const room = game.get(groupId);
+  const opener = room.turnUid;
+  assert.equal(game.play(groupId, opener, "3b").ok, true);
+  const passerUid = room.turnUid;
+  const passer = room.players.find(item => item.uid === passerUid);
+  const event = {
+    threadId: groupId,
+    type: ThreadType.Group,
+    data: { uidFrom: passerUid, dName: passer.name, content: "pass" }
+  };
+  try {
+    await command.handleIncoming({ api, event, Users, Threads });
+    const privateUpdates = sent.filter(item =>
+      item.type === ThreadType.User && item.threadId === passerUid &&
+      String(item.payload.msg || "").includes("BÀI TRÊN TAY CỦA BẠN")
+    );
+    assert.equal(privateUpdates.length, 1);
+    assert.match(String(privateUpdates[0].payload.msg), /Chỉ bạn nhìn thấy/);
+    assert.doesNotMatch(String(privateUpdates[0].payload.msg), /ĐẾN LƯỢT BẠN/);
+    assert.equal(sent.filter(item => item.type === ThreadType.User && item.threadId === passerUid).length, 1);
+  } finally {
+    game.removeRoom(groupId);
+  }
+});
+
+test("TLMN leave UX: a departing player has their private hand recalled", async () => {
+  const groupId = "tlmn-leave-recall";
+  const recalled = [];
+  const api = {
+    async sendMessage(payload, threadId, type) {
+      return { message: { msgId: "leave-" + String(threadId), cliMsgId: "cli-" + String(threadId) } };
+    },
+    async undo(target, threadId, type) {
+      recalled.push({ target, threadId: String(threadId), type });
+      return true;
+    }
+  };
+  const threadRows = new Map([[groupId, { bot_enabled: true }]]);
+  const Threads = {
+    async getData(id) { return { data: { ...(threadRows.get(String(id)) || {}) } }; },
+    async setDataAndWait(id, data) { threadRows.set(String(id), { ...data }); },
+    async setData(id, data) { threadRows.set(String(id), { ...data }); },
+    getCachedData(id) { return { data: { ...(threadRows.get(String(id)) || {}) } }; }
+  };
+  const Users = {
+    async getData() { return { data: {} }; },
+    async setDataAndWait() {}
+  };
+  const created = game.create(groupId, { uid: "leave-owner", name: "Owner" });
+  game.join(groupId, created.room.id, { uid: "leave-a", name: "Player A" });
+  game.join(groupId, created.room.id, { uid: "leave-b", name: "Player B" });
+  game.start(groupId, "leave-owner", () => 0.37);
+  const room = game.get(groupId);
+  room.messageCards.private["leave-a"] = [
+    { msgId: "old-private-card", cliMsgId: "old-private-cli" }
+  ];
+  try {
+    await command.handleIncoming({
+      api, Users, Threads,
+      event: {
+        threadId: groupId,
+        type: ThreadType.Group,
+        data: { uidFrom: "leave-a", dName: "Player A", content: "leave" }
+      }
+    });
+    assert.ok(recalled.some(item => item.target.msgId === "old-private-card"));
+    assert.equal(room.messageCards.private["leave-a"], undefined);
+    assert.equal(room.activeUids.includes("leave-a"), false);
+  } finally {
+    game.removeRoom(groupId);
+  }
+});

@@ -666,12 +666,33 @@ async function recallOrphanPrivateCards(api, uid, currentRoomId) {
     const roomId = parts[1];
     const targetUid = parts[2];
     if (targetUid !== playerId || roomId === String(currentRoomId)) continue;
-    // A still-live room in another group may belong to this same player.
-    if (game.getByCode(roomId)) continue;
+    // Keep cards only while this player is still active in the old room.
+    // A forfeit/finished player must not retain stale private hand cards.
+    const oldRoom = game.getByCode(roomId);
+    const stillInOldGame = oldRoom && oldRoom.status !== "finished" &&
+      (oldRoom.status === "waiting"
+        ? oldRoom.players.some(item => item.uid === playerId)
+        : oldRoom.activeUids.includes(playerId));
+    if (stillInOldGame) continue;
     const failed = await recallMessages(rawApi, playerId, ThreadType.User, targets);
     if (failed.length) privateCards.set(key, failed);
     else privateCards.delete(key);
   }
+}
+
+async function recallPrivateHand(api, room, uid) {
+  const playerId = String(uid);
+  const key = "hand:" + room.id + ":" + playerId;
+  const targets = privateCards.get(key) || room.messageCards?.private?.[playerId] || [];
+  const failed = await recallMessages(getRawApi(api), playerId, ThreadType.User, targets);
+  if (failed.length) {
+    privateCards.set(key, failed);
+    if (room.messageCards?.private) room.messageCards.private[playerId] = failed;
+  } else {
+    forgetCards(key);
+    if (room.messageCards?.private) delete room.messageCards.private[playerId];
+  }
+  return failed.length === 0;
 }
 
 async function sendPrivateHand(api, room, item, hand, turn = false) {
@@ -698,7 +719,7 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
     "• Đánh lẻ: 4r, 10b, jc, 2c",
     "• Đôi: Đôi 3 (doi 3), Đôi 4 (doi 4), Đôi K (doi k)",
     "• Sám cô: sam 7 / sam co 7",
-    "• Đôi thông: 3 đôi thông (3dt), 4 đôi thông (4dt)",
+    "• Đôi thông: 3 đôi thông (3dt / doithong 345), 4 đôi thông (4dt / doithong 3456)",
     "• Sảnh: sanh 345, sanh 10-j-q, sanh jqk",
     "• Tứ quý: tuquy 4",
     "• Bỏ lượt: bo / pass",
@@ -748,52 +769,50 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
   return delivered;
 }
 
-async function notifyPrivate(api, uid, message) {
-  const rawApi = getRawApi(api);
-  try {
-    await rawApi.sendMessage({ msg: message, recallAfterMs: 0 }, String(uid), ThreadType.User);
-  } catch (error) {
-    console.warn("[TLMN_DM]", error?.message || error);
-  }
-}
-
 function scheduleRoomTurn(api, Users, Threads, room) {
   if (!room || room.status !== "playing" || !room.turnUid) return false;
-  return game.watchTurn(room.threadId, async ({ uid, player }) => {
-    const action = game.timeoutTurn(room.threadId, uid);
-    if (!action.ok) {
-      console.warn("[TLMN_TIMEOUT]", action.code);
-      return;
-    }
-    const syntheticEvent = {
-      threadId: room.threadId, type: ThreadType.Group,
-      data: { uidFrom: uid, dName: player?.name || "Người chơi" }
-    };
-    if (action.finished) {
-      await endGame(api, syntheticEvent, Users, action.state, Threads);
-      return;
-    }
-    if (action.action === "play") {
-      const actor = action.state.players.find(item => item.uid === uid);
-      await sendGroupRoom(api, syntheticEvent, action.room,
-        "⏰ " + (player?.name || "Người chơi") + " quá 60 giây; bot tự đánh " +
-        engine.formatCards(action.combo.cards) + ".");
-      if (actor) await sendPrivateHand(api, action.state, actor, action.state.hands[uid] || [], false);
-    } else {
-      await sendGroupRoom(api, syntheticEvent, action.room,
-        "⏰ " + (player?.name || "Người chơi") + " quá 60 giây; bot tự động bỏ lượt.");
-    }
-    const next = action.state.players.find(item => item.uid === action.state.turnUid);
-    if (next) {
-      await sendPrivateHand(api, action.state, next, action.state.hands[next.uid] || [], true);
-      await notifyPrivate(api, next.uid, "🎯 Đến lượt bạn. Bạn có 60 giây để đánh hoặc bỏ lượt.");
-    }
-    if (!await persistRoom(Threads, room.threadId)) {
-      console.error("[TLMN_TIMEOUT] Không lưu được trạng thái sau lượt tự động.");
-      return;
-    }
-    scheduleRoomTurn(api, Users, Threads, action.state);
-  });
+  return game.watchTurn(room.threadId, ({ uid, player, playedCount }) =>
+    withRoomActionLock(room.threadId, async () => {
+      const current = game.get(room.threadId);
+      if (!current || current !== room || current.status !== "playing" ||
+          current.turnUid !== uid || current.playedCount !== playedCount) return;
+
+      const action = game.timeoutTurn(room.threadId, uid);
+      if (!action.ok) {
+        console.warn("[TLMN_TIMEOUT]", action.code);
+        return;
+      }
+      const syntheticEvent = {
+        threadId: room.threadId, type: ThreadType.Group,
+        data: { uidFrom: uid, dName: player?.name || "Người chơi" }
+      };
+      if (action.finished) {
+        await endGame(api, syntheticEvent, Users, action.state, Threads);
+        return;
+      }
+      if (action.action === "play") {
+        const actor = action.state.players.find(item => item.uid === uid);
+        await sendGroupRoom(api, syntheticEvent, action.room,
+          "⏰ " + (player?.name || "Người chơi") + " quá 60 giây; bot tự đánh " +
+          engine.formatCards(action.combo.cards) + ".");
+        if (actor) await sendPrivateHand(api, action.state, actor, action.state.hands[uid] || [], false);
+      } else {
+        await sendGroupRoom(api, syntheticEvent, action.room,
+          "⏰ " + (player?.name || "Người chơi") + " quá 60 giây; bot tự động bỏ lượt.");
+        const passer = action.state.players.find(item => item.uid === uid);
+        if (passer) await sendPrivateHand(api, action.state, passer, action.state.hands[uid] || [], false);
+      }
+      const next = action.state.players.find(item => item.uid === action.state.turnUid);
+      if (next) {
+        await sendPrivateHand(api, action.state, next, action.state.hands[next.uid] || [], true);
+      }
+      if (!await persistRoom(Threads, room.threadId)) {
+        console.error("[TLMN_TIMEOUT] Không lưu được trạng thái sau lượt tự động.");
+        return;
+      }
+      scheduleRoomTurn(api, Users, Threads, action.state);
+    })
+  );
 }
 
 async function distributeHands(api, room) {
@@ -1025,7 +1044,6 @@ async function startRoom({ api, event, Users, Threads }) {
   }
   await sendGroupRoom(api, event, result.room, "🎮 Đã chia 13 lá riêng cho từng người. Người có 3♠ đi trước.");
   const first = room.players.find(item => item.uid === room.turnUid);
-  if (first) await notifyPrivate(api, first.uid, "🎯 Đến lượt bạn. Bạn đang cầm 3♠ nên hãy đánh lá này hoặc tổ hợp có chứa 3♠. Bạn có 60 giây.");
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, Users, Threads, room);
 }
@@ -1080,7 +1098,6 @@ async function doPlay(context, input) {
   const next = room.players.find(item => item.uid === room.turnUid);
   if (next) {
     await sendPrivateHand(api, room, next, room.hands[next.uid] || [], true);
-    await notifyPrivate(api, next.uid, "🎯 Đến lượt bạn. Hãy đánh bộ cao hơn hoặc nhắn bo/pass để bỏ lượt (60 giây).");
   }
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, Users, Threads, room);
@@ -1109,15 +1126,14 @@ async function doPass(context) {
     await sendText(api, event, "⚠️ Database chưa xác nhận lượt bỏ. Ván được giữ nguyên; vui lòng thử lại.");
     return true;
   }
+  const passer = result.state.players.find(item => item.uid === uid);
+  if (passer) await sendPrivateHand(api, result.state, passer, result.state.hands[uid] || [], false);
   const next = result.state.players.find(item => item.uid === result.state.turnUid);
   await sendGroupRoom(api, event, result.room,
     "↪️ " + (event?.data?.dName || event?.data?.name || "Người chơi") + " đã bỏ lượt" +
     (result.roundCleared ? " • Vòng mới bắt đầu." : "."));
   if (next) {
     await sendPrivateHand(api, result.state, next, result.state.hands[next.uid] || [], true);
-    await notifyPrivate(api, next.uid, result.roundCleared
-      ? "🔄 Mọi người đã bỏ lượt. Bạn được quyền đánh bộ mới."
-      : "🎯 Đến lượt bạn. Hãy đánh bài hoặc bo/pass trong 60 giây.");
   }
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, context.Users, Threads, result.state);
@@ -1133,6 +1149,7 @@ async function doLeave(context) {
   const result = game.leave(threadId, uid);
   if (!result.ok) return sendText(api, event, "⚠️ Bạn không ở trong bàn này.");
   if (result.finished) return endGame(api, event, Users, result.state, context.Threads);
+  if (state.status === "playing") await recallPrivateHand(api, state, uid);
   if (result.room) {
     await sendGroupRoom(api, event, result.room, "👋 Một người chơi đã rời bàn.");
     const next = result.state.players.find(item => item.uid === result.state.turnUid);
@@ -1449,7 +1466,6 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
         "🔄 Bot đã khôi phục ván sau khi khởi động lại." +
         (failedPrivate.length ? "\n⚠️ Chưa gửi lại được bài riêng cho: " + failedPrivate.join(", ") + "." : ""));
       const current = room.players.find(item => item.uid === room.turnUid);
-      if (current) await notifyPrivate(api, current.uid, "🔄 Ván đã khôi phục. Đến lượt bạn, còn 60 giây.");
       if (!await persistRoom(Threads, threadId)) continue;
       scheduleRoomTurn(api, Users, Threads, room);
       continue;
@@ -1471,5 +1487,5 @@ module.exports._test = {
   tableCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,
-  finalizeRoomCleanup, recallRoomCards, withRoomActionLock
+  finalizeRoomCleanup, recallRoomCards, recallPrivateHand, withRoomActionLock
 };
