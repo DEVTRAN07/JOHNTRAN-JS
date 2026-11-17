@@ -420,7 +420,11 @@ function calculateLeftoverPenalty(hand, bet) {
     }
   }
 
-  const pairRanks = [...counts.entries()].filter(([rank, count]) => rank !== 15 && count === 2)
+  // A triple can contribute one pair to a consecutive pair-run, with its
+  // third card still counted as an ordinary leftover card. Quads are charged
+  // separately above and are not reused as pair-run cards.
+  const pairRanks = [...counts.entries()]
+    .filter(([rank, count]) => rank !== 15 && count >= 2 && count < 4)
     .map(([rank]) => rank).sort((a, b) => a - b);
   const runs = [];
   for (const rank of pairRanks) {
@@ -434,7 +438,8 @@ function calculateLeftoverPenalty(hand, bet) {
       const selected = run.slice(offset, offset + 4);
       amount += 12 * bet;
       for (const rank of selected) {
-        for (const card of cards.filter(item => item.rank === rank)) used.add(card.id);
+        const pairCards = cards.filter(item => item.rank === rank && !used.has(item.id)).slice(0, 2);
+        for (const card of pairCards) used.add(card.id);
       }
       offset += 4;
     }
@@ -442,7 +447,8 @@ function calculateLeftoverPenalty(hand, bet) {
       const selected = run.slice(offset, offset + 3);
       amount += 6 * bet;
       for (const rank of selected) {
-        for (const card of cards.filter(item => item.rank === rank)) used.add(card.id);
+        const pairCards = cards.filter(item => item.rank === rank && !used.has(item.id)).slice(0, 2);
+        for (const card of pairCards) used.add(card.id);
       }
     }
   }
