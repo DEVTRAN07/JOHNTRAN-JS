@@ -370,10 +370,13 @@ test("GameVH TLMN successful kết 3 bích pays 26 bets per opponent without lef
   };
   const settlement = game.calculateSettlement(room);
   assert.deepEqual(settlement.transfers, [
-    { from: "b", to: "a", amount: 26000, reason: "ket-ba-bich" },
-    { from: "c", to: "a", amount: 26000, reason: "ket-ba-bich" }
+    { from: "b", to: "a", amount: 26000, reason: "ket-ba-bich", receivedAmount: 24700, fee: 1300 },
+    { from: "c", to: "a", amount: 26000, reason: "ket-ba-bich", receivedAmount: 24700, fee: 1300 }
   ]);
-  assert.deepEqual(settlement.net, { a: 52000, b: -26000, c: -26000 });
+  assert.deepEqual(settlement.net, { a: 49400, b: -26000, c: -26000 });
+  assert.equal(settlement.houseFee, 2600);
+  assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0),
+    -settlement.houseFee);
 });
 
 test("GameVH TLMN blocked kết 3 bích charges only players who joined the final trick", () => {
