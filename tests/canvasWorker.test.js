@@ -230,3 +230,69 @@ test("canvas worker renders a square 16x16 Caro board with live X and O marks", 
     try { fs.unlinkSync(outputPath); } catch {}
   }
 });
+
+test("canvas worker renders the redesigned Sâm and Tiến Lên tables and private hands", async () => {
+  const sampleCards = [
+    { rank: 3, suit: "b" }, { rank: 4, suit: "ch" },
+    { rank: 5, suit: "r" }, { rank: 6, suit: "c" },
+    { rank: 7, suit: "b" }, { rank: 8, suit: "ch" },
+    { rank: 9, suit: "r" }, { rank: 10, suit: "c" },
+    { rank: 11, suit: "b" }, { rank: 12, suit: "ch" },
+    { rank: 13, suit: "r" }, { rank: 14, suit: "c" },
+    { rank: 15, suit: "b" }
+  ];
+  const players = [
+    { uid: "player-a", name: "Minh Anh", handCount: 8 },
+    { uid: "player-b", name: "Quang Huy", handCount: 10 },
+    { uid: "player-c", name: "Bảo Trân", handCount: 7 },
+    { uid: "player-d", name: "Gia Bảo", handCount: 4 }
+  ];
+  const cases = [
+    ["tlmn", {
+      view: "table",
+      room: {
+        id: "81234", bet: 5000, mode: "nhatnhi", status: "playing",
+        players, playerCount: 4, turnUid: "player-b", playedCount: 4,
+        lastPlay: { name: "Minh Anh", cards: sampleCards.slice(0, 5) },
+        currentCombo: { type: "straight", length: 5 }
+      }
+    }],
+    ["tlmn", {
+      view: "hand",
+      room: { id: "81234", bet: 5000, mode: "nhatnhi" },
+      player: { uid: "player-a", name: "Minh Anh" },
+      hand: sampleCards,
+      isTurn: true
+    }],
+    ["sam", {
+      view: "table",
+      room: {
+        id: "81235", bet: 300, status: "playing",
+        players, playerCount: 4, turnUid: "player-b",
+        samStatus: "called", samCallerUid: "player-b",
+        lastPlay: { name: "Minh Anh", cards: sampleCards.slice(0, 3) },
+        currentCombo: { type: "straight", length: 3 }
+      }
+    }],
+    ["sam", {
+      view: "hand",
+      room: { id: "81235", bet: 300 },
+      player: { uid: "player-a", name: "Minh Anh" },
+      hand: sampleCards.slice(0, 10),
+      isTurn: true
+    }]
+  ];
+
+  for (const [type, data] of cases) {
+    const outputPath = await renderCanvas(type, data, { timeout: 20000, poolSize: 1 });
+    try {
+      const png = fs.readFileSync(outputPath);
+      assert.ok(png.length > 5000, type + " renderer should produce a detailed PNG");
+      assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+      assert.ok(png.readUInt32BE(16) >= 1000, type + " image should preserve desktop design width");
+      assert.ok(png.readUInt32BE(20) >= 700, type + " image should leave enough room for readable cards");
+    } finally {
+      try { fs.unlinkSync(outputPath); } catch {}
+    }
+  }
+});
