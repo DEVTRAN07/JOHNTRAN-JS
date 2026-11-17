@@ -473,3 +473,80 @@ test("Sâm white hand pays 20 stakes from each opponent", () => {
   const settlement = game.calculateSettlement(room);
   assert.deepEqual(settlement.net, { a: 40000, b: -20000, c: -20000 });
 });
+
+
+test("Sâm multi-chop chain pays the accumulated 15-stake amount to the final cutter", () => {
+  const threadId = "sam-chop-chain-final-cutter";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81604", stake: 1000 });
+  game.join(threadId, "81604", { uid: "b", name: "B" });
+  game.join(threadId, "81604", { uid: "c", name: "C" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.29); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = {
+    a: [card(15), card(9)],
+    b: [card(7), card(7, "ch"), card(7, "r"), card(7, "c"), card(10)],
+    c: [card(8), card(8, "ch"), card(8, "r"), card(8, "c"), card(11)]
+  };
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.passed = new Set();
+  room.playedCount = 0;
+  room.chopEvents = [];
+  room.activeChopChain = null;
+  room.playedByUid = {};
+
+  assert.equal(game.play(threadId, "a", "2b").ok, true);
+  assert.equal(game.play(threadId, "b", "tuquy 7").ok, true);
+  assert.equal(game.play(threadId, "c", "tuquy 8").ok, true);
+
+  assert.equal(room.chopEvents.length, 1);
+  assert.deepEqual(room.chopEvents[0], {
+    from: "a", to: "c", amount: 30000, reason: "chop-chain"
+  });
+  const settlement = game.calculateSettlement(room);
+  assert.ok(settlement.transfers.some(item =>
+    item.from === "a" && item.to === "c" && item.amount === 30000 && item.reason === "chop-chain"
+  ));
+  assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
+  game.removeRoom(threadId);
+});
+
+test("Sâm Báo 1 with multiple one-card players charges only the one-card winner", () => {
+  const threadId = "sam-bao-one-multiple-targets";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81605", stake: 1000 });
+  game.join(threadId, "81605", { uid: "b", name: "B" });
+  game.join(threadId, "81605", { uid: "c", name: "C" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.33); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = { a: [card(3), card(9)], b: [card(4)], c: [card(5)] };
+  room.turnUid = "a";
+  room.playedCount = 0;
+  room.playedByUid = {};
+  room.baoOneViolations = [];
+  assert.equal(game.play(threadId, "a", "3b").ok, true);
+  assert.equal(room.baoOneViolations.length, 2);
+  assert.equal(room.baoOneViolations[0].amount, 4000);
+  assert.equal(game.play(threadId, "b", "4b").finished, true);
+
+  const settlement = room.settlement;
+  assert.ok(settlement.transfers.some(item =>
+    item.from === "a" && item.to === "b" && item.amount === 4000 && item.reason === "bao-one-penalty"
+  ));
+  assert.equal(settlement.transfers.some(item =>
+    item.from === "a" && item.to === "c" && item.reason === "bao-one-penalty"
+  ), false);
+  assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
+  game.removeRoom(threadId);
+});
