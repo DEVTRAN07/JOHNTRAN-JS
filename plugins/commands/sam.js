@@ -310,7 +310,7 @@ async function recallPrivateHand(api, room, uid) {
 }
 
 async function persistRoom(Threads, threadId) {
-  if (!Threads) return true;
+  if (!Threads) return false;
   if (typeof Threads.getData !== "function" ||
       (typeof Threads.setDataAndWait !== "function" && typeof Threads.setData !== "function")) return false;
   try {
@@ -726,7 +726,8 @@ async function doPlay(context, input) {
       CANNOT_BEAT: "⛔ Bộ bài không chặn được bộ đang nằm trên bàn.",
       INVALID_COMBINATION: "⚠️ Bộ bài không hợp lệ. Dùng lẻ, đôi, sám, tứ quý hoặc sảnh.",
       INVALID_SELECTION: "⚠️ Số lá chọn không hợp lệ.",
-      CARD_NOT_IN_HAND: "⚠️ Bạn không có lá bài này."
+      CARD_NOT_IN_HAND: "⚠️ Bạn không có lá bài này.",
+      CANCEL_PENDING: "⏳ Bàn đang hoàn cược/đối soát an toàn. Vui lòng thử lại sau."
     };
     await sendText(api, event, errors[action.code] || "⚠️ Không thể đánh bộ bài này.");
     return true;
@@ -761,7 +762,8 @@ async function doPass(context) {
       NOT_PLAYER: "⚠️ Bạn không ở trong bàn Sâm.",
       NOT_TURN: "⏳ Chưa đến lượt bạn.",
       CANNOT_PASS_ON_LEAD: "⛔ Bạn đang cầm cái, không thể bỏ lượt.",
-      LEADER_CANNOT_PASS: "⛔ Người đánh bộ hiện tại không thể tự bỏ lượt."
+      LEADER_CANNOT_PASS: "⛔ Người đánh bộ hiện tại không thể tự bỏ lượt.",
+      CANCEL_PENDING: "⏳ Bàn đang hoàn cược/đối soát an toàn. Vui lòng thử lại sau."
     };
     await sendText(api, event, messages[action.code] || "⚠️ Không thể bỏ lượt.");
     return true;
