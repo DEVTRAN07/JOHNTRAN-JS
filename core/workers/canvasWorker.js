@@ -32,7 +32,8 @@ async function renderToPath(type, data) {
     case "events": return require("../canvas/settings").renderEventSettings(data || {});
     case "theme": return require("../canvas/settings").renderThemeSettings(data || {});
     case "admin": return require("../canvas/settings").renderAdminCard(data || {});
-    case "anti-protection": return require("../canvas/settings").renderAntiProtectionCard(data || {});
+    case "anti-protection": return require("../canvas/settings").renderAntiProtectionCardV2(data || {});
+    case "anti-protection-v2": return require("../canvas/settings").renderAntiProtectionCardV2(data || {});
     case "card": return require("../canvas").renderCardToFile(data || {});
     default: throw new Error("Canvas worker không hỗ trợ loại render: " + String(type));
   }
