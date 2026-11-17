@@ -219,7 +219,8 @@ function watchTurn(threadId, callback) {
 
 function resetToWaiting(threadId) {
   const room = get(threadId);
-  if (!room || room.status !== "playing") return false;
+  if (!room || (room.status !== "playing" &&
+      !(room.status === "finished" && room.whiteHand && !room.settled))) return false;
   clearTimer(threadId);
   room.status = "waiting";
   room.hands = null;
@@ -707,9 +708,6 @@ function restore(saved) {
     practiceWinnerUid: saved.practice === true &&
       String(saved.practiceWinnerUid || "") === ownerId && playerIds.has(ownerId)
       ? ownerId : null,
-    whiteHand: saved.whiteHand && playerIds.has(String(saved.whiteHand.uid || "")) &&
-      engine.WHITE_HAND_PRIORITY.includes(saved.whiteHand.type)
-      ? { uid: String(saved.whiteHand.uid), type: saved.whiteHand.type } : null,
     whiteHand: saved.whiteHand && playerIds.has(String(saved.whiteHand.uid || "")) &&
       engine.WHITE_HAND_PRIORITY.includes(saved.whiteHand.type)
       ? { uid: String(saved.whiteHand.uid), type: saved.whiteHand.type } : null,
