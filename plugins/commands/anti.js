@@ -15,6 +15,7 @@ module.exports.config = {
   description: "Bật/tắt các chế độ Anti của nhóm",
   category: "Anti",
   usage: "anti [link|undo|spam] [on|off]",
+  preferCommandOnBare: true,
   cooldowns: 2
 };
 
@@ -479,11 +480,11 @@ module.exports._test = {
 
 const ANTI_MENU_ITEMS = Object.freeze([
   { key:"anti_nude", label:"Chặn nội dung nhạy cảm", detail:"AI quét ảnh 18+ / khỏa thân", command:"/antinude", alias:"", icon:"18+", tone:"#e83f9e" },
-  { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục nội dung đã gỡ", command:"/antirecall", alias:"/anti undo", icon:"↶", tone:"#a94ce5" },
-  { key:"anti_danger_link", label:"Chặn link nguy hiểm", detail:"Link mời nhóm khác / URL độc hại", command:"/antilink", alias:"", icon:"↗", tone:"#138fe5" },
-  { key:"anti_sticker_spam", label:"Chống dội bom sticker", detail:"Phát hiện sticker gửi dồn dập", command:"/antispam", alias:"", icon:"ST", tone:"#f18b1c" },
-  { key:"anti_link", label:"Chặn tất cả link", detail:"Chặn đường dẫn trong nhóm", command:"/anti link", alias:"", icon:"URL", tone:"#08aeba" },
-  { key:"anti_spam", label:"Chống spam tin nhắn", detail:"Giới hạn tin nhắn gửi liên tục", command:"/anti spam", alias:"", icon:"SP", tone:"#e4b91e" }
+  { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục chữ, ảnh, video, voice và sticker", command:"/antirecall", alias:"/anti undo", icon:"↶", tone:"#a94ce5" },
+  { key:"anti_danger_link", label:"Chặn link nguy hiểm", detail:"Chặn link mời nhóm khác và URL không an toàn", command:"/antilink", alias:"", icon:"↗", tone:"#138fe5" },
+  { key:"anti_sticker_spam", label:"Chống dội bom sticker", detail:"Phát hiện loạt sticker gửi dồn dập", command:"/antispam", alias:"", icon:"ST", tone:"#f18b1c" },
+  { key:"anti_link", label:"Chặn tất cả link", detail:"Chế độ chống link cũ của lệnh anti", command:"/anti link", alias:"", icon:"URL", tone:"#08aeba" },
+  { key:"anti_spam", label:"Chống spam tin nhắn", detail:"Chế độ chống spam tin nhắn cũ của lệnh anti", command:"/anti spam", alias:"", icon:"SP", tone:"#e4b91e" }
 ]);
 
 function buildAntiMenuText(threadData = {}, prefix = "/") {

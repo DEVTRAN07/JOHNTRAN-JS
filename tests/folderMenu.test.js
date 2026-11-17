@@ -105,3 +105,16 @@ test("menu shortcut cache refreshes on map size changes and explicit hot-reload 
   assert.equal(folderMenu.resolveMenuGroup(commands, "guest", "game").count, 1);
   assert.equal(folderMenu.resolveMenuGroup(commands, "guest", "tools").count, 1);
 });
+
+test("bare command can own a folder shortcut instead of opening the folder detail card", () => {
+  const anti = command("anti", "Anti", 0);
+  anti.config.preferCommandOnBare = true;
+  const ordinaryFolderCommand = command("music", "Music", 0);
+
+  assert.equal(folderMenu.shouldOpenMenuShortcut(anti, []), false,
+    "bare /anti must execute the anti command and render its protection board");
+  assert.equal(folderMenu.shouldOpenMenuShortcut(ordinaryFolderCommand, []), true,
+    "ordinary bare category shortcuts should keep opening Folder Details");
+  assert.equal(folderMenu.shouldOpenMenuShortcut(anti, ["on"]), false,
+    "commands with arguments must continue to execute normally");
+});
