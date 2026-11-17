@@ -41,6 +41,8 @@ function snapshot(room) {
   return {
     id: room.id, threadId: room.threadId, ownerId: room.ownerId,
     ownerName: room.ownerName, status: room.status,
+    startCountdownAt: Number(room.startCountdownAt) || null,
+    startCountdownBy: room.startCountdownBy || null,
     previousWinnerUid: room.previousWinnerUid || null,
     bet: Number(room.stake || 300),
     players: room.players.map(item => ({
@@ -87,6 +89,9 @@ function create(threadId, owner, options = {}) {
     finishOrder: [], results: null, winnerUid: null, whiteHand: null,
     samCallerUid: null, samCallerHasPlayed: false, samStatus: null, samBlockedByUid: null,
     stake: Math.max(100, Math.floor(Number(options.stake) || 300)),
+    startCountdownAt: null,
+    startCountdownBy: null,
+    startCountdownMessage: null,
     playedByUid: {},
     chopEvents: [],
     activeChopChain: null,
@@ -103,6 +108,7 @@ function join(threadId, code, player) {
   if (!room) return { ok: false, code: "ROOM_NOT_FOUND" };
   if (room.threadId !== String(threadId)) return { ok: false, code: "WRONG_GROUP" };
   if (room.status !== "waiting") return { ok: false, code: "NOT_WAITING" };
+  if (Number(room.startCountdownAt) > 0) return { ok: false, code: "STARTING" };
   const next = makePlayer(player);
   if (!next.uid) return { ok: false, code: "INVALID_INPUT" };
   const existing = room.players.find(item => item.uid === next.uid);
@@ -551,5 +557,5 @@ module.exports = {
   MIN_PLAYERS, MAX_PLAYERS, MOVE_TIMEOUT_MS, LOBBY_TIMEOUT_MS, timers,
   get, getByCode, isBusy, snapshot, create, join, joinWaiting, start,
   play, pass, callSam, timeoutTurn, leave, stop, removeRoom, serialize,
-  restore, watchTurn, watchLobby, finish, calculateSettlement
+  restore, watchTurn, watchLobby, clearTimer, finish, calculateSettlement
 };
