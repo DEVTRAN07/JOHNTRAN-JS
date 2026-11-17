@@ -557,3 +557,72 @@ test("Sâm Báo 1 with multiple one-card players charges only the one-card winne
   assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
   game.removeRoom(threadId);
 });
+
+
+test("Sâm failed-call settlement scales to 2, 3 and 4 players and pays the actual blocker", () => {
+  for (const count of [2, 3, 4]) {
+    const players = Array.from({ length: count }, (_, index) => ({ uid: String.fromCharCode(97 + index) }));
+    const winnerUid = players[count - 1].uid;
+    const blockerUid = players[1].uid;
+    const room = {
+      stake: 1000,
+      winnerUid,
+      samStatus: "failed",
+      samCallerUid: "a",
+      samBlockedByUid: blockerUid,
+      players,
+      hands: Object.fromEntries(players.map(player => [player.uid, []])),
+      playedByUid: Object.fromEntries(players.map(player => [player.uid, 1]))
+    };
+    const settlement = game.calculateSettlement(room);
+    const penalty = settlement.transfers.find(item => item.reason === "den-sam-20x-per-opponent");
+    assert.deepEqual(penalty, {
+      from: "a", to: blockerUid, amount: 20000 * (count - 1),
+      reason: "den-sam-20x-per-opponent"
+    });
+    assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
+    if (blockerUid !== winnerUid) assert.notEqual(penalty.to, winnerUid);
+  }
+});
+
+test("Sâm successful call pays each opponent exactly 20 stakes at 2, 3 and 4 players", () => {
+  for (const count of [2, 3, 4]) {
+    const players = Array.from({ length: count }, (_, index) => ({ uid: String.fromCharCode(97 + index) }));
+    const room = {
+      stake: 1000,
+      winnerUid: "a",
+      samStatus: "success",
+      samCallerUid: "a",
+      samCallerHasPlayed: true,
+      players,
+      hands: Object.fromEntries(players.map(player => [player.uid, []])),
+      playedByUid: Object.fromEntries(players.map(player => [player.uid, 1]))
+    };
+    const settlement = game.calculateSettlement(room);
+    assert.equal(settlement.transfers.filter(item => item.reason === "bao-sam-success-20x").length, count - 1);
+    for (const player of players.filter(item => item.uid !== "a")) {
+      assert.ok(settlement.transfers.some(item =>
+        item.from === player.uid && item.to === "a" && item.amount === 20000
+      ));
+    }
+    assert.equal(settlement.net.a, 20000 * (count - 1));
+    assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
+  }
+});
+
+test("Sâm cóng with four 2s adds cóng, four individual heo penalties and one hàng penalty", () => {
+  const room = {
+    stake: 1000,
+    winnerUid: "a",
+    players: [{ uid: "a" }, { uid: "b" }],
+    hands: {
+      a: [],
+      b: [card(15, "b"), card(15, "ch"), card(15, "r"), card(15, "c")]
+    },
+    playedByUid: { a: 1, b: 0 }
+  };
+  const settlement = game.calculateSettlement(room);
+  assert.equal(settlement.net.b, -90000);
+  assert.equal(settlement.net.a, 90000);
+  assert.equal(settlement.transfers[0].amount, 90000);
+});
