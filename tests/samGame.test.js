@@ -379,7 +379,7 @@ test("Sâm computes card-left, thối heo and cóng charges in the shared stake 
 
 test("Sâm báo một forces opponents to include their highest card", () => {
   const threadId = "sam-bao-one-highest";
-  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81602" });
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81602", stake: 5000 });
   game.join(threadId, "81602", { uid: "b", name: "B" });
   const originalDetector = engine.detectWhiteHand;
   engine.detectWhiteHand = () => null;
@@ -456,8 +456,8 @@ test("Sâm failed call pays 20 stakes times opponents to the blocker", () => {
     playedByUid: { a: 1, b: 1, c: 1 }
   };
   const settlement = game.calculateSettlement(room);
-  assert.equal(settlement.net.a, -21000);
-  assert.equal(settlement.net.b, 20000);
+  assert.equal(settlement.net.a, -41000);
+  assert.equal(settlement.net.b, 40000);
   assert.equal(settlement.net.c, 1000);
   assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
 });
