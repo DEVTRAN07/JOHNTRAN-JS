@@ -41,6 +41,7 @@ function snapshot(room) {
     bet: room.bet,
     mode: room.mode,
     practice: Boolean(room.practice),
+    whiteHand: room.whiteHand ? { ...room.whiteHand } : null,
     status: room.status,
     players: room.players.map(player => ({
       uid: player.uid,
@@ -299,8 +300,28 @@ function start(threadId, uid, random = Math.random) {
   room.playedCount = 0;
   room.startedAt = Date.now();
   room.status = "playing";
+  room.whiteHand = null;
   clearTimer(threadId);
-  return { ok: true, room: snapshot(room), state: room, firstPlayerId: dealt.firstPlayerId };
+
+  const whiteHands = room.players.map(item => ({
+    uid: item.uid,
+    type: engine.detectWhiteHand(room.hands[item.uid])
+  })).filter(item => item.type);
+  if (whiteHands.length) {
+    whiteHands.sort((a, b) =>
+      engine.WHITE_HAND_PRIORITY.indexOf(a.type) - engine.WHITE_HAND_PRIORITY.indexOf(b.type) ||
+      room.players.findIndex(item => item.uid === a.uid) -
+        room.players.findIndex(item => item.uid === b.uid)
+    );
+    room.whiteHand = { ...whiteHands[0] };
+    room.finishOrder = [room.whiteHand.uid];
+    finishRoom(room);
+    return {
+      ok: true, finished: true, whiteHand: { ...room.whiteHand },
+      room: snapshot(room), state: room, firstPlayerId: dealt.firstPlayerId
+    };
+  }
+  return { ok: true, finished: false, room: snapshot(room), state: room, firstPlayerId: dealt.firstPlayerId };
 }
 
 function player(room, uid) {
@@ -684,6 +705,9 @@ function restore(saved) {
     practiceWinnerUid: saved.practice === true &&
       String(saved.practiceWinnerUid || "") === ownerId && playerIds.has(ownerId)
       ? ownerId : null,
+    whiteHand: saved.whiteHand && playerIds.has(String(saved.whiteHand.uid || "")) &&
+      engine.WHITE_HAND_PRIORITY.includes(saved.whiteHand.type)
+      ? { uid: String(saved.whiteHand.uid), type: saved.whiteHand.type } : null,
     gameToken: String(saved.gameToken || crypto.randomUUID()),
     threadId,
     ownerId,
