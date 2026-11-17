@@ -356,6 +356,9 @@ function start(threadId, uid, random = Math.random) {
   room.playedCount = 0;
   room.startedAt = Date.now();
   room.status = "playing";
+  room.startCountdownAt = null;
+  room.startCountdownBy = null;
+  room.startCountdownMessage = null;
   room.whiteHand = null;
   clearTimer(threadId);
 
