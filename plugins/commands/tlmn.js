@@ -962,11 +962,6 @@ function chooseAiMove(room, uid) {
   const hand = room?.hands?.[String(uid)] || [];
   if (!hand.length) return null;
 
-  // In the explicitly admin-only practice sandbox, AI opponents pass every
-  // Admin-led trick so the owner can test the full play flow and win reliably.
-  if (room.practice && room.practiceWinnerUid &&
-      String(room.lastPlayerUid) === String(room.practiceWinnerUid) &&
-      room.currentCombo) return null;
   const mustContainThreeOfSpades = Number(room.playedCount) === 0;
   let best = null;
   let bestScore = Number.POSITIVE_INFINITY;
