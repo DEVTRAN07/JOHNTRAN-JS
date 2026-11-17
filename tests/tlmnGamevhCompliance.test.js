@@ -94,10 +94,11 @@ test("GameVH TLMN: a higher straight can block a kết 3 bích played inside a s
   const room = game.create(groupId, { uid: "a", name: "A" }).state;
   game.join(groupId, room.id, { uid: "b", name: "B" });
   game.join(groupId, room.id, { uid: "c", name: "C" });
+  game.join(groupId, room.id, { uid: "d", name: "D" });
   game.start(groupId, "a", () => 0.37);
 
   room.status = "playing";
-  room.activeUids = ["a", "b", "c"];
+  room.activeUids = ["a", "b", "c", "d"];
   room.finishOrder = [];
   room.forfeitUids = [];
   room.hands = {
@@ -112,7 +113,8 @@ test("GameVH TLMN: a higher straight can block a kết 3 bích played inside a s
       { rank: 6, suit: "c", id: "6c" },
       { rank: 9, suit: "b", id: "9b" }
     ],
-    c: [{ rank: 10, suit: "b", id: "10b" }]
+    c: [{ rank: 10, suit: "b", id: "10b" }],
+    d: [{ rank: 11, suit: "b", id: "11b" }]
   };
   room.turnUid = "a";
   room.currentCombo = null;
@@ -138,6 +140,16 @@ test("GameVH TLMN: a higher straight can block a kết 3 bích played inside a s
   assert.ok(room.threeSpadesBlockEvents.some(event =>
     event.from === "a" && event.to === "b" && event.amount === 26 * room.bet
   ));
+
+  // C passes after the block and therefore also participates in the final trick.
+  assert.equal(game.pass(groupId, "c").ok, true);
+  assert.ok(room.threeSpadesBlockEvents.some(event =>
+    event.from === "a" && event.to === "c" && event.amount === 26 * room.bet
+  ));
+  // D has not yet acted in that final trick and must not receive a block payment.
+  assert.equal(room.threeSpadesBlockEvents.some(event =>
+    event.from === "a" && event.to === "d"
+  ), false);
   game.removeRoom(groupId);
 });
 
@@ -295,6 +307,12 @@ test("GameVH TLMN four 2s followed by three-pair and four-pair runs settle a 27-
   assert.deepEqual(room.chopEvents, [{
     from: "b", to: "c", amount: 27000, reason: "chop-chain"
   }]);
+  const settlement = game.calculateSettlement(room);
+  assert.ok(settlement.transfers.some(item =>
+    item.from === "b" && item.to === "c" && item.amount === 27000 &&
+    item.reason === "chop-chain"
+  ));
+  assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
   game.removeRoom(groupId);
 });
 
