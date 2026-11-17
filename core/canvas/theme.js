@@ -321,7 +321,13 @@ function save(canvas, prefix) {
   };
   const menuFrame = prefix === "menu" || prefix === "menu_folder";
   const framePalette = menuFrame ? require("./menuPalette").getPalette() : undefined;
-  fs.writeFileSync(filePath, withMacWindow(canvas, titles[prefix] || "JOHN TRAN", framePalette).toBuffer("image/png"));
+
+  // The main /menu image is already a complete chat card. Do not wrap it
+  // in the desktop-style Mac window (toolbar/background/traffic-light dots).
+  const outputCanvas = prefix === "menu"
+    ? canvas
+    : withMacWindow(canvas, titles[prefix] || "JOHN TRAN", framePalette);
+  fs.writeFileSync(filePath, outputCanvas.toBuffer("image/png"));
   return filePath;
 }
 
