@@ -301,11 +301,14 @@ function start(threadId, uid, random = Math.random) {
     const remaining = engine.shuffleDeck(random).filter(card => !usedIds.has(card.id));
     const opponents = room.players.map(item => String(item.uid)).filter(id => id !== winnerUid);
     const hands = { [winnerUid]: practiceHand };
-    for (const opponentUid of opponents) {
-      hands[opponentUid] = engine.sortHand(remaining.splice(0, 13));
-    }
+    for (const opponentUid of opponents) hands[opponentUid] = [];
+    const opponentDealCount = opponents.length * 13;
+    remaining.slice(0, opponentDealCount).forEach((card, index) => {
+      hands[opponents[index % opponents.length]].push(card);
+    });
+    for (const opponentUid of opponents) hands[opponentUid] = engine.sortHand(hands[opponentUid]);
     dealt.hands = hands;
-    dealt.remainingDeck = remaining;
+    dealt.remainingDeck = remaining.slice(opponentDealCount);
     dealt.firstPlayerId = winnerUid;
   }
 
@@ -759,5 +762,6 @@ module.exports = {
   roomsByGroup, roomsByCode, timers,
   get, getByCode, isBusy, snapshot, create, join, joinWaiting,
   updateBet, updateMode, watchLobby, watchTurn, timeoutTurn, resetToWaiting,
-  removeRoom, start, play, pass, leave, stop, cancel, finishRoom, listActive, serialize, restore
+  removeRoom, start, play, pass, leave, stop, cancel, finishRoom, listActive, serialize, restore,
+  _test: { resolveWhiteHand }
 };
