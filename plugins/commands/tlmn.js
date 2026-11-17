@@ -13,8 +13,8 @@ const { sendGameGuideOnce } = require("../../core/games/gameGuideDelivery");
 const DEFAULT_COINS = 100000;
 const MIN_BET = 1000;
 const MAX_BET = 10000000;
-const RESERVE_MULTIPLIER = 120;
-const MAX_RESERVE = 1200000000;
+const RESERVE_MULTIPLIER = 100;
+const MAX_RESERVE = 1000000000;
 const groupCards = new Map();
 const privateCards = new Map();
 const walletLocks = new Map();
@@ -539,8 +539,9 @@ async function settleRoomWallets(Users, room, results, onRoomChange = null) {
   if (Object.keys(room.lockPending || {}).length) {
     throw new Error("Còn khoản ký quỹ đang chờ xác minh; chưa được chốt xu.");
   }
-  const requiredLock = Number(room.reservePerPlayer) ||
-    RESERVE_MULTIPLIER * Number(room.bet);
+  // Existing rooms and newly created rooms both retain the 100x base escrow.
+  // Any exceptional liability beyond this amount is topped up below by an
+  // idempotent wallet transaction, not by blocking ordinary new players.
   if (!Number.isSafeInteger(requiredLock) || requiredLock <= 0 ||
       Object.keys(room.locked || {}).length !== room.players.length ||
       room.players.some(item => Number(room.locked?.[item.uid]) < requiredLock)) {
