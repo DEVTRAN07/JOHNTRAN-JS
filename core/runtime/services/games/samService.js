@@ -218,8 +218,10 @@ function calculateSettlement(room) {
       const cong = !(Number(room.playedByUid?.[uid]) > 0);
       let amount = cong ? 15 * stake : 0; // Cóng: 15 cược, không tính rác thường
       for (const [rank, count] of counts) {
-        if (rank === 15) amount += count * 15 * stake; // Thối 2
-        else if (count === 4) amount += 15 * stake; // Thối tứ quý
+        if (rank === 15) {
+          amount += count * 15 * stake; // Thối từng lá 2
+          if (count === 4) amount += 15 * stake; // Tứ quý 2 cũng là một bộ hàng
+        } else if (count === 4) amount += 15 * stake; // Thối tứ quý
         else if (!cong) amount += count * stake; // Mỗi lá rác còn lại
       }
       add(uid, winnerUid, amount, "leftover-heo-quad-cong");
