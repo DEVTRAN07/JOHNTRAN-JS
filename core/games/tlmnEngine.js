@@ -423,41 +423,10 @@ function whiteHandHighCard(hand, type) {
 }
 
 function whiteHandCompareCards(hand, type) {
-  const cards = sortHand(hand);
-  const counts = new Map();
-  for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
-  const reps = rank => cards.filter(card => card.rank === rank).slice(-1)[0];
-  if (type === "dragonStraight") return [reps(14)].filter(Boolean);
-  if (type === "fourTwos") return [reps(15)].filter(Boolean);
-  if (type === "twelveSameSuit") {
-    const suit = ["b", "ch", "r", "c"].find(code =>
-      cards.filter(card => card.suit === code).length >= 12);
-    return cards.filter(card => card.suit === suit).slice(-1);
-  }
-  if (type === "fourTriples" || type === "twoFourKinds") {
-    const minimum = type === "fourTriples" ? 3 : 4;
-    return [...counts.entries()].filter(([, count]) => count >= minimum)
-      .map(([rank]) => reps(rank)).filter(Boolean).sort((a, b) => compareCards(b, a));
-  }
-  const pairRanks = [...counts.entries()].filter(([, count]) => count >= 2)
-    .map(([rank]) => rank).sort((a, b) => a - b);
-  if (type === "sixPairRun" || type === "fivePairRun") {
-    const length = type === "sixPairRun" ? 6 : 5;
-    const runPairRanks = pairRanks.filter(rank => rank !== 15);
-    let best = [];
-    for (let i = 0; i <= runPairRanks.length - length; i += 1) {
-      const run = runPairRanks.slice(i, i + length);
-      if (!run.every((rank, index) => index === 0 || rank === run[index - 1] + 1)) continue;
-      const tuple = run.slice().reverse().map(reps).filter(Boolean);
-      if (!best.length || tuple.some((card, index) =>
-        compareCards(card, best[index]) > 0 &&
-        tuple.slice(0, index).every((item, prior) => compareCards(item, best[prior]) === 0))) best = tuple;
-    }
-    return best;
-  }
-  // A pair of 2s is valid in "6 đôi" (but not in a consecutive pair run).
-  if (type === "sixPairs") return pairRanks.slice().reverse().map(reps).filter(Boolean);
-  return [cards[cards.length - 1]].filter(Boolean);
+  // GameVH compares same-type white hands by the highest card of the
+  // qualifying pattern. For pair-based patterns this is the highest card
+  // in the highest pair; lower pairs/sets are not additional tie-breakers.
+  return [whiteHandHighCard(hand, type)].filter(Boolean);
 }
 
 function compareWhiteHands(handA, typeA, handB, typeB) {
