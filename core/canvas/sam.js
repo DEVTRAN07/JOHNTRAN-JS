@@ -11,7 +11,8 @@ function text(ctx, value, x, y, scale, options = {}) {
   ctx.fillStyle = options.color || theme.PALETTE.ink;
   ctx.textAlign = options.align || "left";
   ctx.textBaseline = options.baseline || "alphabetic";
-  ctx.fillText(String(value ?? ""), x, y, options.maxWidth || undefined);
+  if (options.maxWidth) ctx.fillText(String(value ?? ""), x, y, options.maxWidth);
+  else ctx.fillText(String(value ?? ""), x, y);
   ctx.restore();
 }
 
@@ -275,6 +276,23 @@ function renderHand(data = {}) {
   const px = value => Math.round(value * scale);
   const height = px(780);
   const { canvas, ctx } = theme.newCanvas(width, height);
+  theme.paintBackground(ctx, width, height);
+  const background = ctx.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, "#061b14");
+  background.addColorStop(.48, "#0a3828");
+  background.addColorStop(1, "#03120d");
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, width, height);
+  const glow = ctx.createRadialGradient(width / 2, px(365), px(30),
+    width / 2, px(390), px(640));
+  glow.addColorStop(0, "rgba(50,160,105,.18)");
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
+  theme.roundRect(ctx, px(20), px(20), width - px(40), height - px(40), px(24));
+  ctx.strokeStyle = "rgba(211,177,108,.46)";
+  ctx.lineWidth = px(2);
+  ctx.stroke();
   const room = data.room || {};
   const player = data.player || {};
   const hand = Array.isArray(data.hand) ? data.hand : [];
