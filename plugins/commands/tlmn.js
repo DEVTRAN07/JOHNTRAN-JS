@@ -825,6 +825,7 @@ function scheduleRoomTurn(api, Users, Threads, room) {
         return;
       }
       scheduleRoomTurn(api, Users, Threads, action.state);
+      scheduleAiTurn(api, Users, Threads, action.state);
     })
   );
 }
@@ -1379,7 +1380,10 @@ async function doLeave(context) {
     game.removeRoom(threadId);
   }
   await persistRoom(Threads, threadId);
-  if (result.state.status === "playing") scheduleRoomTurn(api, Users, Threads, result.state);
+  if (result.state.status === "playing") {
+    scheduleRoomTurn(api, Users, Threads, result.state);
+    scheduleAiTurn(api, Users, Threads, result.state);
+  }
   return sendText(api, event, result.forfeited
     ? "🚪 Bạn đã rời ván và bị xếp cuối bàn."
     : "👋 Bạn đã rời bàn chờ.");
