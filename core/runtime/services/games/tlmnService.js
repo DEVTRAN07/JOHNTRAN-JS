@@ -107,6 +107,7 @@ function create(threadId, owner, options = {}) {
     startedAt: null,
     finishedAt: null,
     results: null,
+    whiteHand: null,
     locked: {},
     lockPending: {},
     lockTransactionId: null,
@@ -235,6 +236,7 @@ function resetToWaiting(threadId) {
   room.startedAt = null;
   room.finishedAt = null;
   room.results = null;
+  room.whiteHand = null;
   room.settled = false;
   return true;
 }
@@ -705,6 +707,9 @@ function restore(saved) {
     practiceWinnerUid: saved.practice === true &&
       String(saved.practiceWinnerUid || "") === ownerId && playerIds.has(ownerId)
       ? ownerId : null,
+    whiteHand: saved.whiteHand && playerIds.has(String(saved.whiteHand.uid || "")) &&
+      engine.WHITE_HAND_PRIORITY.includes(saved.whiteHand.type)
+      ? { uid: String(saved.whiteHand.uid), type: saved.whiteHand.type } : null,
     whiteHand: saved.whiteHand && playerIds.has(String(saved.whiteHand.uid || "")) &&
       engine.WHITE_HAND_PRIORITY.includes(saved.whiteHand.type)
       ? { uid: String(saved.whiteHand.uid), type: saved.whiteHand.type } : null,
