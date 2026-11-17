@@ -69,8 +69,10 @@ async function persistRoom(Threads, threadId) {
       const record = await Threads.getData(String(threadId));
       const data = record?.data && typeof record.data === "object" ? { ...record.data } : {};
       const room = game.get(String(threadId));
-      if (room) data.tlmn_room = game.serialize(room);
-      else delete data.tlmn_room;
+      if (room) {
+        data.tlmn_room = game.serialize(room);
+        if (room.settlement?.winnerUid) data.tlmn_previous_winner = String(room.settlement.winnerUid);
+      } else delete data.tlmn_room;
 
       if (typeof Threads.setDataAndWait === "function") {
         await Threads.setDataAndWait(String(threadId), data);
@@ -1366,7 +1368,9 @@ async function createOrJoin({ api, event, Users, Threads }) {
   const conflict = gameConflict(threadId);
   if (conflict) return sendText(api, event, "⚠️ Nhóm đang chơi game " + conflict + ". Hãy kết thúc game đó trước khi mở Tiến Lên.");
 
-  const result = game.create(threadId, { uid, name }, { bet: 5000 });
+  const savedThread = await Threads.getData(String(threadId)).catch(() => null);
+  const previousWinnerUid = String(savedThread?.data?.tlmn_previous_winner || "");
+  const result = game.create(threadId, { uid, name }, { bet: 5000, previousWinnerUid });
   if (!result.ok) return sendText(api, event, "⚠️ Nhóm đã có bàn Tiến Lên đang hoạt động.");
   const room = result.state;
   game.watchLobby(threadId, async () => {
