@@ -14,6 +14,7 @@ async function renderToPath(type, data) {
     case "ghepchu": return require("../canvas/ghepchu").renderGhepChu(data || {});
     case "caro": return require("../canvas/caro").renderCaro(data || {});
     case "tlmn": return require("../canvas/tlmn").renderTlmn(data || {});
+    case "sam": return require("../canvas/sam").renderSam(data || {});
     case "status": return require("../canvas/status").renderStatus(data || {});
     case "bot-groups": return require("../canvas/botGroups").renderBotGroups(data || {});
     case "topchat": return require("../canvas/topchat").renderTopChat(data || {});
