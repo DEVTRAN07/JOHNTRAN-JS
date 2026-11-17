@@ -830,7 +830,7 @@ test("TLMN GameVH Thối 3 Bích: the player who covers the penultimate play res
   assert.equal(rescue.finished, true);
   assert.equal(rescue.threeSpadesThoi, true);
   assert.equal(room.status, "finished");
-  assert.equal(room.winnerUid, "b");
+  assert.equal(room.settlement.winnerUid, "b");
   assert.equal(room.results[0].uid, "b");
   assert.equal(room.results.at(-1).uid, "a");
   assert.equal(room.threeSpadesThoiUid, "a");
