@@ -464,6 +464,23 @@ function leave(threadId, uid) {
       room.activeChopChain = null;
       room.passed.clear();
       room.turnUid = nextPlayer(room, actor);
+    } else if (room.currentCombo && room.lastPlayerUid) {
+      const activeCount = room.players.filter(item =>
+        !room.finishOrder.includes(item.uid)
+      ).length;
+      const requiredPasses = Math.max(0, activeCount - 1);
+      if (room.passed.size >= requiredPasses) {
+        // A player leaving can be the final defender needed to clear the trick.
+        const leader = room.lastPlayerUid;
+        room.currentCombo = null;
+        room.lastPlay = null;
+        room.activeChopChain = null;
+        room.passed.clear();
+        room.turnUid = room.finishOrder.includes(leader)
+          ? nextPlayer(room, actor) : leader;
+      } else if (wasTurn) {
+        room.turnUid = nextPlayer(room, actor);
+      }
     } else if (wasTurn) {
       room.turnUid = nextPlayer(room, actor);
     }
