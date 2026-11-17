@@ -400,23 +400,28 @@ function calculateLeftoverPenalty(hand, bet) {
 
   const pairRanks = [...counts.entries()].filter(([rank, count]) => rank !== 15 && count === 2)
     .map(([rank]) => rank).sort((a, b) => a - b);
-  let bestRun = [];
-  for (let i = 0; i < pairRanks.length; i += 1) {
-    let run = [pairRanks[i]];
-    for (let j = i + 1; j < pairRanks.length && pairRanks[j] === run[run.length - 1] + 1; j += 1) {
-      run.push(pairRanks[j]);
-    }
-    if (run.length > bestRun.length) bestRun = run;
+  const runs = [];
+  for (const rank of pairRanks) {
+    const current = runs[runs.length - 1];
+    if (!current || rank !== current[current.length - 1] + 1) runs.push([rank]);
+    else current.push(rank);
   }
-  if (bestRun.length >= 4) {
-    amount += 12 * bet;
-    for (const rank of bestRun.slice(-4)) {
-      for (const card of cards.filter(item => item.rank === rank)) used.add(card.id);
+  for (const run of runs) {
+    let offset = 0;
+    while (run.length - offset >= 4) {
+      const selected = run.slice(offset, offset + 4);
+      amount += 12 * bet;
+      for (const rank of selected) {
+        for (const card of cards.filter(item => item.rank === rank)) used.add(card.id);
+      }
+      offset += 4;
     }
-  } else if (bestRun.length >= 3) {
-    amount += 6 * bet;
-    for (const rank of bestRun.slice(-3)) {
-      for (const card of cards.filter(item => item.rank === rank)) used.add(card.id);
+    if (run.length - offset >= 3) {
+      const selected = run.slice(offset, offset + 3);
+      amount += 6 * bet;
+      for (const rank of selected) {
+        for (const card of cards.filter(item => item.rank === rank)) used.add(card.id);
+      }
     }
   }
   amount += cards.filter(card => !used.has(card.id)).length * bet;
