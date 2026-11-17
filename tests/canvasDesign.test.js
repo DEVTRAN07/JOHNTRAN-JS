@@ -25,10 +25,10 @@ test("menu color themes stay isolated from non-menu Canvas cards", t => {
   assert.equal(menuPalette.getThemeInfo(file).name, "purple");
   assert.equal(theme.PALETTE.accent, originalAccent);
   assert.equal(theme.PALETTE.bg0, originalBackground);
-  assert.equal(theme.PALETTE.accent, "#55d6e8");
-  assert.equal(theme.PALETTE.bg0, "#06131f");
-  assert.equal(theme.getCardPalette().accent, "#55d6e8", "non-menu cards keep their ocean accent when /theme changes");
-  assert.equal(theme.getCardPalette().background[0], "#06131f");
+  assert.equal(theme.PALETTE.accent, "#61d8f2");
+  assert.equal(theme.PALETTE.bg0, "#08111f");
+  assert.equal(theme.getCardPalette().accent, "#61d8f2", "non-menu cards keep their ocean accent when /theme changes");
+  assert.equal(theme.getCardPalette().background[0], "#08111f");
   const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
   const legacyProfile = fs.readFileSync(require.resolve("../core/canvas/profile"), "utf8");
   const macWindow = fs.readFileSync(require.resolve("../core/canvas/macWindow"), "utf8");
