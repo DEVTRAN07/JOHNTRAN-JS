@@ -45,6 +45,8 @@ function snapshot(room) {
     practice: Boolean(room.practice),
     whiteHand: room.whiteHand ? { ...room.whiteHand } : null,
     status: room.status,
+    startCountdownAt: Number(room.startCountdownAt) || null,
+    startCountdownBy: room.startCountdownBy || null,
     players: room.players.map(player => ({
       uid: player.uid,
       name: player.name,
@@ -118,6 +120,9 @@ function create(threadId, owner, options = {}) {
     settlement: null,
     reservePerPlayer: 0,
     createdAt: Number(options.now) || Date.now(),
+    startCountdownAt: null,
+    startCountdownBy: null,
+    startCountdownMessage: null,
     startedAt: null,
     finishedAt: null,
     results: null,
@@ -139,6 +144,7 @@ function join(threadId, code, player) {
   if (!room) return { ok: false, code: "ROOM_NOT_FOUND" };
   if (room.threadId !== String(threadId)) return { ok: false, code: "WRONG_GROUP" };
   if (room.status !== "waiting") return { ok: false, code: "NOT_WAITING" };
+  if (Number(room.startCountdownAt) > 0) return { ok: false, code: "STARTING" };
   const uid = String(player?.uid || "");
   if (!uid) return { ok: false, code: "INVALID_INPUT" };
   if (room.players.some(item => item.uid === uid)) {
@@ -163,7 +169,7 @@ function joinWaiting(threadId, player) {
 function updateBet(threadId, uid, value) {
   const room = get(threadId);
   if (!room) return { ok: false, code: "NO_ROOM" };
-  if (room.status !== "waiting") return { ok: false, code: "ALREADY_STARTED" };
+  if (room.status !== "waiting" || Number(room.startCountdownAt) > 0) return { ok: false, code: "ALREADY_STARTED" };
   if (room.ownerId !== String(uid)) return { ok: false, code: "NOT_OWNER" };
   const bet = Math.floor(Number(value));
   if (!Number.isSafeInteger(bet) || bet < 1000 || bet > 10000000) return { ok: false, code: "INVALID_BET" };
@@ -237,6 +243,9 @@ function resetToWaiting(threadId) {
       !(room.status === "finished" && room.whiteHand && !room.settled))) return false;
   clearTimer(threadId);
   room.status = "waiting";
+  room.startCountdownAt = null;
+  room.startCountdownBy = null;
+  room.startCountdownMessage = null;
   room.hands = null;
   room.deckLeft = 0;
   room.activeUids = [];
@@ -1026,7 +1035,7 @@ module.exports = {
   MIN_PLAYERS, MAX_PLAYERS, LOBBY_TIMEOUT_MS, MOVE_TIMEOUT_MS,
   roomsByGroup, roomsByCode, timers,
   get, getByCode, isBusy, snapshot, create, join, joinWaiting,
-  updateBet, updateMode, watchLobby, watchTurn, timeoutTurn, resetToWaiting,
+  updateBet, updateMode, watchLobby, watchTurn, clearTimer, timeoutTurn, resetToWaiting,
   removeRoom, start, play, pass, leave, stop, cancel, finishRoom, listActive, serialize, restore,
   calculateSettlement, calculateLeftoverPenalty,
   _test: { resolveWhiteHand }
