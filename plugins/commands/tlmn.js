@@ -1397,9 +1397,6 @@ async function startRoom({ api, event, Users, Threads }) {
   if (!state || state.status !== "waiting") return sendText(api, event, "⚠️ Không có bàn đang chờ trong nhóm.");
   if (state.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ phòng mới được bắt đầu.");
   if (state.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi mới bắt đầu được.");
-  const seatedAdmins = state.players.filter(player => !player.ai && isAdmin(player.uid));
-  const adminUids = seatedAdmins.map(player => String(player.uid));
-  const priorityAdmin = seatedAdmins[0] || null;
   if (state.practice) {
     await sendText(api, event,
       "🧠 CHẾ ĐỘ LUYỆN TẬP: Không cược xu. Admin được chia bộ bài mạnh để thử chiến thuật; AI vẫn đánh chặn theo luật bình thường.");
@@ -1408,12 +1405,7 @@ async function startRoom({ api, event, Users, Threads }) {
       "**JOHNTRAN** ❗",
       "🔔 LƯU Ý QUAN TRỌNG TRƯỚC KHI BẮT ĐẦU VÁN BÀI:",
       "Tất cả người chơi vui lòng KHÔNG CHẶN TIN NHẮN NGƯỜI LẠ với Bot, để Bot có thể chia bài và gửi ảnh các lá bài trên tay vào tin nhắn riêng cho bạn nhé!",
-      "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước.",
-      ...(priorityAdmin ? [
-        "",
-        "⚠️ BÀN CÓ ƯU TIÊN ADMIN: " + String(priorityAdmin.name || "Admin") +
-          " sẽ được chia bộ bài mạnh nhất. Người chơi được thông báo trước khi ván bắt đầu."
-      ] : [])
+      "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước."
     ].join("\n"));
   }
   const reserved = state.practice
@@ -1424,7 +1416,7 @@ async function startRoom({ api, event, Users, Threads }) {
       ? "⚠️ Không thể xác nhận hoặc hoàn khoản giữ cược an toàn. Bàn chưa bắt đầu; dữ liệu đối soát được giữ lại."
       : "💸 " + reserved.player.name + " chưa đủ xu. Cần giữ trước " + formatMoney(reserved.required) + " (hiện có " + formatMoney(reserved.coins) + ").");
   }
-  const result = game.start(threadId, uid, Math.random, { adminUids });
+  const result = game.start(threadId, uid);
   if (!result.ok) {
     const refunded = await refundRoomWallets(Users, state, () => persistRoom(Threads, threadId));
     await persistRoom(Threads, threadId);
@@ -1459,10 +1451,7 @@ async function startRoom({ api, event, Users, Threads }) {
   await sendGroupRoom(api, event, result.room,
     room.practice
       ? "🎮 Đã chia bài luyện tập cho Admin. AI sẽ tự tìm nước đánh hợp lệ, không tự động nhường lượt."
-      : priorityAdmin
-        ? "⚠️ BÀN ƯU TIÊN ADMIN: " + String(priorityAdmin.name || "Admin") +
-          " đã nhận bộ bài mạnh nhất và có 3♠ đi trước. Các người chơi khác được chia 13 lá từ phần bài còn lại."
-        : "🎮 Đã chia bài ngẫu nhiên công bằng cho tất cả người chơi. Người có 3♠ đi trước.");
+      : "🎮 Đã chia bài cho từng người. Người có 3♠ đi trước.");
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, Users, Threads, room);
   scheduleAiTurn(api, Users, Threads, room);
