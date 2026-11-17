@@ -137,6 +137,7 @@ test("TLMN practice gives Admin a strong hand without a white-hand pattern", () 
 
   const room = game.get(groupId);
   const hand = room.hands.admin;
+  assert.equal(engine.detectWhiteHand(hand), null, "the Admin practice hand must not qualify as ăn trắng");
   assert.equal(room.turnUid, "admin");
   assert.equal(hand.length, 13);
   assert.ok(hand.some(card => card.id === "3b"));
@@ -173,7 +174,7 @@ test("TLMN practice gives Admin a strong hand without a white-hand pattern", () 
   game.removeRoom(groupId);
 });
 
-test("TLMN recognizes white hands and immediately finishes the dealt round", () => {
+test("TLMN recognizes white hands and resolves them immediately", () => {
   const sixPairs = [3,4,5,6,7,8].flatMap(rank => [
     { rank, suit: "b", id: String(rank) + "b" },
     { rank, suit: "c", id: String(rank) + "c" }
@@ -201,28 +202,32 @@ test("TLMN recognizes white hands and immediately finishes the dealt round", () 
   const created = game.create(groupId, { uid: "owner", name: "Owner" });
   assert.equal(created.ok, true);
   game.joinWaiting(groupId, { uid: "guest", name: "Guest" });
-  const originalDetector = engine.detectWhiteHand;
-  engine.detectWhiteHand = hand => hand.some(card => card.id === "3b") ? "sixPairs" : null;
-  try {
-    const started = game.start(groupId, "owner", () => 0.23);
-    assert.equal(started.ok, true);
-    assert.equal(started.finished, true);
-    assert.equal(started.state.status, "finished");
-    assert.equal(started.state.whiteHand.type, "sixPairs");
-    assert.equal(started.state.results[0].uid, started.state.whiteHand.uid);
+  const room = created.state;
+  const sixPairIds = new Set(sixPairs.map(card => card.id));
+  room.hands = {
+    owner: sixPairs,
+    guest: engine.createDeck().filter(card => !sixPairIds.has(card.id)).slice(0, 13)
+  };
+  room.activeUids = room.players.map(player => player.uid);
+  room.status = "playing";
+  room.turnUid = "owner";
+  room.finishOrder = [];
 
-    const saved = game.serialize(groupId);
-    game.removeRoom(groupId);
-    const restored = game.restore(saved);
-    assert.ok(restored);
-    assert.equal(restored.whiteHand.type, "sixPairs");
-    assert.equal(restored.status, "finished");
-    game.removeRoom(groupId);
-  } finally {
-    engine.detectWhiteHand = originalDetector;
-    game.removeRoom(groupId);
-  }
+  const resolved = game._test.resolveWhiteHand(room);
+  assert.deepEqual(resolved, { uid: "owner", type: "sixPairs" });
+  assert.equal(room.status, "finished");
+  assert.equal(room.finishOrder[0], "owner");
+  assert.equal(room.results[0].uid, "owner");
+
+  const saved = game.serialize(groupId);
+  game.removeRoom(groupId);
+  const restored = game.restore(saved);
+  assert.ok(restored);
+  assert.equal(restored.whiteHand.type, "sixPairs");
+  assert.equal(restored.status, "finished");
+  game.removeRoom(groupId);
 });
+
 
 test("TLMN human tables always keep the fair shuffled deal, including with an Admin seated", () => {
   const groupId = "tlmn-real-room-fair-admin-deal";
