@@ -793,3 +793,58 @@ test("TLMN chặt 2 đen pays 3 stakes and 2 đỏ pays 6 stakes", () => {
   assert.equal(room.chopEvents[0].amount, 3 * room.bet);
   game.removeRoom(groupId);
 });
+
+
+test("TLMN GameVH: a four-pair run can cut after a prior pass and settles the chop chain cumulatively", () => {
+  const groupId = "tlmn-gamevh-chop-chain-after-pass";
+  const room = game.create(groupId, { uid: "p1", name: "P1" }).state;
+  game.join(groupId, room.id, { uid: "p2", name: "P2" });
+  game.start(groupId, "p1", () => 0.37);
+  room.status = "playing";
+  room.activeUids = ["p1", "p2"];
+  room.finishOrder = [];
+  room.forfeitUids = [];
+  room.passed = new Set();
+  room.chopEvents = [];
+  room.chopChainUnits = 0;
+  room.chopChainEventIndex = null;
+  room.hands = {
+    p1: [3,4,5,6].flatMap(rank => [
+      { rank, suit: "b", id: String(rank) + "b" },
+      { rank, suit: "c", id: String(rank) + "c" }
+    ]),
+    p2: [
+      { rank: 15, suit: "b", id: "15b" },
+      { rank: 3, suit: "b", id: "3b" },
+      { rank: 3, suit: "c", id: "3c" },
+      { rank: 4, suit: "b", id: "4b" },
+      { rank: 4, suit: "c", id: "4c" },
+      { rank: 5, suit: "b", id: "5b" },
+      { rank: 5, suit: "c", id: "5c" },
+      { rank: 6, suit: "b", id: "6b" },
+      { rank: 6, suit: "c", id: "6c" }
+    ]
+  };
+  room.turnUid = "p2";
+  room.currentCombo = engine.analyzeCombo([{ rank: 15, suit: "b", id: "15b" }]);
+  room.lastPlayerUid = "p1";
+  room.lastPlay = { uid: "p1", name: "P1", cards: [{ rank: 15, suit: "b", id: "15b" }] };
+  room.passed.add("p2");
+  // A new play clears the previous pass cycle; the player who passed can
+  // re-enter and use a four-pair run as GameVH's special exception.
+  room.passed.clear();
+  room.turnUid = "p2";
+  const firstCut = game.play(groupId, "p2", "3dt");
+  assert.equal(firstCut.ok, true);
+  assert.equal(room.chopEvents.length, 1);
+  assert.equal(room.chopEvents[0].amount, 3 * room.bet);
+
+  room.turnUid = "p1";
+  const secondCut = game.play(groupId, "p1", "4dt");
+  assert.equal(secondCut.ok, true);
+  assert.equal(room.chopEvents.length, 1, "the chain is settled once, not as duplicate transfers");
+  assert.deepEqual(room.chopEvents[0], {
+    from: "p2", to: "p1", amount: 9 * room.bet, reason: "chop-chain"
+  });
+  game.removeRoom(groupId);
+});
