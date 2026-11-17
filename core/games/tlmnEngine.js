@@ -338,7 +338,7 @@ function removeCards(hand, playedCards) {
   return (hand || []).filter(card => !ids.has(card.id));
 }
 
-const WHITE_HAND_PRIORITY = Object.freeze(["dragonStraight", "sixPairs", "fourTwos"]);
+const WHITE_HAND_PRIORITY = Object.freeze(["dragonStraight", "fourTwos", "sixPairs"]);
 const WHITE_HAND_LABEL = Object.freeze({
   dragonStraight: "SẢNH RỒNG 3 ĐẾN A",
   sixPairs: "6 ĐÔI",
