@@ -361,39 +361,21 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, p
   drawText(ctx, "JOHNTRAN-JS", brandX, S(36), 22, palette.text, true);
   drawText(ctx, "DANH SÁCH TÍNH NĂNG", brandX, S(54), 10.5, palette.muted, true);
 
-  const now = new Intl.DateTimeFormat("vi-VN", {
+  const time = new Intl.DateTimeFormat("vi-VN", {
     hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh"
   }).format(new Date());
 
-  const statusW = S(82);
-  const statusH = S(22);
-  const statusX = W - margin - statusW;
-  const statusY = S(22);
   ctx.save();
-  rounded(ctx, statusX, statusY, statusW, statusH, statusH / 2);
-  ctx.fillStyle = "rgba(8,201,119,.12)";
-  ctx.fill();
-  rounded(ctx, statusX, statusY, statusW, statusH, statusH / 2);
-  ctx.strokeStyle = "rgba(8,201,119,.34)";
-  ctx.lineWidth = Math.max(1, S(0.8));
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(statusX + S(13), statusY + statusH / 2, S(3.2), 0, Math.PI * 2);
-  ctx.fillStyle = "#08c977";
-  ctx.fill();
-  drawText(ctx, "ONLINE", statusX + S(24), statusY + S(15), 10, "#72f0bd", true);
+  ctx.font = theme.font(11, "JT-Round-Bold");
+  const timeWidth = ctx.measureText(time).width;
   ctx.restore();
 
-  const timeWidth = (() => {
-    ctx.save();
-    ctx.font = theme.font(11, "JT-Round-Bold");
-    const value = ctx.measureText(now).width;
-    ctx.restore();
-    return value;
-  })();
   const timeRight = W - margin;
-  drawClock(ctx, timeRight - timeWidth - S(14), S(61), S(10), palette.accent);
-  drawText(ctx, now, timeRight, S(65), 11, palette.accent, true, "right");
+  const timeLeft = timeRight - timeWidth;
+  const clockSize = S(10);
+  const clockGap = S(11);
+  drawClock(ctx, timeLeft - clockGap - clockSize / 2, S(61), clockSize, palette.accent);
+  drawText(ctx, time, timeRight, S(65), 11, palette.accent, true, "right");
 
   const groups = Array.isArray(commands) ? commands : [];
   const visibleCommandCount = Number.isFinite(Number(totalCommands))
