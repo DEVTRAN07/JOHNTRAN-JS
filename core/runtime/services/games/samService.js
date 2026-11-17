@@ -59,6 +59,7 @@ function snapshot(room) {
     playedCount: room.playedCount,
     samStatus: room.samStatus,
     samCallerUid: room.samCallerUid,
+    samCallerHasPlayed: Boolean(room.samCallerHasPlayed),
     samBlockedByUid: room.samBlockedByUid,
     whiteHand: room.whiteHand,
     winnerUid: room.winnerUid,
@@ -79,7 +80,7 @@ function create(threadId, owner, options = {}) {
     firstPlayerUid: null, lastPlayerUid: null, lastPlay: null,
     currentCombo: null, passed: new Set(), playedCount: 0,
     finishOrder: [], results: null, winnerUid: null, whiteHand: null,
-    samCallerUid: null, samStatus: null, samBlockedByUid: null,
+    samCallerUid: null, samCallerHasPlayed: false, samStatus: null, samBlockedByUid: null,
     createdAt: Number(options.now) || Date.now(), startedAt: null, finishedAt: null
   };
   roomsByThread.set(key, room);
@@ -123,7 +124,8 @@ function finish(room, winnerUid, reason = "normal") {
   if (room.samCallerUid) {
     room.samStatus = room.samStatus === "failed"
       ? "failed"
-      : room.winnerUid === room.samCallerUid ? "success" : "failed";
+      : room.winnerUid === room.samCallerUid && room.samCallerHasPlayed
+        ? "success" : "failed";
   }
   clearTimer(room.threadId);
   return room.results;
@@ -195,10 +197,13 @@ function play(threadId, uid, input) {
   room.passed.clear();
 
   let samLung = false;
-  if (room.samStatus === "called" && actor !== room.samCallerUid) {
+  if (room.samStatus === "called" && room.samCallerHasPlayed && actor !== room.samCallerUid) {
     room.samStatus = "failed";
     room.samBlockedByUid = actor;
     samLung = true;
+  }
+  if (room.samStatus === "called" && actor === room.samCallerUid) {
+    room.samCallerHasPlayed = true;
   }
   if (!room.hands[actor].length) {
     finish(room, actor, "normal");
@@ -220,7 +225,8 @@ function pass(threadId, uid) {
   if (!room.currentCombo || !room.lastPlayerUid) return { ok: false, code: "CANNOT_PASS_ON_LEAD" };
   if (room.lastPlayerUid === actor) return { ok: false, code: "LEADER_CANNOT_PASS" };
   room.passed.add(actor);
-  const requiredPasses = room.players.length - 1;
+  const activeCount = room.players.filter(item => !room.finishOrder.includes(item.uid)).length;
+  const requiredPasses = Math.max(0, activeCount - 1);
   if (room.passed.size >= requiredPasses) {
     const leader = room.lastPlayerUid;
     room.currentCombo = null;
@@ -238,12 +244,8 @@ function callSam(threadId, uid) {
   if (!room.hands?.[String(uid)]) return { ok: false, code: "NOT_PLAYER" };
   if (room.playedCount !== 0 || room.samStatus) return { ok: false, code: "TOO_LATE" };
   room.samCallerUid = String(uid);
+  room.samCallerHasPlayed = false;
   room.samStatus = "called";
-  room.turnUid = String(uid);
-  room.currentCombo = null;
-  room.lastPlayerUid = null;
-  room.lastPlay = null;
-  room.passed.clear();
   return { ok: true, room: snapshot(room), state: room };
 }
 function timeoutTurn(threadId, uid) {
@@ -276,7 +278,10 @@ function leave(threadId, uid) {
     return { ok: true, cancelled: true, room: snapshot(room), state: room };
   }
   room.hands[actor] = [];
-  const remaining = room.players.map(item => item.uid).filter(id => id !== actor);
+  room.passed.delete(actor);
+  const remaining = room.players.map(item => item.uid).filter(id =>
+    id !== actor && !room.finishOrder.includes(id)
+  );
   if (remaining.length === 1) finish(room, remaining[0], "forfeit");
   else {
     room.finishOrder.push(actor);
@@ -334,7 +339,8 @@ function restore(saved) {
     finishOrder: Array.isArray(saved.finishOrder) ? saved.finishOrder.map(String).filter(uid => ids.has(uid)) : [],
     currentCombo: saved.currentCombo || null, lastPlay: saved.lastPlay || null,
     results: Array.isArray(saved.results) ? saved.results : null,
-    whiteHand: saved.whiteHand || null
+    whiteHand: saved.whiteHand || null,
+    samCallerHasPlayed: Boolean(saved.samCallerHasPlayed)
   };
   if (room.status === "playing" && (!room.hands || !ids.has(String(room.turnUid || "")))) return null;
   const old = get(room.threadId);
