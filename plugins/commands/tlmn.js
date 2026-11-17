@@ -634,7 +634,7 @@ function help(prefix) {
     "",
     "🎮 CÁCH CHƠI",
     "Ván đầu người đánh trước được chọn ngẫu nhiên; ván sau người thắng ván trước đi đầu nếu còn trong bàn.",
-    "Đánh theo vòng; người sau phải cùng loại và lớn hơn hoặc dùng hàng chặt. Bỏ lượt là bỏ hết vòng; người đánh cuối được mở vòng mới.",
+    "Đánh theo vòng; người sau phải cùng loại và lớn hơn hoặc dùng hàng chặt. Bỏ lượt khóa bạn khỏi vòng; ngoại lệ: 4 đôi thông vẫn được chặt dù đã bỏ lượt. Người đánh cuối được mở vòng mới.",
     "Người đầu tiên hết bài thắng ván.",
     "",
     "✨ TỚI TRẮNG (ăn từ mỗi nhà theo cược):",
@@ -645,7 +645,8 @@ function help(prefix) {
     "⚔️ CHẶT",
     "3 đôi thông chặt 2 và 3 đôi thông nhỏ hơn.",
     "Tứ quý chặt 2, 3 đôi thông và tứ quý nhỏ hơn.",
-    "4 đôi thông chặt 2, đôi 2, 3 đôi thông, tứ quý và 4 đôi thông nhỏ hơn.",
+    "4 đôi thông chặt 2, đôi 2, 3 đôi thông, tứ quý và 4 đôi thông nhỏ hơn, kể cả khi đã bỏ lượt.",
+    "Chặt chồng: cộng dồn giá trị heo/hàng trong chuỗi; người có hàng bị chặt cuối trả tổng cho người chặt cuối.",
     "",
     "💰 THỐI / CHẶT (đơn vị cược)",
     "Rác 1 • 2 đen thối 2 / chặt 3 • 2 đỏ thối 4 / chặt 6.",
@@ -1503,6 +1504,7 @@ async function doPlay(context, input) {
       CARD_NOT_IN_HAND: "⚠️ Lá bài đó không có trong bài riêng của bạn.",
       DUPLICATE_CARD: "⚠️ Bạn đã nhập trùng một lá bài.",
       CANNOT_BEAT: "⛔ Bài này không chặt được bộ đang nằm trên bàn.",
+      ALREADY_PASSED: "⛔ Bạn đã bỏ lượt; chỉ được quay lại vòng này bằng 4 đôi thông.",
       NO_GAME: "⚠️ Ván đã kết thúc."
     };
     if (errors[result.code]) await sendMoveError(
