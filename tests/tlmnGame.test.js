@@ -732,3 +732,62 @@ test("TLMN white-hand multiplier follows the supplied priority schedule", () => 
   assert.equal(settlement.net.winner, 4000);
   assert.equal(settlement.net.loser, -4000);
 });
+
+
+test("TLMN blocked kết 3 bích charges every player who joined the final trick", () => {
+  const groupId = "tlmn-block-three-spades-ledger";
+  const created = game.create(groupId, { uid: "a", name: "A" });
+  game.join(groupId, created.room.id, { uid: "b", name: "B" });
+  game.join(groupId, created.room.id, { uid: "c", name: "C" });
+  const started = game.start(groupId, "a", () => 0.31);
+  assert.equal(started.ok, true);
+  const room = started.state;
+  room.hands = {
+    a: [{ rank: 3, suit: "b", id: "3b" }],
+    b: [{ rank: 4, suit: "b", id: "4b" }, { rank: 7, suit: "b", id: "7b" }],
+    c: [{ rank: 6, suit: "b", id: "6b" }]
+  };
+  room.activeUids = ["a", "b", "c"];
+  room.finishOrder = [];
+  room.forfeitUids = [];
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.playedCount = 0;
+  room.trickParticipants = [];
+  assert.equal(game.play(groupId, "a", "3b").ok, true);
+  const blocked = game.play(groupId, "b", "4b");
+  assert.equal(blocked.ok, true);
+  assert.equal(room.threeSpadesBlockedByUid, "b");
+  assert.ok(room.forfeitUids.includes("a"));
+  assert.equal(game.pass(groupId, "c").roundCleared, true);
+  assert.deepEqual(room.threeSpadesBlockEvents.map(item => item.to).sort(), ["b", "c"]);
+  assert.ok(room.threeSpadesBlockEvents.every(item => item.from === "a" && item.amount === 26 * room.bet));
+  game.removeRoom(groupId);
+});
+
+test("TLMN chặt 2 đen pays 3 stakes and 2 đỏ pays 6 stakes", () => {
+  const groupId = "tlmn-heo-chop-rates";
+  const created = game.create(groupId, { uid: "chopper", name: "Chopper" });
+  game.join(groupId, created.room.id, { uid: "victim", name: "Victim" });
+  const started = game.start(groupId, "chopper", () => 0.33);
+  assert.equal(started.ok, true);
+  const room = started.state;
+  room.hands = {
+    chopper: [3,4,5].flatMap(rank => [
+      { rank, suit: "b", id: String(rank) + "b" },
+      { rank, suit: "c", id: String(rank) + "c" }
+    ]).concat([{ rank: 9, suit: "b", id: "9b" }]),
+    victim: [{ rank: 15, suit: "b", id: "15b" }]
+  };
+  room.activeUids = ["chopper", "victim"];
+  room.turnUid = "chopper";
+  room.currentCombo = engine.analyzeCombo([{ rank: 15, suit: "b", id: "15b" }]);
+  room.lastPlayerUid = "victim";
+  room.playedCount = 1;
+  const result = game.play(groupId, "chopper", "3dt");
+  assert.equal(result.ok, true);
+  assert.equal(room.chopEvents[0].amount, 3 * room.bet);
+  game.removeRoom(groupId);
+});
