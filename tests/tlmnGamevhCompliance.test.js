@@ -646,3 +646,37 @@ test("TLMN settlement refuses to pay while any escrow reservation is still pendi
   );
   assert.equal(writes, 0);
 });
+
+
+test("GameVH same-type white hands compare only the highest qualifying card", () => {
+  const card = (rank, suit) => ({ rank, suit, id: String(rank) + suit });
+  const makeFivePairRun = lowerSuits => [
+    ...[3, 4, 5, 6].flatMap(rank => lowerSuits.map(suit => card(rank, suit))),
+    card(7, "b"), card(7, "ch"),
+    card(9, "b"), card(11, "b"), card(13, "b")
+  ];
+  const fiveA = makeFivePairRun(["b", "ch"]);
+  const fiveB = makeFivePairRun(["r", "c"]);
+  assert.equal(engine.detectWhiteHand(fiveA), "fivePairRun");
+  assert.equal(engine.detectWhiteHand(fiveB), "fivePairRun");
+  assert.equal(
+    engine.compareWhiteHands(fiveA, "fivePairRun", fiveB, "fivePairRun"),
+    0,
+    "lower pairs must not break a tie when the highest pair is identical"
+  );
+
+  const makeSixPairRun = lowerSuits => [
+    ...[3, 4, 5, 6, 7].flatMap(rank => lowerSuits.map(suit => card(rank, suit))),
+    card(8, "b"), card(8, "ch"),
+    card(10, "b")
+  ];
+  const sixA = makeSixPairRun(["b", "ch"]);
+  const sixB = makeSixPairRun(["r", "c"]);
+  assert.equal(engine.detectWhiteHand(sixA), "sixPairRun");
+  assert.equal(engine.detectWhiteHand(sixB), "sixPairRun");
+  assert.equal(
+    engine.compareWhiteHands(sixA, "sixPairRun", sixB, "sixPairRun"),
+    0,
+    "lower pairs must not act as additional tie-breakers"
+  );
+});
