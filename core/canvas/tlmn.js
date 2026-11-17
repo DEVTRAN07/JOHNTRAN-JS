@@ -136,8 +136,8 @@ function seatLayout(playerCount) {
     return [
       { x: 370, y: 174, w: 340, h: 92 },
       { x: 22, y: 378, w: 230, h: 100 },
-      { x: 828, y: 378, w: 230, h: 100 },
-      { x: 370, y: 568, w: 340, h: 92 }
+      { x: 370, y: 568, w: 340, h: 92 },
+      { x: 828, y: 378, w: 230, h: 100 }
     ];
   }
   if (Number(playerCount) === 3) {
