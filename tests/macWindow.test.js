@@ -40,28 +40,39 @@ test("card gets a macOS title bar with traffic-light controls", () => {
   );
 });
 
-test("main menu image output is saved without Mac window chrome", async () => {
+test("all shared Canvas save prefixes produce raw PNG images without Mac window chrome", async () => {
   const content = createCanvas(750, 300);
-  const filePath = theme.save(content, "menu");
+  const ctx = content.getContext("2d");
+  ctx.fillStyle = "#123456";
+  ctx.fillRect(0, 0, content.width, content.height);
 
-  try {
-    const image = await loadImage(fs.readFileSync(filePath));
-    assert.equal(image.width, 750);
-    assert.equal(image.height, 300);
-  } finally {
-    fs.unlinkSync(filePath);
-  }
-});
+  const prefixes = [
+    "menu", "menu_folder", "music_grid", "music_now", "topchat",
+    "status", "profile_card", "generic_card", "bot_groups",
+    "caro", "tlmn", "sam", "card"
+  ];
 
-test("folder menu image output keeps the shared Mac window frame", async () => {
-  const content = createCanvas(750, 300);
-  const filePath = theme.save(content, "menu_folder");
-
-  try {
-    const image = await loadImage(fs.readFileSync(filePath));
-    assert.equal(image.width, 750);
-    assert.equal(image.height, 358);
-  } finally {
-    fs.unlinkSync(filePath);
+  for (const prefix of prefixes) {
+    const filePath = theme.save(content, prefix);
+    try {
+      const image = await loadImage(fs.readFileSync(filePath));
+      assert.equal(image.width, 750, prefix + " must preserve the canvas width");
+      assert.equal(image.height, 300, prefix + " must not add a desktop toolbar");
+      const output = createCanvas(image.width, image.height);
+      const outputContext = output.getContext("2d");
+      outputContext.drawImage(image, 0, 0);
+      assert.deepEqual(
+        Array.from(outputContext.getImageData(375, 22, 1, 1).data).slice(0, 3),
+        [18, 52, 86],
+        prefix + " must save the original canvas pixels"
+      );
+      assert.notDeepEqual(
+        Array.from(outputContext.getImageData(21, 22, 1, 1).data).slice(0, 3),
+        [255, 95, 87],
+        prefix + " must not include the macOS close dot"
+      );
+    } finally {
+      fs.unlinkSync(filePath);
+    }
   }
 });

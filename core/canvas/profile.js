@@ -4,7 +4,6 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createCanvas, loadImage, registerFont } = require("canvas");
-const { withMacWindow } = require("./macWindow");
 
 const WIDTH = 750;
 const PAD = 40;
@@ -287,7 +286,7 @@ async function renderAvatarCard(o = {}) {
 
 function save(canvas, title) {
   const filePath = path.join(os.tmpdir(), `jt_prof_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.png`);
-  fs.writeFileSync(filePath, withMacWindow(canvas, title).toBuffer("image/png"));
+  fs.writeFileSync(filePath, canvas.toBuffer("image/png"));
   return filePath;
 }
 

@@ -3,7 +3,6 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { withMacWindow } = require("./macWindow");
 const theme = require("./theme");
 const menuPalette = require("./menuPalette");
 
@@ -80,9 +79,9 @@ function drawHeader(ctx, title, subtitle, meta, palette) {
   drawText(ctx, meta || "", W - S(PAD), S(36), 10, palette.accent, true, "right", S(210));
 }
 
-function saveCard(canvas, title, palette) {
+function saveCard(canvas) {
   const file = path.join(os.tmpdir(), "jt_settings_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
-  fs.writeFileSync(file, withMacWindow(canvas, title, palette).toBuffer("image/png"));
+  fs.writeFileSync(file, canvas.toBuffer("image/png"));
   return file;
 }
 
@@ -121,7 +120,7 @@ function renderEventSettings(data = {}) {
     });
     drawText(ctx, "Thêm host: " + String(data.prefix || "/") + "events guard allow <host>",
       x + S(16), bodyHeight - S(28), 8.5, palette.muted, false, "left", width - S(30));
-    return saveCard(result.canvas, "Allowed Hosts", palette);
+    return saveCard(result.canvas);
   }
 
   drawHeader(ctx, "SỰ KIỆN NHÓM", "Trạng thái tự động trong nhóm hiện tại", String(events.length) + " MODULE", palette);
@@ -160,7 +159,7 @@ function renderEventSettings(data = {}) {
 
   drawText(ctx, "Bật/tắt: " + String(data.prefix || "/") + "events <tên> on|off",
     x + S(16), bodyHeight - S(28), 8.5, palette.muted, false, "left", width - S(30));
-  return saveCard(result.canvas, "Group Events", palette);
+  return saveCard(result.canvas);
 }
 
 function renderThemeSettings(data = {}) {
@@ -210,7 +209,7 @@ function renderThemeSettings(data = {}) {
 
   drawText(ctx, "Tùy chỉnh: /theme #RRGGBB  ·  Mặc định: /theme reset",
     currentX + S(4), bodyHeight - S(22), 8.5, palette.muted, false, "left", fullWidth - S(8));
-  return saveCard(result.canvas, "Menu Theme", palette);
+  return saveCard(result.canvas);
 }
 
 
@@ -269,7 +268,7 @@ function renderAdminCard(data = {}) {
   drawPanel(ctx, S(PAD), footerY, W - S(PAD * 2), S(25), palette, palette.footer);
   drawText(ctx, data.footer || "JOHNTRAN  ·  ADMIN CONTROL",
     S(PAD + 12), footerY + S(17), 8, palette.muted, false, "left", W - S(PAD * 2 + 24));
-  return saveCard(result.canvas, data.title || "Admin Control", palette);
+  return saveCard(result.canvas);
 }
 
 function renderAntiProtectionCard(data = {}) {
@@ -373,7 +372,7 @@ function renderAntiProtectionCard(data = {}) {
     margin, footerY, 9, "#effaff", true);
   drawText(ctx, "QTV BOX · ON / OFF",
     W - margin, footerY, 8, "#d4e8f5", true, "right");
-  return saveCard(result.canvas, "Anti Protection", palette);
+  return saveCard(result.canvas);
 }
 
 

@@ -25,8 +25,8 @@ test("menu color themes stay isolated from non-menu Canvas cards", t => {
   assert.equal(menuPalette.getThemeInfo(file).name, "purple");
   assert.equal(theme.PALETTE.accent, originalAccent);
   assert.equal(theme.PALETTE.bg0, originalBackground);
-  assert.equal(theme.PALETTE.accent, "#d4af37");
-  assert.equal(theme.PALETTE.bg0, "#08080a");
+  assert.equal(theme.PALETTE.accent, "#55d6e8");
+  assert.equal(theme.PALETTE.bg0, "#06131f");
   const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
   const legacyProfile = fs.readFileSync(require.resolve("../core/canvas/profile"), "utf8");
   const macWindow = fs.readFileSync(require.resolve("../core/canvas/macWindow"), "utf8");
@@ -36,53 +36,46 @@ test("menu color themes stay isolated from non-menu Canvas cards", t => {
   assert.ok(!source.includes("loadImage"));
   assert.ok(!macWindow.includes("menuPalette"));
   assert.ok(!macWindow.includes("theme.jpg"));
-  assert.match(source, /const menuFrame = prefix === "menu" \|\| prefix === "menu_folder"/);
+  assert.doesNotMatch(source, /withMacWindow/);
+  assert.match(source, /canvas\.toBuffer\("image\/png"\)/);
   assert.ok(!legacyProfile.includes("BG_IMAGE"));
   assert.ok(!legacyProfile.includes("theme.jpg"));
   const topchat = fs.readFileSync(require.resolve("../core/canvas/topchat"), "utf8");
   assert.ok(!topchat.includes("theme.jpg"));
   assert.ok(!topchat.includes("BG_IMAGE"));
+  for (const relative of ["../core/canvas/index", "../core/canvas/monitoring", "../core/canvas/settings", "../core/canvas/profile"]) {
+    const exporter = fs.readFileSync(require.resolve(relative), "utf8");
+    assert.doesNotMatch(exporter, /withMacWindow/, relative + " must not wrap card images in a desktop window");
+  }
 });
 
-test("/menu stays frameless while other Canvas outputs keep their frame", async t => {
-  const originalGetPalette = menuPalette.getPalette;
-  const fakePalette = {
-    background: ["#123456", "#123456", "#123456", "#123456"],
-    panel: ["#123456", "#123456"],
-    footer: ["#123456", "#123456"],
-    accent: "#123456",
-    border: "#123456"
-  };
-  menuPalette.getPalette = () => fakePalette;
+test("/menu, folder cards and shared Canvas outputs are saved without desktop chrome", async () => {
   const canvas = createCanvas(theme.WIDTH, 80);
-  const statusPath = theme.save(canvas, "status");
-  const menuPath = theme.save(canvas, "menu");
-
-  async function readTopPixel(filePath) {
-    const image = await loadImage(fs.readFileSync(filePath));
-    const surface = createCanvas(image.width, image.height);
-    const ctx = surface.getContext("2d");
-    ctx.drawImage(image, 0, 0);
-    return Array.from(ctx.getImageData(Math.floor(image.width / 2), 5, 1, 1).data);
-  }
+  const paths = [
+    theme.save(canvas, "menu"),
+    theme.save(canvas, "menu_folder"),
+    theme.save(canvas, "status")
+  ];
 
   try {
-    const menuPixel = await readTopPixel(menuPath);
-    const statusPixel = await readTopPixel(statusPath);
-    assert.equal(menuPixel[3], 0, "raw /menu output must not add an opaque Mac toolbar");
-    assert.equal(statusPixel[3], 255, "other Canvas output keeps its opaque shared frame");
-    const menuImage = await loadImage(fs.readFileSync(menuPath));
-    const statusImage = await loadImage(fs.readFileSync(statusPath));
-    assert.equal(menuImage.height, canvas.height);
-    assert.ok(statusImage.height > canvas.height);
+    for (const filePath of paths) {
+      const image = await loadImage(fs.readFileSync(filePath));
+      assert.equal(image.width, theme.WIDTH);
+      assert.equal(image.height, canvas.height, "Canvas export must not add a macOS title bar");
+      const surface = createCanvas(image.width, image.height);
+      const ctx = surface.getContext("2d");
+      ctx.drawImage(image, 0, 0);
+      const pixel = Array.from(ctx.getImageData(Math.floor(image.width / 2), 5, 1, 1).data);
+      assert.equal(pixel[3], 0, "raw canvas transparency must be preserved");
+    }
   } finally {
-    menuPalette.getPalette = originalGetPalette;
-    try { fs.unlinkSync(statusPath); } catch {}
-    try { fs.unlinkSync(menuPath); } catch {}
+    for (const filePath of paths) {
+      try { fs.unlinkSync(filePath); } catch {}
+    }
   }
 });
 
-test("profile and generic cards render with the shared Mac window frame", async () => {
+test("profile and generic cards render as standalone Zalo attachments", async () => {
   const profilePath = await profileCard.render({
     name: "Member Test",
     link: "member.test",
@@ -105,8 +98,8 @@ test("profile and generic cards render with the shared Mac window frame", async 
     const genericImage = await loadImage(fs.readFileSync(genericPath));
     assert.equal(profileImage.width, theme.WIDTH);
     assert.equal(genericImage.width, theme.WIDTH);
-    assert.ok(profileImage.height > 300);
-    assert.ok(genericImage.height > 300);
+    assert.ok(profileImage.height > 300 && profileImage.height < 600, "profile output must not include the extra desktop chrome");
+    assert.ok(genericImage.height > 300 && genericImage.height < 520, "generic output must be saved at its designed height");
 
     const genericCanvas = createCanvas(genericImage.width, genericImage.height);
     const genericContext = genericCanvas.getContext("2d");
@@ -118,8 +111,8 @@ test("profile and generic cards render with the shared Mac window frame", async 
       1
     ).data;
     assert.ok(
-      Math.max(centerPixel[0], centerPixel[1], centerPixel[2]) < 45,
-      "generic card face must use the shared dark surface, not a light gray fill"
+      centerPixel[2] > centerPixel[0] && centerPixel[0] < 70,
+      "generic card face must use the new dark navy surface"
     );
   } finally {
     try { fs.unlinkSync(profilePath); } catch {}
@@ -128,7 +121,7 @@ test("profile and generic cards render with the shared Mac window frame", async 
 });
 
 
-test("main menu omits the Mac frame while folder cards retain it", async () => {
+test("main menu and folder cards both render without macOS window chrome", async () => {
   const previousConfig = global.config;
   global.config = {
     ...(previousConfig || {}),
@@ -158,35 +151,19 @@ test("main menu omits the Mac frame while folder cards retain it", async () => {
 
   try {
     const scale = theme.WIDTH / 750;
-    const menuImage = await loadImage(fs.readFileSync(menuPath));
-    const menuSurface = createCanvas(menuImage.width, menuImage.height);
-    const menuContext = menuSurface.getContext("2d");
-    menuContext.drawImage(menuImage, 0, 0);
-    assert.equal(menuImage.width, theme.WIDTH);
-    assert.ok(menuImage.height > Math.round(200 * scale));
-    const menuToolbarDot = menuContext.getImageData(
-      Math.round(21 * scale), Math.round(22 * scale), 1, 1
-    ).data;
-    assert.notDeepEqual(
-      Array.from(menuToolbarDot).slice(0, 3),
-      [255, 95, 87],
-      "main /menu must not contain the Mac window traffic-light dots"
-    );
-
-    const folderImage = await loadImage(fs.readFileSync(folderPath));
-    const folderSurface = createCanvas(folderImage.width, folderImage.height);
-    const folderContext = folderSurface.getContext("2d");
-    folderContext.drawImage(folderImage, 0, 0);
-    assert.equal(folderImage.width, theme.WIDTH);
-    assert.ok(folderImage.height > Math.round(200 * scale));
-    const folderToolbarDot = folderContext.getImageData(
-      Math.round(21 * scale), Math.round(22 * scale), 1, 1
-    ).data;
-    assert.deepEqual(
-      Array.from(folderToolbarDot).slice(0, 3),
-      [255, 95, 87],
-      "folder cards keep the shared Mac window frame"
-    );
+    for (const [filePath, name] of [[menuPath, "main menu"], [folderPath, "folder card"]]) {
+      const image = await loadImage(fs.readFileSync(filePath));
+      assert.equal(image.width, theme.WIDTH);
+      assert.ok(image.height > Math.round(200 * scale));
+      const surface = createCanvas(image.width, image.height);
+      const context = surface.getContext("2d");
+      context.drawImage(image, 0, 0);
+      const dot = Array.from(context.getImageData(
+        Math.round(21 * scale), Math.round(22 * scale), 1, 1
+      ).data).slice(0, 3);
+      assert.notDeepEqual(dot, [255, 95, 87], name + " must not contain the Mac close dot");
+      assert.ok(image.height < Math.round(700 * scale), name + " should contain only its designed artwork");
+    }
   } finally {
     try { fs.unlinkSync(menuPath); } catch {}
     try { fs.unlinkSync(folderPath); } catch {}

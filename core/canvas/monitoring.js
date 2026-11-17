@@ -2,7 +2,6 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { withMacWindow } = require("./macWindow");
 const theme = require("./theme");
 const menuPalette = require("./menuPalette");
 const S = theme.S;
@@ -106,9 +105,9 @@ function footer(ctx, y, p, label) {
   panel(ctx, S(PAD), y, W - S(PAD * 2), S(31), p, p.footer);
   text(ctx, label, S(PAD + 12), y + S(20), 8.5, p.muted, false, "left", W - S(PAD * 2 + 24));
 }
-function saveFrame(canvas, title, p) {
+function saveFrame(canvas) {
   const output = path.join(os.tmpdir(), "jt_monitor_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
-  fs.writeFileSync(output, withMacWindow(canvas, title, p).toBuffer("image/png"));
+  fs.writeFileSync(output, canvas.toBuffer("image/png"));
   return output;
 }
 
@@ -149,7 +148,7 @@ function renderStatsCard(data = {}) {
   compactSection(ctx, S(PAD) + half + S(10), S(slowY), half, "HANDLER · COMMAND.RUN", handlers, p);
   cacheGrid(ctx, S(PAD), S(cacheY), full, caches, p, "HIỆU SUẤT CACHE");
   footer(ctx, S(y - 34), p, "JOHNTRAN  ·  LIVE METRICS  ·  " + String(latency.count || 0) + " mẫu độ trễ");
-  return saveFrame(canvas, "Statistics", p);
+  return saveFrame(canvas);
 }
 
 function renderJobsCard(data = {}) {
@@ -215,7 +214,7 @@ function renderJobsCard(data = {}) {
   text(ctx, "Retry chỉ chạy với tác vụ an toàn; bot không tự gửi lại tin nhắn Zalo.",
     S(PAD + 14), S(memoryY + 37), 8, p.muted, false, "left", full - S(28));
   footer(ctx, S(y - 34), p, "JOHNTRAN  ·  SPEED ENGINE  ·  QUEUE SNAPSHOT");
-  return saveFrame(canvas, "Speed Engine", p);
+  return saveFrame(canvas);
 }
 
 module.exports = { renderStatsCard, renderJobsCard, _test: { percent, milliseconds, sectionHeight } };

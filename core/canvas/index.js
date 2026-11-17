@@ -4,7 +4,6 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { createCanvas } = require("canvas");
-const { withMacWindow } = require("./macWindow");
 const theme = require("./theme");
 
 // Kept for backwards compatibility with older callers that import THEMES.
@@ -164,7 +163,7 @@ function renderCard(spec = {}) {
 function renderCardToFile(spec = {}, filePath) {
   const canvas = renderCard(spec);
   const outputPath = filePath || path.join(os.tmpdir(), "jt_card_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
-  fs.writeFileSync(outputPath, withMacWindow(canvas, spec.title || spec.chip || "JOHN TRAN").toBuffer("image/png"));
+  fs.writeFileSync(outputPath, canvas.toBuffer("image/png"));
   return outputPath;
 }
 

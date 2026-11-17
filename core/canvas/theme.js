@@ -10,21 +10,22 @@ const PALETTE = {};
 const THEME_STYLE = {};
 
 const BASE_PALETTE = {
-  bg0: "#08080a", bg1: "#17140d", bg2: "#302516",
-  ink: "#f6f2e7", ink2: "#bcb6a6", mute: "#7d7768",
-  accent: "#d4af37", accent2: "#ead58a",
-  green: "#8fbf9f", red: "#c4594e", gold: "#d4af37"
+  // Match the approved JOHNTRAN menu: deep ocean navy with a crisp cyan accent.
+  bg0: "#06131f", bg1: "#0b2b40", bg2: "#124d5d",
+  ink: "#f7faff", ink2: "#cbd9e8", mute: "#8aa7bd",
+  accent: "#55d6e8", accent2: "#a4eff7",
+  green: "#59d9a8", red: "#ff8297", gold: "#efc76d"
 };
 
 const BASE_STYLE = {
-  panelBg: "rgba(22, 21, 18, 0.88)",
-  panelBorderAlpha: 0.42,
-  panelLineWidth: 1,
-  panelRadius: 14,
-  btnRadius: 10,
+  panelBg: "rgba(7, 27, 43, 0.90)",
+  panelBorderAlpha: 0.52,
+  panelLineWidth: 1.15,
+  panelRadius: 16,
+  btnRadius: 11,
   frame: true,
-  glowCorners: ["rgba(212, 175, 55, .10)", "rgba(212, 175, 55, .04)"],
-  shade: "rgba(8, 8, 10, .78)",
+  glowCorners: ["rgba(85, 214, 232, .15)", "rgba(57, 137, 211, .09)"],
+  shade: "rgba(3, 12, 24, .72)",
   foil: true
 };
 
@@ -117,8 +118,8 @@ function foil(ctx, x, y, width) {
   if (!THEME_STYLE.foil) return;
   const gradient = ctx.createLinearGradient(x, y, x + width, y);
   gradient.addColorStop(0, PALETTE.accent);
-  gradient.addColorStop(0.55, "rgba(212, 175, 55, .35)");
-  gradient.addColorStop(1, "rgba(212, 175, 55, 0)");
+  gradient.addColorStop(0.55, "rgba(85, 214, 232, .32)");
+  gradient.addColorStop(1, "rgba(85, 214, 232, 0)");
   ctx.fillStyle = gradient;
   ctx.fillRect(x, y, width, Math.max(1, S(2)));
 }
@@ -203,10 +204,9 @@ async function paintBackground(ctx, width, height) {
   initFonts();
   ensureTheme();
 
-  // One stable, wallpaper-free brand surface for every non-menu Canvas.
-  // Its default gold/black values deliberately match /menu's default look,
-  // but it does not read the saved /theme selection.
-  const colors = [PALETTE.bg0, PALETTE.bg1, PALETTE.bg2, "#0b0907"];
+  // One stable ocean surface for every non-menu Canvas. The /theme command
+  // remains isolated to the menu and folder cards.
+  const colors = [PALETTE.bg0, PALETTE.bg1, PALETTE.bg2, "#071a29"];
   const gradient = ctx.createLinearGradient(0, 0, width, height);
   gradient.addColorStop(0, colors[0]);
   gradient.addColorStop(0.42, colors[1]);
@@ -257,6 +257,12 @@ function panel(ctx, x, y, width, height, radius = THEME_STYLE.panelRadius, accen
   ctx.globalAlpha = THEME_STYLE.panelBorderAlpha;
   ctx.lineWidth = THEME_STYLE.panelLineWidth;
   ctx.stroke();
+
+  // A low-contrast inner edge gives glass panels definition without a heavy frame.
+  roundRect(ctx, x + S(1), y + S(1), width - S(2), height - S(2), Math.max(0, radius - S(1)));
+  ctx.strokeStyle = "rgba(218, 245, 255, .09)";
+  ctx.lineWidth = Math.max(1, S(0.7));
+  ctx.stroke();
   ctx.globalAlpha = 1;
 }
 
@@ -306,28 +312,15 @@ function newCanvas(width, height) {
 
 function save(canvas, prefix) {
   ensureTheme();
-  const filePath = path.join(os.tmpdir(), "jt_" + prefix + "_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".png");
-  const titles = {
-    menu: "Menu",
-    menu_folder: "Folder Details",
-    music_grid: "Music Search",
-    music_now: "Now Playing",
-    topchat: "Top Chat",
-    status: "System Status",
-    profile_card: "Member Profile",
-    generic_card: "JOHNTRAN",
-    bot_groups: "Bot Groups",
-    card: "JOHNTRAN"
-  };
-  const menuFrame = prefix === "menu" || prefix === "menu_folder";
-  const framePalette = menuFrame ? require("./menuPalette").getPalette() : undefined;
+  const filePath = path.join(
+    os.tmpdir(),
+    "jt_" + String(prefix || "canvas") + "_" + Date.now() + "_" +
+      Math.random().toString(36).slice(2, 6) + ".png"
+  );
 
-  // The main /menu image is already a complete chat card. Do not wrap it
-  // in the desktop-style Mac window (toolbar/background/traffic-light dots).
-  const outputCanvas = prefix === "menu"
-    ? canvas
-    : withMacWindow(canvas, titles[prefix] || "JOHN TRAN", framePalette);
-  fs.writeFileSync(filePath, outputCanvas.toBuffer("image/png"));
+  // Every canvas renderer saves the designed bitmap as-is. The Zalo chat
+  // attachment is the canvas itself, not a simulated macOS desktop window.
+  fs.writeFileSync(filePath, canvas.toBuffer("image/png"));
   return filePath;
 }
 

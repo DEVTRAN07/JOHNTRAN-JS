@@ -10,7 +10,7 @@ function assertPng(file) {
   assert.ok(png.length > 1000);
   assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
 }
-test("Canvas worker renders stats with a menu-matched frame", async () => {
+test("Canvas worker renders stats as a standalone card image", async () => {
   const file = await renderCanvas("stats", {
     uptime: "1 phút",
     daily: { day: "2026-11-16", commands: 2, errors: 0, musicSearch: 0, musicDownload: 0, aiRequests: 0, ttsRequests: 0 },
