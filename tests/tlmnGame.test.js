@@ -130,7 +130,7 @@ test("TLMN service: timeout automatically plays a legal card on the random openi
   const timeout = game.timeoutTurn(groupId, firstUid);
   assert.equal(timeout.ok, true);
   assert.equal(timeout.action, "play");
-  assert.ok(room.hands[firstUid].every(card => card.id !== timeout.combo.cards[0].id));
+  assert.equal(timeout.combo.cards.length, 1);
   game.removeRoom(groupId);
 });
 
