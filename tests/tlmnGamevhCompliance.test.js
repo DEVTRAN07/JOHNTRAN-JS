@@ -37,3 +37,35 @@ test("GameVH TLMN five-pair-run white hand remains a separate instant-win patter
   assert.equal(hand.length, 13);
   assert.equal(engine.detectWhiteHand(hand), "fivePairRun");
 });
+
+
+test("GameVH TLMN compares straights by the suit of their highest card only", () => {
+  const lowerHighSuit = [
+    { rank: 3, suit: "c", id: "3c" },
+    { rank: 4, suit: "b", id: "4b" },
+    { rank: 5, suit: "ch", id: "5ch" }
+  ];
+  const higherTopCard = [
+    { rank: 3, suit: "b", id: "3b" },
+    { rank: 4, suit: "b", id: "4b" },
+    { rank: 5, suit: "r", id: "5r" }
+  ];
+  assert.equal(engine.analyzeCombo(lowerHighSuit).highSuit, 1);
+  assert.equal(engine.analyzeCombo(higherTopCard).highSuit, 2);
+  assert.equal(engine.canBeat(engine.analyzeCombo(higherTopCard), engine.analyzeCombo(lowerHighSuit)), true);
+
+  const lowerTopCard = [
+    { rank: 3, suit: "c", id: "3c" },
+    { rank: 4, suit: "b", id: "4b" },
+    { rank: 5, suit: "ch", id: "5ch" }
+  ];
+  const higherLowerCardOnly = [
+    { rank: 3, suit: "c", id: "3c" },
+    { rank: 4, suit: "r", id: "4r" },
+    { rank: 5, suit: "b", id: "5b" }
+  ];
+  assert.equal(engine.canBeat(
+    engine.analyzeCombo(higherLowerCardOnly),
+    engine.analyzeCombo(lowerTopCard)
+  ), false, "a high suit on a lower card must not beat the higher top card");
+});
