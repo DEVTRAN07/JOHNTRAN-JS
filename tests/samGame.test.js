@@ -244,7 +244,13 @@ test("Sâm private hand sends a canvas to My Documents and replaces the previous
       return true;
     }
   };
-  const room = { id: "81526" };
+  const room = {
+    id: "81526", threadId: "sam-preview-group",
+    players: [
+      { uid: "bot-account", name: "Admin" },
+      { uid: "other-player", name: "Người chơi" }
+    ]
+  };
   const hand = Array.from({ length: 10 }, (_, index) => card(index + 3));
   try {
     const first = await command._test.sendPrivateHand(
@@ -270,6 +276,12 @@ test("Sâm private hand sends a canvas to My Documents and replaces the previous
     );
     assert.equal(other, true);
     assert.equal(sent[2].threadId, "other-player");
+
+    const recalled = await command._test.recallRoomCards(api, room);
+    assert.equal(recalled, 0);
+    assert.equal(undos.length, 3);
+    assert.ok(undos.some(item => item.threadId === "my-documents"));
+    assert.ok(undos.some(item => item.threadId === "other-player"));
   } finally {
     global.users = previousUsers;
   }
