@@ -69,6 +69,7 @@ function create(threadId, owner, options = {}) {
   const key = String(threadId || "");
   if (!key || !owner?.uid) return { ok: false, code: "INVALID_INPUT" };
   if (isBusy(key)) return { ok: false, code: "ROOM_EXISTS", room: snapshot(get(key)) };
+  if (get(key)) removeRoom(key);
   const id = String(options.id || makeCode());
   if (!/^\d{5}$/.test(id) || roomsByCode.has(id)) return { ok: false, code: "CODE_COLLISION" };
   const host = makePlayer(owner);
