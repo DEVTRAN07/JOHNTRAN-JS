@@ -338,6 +338,29 @@ function removeCards(hand, playedCards) {
   return (hand || []).filter(card => !ids.has(card.id));
 }
 
+const WHITE_HAND_PRIORITY = Object.freeze(["dragonStraight", "sixPairs", "fourTwos"]);
+const WHITE_HAND_LABEL = Object.freeze({
+  dragonStraight: "SẢNH RỒNG 3 ĐẾN A",
+  sixPairs: "6 ĐÔI",
+  fourTwos: "TỨ QUÝ 2"
+});
+
+function detectWhiteHand(hand) {
+  const cards = sortHand(hand);
+  if (cards.length !== 13) return null;
+  const counts = new Map();
+  for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
+  const ranks = [...counts.keys()];
+  const pairUnits = [...counts.values()].reduce((sum, count) => sum + Math.floor(count / 2), 0);
+  const hasDragon = Array.from({ length: 12 }, (_, index) => index + 3)
+    .every(rank => counts.has(rank));
+  const priorities = [];
+  if (hasDragon) priorities.push("dragonStraight");
+  if (pairUnits >= 6) priorities.push("sixPairs");
+  if ((counts.get(15) || 0) === 4) priorities.push("fourTwos");
+  return WHITE_HAND_PRIORITY.find(type => priorities.includes(type)) || null;
+}
+
 function rankLabel(rank) {
   return RANK_LABEL[rank] || String(rank);
 }
@@ -356,5 +379,6 @@ module.exports = {
   parseCardCode, compareCards, sortHand, shuffleDeck, dealCards,
   normalizeText, parseRank, parseRankSequence, parsePlayText,
   analyzeCombo, COMBO_LABEL, canBeat, validatePlay, removeCards,
+  WHITE_HAND_PRIORITY, WHITE_HAND_LABEL, detectWhiteHand,
   rankLabel, cardLabel, formatCards
 };
