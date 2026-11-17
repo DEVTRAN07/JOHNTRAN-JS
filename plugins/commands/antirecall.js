@@ -8,7 +8,7 @@ module.exports.config = {
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
   description: "Lưu và khôi phục nội dung tin nhắn khi thành viên thu hồi",
-  category: "Quản lý nhóm",
+  category: "Anti",
   usage: "antirecall [on/off]",
   cooldowns: 1
 };

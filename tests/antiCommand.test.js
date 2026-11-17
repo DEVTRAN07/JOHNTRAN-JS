@@ -1,0 +1,132 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+const { ThreadType } = require("zalo-client");
+const workerRender = require("../core/canvas/workerRender");
+
+const originalRenderCanvas = workerRender.renderCanvas;
+const rendered = [];
+const command = (() => {
+  workerRender.renderCanvas = async (type, data) => {
+    const file = path.join(os.tmpdir(), "jt-anti-menu-" + process.pid + "-" + rendered.length + ".png");
+    fs.writeFileSync(file, Buffer.from("anti-preview"));
+    rendered.push({ type, data, file });
+    return file;
+  };
+  return require("../plugins/commands/anti");
+})();
+
+test("bare /anti sends the Anti-Protection image first and the status/instructions below", async () => {
+  const sent = [];
+  const data = {
+    anti_nude: true,
+    anti_undo: true,
+    anti_danger_link: false,
+    anti_sticker_spam: true,
+    anti_link: false,
+    anti_spam: false
+  };
+
+  try {
+    await command.run({
+      api: { async sendMessage(payload, threadId, type) { sent.push({ payload, threadId, type }); } },
+      event: { threadId:"anti-menu-group", type:ThreadType.Group, data:{ uidFrom:"member" } },
+      args: [],
+      Threads: { async getData() { return { data }; } }
+    });
+
+    assert.equal(rendered.length, 1);
+    assert.equal(rendered[0].type, "anti-protection");
+    assert.equal(rendered[0].data.items.length, 6);
+    assert.equal(sent.length, 2, "the image and text guide are sent as two ordered messages");
+    assert.deepEqual(sent[0].payload.attachments, [rendered[0].file]);
+    assert.match(sent[0].payload.msg, /ANTI-PROTECTION/);
+    assert.match(sent[1].payload.msg, /antinude on\|off/);
+    assert.match(sent[1].payload.msg, /antirecall on\|off/);
+    assert.match(sent[1].payload.msg, /anti link on\|off/);
+    assert.match(sent[1].payload.msg, /anti spam on\|off/);
+    assert.match(sent[1].payload.msg, /ĐANG BẬT/);
+  } finally {
+    for (const item of rendered) {
+      try { fs.unlinkSync(item.file); } catch {}
+    }
+  }
+});
+
+test("legacy /anti link|undo|spam switches require confirmed group QTV and persist durably", async () => {
+  const threadId = "anti-toggle-group";
+  const data = {};
+  const sent = [];
+  const api = {
+    async getGroupInfo() {
+      return { gridInfoMap: { [threadId]: { creatorId:"owner", adminIds:["deputy"] } } };
+    },
+    async sendMessage(payload) { sent.push(payload); }
+  };
+  const Threads = {
+    async getData() { return { data:{ ...data } }; },
+    async setDataAndWait(id, next) { Object.assign(data, next); }
+  };
+
+  await command.run({
+    api, Threads,
+    event:{ threadId, type:ThreadType.Group, data:{ uidFrom:"deputy" } },
+    args:["link","on"]
+  });
+  assert.equal(data.anti_link, true);
+  assert.match(sent[0].msg, /Đã bật chế độ Anti LINK/);
+
+  await command.run({
+    api, Threads,
+    event:{ threadId, type:ThreadType.Group, data:{ uidFrom:"deputy" } },
+    args:["undo","off"]
+  });
+  assert.equal(data.anti_undo, false);
+});
+
+test("legacy /anti switch refuses an ordinary member or unknown QTV state", async () => {
+  const threadId = "anti-deny-group";
+  const sent = [];
+  const api = {
+    async getGroupInfo() {
+      return { gridInfoMap: { [threadId]: { creatorId:"owner", adminIds:[] } } };
+    },
+    async sendMessage(payload) { sent.push(payload); }
+  };
+  const data = {};
+  await command.run({
+    api,
+    event:{ threadId, type:ThreadType.Group, data:{ uidFrom:"member" } },
+    args:["spam","on"],
+    Threads:{ async getData(){ return { data }; }, async setDataAndWait(_id,next){Object.assign(data,next);} }
+  });
+  assert.equal(data.anti_spam, undefined);
+  assert.match(sent[0].msg, /QTV BOX/);
+
+  const unknownSent = [];
+  await command.run({
+    api:{ async sendMessage(payload){ unknownSent.push(payload); } },
+    event:{ threadId, type:ThreadType.Group, data:{ uidFrom:"member" } },
+    args:["spam","on"],
+    Threads:{ async getData(){ return { data }; }, async setDataAndWait(_id,next){Object.assign(data,next);} }
+  });
+  assert.equal(data.anti_spam, undefined);
+  assert.match(unknownSent[0].msg, /QTV BOX/);
+});
+
+test("anti command is visible as a normal group feature; toggles still verify group QTV in the handler", () => {
+  assert.equal(command.config.role, 0);
+  assert.equal(command.config.category, "Anti");
+  assert.equal(typeof command._menu.buildAntiMenuText, "function");
+});
+
+test.after(() => {
+  workerRender.renderCanvas = originalRenderCanvas;
+  for (const item of rendered) {
+    try { fs.unlinkSync(item.file); } catch {}
+  }
+});

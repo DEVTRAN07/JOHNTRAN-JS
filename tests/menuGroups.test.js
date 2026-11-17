@@ -73,6 +73,15 @@ test("each live command is assigned to its intended folder", () => {
     ["stk", "Tiện ích", "tools"],
     ["anti", "Nhóm", "anti"],
     ["autokick", "Nhóm", "anti"],
+    ["antinude", "Anti", "anti"],
+    ["antirecall", "Anti", "anti"],
+    ["antilink", "Anti", "anti"],
+    ["antispam", "Anti", "anti"],
+    ["antinude", "Quản lý nhóm", "anti"],
+    ["antirecall", "Quản lý nhóm", "anti"],
+    ["antilink", "Quản lý nhóm", "anti"],
+    ["antispam", "Quản lý nhóm", "anti"],
+    ["banmember", "Quản lý nhóm", "manager"],
     ["adduser", "Nhóm", "manager"],
     ["delmsg", "Nhóm", "manager"],
     ["adc", "Hệ Thống", "admin"],
@@ -102,6 +111,24 @@ test("each live command is assigned to its intended folder", () => {
       `command ${name} should belong to ${expected}`
     );
   }
+});
+
+test("all current Anti commands route to Anti instead of Special", () => {
+  const commands = new Map([
+    ["anti", command("anti", "Anti", 0)],
+    ["antinude", command("antinude", "Anti", 0)],
+    ["antirecall", command("antirecall", "Anti", 0)],
+    ["antilink", command("antilink", "Anti", 0)],
+    ["antispam", command("antispam", "Anti", 0)],
+    ["autokick", command("autokick", "Nhóm", 1)]
+  ]);
+  const groups = menu.collectMenuGroups(commands, "guest");
+  const antiGroup = groups.find(group => group.slug === "anti");
+  assert.equal(antiGroup?.count, 5, "public Anti commands should be grouped together");
+  assert.deepEqual(antiGroup?.commands.map(item => item.name), [
+    "anti", "antilink", "antinude", "antirecall", "antispam"
+  ]);
+  assert.ok(!groups.some(group => group.slug === "hidden"), "Anti commands must not leak into Special");
 });
 
 test("Test folder appears only when a real test command exists", () => {

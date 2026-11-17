@@ -8,7 +8,7 @@ module.exports.config = {
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
   description: "Phát hiện và xóa loạt sticker spam trong nhóm",
-  category: "Quản lý nhóm",
+  category: "Anti",
   usage: "antispam [on/off]",
   cooldowns: 1
 };

@@ -188,7 +188,7 @@ const MENU_COMMAND_GROUPS = Object.freeze({
   game: new Set(["noitu"]),
   tools: new Set(["autodown", "autosend", "stk"]),
   test: new Set([]),
-  anti: new Set(["anti", "autokick"]),
+  anti: new Set(["anti", "antinude", "antirecall", "antilink", "antispam", "autokick"]),
   manager: new Set(["adduser", "delmsg"]),
   admin: new Set(["adc", "admin", "reloadconfig", "restart", "spam", "spamsticker", "theme"]),
   bot: new Set(["bot", "cmd", "command", "events", "jobs", "stats", "status", "mybot"]),
@@ -258,9 +258,10 @@ function menuGroupForCommand(command) {
     return "tools";
   }
   if (category === "nhac" || category === "music") return "music";
-  if (category === "nhom") {
+  if (category === "anti") return "anti";
+  if (["nhom", "quanlynhom", "group", "groupmanagement"].includes(category)) {
     const name = String(config.name || "").toLowerCase();
-    if (["anti", "autokick"].includes(name)) return "anti";
+    if (["anti", "antinude", "antirecall", "antilink", "antispam", "autokick"].includes(name)) return "anti";
     return "manager";
   }
   if (category === "hethong") {
