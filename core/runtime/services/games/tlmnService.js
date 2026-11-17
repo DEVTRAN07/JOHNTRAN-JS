@@ -252,6 +252,25 @@ function removeRoom(threadId) {
   return room;
 }
 
+function resolveWhiteHand(room) {
+  if (!room || room.status !== "playing" || !room.hands) return null;
+  const whiteHands = room.players.map(item => ({
+    uid: item.uid,
+    type: engine.detectWhiteHand(room.hands[item.uid])
+  })).filter(item => item.type);
+  if (!whiteHands.length) return null;
+
+  whiteHands.sort((a, b) =>
+    engine.WHITE_HAND_PRIORITY.indexOf(a.type) - engine.WHITE_HAND_PRIORITY.indexOf(b.type) ||
+    room.players.findIndex(item => item.uid === a.uid) -
+      room.players.findIndex(item => item.uid === b.uid)
+  );
+  room.whiteHand = { ...whiteHands[0] };
+  room.finishOrder = [room.whiteHand.uid];
+  finishRoom(room);
+  return { ...room.whiteHand };
+}
+
 function start(threadId, uid, random = Math.random) {
   const room = get(threadId);
   if (!room) return { ok: false, code: "NO_ROOM" };
@@ -306,21 +325,10 @@ function start(threadId, uid, random = Math.random) {
   room.whiteHand = null;
   clearTimer(threadId);
 
-  const whiteHands = room.players.map(item => ({
-    uid: item.uid,
-    type: engine.detectWhiteHand(room.hands[item.uid])
-  })).filter(item => item.type);
-  if (whiteHands.length) {
-    whiteHands.sort((a, b) =>
-      engine.WHITE_HAND_PRIORITY.indexOf(a.type) - engine.WHITE_HAND_PRIORITY.indexOf(b.type) ||
-      room.players.findIndex(item => item.uid === a.uid) -
-        room.players.findIndex(item => item.uid === b.uid)
-    );
-    room.whiteHand = { ...whiteHands[0] };
-    room.finishOrder = [room.whiteHand.uid];
-    finishRoom(room);
+  const whiteHand = resolveWhiteHand(room);
+  if (whiteHand) {
     return {
-      ok: true, finished: true, whiteHand: { ...room.whiteHand },
+      ok: true, finished: true, whiteHand,
       room: snapshot(room), state: room, firstPlayerId: dealt.firstPlayerId
     };
   }
