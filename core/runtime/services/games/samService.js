@@ -41,7 +41,8 @@ function snapshot(room) {
   return {
     id: room.id, threadId: room.threadId, ownerId: room.ownerId,
     ownerName: room.ownerName, status: room.status,
-    bet: Number(room.stake || 5000),
+    previousWinnerUid: room.previousWinnerUid || null,
+    bet: Number(room.stake || 300),
     players: room.players.map(item => ({
       ...item,
       handCount: room.hands?.[item.uid]?.length ?? (room.status === "waiting" ? null : 10),
