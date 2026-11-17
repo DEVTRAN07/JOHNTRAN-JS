@@ -559,6 +559,7 @@ function play(threadId, uid, input) {
   if (!room.currentCombo) {
     room.trickParticipants = [];
     room.trickTwoUnits = 0;
+    room.chopChainTwoUnits = 0;
     room.chopChainUnits = 0;
     room.chopChainEventIndex = null;
   }
@@ -584,9 +585,15 @@ function play(threadId, uid, input) {
   if (chops) {
     const previousChainUnits = Math.max(0, Number(room.chopChainUnits) || 0);
     const targetHasTwo = (previousCombo.cards || []).some(card => card.rank === 15);
-    const targetUnits = targetHasTwo && previousChainUnits === 0
-      ? Math.max(chopTargetUnits(previousCombo), Number(room.trickTwoUnits) || 0)
-      : chopTargetUnits(previousCombo);
+    let targetUnits = chopTargetUnits(previousCombo);
+    if (targetHasTwo) {
+      const totalTwoUnits = Math.max(0, Number(room.trickTwoUnits) || 0);
+      const alreadyCountedTwoUnits = Math.max(0, Number(room.chopChainTwoUnits) || 0);
+      const uncountedTwoUnits = totalTwoUnits - alreadyCountedTwoUnits;
+      targetUnits = uncountedTwoUnits > 0
+        ? uncountedTwoUnits : chopTargetUnits(previousCombo);
+      room.chopChainTwoUnits = Math.max(alreadyCountedTwoUnits, totalTwoUnits);
+    }
     const totalUnits = previousChainUnits + targetUnits;
     const bet = Math.max(1, Number(room.bet) || 5000);
     room.chopEvents ||= [];
