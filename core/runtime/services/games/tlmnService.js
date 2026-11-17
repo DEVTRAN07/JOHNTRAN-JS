@@ -39,6 +39,7 @@ function snapshot(room) {
     threadId: room.threadId,
     ownerId: room.ownerId,
     ownerName: room.ownerName,
+    previousWinnerUid: room.previousWinnerUid || null,
     bet: room.bet,
     mode: room.mode,
     practice: Boolean(room.practice),
