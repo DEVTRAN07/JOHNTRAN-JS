@@ -240,7 +240,7 @@ test("TLMN command: invalid move replies are throttled per player and group", ()
   assert.equal(allow("throttle-group", "p1", "INVALID_COMBINATION", 1000), true);
   assert.equal(allow("throttle-group", "p1", "INVALID_COMBINATION", 1001), false);
   assert.equal(allow("throttle-group", "p2", "INVALID_COMBINATION", 2000), false);
-  assert.equal(allow("throttle-group", "p2", "INVALID_COMBINATION", 3600), true);
+  assert.equal(allow("throttle-group", "p2", "UNRECOGNIZED_PLAY", 3600), true);
   assert.equal(allow("throttle-group", "p2", "UNRECOGNIZED_PLAY", 16000), false);
   assert.equal(allow("throttle-group", "p2", "UNRECOGNIZED_PLAY", 22000), true);
 });
