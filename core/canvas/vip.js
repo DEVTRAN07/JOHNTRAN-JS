@@ -14,6 +14,12 @@ const EMOJI_FALLBACK = {
 function sanitizeEmoji(value) {
   let out = String(value ?? "");
   for (const [emoji, fallback] of Object.entries(EMOJI_FALLBACK)) out = out.split(emoji).join(fallback);
+  const named = { check: "OK", success: "OK", alert: "!", warning: "!", info: "i", error: "X" };
+  const normalized = out.trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(named, normalized)) return named[normalized];
+  if (["✓", "✔", "✅"].includes(out.trim())) return "OK";
+  if (["❌", "✘"].includes(out.trim())) return "X";
+  if (["⚠", "⚠️"].includes(out.trim())) return "!";
   return theme.sanitizeGlyphs(out);
 }
 function wrap(ctx, value, maxWidth) {
@@ -53,8 +59,9 @@ async function renderVipCard(spec = {}) {
   await theme.paintBackground(ctx, WIDTH, height);
   ctx.fillStyle = accent; ctx.fillRect(0, 0, S(7), height);
 
-  const icon = sanitizeEmoji(spec.icon || (spec.theme === "success" ? "✓" :
-    spec.theme === "error" ? "×" : spec.theme === "warn" ? "!" : "i"));
+  const defaultIcon = spec.theme === "success" ? "OK" :
+    spec.theme === "error" ? "X" : spec.theme === "warn" ? "!" : "i";
+  const icon = sanitizeEmoji(spec.icon || defaultIcon);
   const iconX = PADDING, iconY = S(34), iconSize = S(55);
   theme.roundRect(ctx, iconX, iconY, iconSize, iconSize, S(15));
   ctx.fillStyle = accent + "22"; ctx.fill();

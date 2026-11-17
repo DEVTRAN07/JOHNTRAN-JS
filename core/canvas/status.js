@@ -89,7 +89,7 @@ async function renderStatus(options = {}) {
   theme.text(ctx, String(group.name || "Tin nhắn riêng"), tx, heroY + S(91), {
     size: 11, color: p.ink2, maxWidth: W - tx - pad - S(150)
   });
-  const pillW = S(112), pillH = S(31), pillX = W - pad - pillW - S(14), pillY = heroY + S(22);
+  const pillW = S(150), pillH = S(31), pillX = W - pad - pillW - S(14), pillY = heroY + S(20);
   theme.roundRect(ctx, pillX, pillY, pillW, pillH, pillH / 2);
   ctx.fillStyle = group.enabled ? "rgba(84,214,160,.16)" : "rgba(255,113,136,.14)"; ctx.fill();
   theme.text(ctx, group.enabled ? "● ONLINE" : "● OFFLINE", pillX + pillW / 2, pillY + S(21), {
@@ -97,7 +97,7 @@ async function renderStatus(options = {}) {
   });
   theme.label(ctx, "UPTIME", pillX, heroY + S(78), { size: 8, color: p.mute, align: "center" });
   theme.text(ctx, options.uptime || "N/A", pillX + pillW / 2, heroY + S(99), {
-    size: 11, family: "JT-Mono-Bold", color: p.ink, align: "center", maxWidth: pillW
+    size: 9, family: "JT-Mono-Bold", color: p.ink, align: "center", maxWidth: pillW - S(4)
   });
 
   theme.label(ctx, "TÀI NGUYÊN THIẾT BỊ", pad, metricY - S(12), { size: 10 });

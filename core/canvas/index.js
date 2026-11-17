@@ -70,8 +70,8 @@ function renderCard(spec = {}) {
   ctx.fillStyle = accent; ctx.fillRect(faceX, faceY + S(17), S(4), S(55));
 
   let y = S(51);
-  theme.label(ctx, String(spec.chip || "JOHNTRAN") + "  /  " +
-    String(spec.brand || global.config?.name_bot || "JOHN TRAN"),
+  const brandName = String(spec.brand || global.config?.name_bot || "JOHN TRAN").trim() || "JOHN TRAN";
+  theme.label(ctx, String(spec.chip || "JOHNTRAN") + "  /  " + brandName,
     padding + S(22), y, { size: 9, color: accent });
   y += S(42);
   wrapText(ctx, sanitize(spec.title || "Thông báo"), contentWidth - S(46)).forEach(line => {
