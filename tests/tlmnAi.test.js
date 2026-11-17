@@ -170,6 +170,30 @@ test("TLMN practice deals Admin a strong hand while AI still answers normally", 
   game.removeRoom(groupId);
 });
 
+test("TLMN real-player tables keep the normal shuffled deal for an Admin owner", () => {
+  const groupId = "tlmn-real-room-fair-admin-deal";
+  const created = game.create(groupId, { uid: "admin", name: "Admin" }, {
+    practice: false
+  });
+  assert.equal(created.ok, true);
+  const playerIds = ["admin", "player-2", "player-3", "player-4"];
+  for (const uid of playerIds.slice(1)) {
+    assert.equal(game.join(groupId, created.room.id, { uid, name: uid }).ok, true);
+  }
+
+  const expected = engine.dealCards(playerIds, () => 0.317).hands.admin
+    .map(card => card.id);
+  const started = game.start(groupId, "admin", () => 0.317);
+  assert.equal(started.ok, true);
+  assert.deepEqual(
+    started.state.hands.admin.map(card => card.id),
+    expected,
+    "real-player tables must not use the practice-only strong-hand deal"
+  );
+  assert.equal(started.state.practice, false);
+  game.removeRoom(groupId);
+});
+
 test("TLMN quick play finds the largest legal play and respects the 3♠ opener", () => {
   const groupId = "tlmn-ai-quick-play";
   const created = game.create(groupId, { uid: "human", name: "Admin" }, {
