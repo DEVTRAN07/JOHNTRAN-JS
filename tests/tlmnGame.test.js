@@ -394,7 +394,7 @@ test("TLMN wallet: settlement is idempotent and statistics are atomic with payou
   const room = game.create("tlmn-settlement", { uid: "winner" }).state;
   game.join("tlmn-settlement", room.id, { uid: "loser" });
   room.bet = 5000;
-  room.locked = { winner: 130000, loser: 130000 };
+  room.locked = { winner: 500000, loser: 500000 };
   room.hands = { winner: [], loser: [{ rank: 3, suit: "b", id: "3b" }] };
   room.settlement = {
     bet: 5000, winnerUid: "winner",
