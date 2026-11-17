@@ -385,6 +385,8 @@ function chopTargetUnits(combo) {
       card.suit === "r" || card.suit === "c").length;
     return redCount === 0 ? 6 : redCount === 2 ? 12 : 9;
   }
+  // The GameVH chop-chain example values a three-pair run at 9 units;
+  // ordinary leftover penalties for this hand remain 6 units.
   if (combo.type === "pairRun" && combo.length === 3) return 9;
   if (combo.type === "fourKind") return 8;
   if (combo.type === "pairRun" && combo.length >= 4) return 12;
