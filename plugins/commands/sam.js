@@ -511,11 +511,19 @@ async function distributeHands(api, room) {
 
 async function settleSamWallets(Users, room, Threads) {
   if (room.settled) return { ok: true, alreadySettled: true, rows: room.settlementRows || [] };
-  if (!room.settlement || !room.locked || !Array.isArray(room.players)) {
+  if (!room.settlement || !room.locked || !Array.isArray(room.players) ||
+      !room.settlement.net || typeof room.settlement.net !== "object" ||
+      Array.isArray(room.settlement.net) || !Array.isArray(room.settlement.transfers)) {
     return { ok: false, code: "MISSING_SETTLEMENT_OR_ESCROW" };
   }
   if (Object.keys(room.lockPending || {}).length) {
     return { ok: false, code: "PENDING_ESCROW_RESERVATION" };
+  }
+  if (Object.keys(room.settlement.net).length !== room.players.length ||
+      room.players.some(player =>
+        !Object.prototype.hasOwnProperty.call(room.settlement.net, String(player.uid))
+      )) {
+    return { ok: false, code: "INVALID_SETTLEMENT_LEDGER" };
   }
   const requiredLock = 250 * Math.max(100, Math.floor(Number(room.stake) || 300));
   if (!Number.isSafeInteger(requiredLock) ||
