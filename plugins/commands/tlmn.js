@@ -982,6 +982,8 @@ function chooseAiMove(room, uid) {
     if (!validation.ok) continue;
 
     const combo = validation.combo;
+    if (room?.passed?.has(String(uid)) &&
+        !(combo.type === "pairRun" && combo.length >= 4)) continue;
     const leadPenalty = room.currentCombo ? 0 : (cards.length === 1 ? 0 : cards.length * 100);
     const score = leadPenalty + cards.length * 10 + combo.mainRank * 3 + combo.highSuit;
     if (score < bestScore) {
@@ -1018,6 +1020,8 @@ function chooseQuickMove(room, uid) {
     });
     if (!validation.ok) continue;
     const combo = validation.combo;
+    if (room?.passed?.has(String(uid)) &&
+        !(combo.type === "pairRun" && combo.length >= 4)) continue;
     const score = cards.length * 1000 + (priorities[combo.type] || 0) * 10 -
       combo.mainRank * 2 - combo.highSuit;
     if (score > bestScore) {
