@@ -399,6 +399,102 @@ test("Sâm forbids a move that leaves only one 2 in the player's hand", () => {
   game.removeRoom(threadId);
 });
 
+test("Sâm pass locks a player out until the trick clears, then allows the next round", () => {
+  const threadId = "sam-pass-lock-trick";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81622", stake: 1000 });
+  assert.equal(created.ok, true);
+  game.join(threadId, "81622", { uid: "b", name: "B" });
+  game.join(threadId, "81622", { uid: "c", name: "C" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.29); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = {
+    a: [card(5), card(7), card(11)],
+    b: [card(3), card(9), card(12)],
+    c: [card(6), card(8), card(10)]
+  };
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.playedCount = 0;
+  room.passed = new Set();
+  room.finishOrder = [];
+
+  assert.equal(game.play(threadId, "a", "5b").ok, true);
+  assert.equal(room.turnUid, "b");
+  assert.equal(game.pass(threadId, "b").ok, true);
+  assert.equal(room.passed.has("b"), true);
+  assert.equal(room.turnUid, "c");
+
+  assert.equal(game.play(threadId, "c", "6b").ok, true);
+  assert.equal(room.turnUid, "a", "the already-passed B is skipped after C beats A");
+  assert.equal(room.passed.has("b"), true, "a new beating play must not clear B's pass");
+
+  // A stale turn assignment must still not let B re-enter the current trick.
+  room.turnUid = "b";
+  assert.equal(game.play(threadId, "b", "9b").code, "ALREADY_PASSED");
+  room.turnUid = "a";
+
+  const cleared = game.pass(threadId, "a");
+  assert.equal(cleared.ok, true);
+  assert.equal(cleared.roundCleared, true);
+  assert.equal(room.turnUid, "c");
+  assert.equal(room.passed.size, 0);
+  assert.equal(room.currentCombo, null);
+
+  // The next trick starts clean: B may play when the turn reaches them.
+  assert.equal(game.play(threadId, "c", "8b").ok, true);
+  assert.equal(room.turnUid, "a");
+  assert.equal(game.pass(threadId, "a").ok, true);
+  assert.equal(room.turnUid, "b");
+  assert.equal(game.play(threadId, "b", "9b").ok, true);
+  assert.equal(room.hands.b.some(item => item.rank === 9), false);
+  game.removeRoom(threadId);
+});
+
+test("Sâm leaving trick leader clears the old combo and pass lock", () => {
+  const threadId = "sam-leave-trick-leader";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81623", stake: 1000 });
+  game.join(threadId, "81623", { uid: "b", name: "B" });
+  game.join(threadId, "81623", { uid: "c", name: "C" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.30); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = {
+    a: [card(5), card(7)],
+    b: [card(3), card(9)],
+    c: [card(6), card(8)]
+  };
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.playedCount = 0;
+  room.passed = new Set();
+  assert.equal(game.play(threadId, "a", "5b").ok, true);
+  assert.equal(game.pass(threadId, "b").ok, true);
+  assert.equal(room.turnUid, "c");
+
+  const left = game.leave(threadId, "a");
+  assert.equal(left.ok, true);
+  assert.equal(room.currentCombo, null);
+  assert.equal(room.lastPlay, null);
+  assert.equal(room.lastPlayerUid, null);
+  assert.equal(room.passed.size, 0);
+  assert.equal(room.turnUid, "b");
+  assert.equal(game.play(threadId, "b", "3b").ok, true);
+  game.removeRoom(threadId);
+});
+
 test("Sâm computes card-left, thối heo and cóng charges in the shared stake unit", () => {
   const room = {
     stake: 5000,
