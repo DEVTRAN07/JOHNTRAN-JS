@@ -293,7 +293,7 @@ function drawMenuPill(ctx, x, y, w, h, text, palette) {
 }
 
 const MAIN_MENU_SUBTITLES = Object.freeze({
-  info: "Tài khoản & hướng dẫn",
+  info: "Thông tin tài khoản",
   public: "Tiện ích dùng chung",
   music: "Nghe nhạc trực tuyến",
   game: "Trò chơi giải trí",
