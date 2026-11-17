@@ -327,11 +327,12 @@ test("a cleared Caro turn timer cannot remove the replacement timer", () => {
   let expired = 0;
 
   try {
-    game.startSolo(threadId, { uid: "human", name: "Human" });
+    game.startPvp(threadId, { uid: "host", name: "Host" });
+    game.join(threadId, "guest", "Guest");
     assert.equal(game.watchTurn(threadId, () => { expired++; }), true);
     const oldTimer = scheduled.at(-1);
 
-    assert.equal(game.move(threadId, "human", 136).ok, true);
+    assert.equal(game.move(threadId, "host", 136).ok, true);
     assert.equal(game.watchTurn(threadId, () => { expired++; }), true);
     const newTimer = scheduled.at(-1);
 
