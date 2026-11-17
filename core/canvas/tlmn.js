@@ -1,6 +1,7 @@
 "use strict";
 
 const theme = require("./theme");
+const avatarCache = require("./avatarCache");
 
 function drawText(ctx, text, x, y, scale, options = {}) {
   const size = Math.max(9, Math.round((options.size || 18) * scale));
@@ -69,6 +70,16 @@ function drawPlayingCard(ctx, card, x, y, w, h, scale, options = {}) {
   drawText(ctx, rank, x + w - 8 * scale, y + h - 8 * scale, scale, {
     size: options.small ? 15 : 18, weight: 900, color: suit.color, align: "right"
   });
+  if (Number.isInteger(options.index) && options.index > 0) {
+    roundPanel(ctx, x + w - 23 * scale, y + 5 * scale,
+      18 * scale, 18 * scale, 6 * scale,
+      premium ? "#8c5b0c" : "#07574f",
+      premium ? "#ffd875" : "#55e5c4");
+    drawText(ctx, String(options.index), x + w - 14 * scale,
+      y + 18 * scale, scale, {
+        size: 10, weight: 900, color: "#fff9e9", align: "center"
+      });
+  }
   ctx.restore();
 }
 
@@ -81,21 +92,36 @@ function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
 
   const avatarX = x + px(42);
   const avatarY = y + h / 2;
+  const avatarRadius = px(25);
+  const avatarImage = item && !item.ai ? avatarCache.getAvatar(item.avatarUrl) : null;
   ctx.save();
   ctx.beginPath();
-  ctx.arc(avatarX, avatarY, px(25), 0, Math.PI * 2);
-  ctx.fillStyle = active ? "#164d3c" : "#3e1a20";
-  ctx.fill();
-  ctx.lineWidth = px(2);
-  ctx.strokeStyle = active ? "#44edba" : "#b88c50";
-  ctx.stroke();
-  drawText(ctx, item
-    ? (item.ai ? "AI" : String(item.name || "P").trim().slice(0, 1).toUpperCase())
-    : "+",
-    avatarX, avatarY + px(8), scale, {
-      size: 22, weight: 900, color: "#fff1ce", align: "center"
-    });
+  ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
+  ctx.clip();
+  if (avatarImage) {
+    ctx.drawImage(avatarImage, avatarX - avatarRadius, avatarY - avatarRadius,
+      avatarRadius * 2, avatarRadius * 2);
+  } else {
+    ctx.fillStyle = active ? "#164d3c" : "#3e1a20";
+    ctx.fillRect(avatarX - avatarRadius, avatarY - avatarRadius,
+      avatarRadius * 2, avatarRadius * 2);
+  }
   ctx.restore();
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
+  ctx.lineWidth = px(active ? 3.5 : 2);
+  ctx.strokeStyle = active ? "#44edba" : "#d5b66e";
+  ctx.stroke();
+  ctx.restore();
+  if (!avatarImage || item?.ai) {
+    drawText(ctx, item
+      ? (item.ai ? "AI" : String(item.name || "P").trim().slice(0, 1).toUpperCase())
+      : "+",
+      avatarX, avatarY + px(8), scale, {
+        size: 22, weight: 900, color: "#fff1ce", align: "center"
+      });
+  }
 
   if (!item) {
     drawText(ctx, "GHẾ TRỐNG", x + px(78), y + h / 2 + px(5), scale, {
@@ -302,15 +328,17 @@ function renderHand(ctx, width, height, scale, data) {
       size: 30, weight: 900, color: "#2ce8ae", align: "center"
     });
   } else {
-    const cardW = px(65);
-    const cardH = px(128);
-    const gap = px(9);
+    // Larger hand cards use a slight overlap for 11–13 cards so rank,
+    // suit and the numbered selection badge remain easy to read on mobile.
+    const cardW = px(hand.length > 10 ? 72 : 82);
+    const cardH = px(148);
+    const gap = px(hand.length > 10 ? -8 : 8);
     const total = hand.length * cardW + Math.max(0, hand.length - 1) * gap;
     const startX = Math.max(px(58), (width - total) / 2);
-    const y = hand.length > 10 ? px(248) : px(260);
+    const y = hand.length > 10 ? px(242) : px(250);
     hand.forEach((card, index) => drawPlayingCard(ctx, card,
       startX + index * (cardW + gap), y, cardW, cardH, scale, {
-        small: true, premium
+        small: true, premium, index: index + 1
       }));
   }
 
@@ -321,17 +349,21 @@ function renderHand(ctx, width, height, scale, data) {
     px(78), commandY + px(18), scale, {
       size: 16, weight: 900, color: data.isTurn ? "#ffd34f" : "#e7d4a9"
     });
-  drawText(ctx, "Đánh lẻ: 4r     •     Đôi: doi 4     •     Sảnh: sanh 4567",
-    px(78), commandY + px(58), scale, {
-      size: 13, weight: 800, color: "#f4ead1"
+  drawText(ctx, "Lẻ: 4r  •  Đôi: doi 4  •  Sám: sam 7  •  Sảnh: sanh 345",
+    px(78), commandY + px(55), scale, {
+      size: 12, weight: 900, color: "#fff0cf"
     });
-  drawText(ctx, "Tứ quý: tuquy 4     •     Bỏ lượt: bo / pass",
-    px(78), commandY + px(92), scale, {
-      size: 13, weight: 800, color: "#c0d9ca"
+  drawText(ctx, "Chọn số: chon 1,2  •  Gợi ý: goiy  •  Tự đánh: auto",
+    px(78), commandY + px(88), scale, {
+      size: 12, weight: 900, color: "#76f0cd"
     });
-  drawText(ctx, "BÍCH (b)  •  CHUỒN (ch)  •  RÔ (r)  •  CƠ (c)",
-    px(78), commandY + px(128), scale, {
-      size: 11, weight: 900, color: "#ffd34f"
+  drawText(ctx, "Tứ quý: tuquy 4  •  Đôi thông: 3dt / 4dt  •  Bỏ: bo",
+    px(78), commandY + px(120), scale, {
+      size: 11, weight: 800, color: "#c0d9ca"
+    });
+  drawText(ctx, "Thứ tự từ trái sang phải  •  b Bích  •  ch Chuồn  •  r Rô  •  c Cơ",
+    px(78), commandY + px(150), scale, {
+      size: 10, weight: 900, color: "#ffd34f"
     });
   drawText(ctx, room.practice
     ? "LUYỆN TẬP VS AI  •  KHÔNG TRỪ XU"
