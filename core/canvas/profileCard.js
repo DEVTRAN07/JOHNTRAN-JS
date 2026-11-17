@@ -5,8 +5,8 @@ const Jimp = require("jimp");
 const { loadImage } = require("canvas");
 const theme = require("./theme");
 
-const CYAN = "#d4af37";
-const GREEN = "#8fbf9f";
+const CYAN = "#55d6e8";
+const GREEN = "#59d9a8";
 const W = 750;
 
 async function circle(buffer) {
@@ -53,7 +53,7 @@ async function render(options = {}) {
     ctx.drawImage(avatar, avatarX, avatarY, avatarSize, avatarSize);
     ctx.restore();
   } else {
-    ctx.fillStyle = "rgba(212,175,55,.16)";
+    ctx.fillStyle = "rgba(85,214,232,.16)";
     ctx.beginPath();
     ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
     ctx.fill();
@@ -90,7 +90,7 @@ async function render(options = {}) {
     const row = Math.floor(index / columns);
     const x = pad + col * (cardWidth + gap);
     const y = detailsY + row * (rowHeight + gap);
-    theme.panel(ctx, x, y, cardWidth, rowHeight, S(10), "rgba(212,175,55,.36)");
+    theme.panel(ctx, x, y, cardWidth, rowHeight, S(10), "rgba(85,214,232,.30)");
     theme.label(ctx, String(pair[0] || "THÔNG TIN"), x + S(12), y + S(23), {
       size: 9, color: palette.mute
     });

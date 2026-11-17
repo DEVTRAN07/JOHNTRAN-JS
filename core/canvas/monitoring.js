@@ -3,7 +3,6 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const theme = require("./theme");
-const menuPalette = require("./menuPalette");
 const S = theme.S;
 const W = theme.WIDTH;
 const PAD = 28;
@@ -113,7 +112,7 @@ function saveFrame(canvas) {
 
 function renderStatsCard(data = {}) {
   theme.initFonts();
-  const p = menuPalette.getPalette(), daily = data.daily || {}, latency = data.latency || {};
+  const p = theme.getCardPalette(), daily = data.daily || {}, latency = data.latency || {};
   const top = (data.topCommands || []).slice(0, 5).map((v, i) => ({ left: (i + 1) + ". " + v[0], right: v[1] + " lần" }));
   const slow = (data.slowCommands || []).slice(0, 5).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
   const handlers = (data.slowHandlers || []).slice(0, 5).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
@@ -153,7 +152,7 @@ function renderStatsCard(data = {}) {
 
 function renderJobsCard(data = {}) {
   theme.initFonts();
-  const p = menuPalette.getPalette(), q = data.global || {};
+  const p = theme.getCardPalette(), q = data.global || {};
   const lanes = (data.lanes || []).slice(0, 12), workers = (data.workers || []).slice(0, 8);
   const caches = (data.caches || []).slice(0, 10);
   const laneRows = lanes.length ? lanes : [{ empty: true }];

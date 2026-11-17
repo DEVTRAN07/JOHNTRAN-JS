@@ -27,6 +27,8 @@ test("menu color themes stay isolated from non-menu Canvas cards", t => {
   assert.equal(theme.PALETTE.bg0, originalBackground);
   assert.equal(theme.PALETTE.accent, "#55d6e8");
   assert.equal(theme.PALETTE.bg0, "#06131f");
+  assert.equal(theme.getCardPalette().accent, "#55d6e8", "non-menu cards keep their ocean accent when /theme changes");
+  assert.equal(theme.getCardPalette().background[0], "#06131f");
   const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
   const legacyProfile = fs.readFileSync(require.resolve("../core/canvas/profile"), "utf8");
   const macWindow = fs.readFileSync(require.resolve("../core/canvas/macWindow"), "utf8");
@@ -98,8 +100,9 @@ test("profile and generic cards render as standalone Zalo attachments", async ()
     const genericImage = await loadImage(fs.readFileSync(genericPath));
     assert.equal(profileImage.width, theme.WIDTH);
     assert.equal(genericImage.width, theme.WIDTH);
-    assert.ok(profileImage.height > 300 && profileImage.height < 600, "profile output must not include the extra desktop chrome");
-    assert.ok(genericImage.height > 300 && genericImage.height < 520, "generic output must be saved at its designed height");
+    const scale = theme.WIDTH / 750;
+    assert.ok(profileImage.height > 300 * scale && profileImage.height < 600 * scale, "profile output must not include the extra desktop chrome");
+    assert.ok(genericImage.height > 300 * scale && genericImage.height < 520 * scale, "generic output must be saved at its designed height");
 
     const genericCanvas = createCanvas(genericImage.width, genericImage.height);
     const genericContext = genericCanvas.getContext("2d");

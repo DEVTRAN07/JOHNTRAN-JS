@@ -4,7 +4,6 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const theme = require("./theme");
-const menuPalette = require("./menuPalette");
 
 const S = theme.S;
 const W = theme.WIDTH;
@@ -87,7 +86,7 @@ function saveCard(canvas) {
 
 function renderEventSettings(data = {}) {
   theme.initFonts();
-  const palette = menuPalette.getPalette();
+  const palette = theme.getCardPalette();
   const mode = data.mode === "hosts" ? "hosts" : "status";
   const events = Array.isArray(data.events) ? data.events.slice(0, 12) : [];
   const hosts = Array.isArray(data.hosts) ? data.hosts.slice(0, 24) : [];
@@ -164,7 +163,7 @@ function renderEventSettings(data = {}) {
 
 function renderThemeSettings(data = {}) {
   theme.initFonts();
-  const palette = menuPalette.getPalette();
+  const palette = theme.getCardPalette();
   const presets = Array.isArray(data.presets) ? data.presets.slice(0, 8) : [];
   const rows = Math.max(1, Math.ceil(presets.length / 2));
   const bodyHeight = S(220 + rows * 118);
@@ -216,7 +215,7 @@ function renderThemeSettings(data = {}) {
 
 function renderAdminCard(data = {}) {
   theme.initFonts();
-  const palette = menuPalette.getPalette();
+  const palette = theme.getCardPalette();
   const sections = Array.isArray(data.sections) ? data.sections : [];
   const layouts = sections.map(section => {
     const items = Array.isArray(section.items) && section.items.length
@@ -273,7 +272,7 @@ function renderAdminCard(data = {}) {
 
 function renderAntiProtectionCard(data = {}) {
   theme.initFonts();
-  const palette = menuPalette.getPalette();
+  const palette = theme.getCardPalette();
   const items = Array.isArray(data.items) ? data.items.slice(0, 8) : [];
   const columns = 2;
   const rows = Math.max(1, Math.ceil(items.length / columns));

@@ -501,7 +501,7 @@ async function renderFolderCard({
   const H = Math.round(W * 540 / 1280);
   const result = theme.newCanvas(W, H);
   const ctx = result.ctx;
-  const palette = menuPalette.getPalette();
+  const palette = theme.getCardPalette();
 
   paintBackdrop(ctx, W, H, palette);
 

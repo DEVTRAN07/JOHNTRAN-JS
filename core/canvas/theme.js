@@ -296,6 +296,33 @@ function text(ctx, value, x, y, options = {}) {
   ctx.textAlign = "left";
 }
 
+function rgba(hex, alpha) {
+  const value = String(hex || "#55d6e8").replace("#", "");
+  const red = parseInt(value.slice(0, 2), 16);
+  const green = parseInt(value.slice(2, 4), 16);
+  const blue = parseInt(value.slice(4, 6), 16);
+  return "rgba(" + red + "," + green + "," + blue + "," + alpha + ")";
+}
+
+function getCardPalette() {
+  ensureTheme();
+  const accent = PALETTE.accent;
+  return {
+    background: [PALETTE.bg0, PALETTE.bg1, PALETTE.bg2, "#071a29"],
+    panel: [mixHex(PALETTE.bg2, "#ffffff", 0.045), mixHex(PALETTE.bg1, PALETTE.bg0, 0.16)],
+    card: [mixHex(PALETTE.bg1, "#ffffff", 0.035), mixHex(PALETTE.bg0, PALETTE.bg1, 0.22)],
+    footer: [mixHex(PALETTE.bg1, PALETTE.bg0, 0.28), PALETTE.bg0],
+    accent,
+    border: rgba(accent, 0.62),
+    cardBorder: rgba(accent, 0.44),
+    glow: [rgba(accent, 0.2), rgba(accent, 0.1)],
+    infoFill: rgba(accent, 0.11),
+    infoBorder: rgba(accent, 0.62),
+    text: PALETTE.ink,
+    muted: PALETTE.ink2
+  };
+}
+
 function newCanvas(width, height) {
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
@@ -326,6 +353,6 @@ function save(canvas, prefix) {
 module.exports = {
   PALETTE, WIDTH, S, font, FONT_FAMILIES, initFonts, roundRect, truncate,
   paintBackground, panel, button, text, newCanvas, save, foil, label,
-  THEME_STYLE, randomAccent, RANDOM_ACCENTS,
+  THEME_STYLE, randomAccent, RANDOM_ACCENTS, getCardPalette,
   reload: resolveTheme, ensureTheme, sanitizeGlyphs, mixHex
 };

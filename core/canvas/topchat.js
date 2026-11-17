@@ -19,8 +19,8 @@ function drawAvatar(ctx, item, x, y, size) {
     ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height);
   } else {
     const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
-    gradient.addColorStop(0, "#443719");
-    gradient.addColorStop(1, "#18140c");
+    gradient.addColorStop(0, "#123d55");
+    gradient.addColorStop(1, "#0b2638");
     ctx.fillStyle = gradient;
     ctx.fillRect(x, y, size, size);
     ctx.font = theme.font(Math.max(14, size / S(2.7)), "JT-Bold");
@@ -45,7 +45,7 @@ function drawRankCard(ctx, item, rank, x, y, width, height, featured = false) {
   const S = theme.S;
   const palette = theme.PALETTE;
   theme.panel(ctx, x, y, width, height, S(featured ? 13 : 10),
-    rank === 0 ? palette.accent : "rgba(212,175,55,.34)");
+    rank === 0 ? palette.accent : "rgba(85,214,232,.34));
 
   if (featured) {
     theme.label(ctx, "TOP " + String(rank + 1).padStart(2, "0"), x + S(13), y + S(19), {
