@@ -11,6 +11,9 @@ const wallet = require("./tlmn")._test;
 const locks = new Map();
 const cleanupTimers = new Map();
 const messageCards = new Map();
+const START_COUNTDOWN_MS = 10_000;
+const startCountdownTimers = new Map();
+const COUNTDOWN_CLOCKS = ["🕙", "🕘", "🕗", "🕖", "🕕", "🕔", "🕓", "🕒", "🕑", "🕐", "⏰"];
 
 module.exports.config = {
   name: "sam",
@@ -173,9 +176,11 @@ async function sendPrivateHand(api, room, player, hand, turn = false) {
 }
 
 function roomCaption(room, notice = "") {
+  const countdownSeconds = Number(room.startCountdownAt) > 0
+    ? Math.max(0, Math.ceil((Number(room.startCountdownAt) - Date.now()) / 1000)) : 0;
   const lines = [
     "🃏 SÂM LỐC  •  JOHNTRAN",
-    "Bàn #" + room.id + "  |  " + (room.status === "waiting" ? "ĐANG CHỜ" : room.status === "playing" ? "ĐANG CHƠI" : "KẾT THÚC"),
+    "Bàn #" + room.id + "  |  " + (countdownSeconds > 0 ? "ĐANG ĐẾM NGƯỢC" : room.status === "waiting" ? "ĐANG CHỜ" : room.status === "playing" ? "ĐANG CHƠI" : "KẾT THÚC"),
     "Cược: " + Number(room.bet || 300).toLocaleString("vi-VN") + " xu/người",
     "Người chơi: " + room.players.map((player, index) => {
       const turn = player.uid === room.turnUid ? " ▶" : "";
@@ -198,8 +203,9 @@ function roomCaption(room, notice = "") {
     const blocker = room.players.find(p => p.uid === room.samBlockedByUid)?.name || "Đối thủ";
     lines.push("💥 LỦNG SÂM: " + caller + " bị " + blocker + " chặn!");
   }
+  if (countdownSeconds > 0) lines.push("", "⏱️ TRẬN ĐẤU BẮT ĐẦU SAU: " + countdownSeconds + " GIÂY", "Không thể vào/rời bàn trong thời gian đếm ngược.");
   if (notice) lines.push("", notice);
-  if (room.status === "waiting") lines.push("", "Vào bàn: !sam go hoặc !sam join " + room.id, "Chủ bàn gõ !sam start khi đủ người.");
+  if (room.status === "waiting" && countdownSeconds === 0) lines.push("", "Vào bàn: !sam go hoặc !sam join " + room.id, "Chủ bàn gõ !sam start khi đủ người.");
   if (room.status === "playing") lines.push("", "Lượt hiện tại: " +
     (room.players.find(p => p.uid === room.turnUid)?.name || "Người chơi"),
   "Nhập mã lá, chon 1,2, pass hoặc baosam.");
@@ -428,7 +434,9 @@ async function createOrJoin(context) {
   let current = await restoreRoom(Threads, threadId);
   if (current?.status === "waiting") {
     const joined = game.joinWaiting(threadId, { uid, name });
-    if (!joined.ok) return sendText(api, event, "⚠️ Không thể vào bàn Sâm.");
+    if (!joined.ok) return sendText(api, event, joined.code === "STARTING"
+    ? "⏱️ Bàn Sâm đang đếm ngược, không thể tham gia giữa chừng."
+    : "⚠️ Không thể vào bàn Sâm.");
     await persistRoom(Threads, threadId);
     return sendGroupRoom(api, event, joined.room,
       joined.alreadyJoined ? "✅ Bạn đã có trong bàn." : "✅ " + name + " đã tham gia.");
@@ -466,6 +474,7 @@ async function joinRoom(context, code) {
       ROOM_NOT_FOUND: "⚠️ Không tìm thấy bàn Sâm.",
       WRONG_GROUP: "⚠️ Mã bàn này thuộc nhóm khác.",
       NOT_WAITING: "⚠️ Bàn đã bắt đầu hoặc đã đóng.",
+      STARTING: "⏱️ Bàn Sâm đang đếm ngược, không thể tham gia giữa chừng.",
       FULL: "⚠️ Bàn Sâm đã đủ 4 người."
     };
     return sendText(api, event, messages[joined.code] || "⚠️ Không thể tham gia bàn Sâm.");
@@ -627,23 +636,159 @@ async function finishGame(context, room, notice = "") {
   cleanupTimers.set(room.threadId, cleanup);
 }
 
+function clearStartCountdownTimer(threadId) {
+  const key = String(threadId || "");
+  const timer = startCountdownTimers.get(key);
+  if (timer) clearTimeout(timer);
+  startCountdownTimers.delete(key);
+}
+
+function countdownReactionIcon(remainingSeconds) {
+  const index = Math.max(0, Math.min(10, 10 - Number(remainingSeconds || 0)));
+  return COUNTDOWN_CLOCKS[index];
+}
+
+async function reactStartCountdown(api, room, remainingSeconds) {
+  const target = room?.startCountdownMessage;
+  const rawApi = getRawApi(api);
+  if (!target?.msgId || !target?.cliMsgId || typeof rawApi?.addReaction !== "function") return false;
+  try {
+    await rawApi.addReaction(
+      { rType: 0, source: 6, icon: countdownReactionIcon(remainingSeconds) },
+      {
+        data: { msgId: String(target.msgId), cliMsgId: String(target.cliMsgId) },
+        threadId: String(room.threadId),
+        type: ThreadType.Group
+      }
+    );
+    return true;
+  } catch (error) {
+    console.warn("[SAM_START_REACTION]", error?.message || error);
+    return false;
+  }
+}
+
+async function completeStartCountdown(context, room) {
+  const { api, event, Users, Threads } = context;
+  const threadId = String(room?.threadId || event?.threadId || "");
+  const current = game.get(threadId);
+  if (!current || current !== room || current.status !== "waiting" ||
+      Number(current.startCountdownAt) > 0) return false;
+
+  const starterUid = String(current.startCountdownBy || current.ownerId);
+  const started = game.start(threadId, starterUid);
+  if (!started.ok) {
+    const refunded = await refundSamWallets(Users, current, Threads);
+    await persistRoom(Threads, threadId);
+    await sendText(api, event, refunded
+      ? "⚠️ Không thể bắt đầu bàn Sâm; xu ký quỹ đã được hoàn."
+      : "⚠️ Không thể bắt đầu bàn Sâm; khoản hoàn cược đang đồng bộ. Bàn được giữ lại để đối soát.");
+    return false;
+  }
+
+  const state = started.state;
+  const failed = await distributeHands(api, state);
+  if (failed.length) {
+    await recallRoomCards(api, state);
+    state.cancelPending = true;
+    if (!await persistRoom(Threads, threadId)) {
+      await sendText(api, event,
+        "⚠️ Không gửi được bài riêng cho " + failed.join(", ") +
+        ". Database chưa lưu được yêu cầu hủy; bàn được giữ để đối soát an toàn.");
+      return false;
+    }
+    const refunded = await refundSamWallets(Users, state, Threads);
+    if (!refunded) {
+      await persistRoom(Threads, threadId);
+      await sendText(api, event,
+        "⚠️ Không gửi được bài riêng cho " + failed.join(", ") +
+        ". Khoản cược chưa hoàn xong; bàn được giữ để bot tiếp tục đối soát.");
+      return false;
+    }
+    game.stop(threadId, starterUid);
+    game.removeRoom(threadId);
+    await persistRoom(Threads, threadId);
+    await sendText(api, event,
+      "🚫 Không gửi được bài riêng cho " + failed.join(", ") +
+      ". Đã hủy ván và hoàn cược để bảo vệ bài. Người chơi hãy mở chat riêng với Bot rồi nhắn Bot trước.");
+    return false;
+  }
+
+  if (started.finished) {
+    await finishGame(context, state);
+    return true;
+  }
+  await persistRoom(Threads, threadId);
+  await sendGroupRoom(api, event, game.snapshot(state),
+    "🎮 Đã chia đúng 10 lá cho mỗi người. " +
+    (state.previousWinnerUid && state.players.some(item => item.uid === state.previousWinnerUid)
+      ? "Người thắng ván trước được mở đầu." : "Người mở đầu được chọn ngẫu nhiên."));
+  scheduleTurn(context, state);
+  return true;
+}
+
+function scheduleStartCountdown(context, room) {
+  const threadId = String(room?.threadId || "");
+  const deadline = Number(room?.startCountdownAt);
+  if (!threadId || !Number.isFinite(deadline) || deadline <= 0) return false;
+  clearStartCountdownTimer(threadId);
+  let lastRemaining = -1;
+
+  const tick = () => {
+    const current = game.get(threadId);
+    if (!current || current !== room || current.status !== "waiting" ||
+        Number(current.startCountdownAt) !== deadline) {
+      clearStartCountdownTimer(threadId);
+      return;
+    }
+    const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    if (remaining !== lastRemaining) {
+      lastRemaining = remaining;
+      void reactStartCountdown(context.api, current, remaining);
+    }
+    if (remaining <= 0) {
+      startCountdownTimers.delete(threadId);
+      withRoomLock(threadId, async () => {
+        const latest = game.get(threadId);
+        if (!latest || latest !== room || latest.status !== "waiting" ||
+            Number(latest.startCountdownAt) !== deadline) return;
+        latest.startCountdownAt = null;
+        latest.startCountdownBy = null;
+        latest.startCountdownMessage = null;
+        await completeStartCountdown(context, latest);
+      }).catch(error => console.error("[SAM_START_COUNTDOWN]", error?.stack || error));
+      return;
+    }
+    const nextBoundary = deadline - (remaining - 1) * 1000;
+    const delay = Math.max(50, Math.min(1000, nextBoundary - Date.now()));
+    const timer = setTimeout(tick, delay);
+    timer.unref?.();
+    startCountdownTimers.set(threadId, timer);
+  };
+
+  tick();
+  return true;
+}
+
 async function startRoom(context) {
-  const { api, event, Threads } = context;
+  const { api, event, Users, Threads } = context;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
   const room = await restoreRoom(Threads, threadId);
   if (!room || room.status !== "waiting") return sendText(api, event, "⚠️ Không có bàn Sâm đang chờ.");
   if (room.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ bàn mới được bắt đầu.");
+  if (Number(room.startCountdownAt) > 0) return sendText(api, event, "⏱️ Bàn Sâm đang đếm ngược. Vui lòng chờ đồng hồ về 0.");
   if (room.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi.");
+
   const stake = Math.max(100, Math.floor(Number(room.stake) || 300));
   room.stake = stake;
-  room.bet = 1000; // Wallet helper validates the base game bet; reservePerPlayer carries the Sâm risk cap.
+  room.bet = 1000;
   room.reservePerPlayer = 250 * stake;
   room.locked ||= {};
   room.lockPending ||= {};
   room.lockTransactionId ||= room.gameToken || room.id;
   const reserved = await wallet.reserveRoomWallets(
-    context.Users, room, () => persistRoom(Threads, threadId)
+    Users, room, () => persistRoom(Threads, threadId)
   );
   if (!reserved.ok) {
     return sendText(api, event, reserved.storageError
@@ -652,49 +797,34 @@ async function startRoom(context) {
         " không đủ xu. Cần giữ " + (reserved.required || room.bet * (room.players.length - 1)).toLocaleString("vi-VN") +
         " xu để đảm bảo thanh toán thối/chặt.");
   }
-  const started = game.start(threadId, uid);
-  if (!started.ok) {
-    const refunded = await refundSamWallets(context.Users, room, Threads);
+
+  game.clearTimer?.(threadId);
+  room.startCountdownAt = Date.now() + START_COUNTDOWN_MS;
+  room.startCountdownBy = uid;
+  room.startCountdownMessage = null;
+  if (!await persistRoom(Threads, threadId)) {
+    clearStartCountdownTimer(threadId);
+    room.startCountdownAt = null;
+    room.startCountdownBy = null;
+    const refunded = await refundSamWallets(Users, room, Threads);
     await persistRoom(Threads, threadId);
     return sendText(api, event, refunded
-      ? "⚠️ Không thể bắt đầu bàn Sâm; xu cược đã được hoàn."
-      : "⚠️ Không thể bắt đầu bàn Sâm; khoản hoàn cược đang đồng bộ. Bàn được giữ lại để đối soát.");
+      ? "⚠️ Không lưu được đồng hồ bắt đầu. Ván chưa chạy và xu ký quỹ đã được hoàn."
+      : "⚠️ Không lưu được đồng hồ bắt đầu; khoản hoàn cược đang chờ đối soát.");
   }
-  const state = started.state;
-  const failed = await distributeHands(api, state);
-  if (failed.length) {
-    await recallRoomCards(api, state);
-    state.cancelPending = true;
-    if (!await persistRoom(Threads, threadId)) {
-      return sendText(api, event,
-        "⚠️ Không gửi được bài riêng cho " + failed.join(", ") +
-        ". Database chưa lưu được yêu cầu hủy; bàn được giữ nguyên để đối soát an toàn.");
-    }
-    const refunded = await refundSamWallets(context.Users, state, Threads);
-    if (!refunded) {
-      await persistRoom(Threads, threadId);
-      return sendText(api, event,
-        "⚠️ Không gửi được bài riêng cho " + failed.join(", ") +
-        ". Khoản cược chưa hoàn xong; bàn được giữ để bot tiếp tục đối soát, không mở ván mới.");
-    }
-    game.stop(threadId, uid);
-    game.removeRoom(threadId);
-    await persistRoom(Threads, threadId);
-    return sendText(api, event,
-      "🚫 Không gửi được bài riêng cho " + failed.join(", ") +
-      ". Đã hủy ván và hoàn cược để bảo vệ bài. Người chơi hãy mở chat riêng với Bot và nhắn Bot trước.");
-  }
-  if (started.finished) {
-    await finishGame(context, state);
-    return;
-  }
-  await persistRoom(Threads, threadId);
-  await sendGroupRoom(api, event, game.snapshot(state), "🎮 Đã chia đúng 10 lá cho mỗi người. " +
-    (state.previousWinnerUid && state.players.some(item => item.uid === state.previousWinnerUid)
-      ? "Người thắng ván trước được mở đầu." : "Người mở đầu được chọn ngẫu nhiên."));
-  scheduleTurn(context, state);
-}
 
+  let response = null;
+  try {
+    response = await sendGroupRoom(api, event, game.snapshot(room),
+      "⏱️ CHỦ PHÒNG ĐÃ BẤM START! Bàn đã mở, trận đấu bắt đầu sau 10 giây. Đồng hồ reaction sẽ đếm ngược; hãy chuẩn bị nhận bài.");
+  } catch (error) {
+    console.error("[SAM_START_COUNTDOWN_CARD]", error?.message || error);
+  }
+  room.startCountdownMessage = responseTargets(response)[0] || null;
+  await persistRoom(Threads, threadId);
+  scheduleStartCountdown(context, room);
+  return true;
+}
 async function doPlay(context, input) {
   const { api, event, Threads } = context;
   const threadId = String(event?.threadId || "");
@@ -824,6 +954,10 @@ async function leaveRoom(context) {
   const { api, event, Threads } = context;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
+  const countdownRoom = game.get(threadId);
+  if (Number(countdownRoom?.startCountdownAt) > 0) {
+    return sendText(api, event, "⏱️ Bàn Sâm đang đếm ngược. Không thể rời bàn lúc này; chủ phòng có thể dùng !sam stop để hủy.");
+  }
   const result = game.leave(threadId, uid);
   if (!result.ok) return sendText(api, event, "⚠️ Bạn không có trong bàn Sâm.");
   if (result.cancelled) {
@@ -861,6 +995,9 @@ async function runCommand(context) {
   const rest = args.slice(1).map(String);
   const prefix = global.config?.prefix || "!";
   const activeRoom = game.get(threadId);
+  if (Number(activeRoom?.startCountdownAt) > 0 && !["stop", "info", "status", "help"].includes(action)) {
+    return sendText(api, event, "⏱️ Bàn Sâm đang đếm ngược. Chỉ chủ phòng có thể dùng !sam stop để hủy.");
+  }
   if (activeRoom?.cancelPending && !["stop", "info", "status", "help"].includes(action)) {
     return sendText(api, event, "⏳ Bàn Sâm đang hoàn cược/đối soát an toàn. Tạm khóa nước đi và thử lại sau.");
   }
@@ -888,6 +1025,10 @@ async function runCommand(context) {
       await persistRoom(Threads, event.threadId);
       return sendText(api, event, "ℹ️ Ván Sâm đã được quyết toán, không cần hủy.");
     }
+    clearStartCountdownTimer(event.threadId);
+    room.startCountdownAt = null;
+    room.startCountdownBy = null;
+    room.startCountdownMessage = null;
     if (room.status === "playing") {
       room.cancelPending = true;
       if (!await persistRoom(Threads, event.threadId)) {
@@ -980,7 +1121,8 @@ module.exports.handleIncoming = context => withRoomLock(
 );
 module.exports._test = {
   privateDestination, roomCaption, gameConflict, help, sendPrivateHand,
-  recallRoomCards, createOrJoin, joinRoom, startRoom, doPlay, doPass, callSam, runCommand,
+  recallRoomCards, createOrJoin, joinRoom, startRoom, scheduleStartCountdown,
+  completeStartCountdown, countdownReactionIcon, reactStartCountdown, doPlay, doPass, callSam, runCommand,
   settleSamWallets, refundSamWallets
 };
 
@@ -994,6 +1136,40 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
     if (!room) continue;
     const event = { threadId, type: ThreadType.Group, data: {} };
     const context = { api, Users, Threads, event };
+
+    if (room.status === "waiting" && Number(room.startCountdownAt) > 0) {
+      const requiredLock = 250 * Math.max(100, Math.floor(Number(room.stake) || 300));
+      const reconciled = await wallet.reconcilePendingReservations(
+        Users, room, () => persistRoom(Threads, threadId)
+      );
+      const escrowValid = reconciled &&
+        Object.keys(room.lockPending || {}).length === 0 &&
+        Object.keys(room.locked || {}).length === room.players.length &&
+        room.players.every(player => Number(room.locked[player.uid]) === requiredLock);
+      if (!escrowValid) {
+        clearStartCountdownTimer(threadId);
+        room.startCountdownAt = null;
+        room.startCountdownBy = null;
+        room.startCountdownMessage = null;
+        const refunded = await refundSamWallets(Users, room, Threads);
+        await persistRoom(Threads, threadId);
+        await sendText(api, event, refunded
+          ? "⚠️ Đếm ngược Sâm bị hủy sau khi bot khởi động lại vì ký quỹ không khớp. Xu đã được hoàn."
+          : "⚠️ Ký quỹ Sâm chưa khớp sau restart. Bàn được giữ để tiếp tục đối soát.");
+        if (!refunded) scheduleLobbyCleanup(context, room, 60 * 1000);
+        else scheduleLobbyCleanup(context, room);
+        continue;
+      }
+      if (!room.startCountdownMessage) {
+        const response = await sendGroupRoom(api, event, game.snapshot(room),
+          "🔄 Bot đã khôi phục đồng hồ Sâm. Trận đấu sẽ bắt đầu sau " +
+          Math.max(0, Math.ceil((Number(room.startCountdownAt) - Date.now()) / 1000)) + " giây.");
+        room.startCountdownMessage = responseTargets(response)[0] || null;
+        await persistRoom(Threads, threadId);
+      }
+      scheduleStartCountdown(context, room);
+      continue;
+    }
 
     if (room.status === "waiting") {
       // A crash may happen after a reservation is debited but before start() is persisted.
