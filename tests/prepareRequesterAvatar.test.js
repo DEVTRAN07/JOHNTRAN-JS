@@ -83,6 +83,34 @@ test("Canvas worker preloads topchat, status and group avatars before render", a
   }
 });
 
+test("TLMN canvas preloads the avatars for players seated at the table", async () => {
+  const original = avatarCache.warmAvatar;
+  const calls = [];
+  avatarCache.warmAvatar = async (url, options) => {
+    calls.push({ url, options });
+    return { width: 10, height: 10 };
+  };
+  try {
+    const result = await prepareCanvasAvatars("tlmn", {
+      room: {
+        players: [
+          { uid: "p1", avatarUrl: "https://cdn.example/p1.jpg" },
+          { uid: "p2", avatarUrl: "https://cdn.example/p2.jpg" },
+          { uid: "ai", ai: true, avatarUrl: "https://cdn.example/ai.jpg" },
+          { uid: "p3", avatarUrl: "" }
+        ]
+      }
+    });
+    assert.deepEqual(result, { requested: 2, loaded: 2 });
+    assert.deepEqual(calls.map(item => item.url), [
+      "https://cdn.example/p1.jpg",
+      "https://cdn.example/p2.jpg"
+    ]);
+  } finally {
+    avatarCache.warmAvatar = original;
+  }
+});
+
 test("avatar URL collection ignores missing entries and deduplicates repeated avatars", () => {
   assert.deepEqual(
     collectAvatarUrls("topchat", {
