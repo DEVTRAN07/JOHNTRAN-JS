@@ -132,7 +132,7 @@ async function sendPrivateHand(api, room, player, hand, turn = false) {
     turn ? "🎯 ĐẾN LƯỢT BẠN." : "🔒 Bài này chỉ bạn nhìn thấy.",
     "",
     "Lệnh: chon 1,2 • doi 7 • sam 9 • tuquy 5 • sanh 345 • pass",
-    "Báo Sâm trước nước đánh đầu tiên: baosam"
+    "Báo Sâm trước nước đầu tiên: baosam (người báo được đánh trước)"
   ].filter(Boolean).join("\n");
   const key = "sam-hand:" + room.id + ":" + player.uid;
   const rawApi = getRawApi(api);
@@ -594,7 +594,8 @@ async function callSam(context) {
   await persistRoom(Threads, threadId);
   const player = result.state.players.find(item => item.uid === uid);
   await sendGroupRoom(api, event, result.room,
-    "🔥 " + (player?.name || "Người chơi") + " đã BÁO SÂM! Đánh hết 10 lá mà không bị chặn để thắng.");
+    "🔥 " + (player?.name || "Người chơi") +
+      " đã BÁO SÂM và giành lượt mở đầu! Đánh hết 10 lá mà không bị chặn để thắng.");
   if (player) await sendPrivateHand(
     api, result.state, player, result.state.hands[uid] || [], result.state.turnUid === uid
   );
