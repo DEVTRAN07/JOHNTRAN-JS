@@ -309,13 +309,13 @@ function canBeat(candidate, current) {
   }
 
   const targetIsTwo = current.type === "single" && current.mainRank === 15;
-  const targetIsTwoPair = current.type === "pair" && current.mainRank === 15;
-  if (candidate.type === "pairRun" && candidate.length >= 3 && targetIsTwo) return true;
-  if (candidate.type === "fourKind" && (targetIsTwo || targetIsTwoPair ||
+  if (candidate.type === "pairRun" && candidate.length === 3 &&
+      (targetIsTwo || (current.type === "pairRun" && current.length === 3))) return true;
+  if (candidate.type === "fourKind" && (targetIsTwo ||
       (current.type === "pairRun" && current.length === 3))) return true;
   if (candidate.type === "pairRun" && candidate.length >= 4 &&
-      (targetIsTwo || targetIsTwoPair || current.type === "fourKind" ||
-       (current.type === "pairRun" && current.length === 3))) return true;
+      (targetIsTwo || current.type === "fourKind" ||
+       (current.type === "pairRun" && current.length >= 3))) return true;
   return false;
 }
 
