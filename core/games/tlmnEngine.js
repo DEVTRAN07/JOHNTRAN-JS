@@ -391,10 +391,30 @@ function detectWhiteHand(hand) {
 
 function whiteHandHighCard(hand, type) {
   const cards = sortHand(hand);
+  const counts = new Map();
+  for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
+  if (type === "dragonStraight") return cards.filter(card => card.rank === 14).slice(-1)[0] || null;
+  if (type === "fourTwos") return cards.filter(card => card.rank === 15).slice(-1)[0] || null;
+  if (type === "twelveSameSuit") {
+    const suit = ["b", "ch", "r", "c"].find(code =>
+      cards.filter(card => card.suit === code).length >= 12);
+    return cards.filter(card => card.suit === suit).slice(-1)[0] || null;
+  }
+  if (type === "fourTriples" || type === "twoFourKinds") {
+    const minimum = type === "fourTriples" ? 3 : 4;
+    const rank = [...counts.entries()].filter(([, count]) => count >= minimum)
+      .map(([value]) => value).sort((a, b) => b - a)[0];
+    return rank == null ? null : cards.filter(card => card.rank === rank).slice(-1)[0] || null;
+  }
+  if (type === "sixPairs") {
+    const rank = [...counts.entries()].filter(([, count]) => count >= 2)
+      .map(([value]) => value).sort((a, b) => b - a)[0];
+    return rank == null ? null : cards.filter(card => card.rank === rank).slice(-1)[0] || null;
+  }
   if (type === "sixPairRun" || type === "fivePairRun") {
     const length = type === "sixPairRun" ? 6 : 5;
-    const paired = [...new Set(cards.filter(card => card.rank !== 15 &&
-      cards.filter(other => other.rank === card.rank).length >= 2).map(card => card.rank))].sort((a, b) => a - b);
+    const paired = [...counts.entries()].filter(([rank, count]) => rank !== 15 && count >= 2)
+      .map(([rank]) => rank).sort((a, b) => a - b);
     let highest = null;
     for (let i = 0; i <= paired.length - length; i += 1) {
       const run = paired.slice(i, i + length);
@@ -402,7 +422,7 @@ function whiteHandHighCard(hand, type) {
         highest = Math.max(highest || 0, run[run.length - 1]);
       }
     }
-    if (highest) return cards.filter(card => card.rank === highest).sort(compareCards).slice(-1)[0];
+    if (highest) return cards.filter(card => card.rank === highest).slice(-1)[0] || null;
   }
   return cards[cards.length - 1] || null;
 }
