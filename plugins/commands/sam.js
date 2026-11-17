@@ -534,17 +534,25 @@ async function settleSamWallets(Users, room, Threads) {
         locked + net < 0) {
       return { ok: false, code: "INVALID_ESCROW", uid };
     }
-    const outcome = await wallet.changeWallet(
-      Users, uid, locked + net,
-      "sam-settle:" + String(room.gameToken || room.id) + ":" + uid,
-      { mutateData(data, current) {
-        current.games += 1;
-        if (uid === String(room.winnerUid)) current.wins += 1;
-        else current.losses += 1;
-        current.name = String(player.name || uid).slice(0, 40);
-        data.tlmn = current;
-      }}
-    );
+    let outcome;
+    try {
+      outcome = await wallet.changeWallet(
+        Users, uid, locked + net,
+        "sam-settle:" + String(room.gameToken || room.id) + ":" + uid,
+        { mutateData(data, current) {
+          current.games += 1;
+          if (uid === String(room.winnerUid)) current.wins += 1;
+          else current.losses += 1;
+          current.name = String(player.name || uid).slice(0, 40);
+          data.tlmn = current;
+        }}
+      );
+    } catch (error) {
+      room.settlementError = String(error?.message || error || "wallet write failed").slice(0, 300);
+      await persistRoom(Threads, room.threadId);
+      console.error("[SAM_SETTLEMENT]", error?.stack || error);
+      return { ok: false, code: "WALLET_CREDIT_FAILED", uid };
+    }
     if (!outcome.ok) return { ok: false, code: "WALLET_CREDIT_FAILED", uid };
     rows.push({
       uid, name: player.name, change: net,
@@ -577,7 +585,12 @@ async function finishGame(context, room, notice = "") {
   const { api, event, Threads, Users } = context;
   // Persist the terminal game state before touching wallets. Recovery can
   // safely retry the idempotent per-player settlement after a restart.
-  await persistRoom(Threads, room.threadId);
+  const persistedBeforeSettlement = await persistRoom(Threads, room.threadId);
+  if (!persistedBeforeSettlement) {
+    await sendText(api, event,
+      "⚠️ Database chưa xác nhận trạng thái kết thúc Sâm. Bot chưa chạm vào ví; dữ liệu được giữ để thử lại.");
+    return false;
+  }
   const settlement = await settleSamWallets(Users, room, Threads);
   if (!settlement.ok) {
     await persistRoom(Threads, room.threadId);
@@ -655,8 +668,11 @@ async function startRoom(context) {
   }
   const started = game.start(threadId, uid);
   if (!started.ok) {
-    await refundSamWallets(context.Users, room, Threads);
-    return sendText(api, event, "⚠️ Không thể bắt đầu bàn Sâm; đã hoàn cược.");
+    const refunded = await refundSamWallets(context.Users, room, Threads);
+    await persistRoom(Threads, threadId);
+    return sendText(api, event, refunded
+      ? "⚠️ Không thể bắt đầu bàn Sâm; xu cược đã được hoàn."
+      : "⚠️ Không thể bắt đầu bàn Sâm; khoản hoàn cược đang đồng bộ. Bàn được giữ lại để đối soát.");
   }
   const state = started.state;
   const failed = await distributeHands(api, state);
@@ -828,8 +844,9 @@ async function leaveRoom(context) {
     const refunded = await refundSamWallets(context.Users, result.state, Threads);
     if (!refunded) {
       await persistRoom(Threads, threadId);
+      scheduleLobbyCleanup({ api, event, Users: context.Users, Threads }, result.state, 60 * 1000);
       return sendText(api, event,
-        "⚠️ Chưa hoàn được khoản cược đang chờ; bàn vẫn được giữ để thử lại, chưa bị xóa.");
+        "⚠️ Chưa hoàn được khoản cược đang chờ; bàn vẫn được giữ và sẽ tự thử lại, chưa bị xóa.");
     }
     game.removeRoom(threadId);
     await persistRoom(Threads, threadId);
@@ -878,9 +895,15 @@ async function runCommand(context) {
       await persistRoom(Threads, event.threadId);
       return sendText(api, event, "ℹ️ Ván Sâm đã được quyết toán, không cần hủy.");
     }
+    if (room.status === "playing") {
+      room.cancelPending = true;
+      if (!await persistRoom(Threads, event.threadId)) {
+        return sendText(api, event, "⚠️ Database chưa lưu được yêu cầu hủy; ván vẫn được giữ nguyên.");
+      }
+    }
     if (!await refundSamWallets(context.Users, room, Threads)) {
       await persistRoom(Threads, event.threadId);
-      return sendText(api, event, "⚠️ Chưa hoàn cược được an toàn; bàn vẫn được giữ để thử lại.");
+      return sendText(api, event, "⚠️ Chưa hoàn cược được an toàn; bàn đã khóa nước đi và được giữ để thử lại.");
     }
     const stopped = game.stop(event.threadId, event.data?.uidFrom);
     if (!stopped.ok) return sendText(api, event, "⛔ Chỉ chủ bàn mới được hủy.");
