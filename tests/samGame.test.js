@@ -626,3 +626,76 @@ test("Sâm cóng with four 2s adds cóng, four individual heo penalties and one 
   assert.equal(settlement.net.a, 90000);
   assert.equal(settlement.transfers[0].amount, 90000);
 });
+
+
+test("Sâm compares simultaneous white hands of the same type by their highest qualifying card", () => {
+  const pairHand = ranks => ranks.flatMap(rank => [card(rank, "b"), card(rank, "r")]);
+  const lowPairs = pairHand([3, 4, 5, 6, 11]);
+  const highPairs = pairHand([3, 4, 5, 6, 12]);
+  assert.equal(engine.detectWhiteHand(lowPairs), "fivePairs");
+  assert.equal(engine.detectWhiteHand(highPairs), "fivePairs");
+  assert.ok(engine.compareWhiteHands(highPairs, "fivePairs", lowPairs, "fivePairs") < 0);
+
+  const triples = (topRank) => [
+    card(3), card(3, "ch"), card(3, "r"),
+    card(5), card(5, "ch"), card(5, "r"),
+    card(topRank), card(topRank, "ch"), card(topRank, "r"),
+    card(10)
+  ];
+  assert.ok(engine.compareWhiteHands(
+    triples(8), "threeTriples", triples(7), "threeTriples"
+  ) < 0);
+
+  const lowColor = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    .map((rank, index) => card(rank, index % 2 ? "ch" : "b"));
+  const highColor = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    .map((rank, index) => card(rank, index % 2 ? "ch" : "b"));
+  assert.equal(engine.detectWhiteHand(lowColor), "sameColor");
+  assert.equal(engine.detectWhiteHand(highColor), "sameColor");
+  assert.ok(engine.compareWhiteHands(highColor, "sameColor", lowColor, "sameColor") < 0);
+});
+
+test("Sâm resolves multiple white hands once, choosing the higher five-pair hand and paying only that winner", () => {
+  const threadId = "sam-white-hand-same-type";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81606", stake: 1000 });
+  assert.equal(created.ok, true);
+  game.join(threadId, "81606", { uid: "b", name: "B" });
+  game.join(threadId, "81606", { uid: "c", name: "C" });
+
+  const pairHand = (ranks, suits) => ranks.flatMap(rank =>
+    suits.map(suit => card(rank, suit))
+  );
+  const hands = {
+    a: pairHand([3, 4, 5, 6, 11], ["b", "r"]),
+    b: pairHand([3, 4, 5, 6, 12], ["ch", "c"]),
+    c: [
+      card(7, "b"), card(7, "r"), card(8, "b"), card(8, "ch"),
+      card(9, "r"), card(9, "c"), card(10, "b"),
+      card(13, "c"), card(14, "r"), card(15, "b")
+    ]
+  };
+
+  const originalDeal = engine.dealCards;
+  engine.dealCards = () => ({ hands, firstPlayerId: "a", remainingDeck: [] });
+  try {
+    const started = game.start(threadId, "a");
+    assert.equal(started.ok, true);
+    assert.equal(started.finished, true);
+    assert.deepEqual(started.state.whiteHand, { uid: "b", type: "fivePairs" });
+    assert.equal(started.state.winnerUid, "b");
+
+    const payouts = started.state.settlement.transfers.filter(item =>
+      item.reason === "white-hand-20x"
+    );
+    assert.deepEqual(payouts, [
+      { from: "a", to: "b", amount: 20000, reason: "white-hand-20x" },
+      { from: "c", to: "b", amount: 20000, reason: "white-hand-20x" }
+    ]);
+    assert.deepEqual(started.state.settlement.net, {
+      a: -20000, b: 40000, c: -20000
+    });
+  } finally {
+    engine.dealCards = originalDeal;
+    game.removeRoom(threadId);
+  }
+});
