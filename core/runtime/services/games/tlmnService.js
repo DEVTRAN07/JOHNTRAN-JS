@@ -525,7 +525,7 @@ function calculateSettlement(room) {
   }
   for (const event of room.chopEvents || []) add(event.from, event.to, event.amount, event.reason);
   for (const event of room.threeSpadesBlockEvents || []) {
-    add(event.from, event.to, event.amount, "chan-ket-ba-bich");
+    add(event.from, event.to, event.amount, "chan-ket-ba-bich", 0.05);
   }
   const net = Object.fromEntries(players.map(item => [String(item.uid), 0]));
   for (const transfer of transfers) {
