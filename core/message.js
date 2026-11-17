@@ -7,6 +7,9 @@ const crypto = require("crypto");
 
 const DEFAULT_AUTO_RECALL_MS = readRecallDelay(process.env.JT_AUTO_RECALL_MS, 60 * 1000);
 const MAX_RECALL_DELAY_MS = 2_147_483_647;
+const RECALL_COUNTDOWN_CLOCKS = Object.freeze([
+  "🕙", "🕘", "🕗", "🕖", "🕕", "🕔", "🕓", "🕒", "🕑", "🕐", "⏰"
+]);
 
 function readRecallDelay(value, fallback) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -36,6 +39,39 @@ function extractRecallOptions(input, fallbackDelay = DEFAULT_AUTO_RECALL_MS) {
   return { payload, delayMs };
 }
 
+function addRecallClock(api, message, threadId, type, icon) {
+  if (typeof api?.addReaction !== "function") return;
+  const destination = {
+    data: { msgId: String(message.msgId), cliMsgId: String(message.cliMsgId) },
+    threadId: String(threadId),
+    type
+  };
+  Promise.resolve()
+    .then(() => api.addReaction({ rType: 0, source: 6, icon }, destination))
+    .catch(error => logger.log(
+      "Không thể thả reaction đồng hồ cho tin sắp thu hồi: " + (error?.message || error),
+      "warn"
+    ));
+}
+
+function scheduleRecallCountdown(api, message, threadId, type, delayMs) {
+  if (!(delayMs > 0) || typeof api?.addReaction !== "function") return;
+  if (!message || (typeof message.msgId !== "number" && typeof message.msgId !== "string") ||
+      (typeof message.cliMsgId !== "number" && typeof message.cliMsgId !== "string")) return;
+
+  // At most ten updates per message so a busy group does not receive a
+  // reaction request every second for each short-lived bot reply.
+  addRecallClock(api, message, threadId, type, RECALL_COUNTDOWN_CLOCKS[0]);
+  const ticks = Math.min(10, Math.max(1, Math.floor(delayMs / 1000)));
+  for (let step = 1; step <= ticks; step += 1) {
+    const waitMs = Math.min(delayMs - 1,
+      Math.max(0, Math.round(delayMs * step / (ticks + 1))));
+    const icon = RECALL_COUNTDOWN_CLOCKS[Math.min(step, RECALL_COUNTDOWN_CLOCKS.length - 1)];
+    const timer = setTimeout(() => addRecallClock(api, message, threadId, type, icon), waitMs);
+    timer.unref?.();
+  }
+}
+
 function scheduleRecall(api, response, threadId, type, delayMs = DEFAULT_AUTO_RECALL_MS) {
   if (!(delayMs > 0)) return;
   const messages = [];
@@ -61,6 +97,7 @@ function scheduleRecall(api, response, threadId, type, delayMs = DEFAULT_AUTO_RE
       continue;
     }
 
+    scheduleRecallCountdown(api, message, threadId, type, delayMs);
     const timer = setTimeout(async () => {
       try {
         await api.undo({ msgId, cliMsgId }, threadId, type);
@@ -385,4 +422,4 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   return wrapped;
 }
 
-module.exports = { Reply, wrapApi, DEFAULT_AUTO_RECALL_MS, extractRecallOptions };
+module.exports = { Reply, wrapApi, DEFAULT_AUTO_RECALL_MS, extractRecallOptions, scheduleRecall, scheduleRecallCountdown };

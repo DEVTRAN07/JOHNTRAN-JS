@@ -399,6 +399,62 @@ test("Sâm báo một forces opponents to include their highest card", () => {
   game.removeRoom(threadId);
 });
 
+test("Sâm Báo 1 accepts any card of the highest rank even when suits differ", () => {
+  const threadId = "sam-bao-one-equal-rank";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81620", stake: 1000 });
+  game.join(threadId, "81620", { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.26); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = {
+    a: [card(8), card(15, "b"), card(15, "c")],
+    b: [card(7)]
+  };
+  room.turnUid = "a";
+  room.playedCount = 1;
+  room.playedByUid = {};
+  room.baoOneViolations = [];
+
+  const result = game.play(threadId, "a", "2b");
+  assert.equal(result.ok, true);
+  assert.equal(room.baoOneViolations.length, 0,
+    "Sâm compares only rank; either suit of the highest rank satisfies Báo 1");
+  game.removeRoom(threadId);
+});
+
+test("Sâm ends immediately when the first player empties their hand; everyone else loses", () => {
+  const threadId = "sam-first-finish-wins-only";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81621", stake: 1000 });
+  game.join(threadId, "81621", { uid: "b", name: "B" });
+  game.join(threadId, "81621", { uid: "c", name: "C" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.28); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = { a: [card(3)], b: [card(4), card(5)], c: [card(6), card(7)] };
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.playedCount = 0;
+  room.finishOrder = [];
+
+  const result = game.play(threadId, "a", "3b");
+  assert.equal(result.ok, true);
+  assert.equal(result.finished, true);
+  assert.equal(room.status, "finished");
+  assert.equal(room.winnerUid, "a");
+  assert.equal(room.results.filter(row => row.uid !== "a").length, 2);
+  assert.equal(room.turnUid, null);
+  game.removeRoom(threadId);
+});
+
 test("Sâm records a 15-stake transfer when a four-of-a-kind chops a two", () => {
   const threadId = "sam-chop-money";
   const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81603", stake: 5000 });

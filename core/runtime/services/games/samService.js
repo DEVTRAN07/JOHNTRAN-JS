@@ -274,9 +274,10 @@ function play(threadId, uid, input) {
   const oneCardOpponents = room.players.filter(item =>
     item.uid !== actor && room.hands[item.uid]?.length === 1
   );
-  const highestCard = engine.sortHand(hand).slice(-1)[0];
-  const ignoresHighest = oneCardOpponents.length && highestCard &&
-    !parsed.cards.some(card => card.id === highestCard.id);
+  const highestRank = hand.reduce((highest, card) =>
+    Math.max(highest, Number(card.rank) || 0), 0);
+  const ignoresHighest = oneCardOpponents.length && highestRank > 0 &&
+    !parsed.cards.some(card => Number(card.rank) === highestRank);
   const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo);
   if (!validation.ok) return validation;
 

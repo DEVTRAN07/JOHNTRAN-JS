@@ -109,6 +109,51 @@ test("bot messages are scheduled for recall after one minute", async () => {
 });
 
 
+test("every auto-recalled message gets a clock-face reaction countdown", async () => {
+  const originalSetTimeout = global.setTimeout;
+  const scheduled = [];
+  const reactions = [];
+  const undone = [];
+  global.setTimeout = (callback, delay) => {
+    scheduled.push({ callback, delay });
+    return { unref() {} };
+  };
+
+  try {
+    const api = {
+      async sendMessage() {
+        return {
+          message: { msgId: 31, cliMsgId: "clock-text" },
+          attachment: [{ msgId: 32, cliMsgId: "clock-image" }]
+        };
+      },
+      async addReaction(icon, destination) {
+        reactions.push({ icon, destination });
+      },
+      async undo(message, threadId, type) {
+        undone.push({ message, threadId, type });
+      }
+    };
+    const wrapped = wrapApi(api, "thread-clock", 1, "test");
+    await wrapped.sendMessage({ msg: "this message will be recalled", recallAfterMs: 2500 });
+    await Promise.resolve();
+
+    assert.equal(reactions.length, 2, "text and attachment both receive the initial clock reaction");
+    assert.ok(reactions.every(item => item.icon.rType === 0 && item.icon.source === 6));
+    assert.deepEqual(reactions.map(item => item.destination.data), [
+      { msgId: "31", cliMsgId: "clock-text" },
+      { msgId: "32", cliMsgId: "clock-image" }
+    ]);
+
+    for (const timer of scheduled) await timer.callback();
+    await Promise.resolve();
+    assert.equal(reactions.length, 6, "the clock reaction changes before recall");
+    assert.equal(undone.length, 2, "text and attachment are both recalled");
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+});
+
 test("legacy ttl becomes a local recall delay and is removed from the Zalo payload", async () => {
   const originalSetTimeout = global.setTimeout;
   const scheduled = [];
