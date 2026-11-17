@@ -262,3 +262,37 @@ test("TLMN quick play finds the largest legal play without a 3♠ opener restric
   assert.equal(engine.validatePlay(room.hands.human, move.cards, null).ok, true);
   game.removeRoom(groupId);
 });
+
+
+test("TLMN AI can re-enter after passing only with a four-pair run", () => {
+  const uid = "tlmn-ai:passed-seat";
+  const hand = [4,5,6,7].flatMap(rank => [
+    { rank, suit: "b", id: String(rank) + "b" },
+    { rank, suit: "c", id: String(rank) + "c" }
+  ]).concat([{ rank: 13, suit: "b", id: "13b" }]);
+  const currentCombo = engine.analyzeCombo([3,4,5].flatMap(rank => [
+    { rank, suit: "r", id: String(rank) + "r" },
+    { rank, suit: "ch", id: String(rank) + "ch" }
+  ]));
+  const room = {
+    passed: new Set([uid]),
+    currentCombo,
+    hands: { [uid]: hand }
+  };
+  const move = command._test.chooseAiMove(room, uid);
+  const quick = command._test.chooseQuickMove(room, uid);
+  assert.ok(move);
+  assert.ok(quick);
+  assert.equal(move.combo.type, "pairRun");
+  assert.equal(move.combo.length, 4);
+  assert.equal(quick.combo.type, "pairRun");
+  assert.equal(quick.combo.length, 4);
+
+  const noFourRun = {
+    passed: new Set([uid]),
+    currentCombo,
+    hands: { [uid]: [{ rank: 13, suit: "b", id: "13b" }] }
+  };
+  assert.equal(command._test.chooseAiMove(noFourRun, uid), null);
+  assert.equal(command._test.chooseQuickMove(noFourRun, uid), null);
+});
