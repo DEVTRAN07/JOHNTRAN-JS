@@ -1,7 +1,5 @@
 "use strict";
 
-const crypto = require("node:crypto");
-
 const SUITS = Object.freeze([
   { code: "b", name: "Bích", symbol: "♠", weight: 0 },
   { code: "ch", name: "Chuồn", symbol: "♣", weight: 1 },
@@ -40,7 +38,8 @@ function normalizeText(value) {
 }
 
 function cardCode(card) {
-  return String(card?.rank ?? "") + String(card?.suit || "");
+  const rank = RANK_LABEL[Number(card?.rank)] || String(card?.rank ?? "");
+  return rank.toLowerCase() + String(card?.suit || "");
 }
 
 function parseCardCode(value) {
@@ -48,7 +47,7 @@ function parseCardCode(value) {
   if (!match) return null;
   const rawRank = match[1].toLowerCase();
   const rawSuit = match[2].toLowerCase();
-  const rank = /^\d+$/.test(rawRank) ? Number(rawRank) : RANK_VALUE[rawRank];
+  const rank = RANK_VALUE[rawRank] ?? (/^\d+$/.test(rawRank) ? Number(rawRank) : null);
   const suit = rawSuit === "t" || rawSuit === "dt" ? "ch" : rawSuit;
   if (!RANK_LABEL[rank] || SUIT_WEIGHT[suit] === undefined) return null;
   return { rank, suit, id: String(rank) + suit };
@@ -77,8 +76,16 @@ function dealCards(playerIds, random = Math.random) {
     throw new RangeError("Tiến Lên cần từ 2 đến 4 người chơi riêng biệt.");
   }
   const deck = shuffleDeck(random);
+  const dealtCount = ids.length * 13;
+  // In a 2-player game only half the deck is dealt. Guarantee that 3♠ is
+  // inside the dealt portion; otherwise turnUid would be undefined and no
+  // player could legally open the game.
+  const threeOfSpadesIndex = deck.findIndex(card => card.id === "3b");
+  if (threeOfSpadesIndex >= dealtCount) {
+    [deck[0], deck[threeOfSpadesIndex]] = [deck[threeOfSpadesIndex], deck[0]];
+  }
   const hands = Object.fromEntries(ids.map(uid => [uid, []]));
-  for (let index = 0; index < ids.length * 13; index += 1) {
+  for (let index = 0; index < dealtCount; index += 1) {
     hands[ids[index % ids.length]].push(deck[index]);
   }
   for (const uid of ids) hands[uid] = sortHand(hands[uid]);
@@ -130,6 +137,34 @@ function parsePlayText(hand, input) {
     return selected.length === 2
       ? { ok: true, cards: selected }
       : { ok: false, code: "NOT_ENOUGH_CARDS" };
+  }
+
+  match = source.match(/^(sam(?:\s*co)?|triple)\s*(10|[3-9]|[jqka2])$/);
+  if (match) {
+    const rank = parseRank(match[2]);
+    const selected = sortHand(cards).filter(card => card.rank === rank);
+    return selected.length >= 3
+      ? { ok: true, cards: selected.slice(-3) }
+      : { ok: false, code: "NOT_ENOUGH_CARDS" };
+  }
+
+  // 3dt / 4dt = three/four consecutive pairs, not a card suit alias.
+  match = source.match(/^([34])dt$/);
+  if (match) {
+    const pairCount = Number(match[1]);
+    const pairRanks = [...new Set(sortHand(cards)
+      .filter(card => card.rank !== 15)
+      .map(card => card.rank))]
+      .filter(rank => selectByRank(cards, rank, 2).length === 2)
+      .sort((a, b) => a - b);
+    const runs = [];
+    for (let index = 0; index <= pairRanks.length - pairCount; index += 1) {
+      const run = pairRanks.slice(index, index + pairCount);
+      if (run.every((rank, offset) => offset === 0 || rank === run[offset - 1] + 1)) runs.push(run);
+    }
+    if (!runs.length) return { ok: false, code: "NOT_ENOUGH_CARDS" };
+    runs.sort((a, b) => b[b.length - 1] - a[a.length - 1]);
+    return { ok: true, cards: runs[0].flatMap(rank => selectByRank(cards, rank, 2)) };
   }
 
   match = source.match(/^(tu\s*quy|tuquy|four)\s*(10|[3-9]|[jqka2])$/);

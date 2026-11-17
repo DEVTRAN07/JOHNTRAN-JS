@@ -83,3 +83,405 @@ test("Tiến Lên engine: 52 lá và chia 13 lá cho 2–4 người", () => {
     assert.ok(dealt.hands[dealt.firstPlayerId].some(card => card.id === "3b"));
   }
 });
+
+
+test("TLMN engine: rank 2 codes parse as the high card, not rank 2", () => {
+  for (const code of ["2b", "2ch", "2r", "2c"]) {
+    const card = engine.parseCardCode(code);
+    assert.ok(card, code);
+    assert.equal(card.rank, 15, code);
+  }
+});
+
+test("TLMN engine: 3dt and 4dt parse as consecutive pair runs", () => {
+  const deck = engine.createDeck();
+  for (const [input, pairCount] of [["3dt", 3], ["4dt", 4]]) {
+    const parsed = engine.parsePlayText(deck, input);
+    assert.equal(parsed.ok, true, input);
+    assert.equal(parsed.cards.length, pairCount * 2, input);
+    assert.equal(engine.analyzeCombo(parsed.cards).type, "pairRun", input);
+  }
+});
+
+test("TLMN engine: sam 7 / sám cô 7 parse as a triple", () => {
+  for (const input of ["sam 7", "sám 7", "sam co 7"]) {
+    const parsed = engine.parsePlayText(engine.createDeck(), input);
+    assert.equal(parsed.ok, true, input);
+    assert.equal(parsed.cards.length, 3, input);
+    assert.equal(engine.analyzeCombo(parsed.cards).type, "triple", input);
+  }
+});
+
+test("TLMN engine: all direct card examples parse", () => {
+  for (const code of ["3b", "3ch", "3t", "4r", "10b", "jb", "qc", "kr", "kc", "ac", "2c"]) {
+    assert.ok(engine.parseCardCode(code), code);
+  }
+  assert.equal(engine.parseCardCode("3t").suit, "ch");
+});
+
+test("TLMN service: timeout automatically plays 3b on the opening turn", () => {
+  const groupId = "tlmn-timeout-opening";
+  const created = game.create(groupId, { uid: "owner", name: "Owner" });
+  assert.equal(created.ok, true);
+  assert.equal(game.join(groupId, created.room.id, { uid: "guest", name: "Guest" }).ok, true);
+  const started = game.start(groupId, "owner", () => 0.37);
+  assert.equal(started.ok, true);
+  const firstUid = started.firstPlayerId;
+  const timeout = game.timeoutTurn(groupId, firstUid);
+  assert.equal(timeout.ok, true);
+  assert.equal(timeout.action, "play");
+  assert.ok(timeout.combo.cards.some(card => card.id === "3b"));
+  game.removeRoom(groupId);
+});
+
+test("TLMN service: leaving removes stale pass state and preserves a playable turn", () => {
+  const groupId = "tlmn-leave-pass";
+  const created = game.create(groupId, { uid: "p1" });
+  game.join(groupId, created.room.id, { uid: "p2" });
+  game.join(groupId, created.room.id, { uid: "p3" });
+  game.start(groupId, "p1", () => 0.37);
+  const room = game.get(groupId);
+  const leaver = room.turnUid === "p2" ? "p2" : "p3";
+  room.passed.add(leaver);
+  const result = game.leave(groupId, leaver);
+  assert.equal(result.ok, true);
+  assert.equal(room.passed.has(leaver), false);
+  assert.ok(room.turnUid);
+  game.removeRoom(groupId);
+});
+
+test("TLMN service: serialize/restore preserves reservation intents and card IDs", () => {
+  const groupId = "tlmn-restore-lock";
+  const created = game.create(groupId, { uid: "p1" });
+  game.join(groupId, created.room.id, { uid: "p2" });
+  game.start(groupId, "p1", () => 0.37);
+  const room = game.get(groupId);
+  room.lockTransactionId = "lock-id";
+  room.lockPending.p1 = { amount: 5000, transactionId: "reserve-tx" };
+  room.messageCards.group = [{ msgId: "group-msg", cliMsgId: "group-cli" }];
+  const saved = game.serialize(room);
+  game.removeRoom(groupId);
+  const restored = game.restore(saved);
+  assert.ok(restored);
+  assert.equal(restored.lockPending.p1.transactionId, "reserve-tx");
+  assert.equal(restored.messageCards.group[0].msgId, "group-msg");
+  assert.equal(restored.hands.p1.length, 13);
+  game.removeRoom(groupId);
+});
+
+test("TLMN wallets: update transactions through the durable user service when available", async () => {
+  const rows = new Map();
+  const Users = {
+    async getData(uid) { return { data: rows.get(String(uid)) || {} }; },
+    async setDataAndWait(uid, data) { rows.set(String(uid), data); },
+    getAll() { return [...rows.entries()].map(([userId, data]) => ({ userId, data })); }
+  };
+  const wallet = await command._test.readWallet(Users, "wallet-user");
+  assert.equal(wallet.coins, 100000);
+  const changed = await command._test.changeWallet(
+    Users, "wallet-user", -5000, "test-reserve-transaction"
+  );
+  assert.equal(changed.ok, true);
+  assert.equal(changed.coins, 95000);
+  const duplicate = await command._test.changeWallet(
+    Users, "wallet-user", -5000, "test-reserve-transaction"
+  );
+  assert.equal(duplicate.alreadyApplied, true);
+  assert.equal(duplicate.coins, 95000);
+});
+
+test("TLMN wallets: pending transfer recovery credits the receiver once", async () => {
+  const rows = new Map([
+    ["sender", { tlmn: {
+      coins: 90000, games: 0, wins: 0, losses: 0,
+      transactions: ["pay-out:tx-pending"],
+      pendingTransfers: [{ id: "tx-pending", target: "receiver", amount: 10000 }]
+    }}],
+    ["receiver", { tlmn: {
+      coins: 100000, games: 0, wins: 0, losses: 0,
+      transactions: [], pendingTransfers: []
+    }}]
+  ]);
+  const Users = {
+    async getData(uid) { return { data: rows.get(String(uid)) || {} }; },
+    async setDataAndWait(uid, data) { rows.set(String(uid), data); },
+    getAll() { return [...rows.entries()].map(([userId, data]) => ({ userId, data })); }
+  };
+  const recovered = await command._test.reconcilePendingTransfers(Users);
+  assert.deepEqual(recovered, ["tx-pending"]);
+  assert.equal(rows.get("receiver").tlmn.coins, 110000);
+  assert.equal(rows.get("sender").tlmn.pendingTransfers.length, 0);
+  await command._test.reconcilePendingTransfers(Users);
+  assert.equal(rows.get("receiver").tlmn.coins, 110000);
+});
+
+
+test("TLMN engine: cardCode returns parsable face/high-card codes", () => {
+  for (const [rank, expected] of [[11, "jb"], [12, "qc"], [13, "kr"], [14, "ac"], [15, "2c"]]) {
+    assert.equal(engine.cardCode({ rank, suit: expected.slice(-1) }), expected);
+    assert.ok(engine.parseCardCode(engine.cardCode({ rank, suit: expected.slice(-1) })));
+  }
+});
+
+test("TLMN event plugin registers ordinary group messages", () => {
+  const tlmnEvent = require("../plugins/events/tlmn");
+  assert.ok(tlmnEvent.config.event_type.includes("message"));
+  assert.equal(typeof tlmnEvent.run, "function");
+});
+
+test("TLMN service: a player who has passed and then leaves is removed from the pass set", () => {
+  const groupId = "tlmn-pass-leave-cleanup";
+  const created = game.create(groupId, { uid: "p1" });
+  game.join(groupId, created.room.id, { uid: "p2" });
+  game.join(groupId, created.room.id, { uid: "p3" });
+  game.start(groupId, "p1", () => 0.37);
+  const room = game.get(groupId);
+  const leaver = "p2";
+  room.passed.add(leaver);
+  const result = game.leave(groupId, leaver);
+  assert.equal(result.ok, true);
+  assert.equal(room.passed.has(leaver), false);
+  game.removeRoom(groupId);
+});
+
+
+test("TLMN service: corrupted saved room does not replace a valid live room", () => {
+  const groupId = "tlmn-corrupt-recovery";
+  const created = game.create(groupId, { uid: "safe-owner" });
+  const liveRoom = game.get(groupId);
+  const corrupt = {
+    ...game.serialize(liveRoom),
+    players: [
+      { uid: "same", name: "A" },
+      { uid: "same", name: "B" }
+    ]
+  };
+  assert.equal(game.restore(corrupt), null);
+  assert.equal(game.get(groupId), liveRoom);
+  game.removeRoom(groupId);
+});
+
+test("TLMN wallet: reservation and refund are idempotent", async () => {
+  const rows = new Map();
+  const Users = {
+    async getData(uid) { return { data: rows.get(String(uid)) || {} }; },
+    async setDataAndWait(uid, data) { rows.set(String(uid), data); },
+    getAll() { return [...rows.entries()].map(([userId, data]) => ({ userId, data })); }
+  };
+  const room = game.create("tlmn-wallet-reserve", { uid: "cash-a" }).state;
+  game.join("tlmn-wallet-reserve", room.id, { uid: "cash-b" });
+  const reserved = await command._test.reserveRoomWallets(Users, room, async () => true);
+  assert.equal(reserved.ok, true);
+  assert.equal((await command._test.readWallet(Users, "cash-a")).coins, 95000);
+  assert.equal((await command._test.readWallet(Users, "cash-b")).coins, 95000);
+  assert.equal(await command._test.refundRoomWallets(Users, room, async () => true), true);
+  assert.equal((await command._test.readWallet(Users, "cash-a")).coins, 100000);
+  assert.equal((await command._test.readWallet(Users, "cash-b")).coins, 100000);
+  assert.equal(await command._test.refundRoomWallets(Users, room, async () => true), true);
+  game.removeRoom("tlmn-wallet-reserve");
+});
+
+test("TLMN wallet: lost write acknowledgement can be reconciled and refunded", async () => {
+  const rows = new Map();
+  let failNextAck = false;
+  const Users = {
+    async getData(uid) { return { data: rows.get(String(uid)) || {} }; },
+    async setDataAndWait(uid, data) {
+      rows.set(String(uid), data);
+      if (failNextAck) {
+        failNextAck = false;
+        throw new Error("simulated acknowledgement loss");
+      }
+    },
+    getAll() { return [...rows.entries()].map(([userId, data]) => ({ userId, data })); }
+  };
+  const room = game.create("tlmn-wallet-uncertain", { uid: "uncertain-a" }).state;
+  game.join("tlmn-wallet-uncertain", room.id, { uid: "uncertain-b" });
+  await command._test.readWallet(Users, "uncertain-a");
+  await command._test.readWallet(Users, "uncertain-b");
+  failNextAck = true;
+  const reserved = await command._test.reserveRoomWallets(Users, room, async () => true);
+  assert.equal(reserved.ok, false);
+  assert.ok(Object.keys(room.lockPending).length > 0);
+  assert.equal(await command._test.reconcilePendingReservations(Users, room, async () => true), true);
+  assert.ok(room.locked["uncertain-a"] > 0);
+  assert.equal(await command._test.refundRoomWallets(Users, room, async () => true), true);
+  assert.equal((await command._test.readWallet(Users, "uncertain-a")).coins, 100000);
+  game.removeRoom("tlmn-wallet-uncertain");
+});
+
+test("TLMN wallet: pending transfer recovery cannot credit the receiver twice", async () => {
+  const rows = new Map([
+    ["sender", { tlmn: {
+      coins: 90000, games: 0, wins: 0, losses: 0,
+      transactions: ["pay-out:tx-once"],
+      pendingTransfers: [{ id: "tx-once", target: "receiver", amount: 10000 }]
+    }}],
+    ["receiver", { tlmn: {
+      coins: 100000, games: 0, wins: 0, losses: 0,
+      transactions: [], pendingTransfers: []
+    }}]
+  ]);
+  const Users = {
+    async getData(uid) { return { data: rows.get(String(uid)) || {} }; },
+    async setDataAndWait(uid, data) { rows.set(String(uid), data); },
+    getAll() { return [...rows.entries()].map(([userId, data]) => ({ userId, data })); }
+  };
+  const recovered = await command._test.reconcilePendingTransfers(Users);
+  assert.deepEqual(recovered, ["tx-once"]);
+  await command._test.reconcilePendingTransfers(Users);
+  assert.equal(rows.get("receiver").tlmn.coins, 110000);
+  assert.equal(rows.get("sender").tlmn.pendingTransfers.length, 0);
+});
+
+test("TLMN wallet: settlement is idempotent and statistics are atomic with payout", async () => {
+  const rows = new Map();
+  const Users = {
+    async getData(uid) { return { data: rows.get(String(uid)) || {} }; },
+    async setDataAndWait(uid, data) { rows.set(String(uid), data); }
+  };
+  await command._test.readWallet(Users, "winner");
+  await command._test.readWallet(Users, "loser");
+  const room = game.create("tlmn-settlement", { uid: "winner" }).state;
+  game.join("tlmn-settlement", room.id, { uid: "loser" });
+  room.locked = { winner: 5000, loser: 5000 };
+  const results = [
+    { uid: "winner", name: "Winner", place: 1 },
+    { uid: "loser", name: "Loser", place: 2 }
+  ];
+  const first = await command._test.settleRoomWallets(Users, room, results);
+  const afterFirst = await command._test.readWallet(Users, "winner");
+  const second = await command._test.settleRoomWallets(Users, room, results);
+  const afterSecond = await command._test.readWallet(Users, "winner");
+  assert.equal(first.length, 2);
+  assert.equal(second.length, 0);
+  assert.equal(afterFirst.coins, afterSecond.coins);
+  assert.equal(afterSecond.games, 1);
+  assert.equal(afterSecond.wins, 1);
+  game.removeRoom("tlmn-settlement");
+});
+
+
+test("TLMN deal: 3♠ is always in a dealt hand for 2, 3, and 4 players", () => {
+  let checked = 0;
+  for (const playerCount of [2, 3, 4]) {
+    for (let seed = 1; seed <= 200; seed += 1) {
+      let state = (seed * 0.6180339887) % 1;
+      const random = () => {
+        state = (state * 9301 + 49297) % 233280;
+        return state / 233280;
+      };
+      const ids = Array.from({ length: playerCount }, (_, index) => "seed-" + index);
+      const dealt = engine.dealCards(ids, random);
+      assert.ok(dealt.firstPlayerId, "missing first player: " + playerCount + " players, seed " + seed);
+      assert.ok(dealt.hands[dealt.firstPlayerId].some(card => card.id === "3b"));
+      assert.ok(ids.every(uid => dealt.hands[uid].length === 13));
+      checked += 1;
+    }
+  }
+  assert.equal(checked, 600);
+});
+
+test("TLMN service: leaving a player who already passed completes the pass cycle", () => {
+  const groupId = "tlmn-leave-completes-pass";
+  const room = game.create(groupId, { uid: "leader" }).state;
+  game.join(groupId, room.id, { uid: "passed-player" });
+  game.join(groupId, room.id, { uid: "leaving-player" });
+  game.start(groupId, "leader", () => 0.2);
+
+  room.lastPlayerUid = "leader";
+  room.turnUid = "leaving-player";
+  room.currentCombo = { type: "single", length: 1, mainRank: 3, cards: [{ rank: 3, suit: "b", id: "3b" }] };
+  room.lastPlay = { uid: "leader", name: "Leader", cards: [{ rank: 3, suit: "b", id: "3b" }] };
+  room.passed.add("passed-player");
+
+  const result = game.leave(groupId, "leaving-player");
+  assert.equal(result.ok, true);
+  assert.equal(room.currentCombo, null);
+  assert.equal(room.lastPlay, null);
+  assert.equal(room.turnUid, "leader");
+  assert.equal(room.passed.size, 0);
+  game.removeRoom(groupId);
+});
+
+test("TLMN service: each created room has a unique settlement token", () => {
+  const first = game.create("tlmn-token-one", { uid: "a" }).state;
+  const second = game.create("tlmn-token-two", { uid: "b" }).state;
+  assert.ok(first.gameToken);
+  assert.ok(second.gameToken);
+  assert.notEqual(first.gameToken, second.gameToken);
+  game.removeRoom("tlmn-token-one");
+  game.removeRoom("tlmn-token-two");
+});
+
+test("TLMN service: malformed saved state cannot replace a valid active room", () => {
+  const groupId = "tlmn-invalid-restore-guard";
+  game.create(groupId, { uid: "owner" });
+  const current = game.get(groupId);
+  const corrupted = {
+    ...game.serialize(current),
+    players: [{ uid: "duplicate" }, { uid: "duplicate" }]
+  };
+  assert.equal(game.restore(corrupted), null);
+  assert.equal(game.get(groupId), current);
+  game.removeRoom(groupId);
+});
+
+
+test("TLMN command: concurrent group operations are serialized", async () => {
+  const order = [];
+  const lock = command._test.withRoomActionLock;
+  const first = lock("tlmn-concurrency", async () => {
+    order.push("first:start");
+    await Promise.resolve();
+    order.push("first:end");
+  });
+  const second = lock("tlmn-concurrency", async () => {
+    order.push("second:start");
+    await Promise.resolve();
+    order.push("second:end");
+  });
+  await Promise.all([first, second]);
+  assert.deepEqual(order, [
+    "first:start", "first:end", "second:start", "second:end"
+  ]);
+});
+
+
+test("TLMN wallet: corrupt balances are rejected, never reset to the default amount", async () => {
+  const rows = new Map([["broken", { tlmn: { coins: -500 } }]]);
+  let writes = 0;
+  const Users = {
+    async getData(uid) { return { data: rows.get(String(uid)) || {} }; },
+    async setDataAndWait(uid, data) { writes += 1; rows.set(String(uid), data); }
+  };
+  await assert.rejects(
+    command._test.readWallet(Users, "broken"),
+    /số dư lỗi/
+  );
+  assert.equal(writes, 0);
+  assert.equal(rows.get("broken").tlmn.coins, -500);
+});
+
+test("TLMN settlement: missing buy-in is rejected without minting coins", async () => {
+  const rows = new Map();
+  const Users = {
+    async getData(uid) { return { data: rows.get(String(uid)) || {} }; },
+    async setDataAndWait(uid, data) { rows.set(String(uid), data); }
+  };
+  const room = game.create("tlmn-no-buyin", { uid: "no-buyin-a" }).state;
+  game.join("tlmn-no-buyin", room.id, { uid: "no-buyin-b" });
+  room.locked = { "no-buyin-a": 5000 };
+  await command._test.readWallet(Users, "no-buyin-a");
+  await command._test.readWallet(Users, "no-buyin-b");
+  await assert.rejects(
+    command._test.settleRoomWallets(Users, room, [
+      { uid: "no-buyin-a", name: "A", place: 1 },
+      { uid: "no-buyin-b", name: "B", place: 2 }
+    ]),
+    /Thiếu khoản giữ cược/
+  );
+  assert.equal((await command._test.readWallet(Users, "no-buyin-a")).coins, 100000);
+  assert.equal((await command._test.readWallet(Users, "no-buyin-b")).coins, 100000);
+  game.removeRoom("tlmn-no-buyin");
+});

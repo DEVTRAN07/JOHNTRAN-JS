@@ -1,4 +1,4 @@
-const { getData, saveData, hasData, delData, allData } = require("../runtime/adapters/database");
+const { getData, saveData, saveDataAndWait, hasData, delData, allData } = require("../runtime/adapters/database");
 const logger = require("../../utils/logger");
 const { userCache } = require("../cache");
 
@@ -48,9 +48,37 @@ module.exports = {
 
   setData: (userId, data) => {
     const key = String(userId);
-    const record = saveData("Users", "userId", userId, data);
+    const record = saveData("Users", "userId", key, data);
     userCache.set(key, record || { userId: key, data });
     return record;
+  },
+
+  // Durable write boundary used by money and other critical user records.
+  // Keep setData's synchronous legacy contract for existing plugins.
+  setDataAndWait: async (userId, data) => {
+    const key = String(userId);
+    const pending = typeof saveDataAndWait === "function"
+      ? saveDataAndWait("Users", "userId", key, data)
+      : saveData("Users", "userId", key, data);
+    try {
+      await pending;
+    } catch (error) {
+      // Refresh the cache from the storage mirror even when the caller lost
+      // the write acknowledgement. This lets transaction reconciliation see
+      // a write that committed before the transport/flush returned an error.
+      try {
+        const latest = getData("Users", "userId", key);
+        if (latest) userCache.set(key, latest);
+        else userCache.invalidate(key);
+      } catch {
+        userCache.invalidate(key);
+      }
+      throw error;
+    }
+    const record = getData("Users", "userId", key);
+    const committed = record || { userId: key, data };
+    userCache.set(key, committed);
+    return committed;
   },
 
   delData: (userId) => {

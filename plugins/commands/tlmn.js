@@ -15,6 +15,9 @@ const groupCards = new Map();
 const privateCards = new Map();
 const walletLocks = new Map();
 const roomSaveLocks = new Map();
+const roomActionLocks = new Map();
+const messageLocks = new Map();
+const cleanupTimers = new Map();
 const SUIT_HELP = "b = Bích, ch = Chuồn, r = Rô, c = Cơ";
 
 module.exports.config = {
@@ -29,6 +32,17 @@ module.exports.config = {
   cooldowns: 0,
   dependencies: {}
 };
+
+function withRoomActionLock(threadId, operation) {
+  const key = String(threadId || "");
+  if (!key) return Promise.resolve().then(operation);
+  const previous = roomActionLocks.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  roomActionLocks.set(key, current);
+  return current.finally(() => {
+    if (roomActionLocks.get(key) === current) roomActionLocks.delete(key);
+  });
+}
 
 function withRoomSaveLock(threadId, operation) {
   const key = String(threadId);
@@ -75,6 +89,15 @@ function restoreRoomCards(room) {
   }
 }
 
+function withMessageLock(key, operation) {
+  const previous = messageLocks.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  messageLocks.set(key, current);
+  return current.finally(() => {
+    if (messageLocks.get(key) === current) messageLocks.delete(key);
+  });
+}
+
 function getRawApi(api) {
   if (!api || typeof api.sendMessage !== "function") return api;
   if (!Object.prototype.hasOwnProperty.call(api, "sendMessage")) return api;
@@ -110,7 +133,10 @@ async function recallMessages(api, threadId, type, targets) {
   for (const target of pending) {
     try {
       if (typeof rawApi?.undo !== "function") throw new Error("API undo không khả dụng");
-      await rawApi.undo({ msgId: target.msgId, cliMsgId: target.cliMsgId }, String(threadId), type);
+      const result = await rawApi.undo({ msgId: target.msgId, cliMsgId: target.cliMsgId }, String(threadId), type);
+      if (result === false || result?.success === false) {
+        throw new Error("Zalo từ chối thu hồi tin nhắn");
+      }
     } catch (error) {
       failed.push(target);
       console.warn("[TLMN_RECALL]", error?.message || error);
@@ -120,31 +146,32 @@ async function recallMessages(api, threadId, type, targets) {
 }
 
 async function sendReplacement(api, key, threadId, type, makePayload) {
-  const rawApi = getRawApi(api);
-  const previous = privateCards.get(key) || groupCards.get(key) || [];
-  const response = await makePayload(rawApi);
-  const next = recallTargets(response);
-  if (!next.length) {
-    console.warn("[TLMN_CANVAS] Zalo không trả message ID; giữ lại card cũ để không làm mất bàn.");
-    return response;
-  }
-  const failed = await recallMessages(rawApi, threadId, type, previous);
-  if (key.startsWith("hand:")) privateCards.set(key, [...next, ...failed]);
-  else groupCards.set(key, [...next, ...failed]);
-
-  const room = key.startsWith("hand:")
-    ? game.getByCode(key.split(":")[1])
-    : game.get(threadId);
-  if (room) {
-    room.messageCards ||= { group: [], private: {} };
-    if (key.startsWith("hand:")) {
-      const uid = key.split(":")[2];
-      room.messageCards.private[uid] = [...next, ...failed];
-    } else {
-      room.messageCards.group = [...next, ...failed];
+  return withMessageLock(key, async () => {
+    const rawApi = getRawApi(api);
+    const previous = privateCards.get(key) || groupCards.get(key) || [];
+    const response = await makePayload(rawApi);
+    const next = recallTargets(response);
+    if (!next.length) {
+      console.warn("[TLMN_CANVAS] Zalo không trả message ID; giữ lại card cũ.");
+      return response;
     }
-  }
-  return response;
+    const failed = await recallMessages(rawApi, threadId, type, previous);
+    if (key.startsWith("hand:")) privateCards.set(key, [...next, ...failed]);
+    else groupCards.set(key, [...next, ...failed]);
+
+    const room = key.startsWith("hand:")
+      ? game.getByCode(key.split(":")[1])
+      : game.get(threadId);
+    if (room) {
+      room.messageCards ||= { group: [], private: {} };
+      if (key.startsWith("hand:")) {
+        room.messageCards.private[key.split(":")[2]] = [...next, ...failed];
+      } else {
+        room.messageCards.group = [...next, ...failed];
+      }
+    }
+    return response;
+  });
 }
 
 function forgetCards(key) {
@@ -156,17 +183,30 @@ async function recallRoomCards(api, room) {
   const rawApi = getRawApi(api);
   const groupKey = "group:" + room.threadId;
   const oldGroup = groupCards.get(groupKey) || room.messageCards?.group || [];
-  await recallMessages(rawApi, room.threadId, ThreadType.Group, oldGroup);
-  forgetCards(groupKey);
-  if (room.messageCards) room.messageCards.group = [];
+  const failedGroup = await recallMessages(rawApi, room.threadId, ThreadType.Group, oldGroup);
+  if (failedGroup.length) {
+    groupCards.set(groupKey, failedGroup);
+    if (room.messageCards) room.messageCards.group = failedGroup;
+  } else {
+    forgetCards(groupKey);
+    if (room.messageCards) room.messageCards.group = [];
+  }
 
+  const failures = failedGroup.length;
   for (const item of room.players || []) {
     const key = "hand:" + room.id + ":" + item.uid;
     const targets = privateCards.get(key) || room.messageCards?.private?.[item.uid] || [];
-    await recallMessages(rawApi, item.uid, ThreadType.User, targets);
-    forgetCards(key);
-    if (room.messageCards?.private) delete room.messageCards.private[item.uid];
+    const failed = await recallMessages(rawApi, item.uid, ThreadType.User, targets);
+    if (failed.length) {
+      privateCards.set(key, failed);
+      if (room.messageCards?.private) room.messageCards.private[item.uid] = failed;
+    } else {
+      forgetCards(key);
+      if (room.messageCards?.private) delete room.messageCards.private[item.uid];
+    }
+    if (failed.length) failures += failed.length;
   }
+  return failures;
 }
 
 function withWalletLock(uid, operation) {
@@ -181,26 +221,42 @@ function withWalletLock(uid, operation) {
 
 function normalizeWallet(data) {
   const source = data.tlmn && typeof data.tlmn === "object" ? data.tlmn : {};
+  const hasCoins = Object.prototype.hasOwnProperty.call(source, "coins");
   const coins = Number(source.coins);
+  if (hasCoins && (source.coins == null || String(source.coins).trim() === "" ||
+      !Number.isSafeInteger(coins) || coins < 0)) {
+    throw new Error("Ví Tiến Lên có số dư lỗi; đã khóa thao tác để tránh tự đặt lại số xu.");
+  }
   return {
     ...source,
-    coins: Number.isSafeInteger(coins) && coins >= 0 ? coins : DEFAULT_COINS,
+    coins: hasCoins ? coins : DEFAULT_COINS,
     games: Math.max(0, Number(source.games) || 0),
     wins: Math.max(0, Number(source.wins) || 0),
     losses: Math.max(0, Number(source.losses) || 0),
-    transactions: Array.isArray(source.transactions) ? source.transactions.slice(-100) : []
+    transactions: Array.isArray(source.transactions) ? source.transactions.slice(-2000) : [],
+    pendingTransfers: Array.isArray(source.pendingTransfers) ? source.pendingTransfers.slice(-50) : []
   };
+}
+
+async function saveUserData(Users, uid, data) {
+  if (typeof Users?.setDataAndWait === "function") {
+    return Users.setDataAndWait(String(uid), data);
+  }
+  if (typeof Users?.setData !== "function") {
+    throw new Error("User service không hỗ trợ ghi dữ liệu người chơi");
+  }
+  return Users.setData(String(uid), data);
 }
 
 async function readWallet(Users, uid) {
   return withWalletLock(uid, async () => {
     const record = await Users.getData(String(uid));
     const data = record?.data && typeof record.data === "object" ? { ...record.data } : {};
-    const hadWallet = data.tlmn && Number.isSafeInteger(Number(data.tlmn.coins));
+    const hadWallet = data.tlmn && Number.isSafeInteger(Number(data.tlmn.coins)) && Number(data.tlmn.coins) >= 0;
     const wallet = normalizeWallet(data);
     if (!hadWallet) {
       data.tlmn = wallet;
-      await Users.setData(String(uid), data);
+      await saveUserData(Users, uid, data);
     }
     return { ...wallet };
   });
@@ -220,68 +276,154 @@ async function changeWallet(Users, uid, delta, transactionId, options = {}) {
     }
     wallet.coins = next;
     wallet.transactions.push(String(transactionId));
-    wallet.transactions = wallet.transactions.slice(-100);
+    wallet.transactions = wallet.transactions.slice(-2000);
     data.tlmn = wallet;
     if (typeof options.mutateData === "function") options.mutateData(data, wallet);
-    await Users.setData(String(uid), data);
+    await saveUserData(Users, uid, data);
     return { ok: true, coins: wallet.coins };
   });
 }
 
+async function reconcilePendingReservations(Users, room, onChange = null) {
+  room.locked ||= {};
+  room.lockPending ||= {};
+  try {
+    for (const [uid, pending] of Object.entries(room.lockPending)) {
+      const wallet = await readWallet(Users, uid);
+      const transactionId = String(pending?.transactionId || "");
+      const debited = Boolean(transactionId && wallet.transactions.includes(transactionId));
+      if (debited) room.locked[uid] = Math.max(0, Number(pending.amount) || 0);
+      delete room.lockPending[uid];
+      if (onChange && await onChange() !== true) {
+        room.lockPending[uid] = pending;
+        if (debited) delete room.locked[uid];
+        return false;
+      }
+    }
+    return true;
+  } catch (error) {
+    console.error("[TLMN_RESERVATION_RECOVERY]", error?.stack || error);
+    return false;
+  }
+}
+
+async function refundRoomWallets(Users, room, onChange = null) {
+  try {
+    if (!await reconcilePendingReservations(Users, room, onChange)) return false;
+    const lockId = String(room.lockTransactionId || "legacy");
+    for (const [uid, rawAmount] of Object.entries(room.locked || {})) {
+      const amount = Math.max(0, Number(rawAmount) || 0);
+      if (!amount) {
+        delete room.locked[uid];
+        continue;
+      }
+      const result = await changeWallet(
+        Users, uid, amount, "refund:" + room.id + ":" + lockId + ":" + uid
+      );
+      if (!result.ok) return false;
+      delete room.locked[uid];
+      if (onChange && await onChange() !== true) {
+        room.locked[uid] = amount; // same refund transaction is safe to retry
+        return false;
+      }
+    }
+    if (Object.keys(room.locked || {}).length || Object.keys(room.lockPending || {}).length) return false;
+    const previousLockId = room.lockTransactionId;
+    room.lockTransactionId = null;
+    if (onChange && await onChange() !== true) {
+      room.lockTransactionId = previousLockId;
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("[TLMN_REFUND]", error?.stack || error);
+    return false;
+  }
+}
+
 async function reserveRoomWallets(Users, room, onChange = null) {
+  if (!Array.isArray(room.players) || room.players.length < 2 || room.players.length > 4 ||
+      !Number.isSafeInteger(room.bet) || room.bet < MIN_BET || room.bet > MAX_BET) {
+    return { ok: false, storageError: true };
+  }
   const reserve = room.bet * (room.players.length - 1);
-  const reserved = [];
+  room.locked ||= {};
+  room.lockPending ||= {};
+  if (!await reconcilePendingReservations(Users, room, onChange)) {
+    return { ok: false, storageError: true };
+  }
+  if (Object.keys(room.locked).length) {
+    if (!await refundRoomWallets(Users, room, onChange)) {
+      return { ok: false, storageError: true, refundPending: true };
+    }
+  }
+
+  room.lockTransactionId ||= crypto.randomUUID();
+  const lockId = room.lockTransactionId;
   for (const item of room.players) {
-    const wallet = await readWallet(Users, item.uid);
+    let wallet;
+    try {
+      wallet = await readWallet(Users, item.uid);
+    } catch (error) {
+      console.error("[TLMN_RESERVE_READ]", error?.stack || error);
+      const refunded = await refundRoomWallets(Users, room, onChange);
+      return { ok: false, storageError: true, refundPending: !refunded };
+    }
     if (wallet.coins < reserve) {
-      for (const uid of reserved) {
-        await changeWallet(Users, uid, reserve, "refund:" + room.id + ":" + (room.lockTransactionId || "retry") + ":" + uid);
-      }
-      room.locked = {};
-      room.lockTransactionId = null;
-      await onChange?.();
-      return { ok: false, player: item, coins: wallet.coins, required: reserve };
+      const refunded = await refundRoomWallets(Users, room, onChange);
+      return { ok: false, player: item, coins: wallet.coins, required: reserve, refundPending: !refunded };
     }
-    const attempt = room.lockTransactionId || (room.lockTransactionId = String(Date.now()) + ":" + String(Math.random()).slice(2, 8));
-    const result = await changeWallet(Users, item.uid, -reserve, "reserve:" + room.id + ":" + attempt + ":" + item.uid);
-    if (!result.ok) {
-      for (const uid of reserved) {
-        await changeWallet(Users, uid, reserve, "refund:" + room.id + ":" + (room.lockTransactionId || "retry") + ":" + uid);
-      }
-      room.locked = {};
-      room.lockTransactionId = null;
-      await onChange?.();
-      return { ok: false, player: item, coins: result.coins, required: reserve };
+
+    const transactionId = "reserve:" + room.id + ":" + lockId + ":" + item.uid;
+    room.lockPending[item.uid] = { amount: reserve, transactionId };
+    if (onChange && await onChange() !== true) return { ok: false, storageError: true };
+
+    let debit;
+    try {
+      debit = await changeWallet(Users, item.uid, -reserve, transactionId);
+    } catch (error) {
+      console.error("[TLMN_RESERVE]", error?.stack || error);
+      return { ok: false, storageError: true };
     }
-    reserved.push(item.uid);
+    if (!debit.ok) {
+      delete room.lockPending[item.uid];
+      if (onChange && await onChange() !== true) return { ok: false, storageError: true };
+      const refunded = await refundRoomWallets(Users, room, onChange);
+      return { ok: false, player: item, coins: debit.coins, required: reserve, refundPending: !refunded };
+    }
+
     room.locked[item.uid] = reserve;
-    if (onChange && await onChange() === false) {
-      for (const uid of reserved) {
-        await changeWallet(Users, uid, reserve, "refund:" + room.id + ":" + room.lockTransactionId + ":" + uid);
-      }
-      room.locked = {};
-      room.lockTransactionId = null;
-      await onChange();
-      return { ok: false, player: item, coins: wallet.coins, required: reserve, storageError: true };
+    delete room.lockPending[item.uid];
+    if (onChange && await onChange() !== true) {
+      delete room.locked[item.uid];
+      room.lockPending[item.uid] = { amount: reserve, transactionId };
+      return { ok: false, storageError: true };
     }
   }
   return { ok: true, reserve };
 }
 
-async function refundRoomWallets(Users, room) {
-  for (const item of room.players || []) {
-    const amount = Number(room.locked?.[item.uid]) || 0;
-    if (amount > 0) {
-      await changeWallet(Users, item.uid, amount, "refund:" + room.id + ":" + (room.lockTransactionId || "retry") + ":" + item.uid);
-    }
-  }
-  room.locked = {};
-  room.lockTransactionId = null;
-}
-
 async function settleRoomWallets(Users, room, results) {
   if (room.settled) return [];
+  if (!Array.isArray(results) || !Array.isArray(room.players) ||
+      results.length !== room.players.length || results.length < 2 || results.length > 4) {
+    throw new Error("Bảng xếp hạng không hợp lệ; không chốt xu.");
+  }
+  const rankedUids = results.map(row => String(row?.uid || ""));
+  const playerUids = room.players.map(row => String(row?.uid || ""));
+  if (new Set(rankedUids).size !== results.length ||
+      new Set(playerUids).size !== playerUids.length ||
+      rankedUids.some(uid => !playerUids.includes(uid)) ||
+      results.some((row, index) => !Number.isInteger(Number(row.place)) ||
+        Number(row.place) !== index + 1)) {
+    throw new Error("Thứ hạng người chơi không hợp lệ; không chốt xu.");
+  }
   const count = results.length;
+  const requiredLock = room.bet * (count - 1);
+  if (!Number.isSafeInteger(requiredLock) || requiredLock <= 0 ||
+      results.some(row => Number(room.locked?.[row.uid]) !== requiredLock)) {
+    throw new Error("Thiếu khoản giữ cược của một hoặc nhiều người; giữ nguyên bàn để đối soát, không phát xu.");
+  }
   const lines = [];
   for (const result of results) {
     const locked = Number(room.locked?.[result.uid]) || 0;
@@ -291,7 +433,7 @@ async function settleRoomWallets(Users, room, results) {
       Users,
       result.uid,
       credit,
-      "settle:" + room.id + ":" + result.uid,
+      "settle:" + String(room.gameToken || room.id) + ":" + result.uid,
       {
         mutateData(data, wallet) {
           wallet.games += 1;
@@ -317,6 +459,41 @@ async function settleRoomWallets(Users, room, results) {
   room.settled = true;
   room.settlementError = null;
   return lines;
+}
+
+async function reconcilePendingTransfers(Users) {
+  const rows = Users?.getAll?.() || [];
+  const recovered = [];
+  for (const row of rows) {
+    const senderId = String(row?.userId || "");
+    const pending = Array.isArray(row?.data?.tlmn?.pendingTransfers)
+      ? row.data.tlmn.pendingTransfers.slice() : [];
+    if (!senderId) continue;
+    for (const transfer of pending) {
+      const transferId = String(transfer?.id || "");
+      const targetId = String(transfer?.target || "");
+      const amount = Number(transfer?.amount);
+      if (!transferId || !targetId || senderId === targetId ||
+          !Number.isSafeInteger(amount) || amount <= 0) continue;
+      try {
+        const credit = await changeWallet(Users, targetId, amount, "pay-in:" + transferId);
+        if (!credit.ok) continue;
+        const finalized = await changeWallet(
+          Users, senderId, 0, "pay-settled:" + transferId,
+          { mutateData(data, wallet) {
+            wallet.pendingTransfers = wallet.pendingTransfers.filter(
+              item => String(item?.id || "") !== transferId
+            );
+            data.tlmn = wallet;
+          }}
+        );
+        if (finalized.ok) recovered.push(transferId);
+      } catch (error) {
+        console.error("[TLMN_TRANSFER_RECOVERY]", error?.stack || error);
+      }
+    }
+  }
+  return recovered;
 }
 
 function formatMoney(value) {
@@ -419,7 +596,7 @@ function tableCaption(room, notice = "") {
   const turn = room.status === "waiting"
     ? "⏳ Đang chờ người chơi tham gia (" + room.playerCount + "/4 người)..."
     : room.turnUid
-      ? "🎯 Đến lượt: " + (room.players.find(item => item.uid === room.turnUid)?.name || "Người chơi")
+      ? "🎯 Đến lượt: " + (room.players.find(item => item.uid === room.turnUid)?.name || "Người chơi") + " (60s)"
       : "🏁 Ván đã kết thúc.";
   return [
     "🃏 BÀN CHƠI TIẾN LÊN MIỀN NAM #" + room.id,
@@ -480,9 +657,26 @@ async function sendGroupRoom(api, event, room, notice = "") {
   );
 }
 
+async function recallOrphanPrivateCards(api, uid, currentRoomId) {
+  const rawApi = getRawApi(api);
+  const playerId = String(uid);
+  for (const [key, targets] of [...privateCards.entries()]) {
+    if (!key.startsWith("hand:")) continue;
+    const parts = key.split(":");
+    const roomId = parts[1];
+    const targetUid = parts[2];
+    if (targetUid !== playerId || roomId === String(currentRoomId)) continue;
+    // A still-live room in another group may belong to this same player.
+    if (game.getByCode(roomId)) continue;
+    const failed = await recallMessages(rawApi, playerId, ThreadType.User, targets);
+    if (failed.length) privateCards.set(key, failed);
+    else privateCards.delete(key);
+  }
+}
+
 async function sendPrivateHand(api, room, item, hand, turn = false) {
+  await recallOrphanPrivateCards(api, item.uid, room.id);
   const key = "hand:" + room.id + ":" + item.uid;
-  const handLabels = engine.formatCards(hand);
   const suitNames = { b: "Bích", ch: "Chuồn", r: "Rô", c: "Cơ" };
   const suitCodes = { b: "b", ch: "ch", r: "r", c: "c" };
   const codeCards = hand.map(card =>
@@ -503,7 +697,7 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
     "⚡ LỆNH ĐÁNH NHANH GỢI Ý:",
     "• Đánh lẻ: 4r, 10b, jc, 2c",
     "• Đôi: Đôi 3 (doi 3), Đôi 4 (doi 4), Đôi K (doi k)",
-    "• Sám cô: sam 7",
+    "• Sám cô: sam 7 / sam co 7",
     "• Đôi thông: 3 đôi thông (3dt), 4 đôi thông (4dt)",
     "• Sảnh: sanh 345, sanh 10-j-q, sanh jqk",
     "• Tứ quý: tuquy 4",
@@ -512,6 +706,7 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
     "♠ Bích (b) • ♣ Chuồn (ch) • ♦ Rô (r) • ♥ Cơ (c)",
     "💡 Có thể gõ có dấu hoặc không dấu."
   ].join("\n");
+  const fallback = caption + "\n\n" + codeCards + "\n(" + namedCards + ")";
   const rawApi = getRawApi(api);
   let imagePath = null;
   let delivered = false;
@@ -523,10 +718,19 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
       hand: hand.map(card => ({ ...card })),
       isTurn: turn
     }, { timeout: 20000, poolSize: 1 });
-    await sendReplacement(api, key, item.uid, ThreadType.User, rawApiInstance =>
+    const response = await sendReplacement(api, key, item.uid, ThreadType.User, rawApiInstance =>
       rawApiInstance.sendMessage({ msg: caption, attachments: [imagePath], recallAfterMs: 0, ttlKind: "card" },
         item.uid, ThreadType.User));
-    delivered = true;
+    if (recallTargets(response).length) {
+      delivered = true;
+    } else {
+      // A successful-looking API call without message IDs cannot be safely
+      // recalled later. Send a text-only hand so the player is not left blind.
+      const fallbackResponse = await rawApi.sendMessage(
+        { msg: fallback }, item.uid, ThreadType.User
+      );
+      delivered = Boolean(fallbackResponse);
+    }
   } catch (error) {
     console.error("[TLMN_PRIVATE_HAND]", error?.stack || error);
     try {
@@ -553,6 +757,45 @@ async function notifyPrivate(api, uid, message) {
   }
 }
 
+function scheduleRoomTurn(api, Users, Threads, room) {
+  if (!room || room.status !== "playing" || !room.turnUid) return false;
+  return game.watchTurn(room.threadId, async ({ uid, player }) => {
+    const action = game.timeoutTurn(room.threadId, uid);
+    if (!action.ok) {
+      console.warn("[TLMN_TIMEOUT]", action.code);
+      return;
+    }
+    const syntheticEvent = {
+      threadId: room.threadId, type: ThreadType.Group,
+      data: { uidFrom: uid, dName: player?.name || "Người chơi" }
+    };
+    if (action.finished) {
+      await endGame(api, syntheticEvent, Users, action.state, Threads);
+      return;
+    }
+    if (action.action === "play") {
+      const actor = action.state.players.find(item => item.uid === uid);
+      await sendGroupRoom(api, syntheticEvent, action.room,
+        "⏰ " + (player?.name || "Người chơi") + " quá 60 giây; bot tự đánh " +
+        engine.formatCards(action.combo.cards) + ".");
+      if (actor) await sendPrivateHand(api, action.state, actor, action.state.hands[uid] || [], false);
+    } else {
+      await sendGroupRoom(api, syntheticEvent, action.room,
+        "⏰ " + (player?.name || "Người chơi") + " quá 60 giây; bot tự động bỏ lượt.");
+    }
+    const next = action.state.players.find(item => item.uid === action.state.turnUid);
+    if (next) {
+      await sendPrivateHand(api, action.state, next, action.state.hands[next.uid] || [], true);
+      await notifyPrivate(api, next.uid, "🎯 Đến lượt bạn. Bạn có 60 giây để đánh hoặc bỏ lượt.");
+    }
+    if (!await persistRoom(Threads, room.threadId)) {
+      console.error("[TLMN_TIMEOUT] Không lưu được trạng thái sau lượt tự động.");
+      return;
+    }
+    scheduleRoomTurn(api, Users, Threads, action.state);
+  });
+}
+
 async function distributeHands(api, room) {
   const failed = [];
   for (const item of room.players) {
@@ -561,6 +804,37 @@ async function distributeHands(api, room) {
     if (!sent) failed.push(item.name);
   }
   return failed;
+}
+
+function scheduleCleanupRetry(api, Threads, room) {
+  const key = String(room.threadId);
+  if (cleanupTimers.has(key)) return;
+  const timer = setTimeout(async () => {
+    if (cleanupTimers.get(key) !== timer) return;
+    cleanupTimers.delete(key);
+    const failures = await recallRoomCards(api, room);
+    if (failures) {
+      await persistRoom(Threads, key);
+      scheduleCleanupRetry(api, Threads, room);
+      return;
+    }
+    game.removeRoom(key);
+    await persistRoom(Threads, key);
+  }, 30000);
+  timer.unref?.();
+  cleanupTimers.set(key, timer);
+}
+
+async function finalizeRoomCleanup(api, Threads, room) {
+  const failures = await recallRoomCards(api, room);
+  if (failures) {
+    await persistRoom(Threads, room.threadId);
+    scheduleCleanupRetry(api, Threads, room);
+    return false;
+  }
+  game.removeRoom(room.threadId);
+  await persistRoom(Threads, room.threadId);
+  return true;
 }
 
 async function endGame(api, event, Users, roomState, Threads) {
@@ -579,7 +853,7 @@ async function endGame(api, event, Users, roomState, Threads) {
     return;
   }
 
-  await recallRoomCards(api, room);
+  await finalizeRoomCleanup(api, Threads, room);
   const lines = [
     "🏁 KẾT THÚC VÁN #" + room.id + " 🏁",
     ""
@@ -592,8 +866,6 @@ async function endGame(api, event, Users, roomState, Threads) {
     );
   }
   lines.push("", "👉 Ván bài đã kết thúc! Nhắn **!tlmn go** (hoặc **go**) để mở bàn mới và chơi tiếp nhé!");
-  game.removeRoom(room.threadId);
-  if (Threads) await persistRoom(Threads, room.threadId);
   return sendText(api, event, lines.join("\n"));
 }
 
@@ -621,6 +893,17 @@ function gameConflict(threadId) {
   return null;
 }
 
+async function hasSavedRoom(Threads, threadId) {
+  try {
+    const record = Threads?.getCachedData?.(String(threadId)) ||
+      await Threads?.getData?.(String(threadId));
+    const data = record?.data && typeof record.data === "object" ? record.data : record;
+    return Boolean(data?.tlmn_room);
+  } catch {
+    return true;
+  }
+}
+
 async function createOrJoin({ api, event, Users, Threads }) {
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
@@ -646,6 +929,9 @@ async function createOrJoin({ api, event, Users, Threads }) {
     return;
   }
 
+  if (await hasSavedRoom(Threads, threadId)) {
+    return sendText(api, event, "⚠️ Nhóm đang có dữ liệu bàn Tiến Lên cần khôi phục. Bot giữ nguyên dữ liệu để tránh mất xu; quản trị viên hãy kiểm tra log TLMN_RECOVERY.");
+  }
   const conflict = gameConflict(threadId);
   if (conflict) return sendText(api, event, "⚠️ Nhóm đang chơi game " + conflict + ". Hãy kết thúc game đó trước khi mở Tiến Lên.");
 
@@ -703,25 +989,45 @@ async function startRoom({ api, event, Users, Threads }) {
   ].join("\n"));
   const reserved = await reserveRoomWallets(Users, state, () => persistRoom(Threads, threadId));
   if (!reserved.ok) {
-    return sendText(api, event, reserved.storageError
-      ? "⚠️ Database không xác nhận được khoản giữ cược; xu đã được hoàn lại và bàn chưa bắt đầu."
+    return sendText(api, event, reserved.storageError || reserved.refundPending
+      ? "⚠️ Không thể xác nhận hoặc hoàn khoản giữ cược an toàn. Bàn chưa bắt đầu; dữ liệu đối soát được giữ lại."
       : "💸 " + reserved.player.name + " chưa đủ xu. Cần giữ trước " + formatMoney(reserved.required) + " (hiện có " + formatMoney(reserved.coins) + ").");
   }
   const result = game.start(threadId, uid);
   if (!result.ok) {
-    await refundRoomWallets(Users, state);
+    const refunded = await refundRoomWallets(Users, state, () => persistRoom(Threads, threadId));
     await persistRoom(Threads, threadId);
-    return sendText(api, event, "⚠️ Không thể bắt đầu bàn. Vui lòng thử lại.");
+    return sendText(api, event, refunded
+      ? "⚠️ Không thể bắt đầu bàn; xu cược đã được hoàn."
+      : "⚠️ Không thể bắt đầu bàn và việc hoàn cược vẫn đang đồng bộ. Bàn được giữ lại để khôi phục.");
   }
 
   const room = result.state;
-  await persistRoom(Threads, threadId);
+  if (!await persistRoom(Threads, threadId)) {
+    game.resetToWaiting(threadId);
+    const refunded = await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId));
+    await persistRoom(Threads, threadId);
+    return sendText(api, event, refunded
+      ? "⚠️ Database chưa lưu được ván mới. Bàn quay lại trạng thái chờ và xu đã được hoàn."
+      : "⚠️ Database chưa xác nhận ván mới. Trạng thái giữ lại để đối soát cược.");
+  }
   const failedPrivate = await distributeHands(api, room);
-  await sendGroupRoom(api, event, result.room, "🎮 Đã chia 13 lá riêng cho từng người. Người có 3♠ đi trước." +
-    (failedPrivate.length ? "\n⚠️ Chưa gửi được bài riêng cho: " + failedPrivate.join(", ") + ". Người chơi hãy mở chat riêng với bot rồi yêu cầu chủ phòng chia lại." : ""));
+  if (failedPrivate.length) {
+    await recallRoomCards(api, room);
+    game.resetToWaiting(threadId);
+    const refunded = await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId));
+    await persistRoom(Threads, threadId);
+    await sendGroupRoom(api, event, game.snapshot(room),
+      "🚫 Không gửi được bài riêng cho " + failedPrivate.join(", ") +
+      ". Ván đã hủy để bảo vệ bài; " + (refunded ? "xu cược đã hoàn." : "khoản hoàn cược đang được đồng bộ.") +
+      " Người chơi hãy mở chat riêng với bot và bật nhận tin nhắn người lạ, sau đó chủ phòng có thể start lại.");
+    return;
+  }
+  await sendGroupRoom(api, event, result.room, "🎮 Đã chia 13 lá riêng cho từng người. Người có 3♠ đi trước.");
   const first = room.players.find(item => item.uid === room.turnUid);
-  if (first) await notifyPrivate(api, first.uid, "🎯 Đến lượt bạn. Bạn đang cầm 3♠ nên hãy đánh lá này hoặc tổ hợp có chứa 3♠.");
+  if (first) await notifyPrivate(api, first.uid, "🎯 Đến lượt bạn. Bạn đang cầm 3♠ nên hãy đánh lá này hoặc tổ hợp có chứa 3♠. Bạn có 60 giây.");
   await persistRoom(Threads, threadId);
+  scheduleRoomTurn(api, Users, Threads, room);
 }
 
 async function doPlay(context, input) {
@@ -731,6 +1037,7 @@ async function doPlay(context, input) {
   const state = game.get(threadId);
   if (!state || state.status !== "playing") return false;
 
+  const beforeMove = game.serialize(state);
   const result = game.play(threadId, uid, input);
   if (!result.ok) {
     const errors = {
@@ -752,6 +1059,12 @@ async function doPlay(context, input) {
   }
 
   const room = result.state;
+  if (!await persistRoom(Threads, threadId)) {
+    game.restore(beforeMove);
+    scheduleRoomTurn(api, Users, Threads, game.get(threadId));
+    await sendText(api, event, "⚠️ Database chưa xác nhận nước đi. Ván được giữ nguyên; vui lòng thử lại.");
+    return true;
+  }
   const publicRoom = game.snapshot(room);
   const playerItem = room.players.find(item => item.uid === uid);
   if (result.finished) {
@@ -767,9 +1080,10 @@ async function doPlay(context, input) {
   const next = room.players.find(item => item.uid === room.turnUid);
   if (next) {
     await sendPrivateHand(api, room, next, room.hands[next.uid] || [], true);
-    await notifyPrivate(api, next.uid, "🎯 Đến lượt bạn. Hãy đánh bộ cao hơn hoặc nhắn bo/pass để bỏ lượt.");
+    await notifyPrivate(api, next.uid, "🎯 Đến lượt bạn. Hãy đánh bộ cao hơn hoặc nhắn bo/pass để bỏ lượt (60 giây).");
   }
   await persistRoom(Threads, threadId);
+  scheduleRoomTurn(api, Users, Threads, room);
   return true;
 }
 
@@ -777,6 +1091,7 @@ async function doPass(context) {
   const { api, event, Threads } = context;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
+  const beforePass = game.serialize(game.get(threadId));
   const result = game.pass(threadId, uid);
   if (!result.ok) {
     const messages = {
@@ -788,6 +1103,12 @@ async function doPass(context) {
     if (messages[result.code]) await sendText(api, event, messages[result.code]);
     return true;
   }
+  if (!await persistRoom(Threads, threadId)) {
+    game.restore(beforePass);
+    scheduleRoomTurn(api, context.Users, Threads, game.get(threadId));
+    await sendText(api, event, "⚠️ Database chưa xác nhận lượt bỏ. Ván được giữ nguyên; vui lòng thử lại.");
+    return true;
+  }
   const next = result.state.players.find(item => item.uid === result.state.turnUid);
   await sendGroupRoom(api, event, result.room,
     "↪️ " + (event?.data?.dName || event?.data?.name || "Người chơi") + " đã bỏ lượt" +
@@ -796,14 +1117,15 @@ async function doPass(context) {
     await sendPrivateHand(api, result.state, next, result.state.hands[next.uid] || [], true);
     await notifyPrivate(api, next.uid, result.roundCleared
       ? "🔄 Mọi người đã bỏ lượt. Bạn được quyền đánh bộ mới."
-      : "🎯 Đến lượt bạn. Hãy đánh bài hoặc bo/pass.");
+      : "🎯 Đến lượt bạn. Hãy đánh bài hoặc bo/pass trong 60 giây.");
   }
   await persistRoom(Threads, threadId);
+  scheduleRoomTurn(api, context.Users, Threads, result.state);
   return true;
 }
-
+ 
 async function doLeave(context) {
-  const { api, event, Users } = context;
+  const { api, event, Users, Threads } = context;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
   const state = game.get(threadId);
@@ -822,7 +1144,8 @@ async function doLeave(context) {
     await recallRoomCards(api, state);
     game.removeRoom(threadId);
   }
-  await persistRoom(context.Threads, threadId);
+  await persistRoom(Threads, threadId);
+  if (result.state.status === "playing") scheduleRoomTurn(api, Users, Threads, result.state);
   return sendText(api, event, result.forfeited
     ? "🚪 Bạn đã rời ván và bị xếp cuối bàn."
     : "👋 Bạn đã rời bàn chờ.");
@@ -842,16 +1165,31 @@ async function runCommand(context) {
   if (action === "start") return startRoom(context);
   if (action === "leave") return doLeave(context);
   if (action === "stop") {
-    const previousRoom = game.get(threadId);
-    const wasPlaying = previousRoom?.status === "playing";
-    const result = game.stop(threadId, uid);
-    if (!result.ok) return sendText(api, event, result.code === "NOT_OWNER"
-      ? "⛔ Chỉ chủ phòng mới được hủy bàn."
-      : "⚠️ Không có bàn Tiến Lên.");
-    if (wasPlaying) await refundRoomWallets(Users, result.state);
-    await recallRoomCards(api, result.state);
-    await persistRoom(Threads, threadId);
-    return sendText(api, event, "🛑 Đã hủy bàn #" + result.state.id + ". Xu đã được hoàn lại nếu ván đã bắt đầu.");
+    const room = game.get(threadId);
+    if (!room) return sendText(api, event, "⚠️ Không có bàn Tiến Lên.");
+    if (room.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ phòng mới được hủy bàn.");
+
+    if (room.status === "playing") {
+      room.cancelPending = true;
+      if (!await persistRoom(Threads, threadId)) {
+        return sendText(api, event, "⚠️ Database chưa lưu được yêu cầu hủy; ván vẫn giữ nguyên.");
+      }
+      if (!await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId))) {
+        await persistRoom(Threads, threadId);
+        return sendText(api, event, "⚠️ Chưa hoàn cược được đầy đủ; bàn vẫn được giữ để thử lại.");
+      }
+      game.finishRoom(room);
+      room.settled = true;
+      room.cancelPending = false;
+      const cleaned = await finalizeRoomCleanup(api, Threads, room);
+      return sendText(api, event, "🛑 Đã hủy bàn #" + room.id +
+        (cleaned ? ". Xu cược đã được hoàn và card đã thu hồi." : ". Xu đã hoàn; bot đang thử thu hồi card cũ."));
+    }
+
+    const roomId = room.id;
+    const cleaned = await finalizeRoomCleanup(api, Threads, room);
+    return sendText(api, event, "🛑 Đã hủy bàn #" + roomId +
+      (cleaned ? "." : ". Bot đang thử thu hồi card cũ."));
   }
   if (action === "cuoc" || action === "bet") {
     const amount = parseAmount(rest[0]);
@@ -881,10 +1219,22 @@ async function runCommand(context) {
     if (action === "off") {
       const room = game.get(threadId);
       if (room) {
-        if (room.status === "playing") await refundRoomWallets(Users, room);
-        await recallRoomCards(api, room);
-        game.removeRoom(threadId);
-        await persistRoom(Threads, threadId);
+        if (room.status === "playing") {
+          room.cancelPending = true;
+          if (!await persistRoom(Threads, threadId)) {
+            return sendText(api, event, "⚠️ Database chưa lưu được yêu cầu tắt/hủy; ván vẫn được giữ nguyên.");
+          }
+          if (!await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId))) {
+            await persistRoom(Threads, threadId);
+            return sendText(api, event, "⚠️ Chưa thể hoàn cược an toàn; trạng thái bàn được giữ để thử lại.");
+          }
+          game.finishRoom(room);
+          room.settled = true;
+          room.cancelPending = false;
+          await finalizeRoomCleanup(api, Threads, room);
+        } else {
+          await finalizeRoomCleanup(api, Threads, room);
+        }
       }
     }
     return sendText(api, event, action === "on" ? "🟢 Đã bật Tiến Lên trong nhóm." : "🔴 Đã tắt Tiến Lên trong nhóm.");
@@ -901,8 +1251,10 @@ async function runCommand(context) {
     ].join("\n"));
   }
   if (action === "bxh" || action === "rank") {
-    const rows = (Users.getAll?.() || []).map(row => {
-      const wallet = normalizeWallet(row?.data || {});
+    const rows = (Users.getAll?.() || []).filter(row =>
+      row?.data?.tlmn && Number.isSafeInteger(Number(row.data.tlmn.coins))
+    ).map(row => {
+      const wallet = normalizeWallet(row.data);
       return { uid: String(row.userId || ""), name: String(row?.data?.tlmn?.name || row?.data?.name || row.userId || "Người chơi"), coins: wallet.coins };
     }).filter(row => row.uid).sort((a, b) => b.coins - a.coins).slice(0, 10);
     if (!rows.length) return sendText(api, event, "🏆 Chưa có dữ liệu xếp hạng Tiến Lên.");
@@ -915,21 +1267,62 @@ async function runCommand(context) {
     ].join("\n"));
   }
   if (action === "pay" || action === "nap") {
-    const transferId = crypto.randomUUID();
+    const eventId = String(event?.data?.msgId || event?.data?.cliMsgId || crypto.randomUUID());
+    const transferId = uid + ":" + eventId;
     const target = firstMention(event?.data || {});
     const amount = parseAmount(rest[rest.length - 1]);
     if (!target || !amount) return sendText(api, event, "⚠️ Dùng: !tlmn " + action + " @user 10k.");
     if (target === uid) return sendText(api, event, "⚠️ Không thể chuyển xu cho chính mình.");
     if (action === "nap" && !isAdmin(uid)) return sendText(api, event, "⛔ Chỉ Spadmin/Admin bot mới được nạp xu.");
+
     if (action === "pay") {
-      const sender = await changeWallet(Users, uid, -amount, "pay-out:" + transferId);
+      await reconcilePendingTransfers(Users);
+      const wallet = await readWallet(Users, uid);
+      if (wallet.pendingTransfers.length) {
+        return sendText(api, event, "⏳ Bạn đang có giao dịch chờ đồng bộ. Vui lòng đợi bot xử lý xong trước khi chuyển tiếp.");
+      }
+      const sender = await changeWallet(
+        Users, uid, -amount, "pay-out:" + transferId,
+        { mutateData(data, currentWallet) {
+          currentWallet.pendingTransfers.push({
+            id: transferId, target, amount, createdAt: Date.now()
+          });
+          currentWallet.pendingTransfers = currentWallet.pendingTransfers.slice(-50);
+          data.tlmn = currentWallet;
+        }}
+      );
       if (!sender.ok) return sendText(api, event, "💸 Bạn không đủ xu để chuyển " + formatMoney(amount) + ".");
     }
-    const receiver = await changeWallet(Users, target, amount,
-      (action === "nap" ? "admin-nap:" : "pay-in:") + (action === "nap" ? crypto.randomUUID() : transferId));
-    if (!receiver.ok) {
-      if (action === "pay") await changeWallet(Users, uid, amount, "pay-rollback:" + transferId);
-      return sendText(api, event, "❌ Không thể cập nhật ví người nhận.");
+
+    try {
+      const receiver = await changeWallet(
+        Users, target, amount,
+        (action === "nap" ? "admin-nap:" : "pay-in:") + transferId
+      );
+      if (!receiver.ok) {
+        return sendText(api, event, action === "pay"
+          ? "⏳ Giao dịch đã lưu chờ xử lý. Không gửi lại lệnh."
+          : "❌ Không thể cập nhật ví người nhận; vui lòng thử lại sau.");
+      }
+      if (action === "pay") {
+        const finalized = await changeWallet(
+          Users, uid, 0, "pay-settled:" + transferId,
+          { mutateData(data, currentWallet) {
+            currentWallet.pendingTransfers = currentWallet.pendingTransfers.filter(
+              item => String(item?.id || "") !== transferId
+            );
+            data.tlmn = currentWallet;
+          }}
+        );
+        if (!finalized.ok) {
+          return sendText(api, event, "⏳ Người nhận đã được cộng xu; bot đang hoàn tất biên nhận, không cần gửi lại lệnh.");
+        }
+      }
+    } catch (error) {
+      console.error("[TLMN_TRANSFER]", error?.stack || error);
+      return sendText(api, event, action === "pay"
+        ? "⏳ Giao dịch đã lưu chờ xử lý. Bot sẽ tự đồng bộ khi database ổn định; không gửi lại lệnh."
+        : "❌ Không thể cập nhật ví người nhận; vui lòng thử lại sau.");
     }
     return sendText(api, event, (action === "nap" ? "✅ Đã nạp " : "✅ Đã chuyển ") +
       formatMoney(amount) + " cho người chơi.");
@@ -948,7 +1341,7 @@ async function handleIncoming(context = {}) {
   const room = game.get(threadId);
   if (!isEnabled(Threads, threadId)) return false;
 
-  if (lower === "go" && !room) {
+  if (lower === "go" && (!room || room.status === "waiting")) {
     await createOrJoin(context);
     return true;
   }
@@ -976,7 +1369,7 @@ async function handleIncoming(context = {}) {
   }
   if (room.status === "playing" && room.activeUids.includes(String(event?.data?.uidFrom || ""))) {
     const hasCardSyntax = /(10|[3-9]|[jqka2])(ch|dt|b|r|c|t)/i.test(lower) ||
-      /^(doi(\s*thong)?|doithong|pair|double|tu\s*quy|tuquy|four|sanh|straight|le|single)\b/.test(lower);
+      /^(doi(\s*thong)?|doithong|pair|double|sam(\s*co)?|triple|tu\s*quy|tuquy|four|sanh|straight|le|single)\b/.test(lower);
     if (hasCardSyntax) {
       await doPlay(context, content);
       return true;
@@ -985,11 +1378,21 @@ async function handleIncoming(context = {}) {
   return false;
 }
 
-module.exports.run = runCommand;
-module.exports.handleIncoming = handleIncoming;
+module.exports.run = context => withRoomActionLock(
+  context?.event?.threadId,
+  () => runCommand(context)
+);
+module.exports.handleIncoming = context => withRoomActionLock(
+  context?.event?.threadId,
+  () => handleIncoming(context)
+);
 
 module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
   if (!Threads?.getAll) return;
+  await reconcilePendingTransfers(Users).catch(error =>
+    console.error("[TLMN_TRANSFER_RECOVERY]", error?.stack || error)
+  );
+
   const records = Threads.getAll() || [];
   for (const record of records) {
     const threadId = String(record?.threadId || record?.id || "");
@@ -998,23 +1401,20 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
 
     const room = game.restore(saved);
     if (!room) {
-      const current = await Threads.getData(threadId).catch(() => null);
-      const data = { ...(current?.data || {}) };
-      delete data.tlmn_room;
-      if (typeof Threads.setDataAndWait === "function") await Threads.setDataAndWait(threadId, data);
-      else await Threads.setData(threadId, data);
+      console.error("[TLMN_RECOVERY] Dữ liệu bàn không hợp lệ, giữ nguyên để đối soát:", threadId);
+      const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
+      await sendText(api, syntheticEvent,
+        "⚠️ Dữ liệu bàn Tiến Lên cần quản trị viên kiểm tra. Bot giữ nguyên dữ liệu và không cho mở bàn mới để tránh mất xu.");
       continue;
     }
     restoreRoomCards(room);
 
-    // If the process stopped in the middle of reserving buy-ins, refund every
-    // confirmed reservation before reopening the waiting room.
-    if (room.status === "waiting" && Object.keys(room.locked || {}).length) {
-      await refundRoomWallets(Users, room);
-      await persistRoom(Threads, threadId);
-    }
-
     if (room.status === "waiting") {
+      const refunded = await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId));
+      if (!refunded || !await persistRoom(Threads, threadId)) {
+        console.error("[TLMN_RECOVERY] Chưa hoàn xong cược bàn chờ #" + room.id);
+        continue;
+      }
       game.watchLobby(threadId, async () => {
         await recallRoomCards(api, room);
         game.removeRoom(threadId);
@@ -1022,15 +1422,54 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
         const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
         await sendText(api, syntheticEvent, "⌛ Bàn Tiến Lên #" + room.id + " tự hủy sau 60 giây vì không đủ người chơi.");
       });
-    } else if (room.status === "finished" && !room.settled) {
+      continue;
+    }
+
+    if (room.status === "playing" && room.cancelPending) {
+      const refunded = await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId));
+      if (!refunded) {
+        console.error("[TLMN_RECOVERY] Hủy bàn #" + room.id + " nhưng hoàn cược còn chờ.");
+        continue;
+      }
+      game.finishRoom(room);
+      room.settled = true;
+      room.cancelPending = false;
+      const cleaned = await finalizeRoomCleanup(api, Threads, room);
+      if (cleaned) {
+        const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
+        await sendText(api, syntheticEvent, "🛑 Bot đã khôi phục yêu cầu hủy bàn #" + room.id + " và hoàn cược.");
+      }
+      continue;
+    }
+
+    if (room.status === "playing") {
+      const failedPrivate = await distributeHands(api, room);
       const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
-      await endGame(api, syntheticEvent, Users, room, Threads);
+      await sendGroupRoom(api, syntheticEvent, game.snapshot(room),
+        "🔄 Bot đã khôi phục ván sau khi khởi động lại." +
+        (failedPrivate.length ? "\n⚠️ Chưa gửi lại được bài riêng cho: " + failedPrivate.join(", ") + "." : ""));
+      const current = room.players.find(item => item.uid === room.turnUid);
+      if (current) await notifyPrivate(api, current.uid, "🔄 Ván đã khôi phục. Đến lượt bạn, còn 60 giây.");
+      if (!await persistRoom(Threads, threadId)) continue;
+      scheduleRoomTurn(api, Users, Threads, room);
+      continue;
+    }
+
+    if (room.status === "finished") {
+      if (!room.settled) {
+        const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
+        await endGame(api, syntheticEvent, Users, room, Threads);
+      } else {
+        await finalizeRoomCleanup(api, Threads, room);
+      }
     }
   }
 };
 
 module.exports._test = {
   parseAmount, formatMoney, normalizeWallet, tierForCoins,
-  tableCaption, recallTargets, reserveRoomWallets, settleRoomWallets,
-  getRawApi
+  tableCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
+  reconcilePendingReservations, reconcilePendingTransfers,
+  settleRoomWallets, readWallet, changeWallet, getRawApi,
+  finalizeRoomCleanup, recallRoomCards, withRoomActionLock
 };

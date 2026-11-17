@@ -15,6 +15,11 @@ function createUserService(controller) {
     getData(...args) { return controller.getData(...args); },
     getCachedData(...args) { return controller.getCachedData?.(...args) ?? null; },
     setData(...args) { return controller.setData(...args); },
+    setDataAndWait(...args) {
+      return typeof controller.setDataAndWait === "function"
+        ? controller.setDataAndWait(...args)
+        : controller.setData(...args);
+    },
     delData(...args) { return controller.delData(...args); },
     createData(...args) { return controller.createData(...args); },
     isBanned(...args) { return controller.isBanned(...args); },
