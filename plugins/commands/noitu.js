@@ -173,14 +173,27 @@ function scheduleSoloTurn(api, event, session) {
   schedule(Math.max(0, deadline - Date.now()), checkExpiry);
 }
 
+function isCurrentSoloSession(session) {
+  return Boolean(session && session.mode === "solo_bot" &&
+    session.status === "active" && !session.soloFinished &&
+    game.get(session.threadId) === session);
+}
+
 async function sendSoloPrompt(api, event, session, msg) {
+  if (!isCurrentSoloSession(session)) return null;
   await recallSoloLastPrompt(api, session);
+  if (!isCurrentSoloSession(session)) return null;
   session.invalidPhraseNoticeSent = false;
-  session.lastBotResponse = await api.sendMessage(
+  const response = await api.sendMessage(
     withRequesterMention(event, { msg, recallAfterMs: SOLO_TURN_MS }),
     event.threadId,
     event.type
   );
+  session.lastBotResponse = response;
+  if (!isCurrentSoloSession(session)) {
+    await recallSoloLastPrompt(api, session);
+    return null;
+  }
   scheduleSoloTurn(api, event, session);
   return session.lastBotResponse;
 }
@@ -277,7 +290,7 @@ async function startNoituRoom({ api, event }) {
   const threadId = String(event?.threadId || "");
   if (!uid || !threadId) return;
   const caro = require("../../core/runtime/services/games/caroService");
-  if (game.get(threadId)?.status === "active" || ghepChu.get(threadId)?.status === "active" ||
+  if (game.get(threadId)?.status === "active" || ghepChu.isBusy(threadId) ||
       quickNoitu.get(threadId)?.status === "active" || caro.isBusy(threadId)) {
     return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở phòng Nối Từ.");
   }
@@ -380,10 +393,11 @@ async function handleNoituRoomText({ api, event, eventType, isSelf = false, User
     }
     return true;
   }
-  await updateNoituScore(Users || defaultUsers, uid, 1, { move: true, mode: "room" });
+  const scoreSaved = await updateNoituScore(Users || defaultUsers, uid, 1, { move: true, mode: "room" });
   await send(api, event,
     "✅ " + result.phrase.display + " · +1 điểm.\n" +
-    "🎯 Đến lượt " + (result.nextPlayer?.name || "người chơi tiếp theo") + "."
+    "🎯 Đến lượt " + (result.nextPlayer?.name || "người chơi tiếp theo") + "." +
+    (scoreSaved ? "" : "\n⚠️ Nước đi vẫn hợp lệ nhưng điểm chưa đồng bộ lên BXH.")
   );
   return true;
 }
@@ -393,7 +407,7 @@ async function startQuickNoitu({ api, event }) {
   const threadId = String(event?.threadId || "");
   if (!uid || !threadId) return;
   const caro = require("../../core/runtime/services/games/caroService");
-  if (game.get(threadId)?.status === "active" || ghepChu.get(threadId)?.status === "active" || noituRoom.get(threadId) || caro.isBusy(threadId)) {
+  if (game.get(threadId)?.status === "active" || ghepChu.isBusy(threadId) || noituRoom.get(threadId) || caro.isBusy(threadId)) {
     return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở Nối Từ Tốc Độ.");
   }
   const result = quickNoitu.start(threadId, uid, event?.data?.dName || event?.data?.name || "Người chơi");
@@ -439,11 +453,12 @@ async function handleQuickNoituText({ api, event, eventType, isSelf = false, Use
 
   scheduleQuickNoituExpiry(api, event, threadId);
   if (result.ok) {
-    await updateNoituScore(Users || defaultUsers, uid, 1, { move: true, mode: "q" });
+    const scoreSaved = await updateNoituScore(Users || defaultUsers, uid, 1, { move: true, mode: "q" });
     await send(api, event,
       "✅ " + result.phrase.display + " · +" + result.score + " điểm · +1s\n" +
       "🧩 Từ tiếp theo phải bắt đầu bằng: " + result.phrase.last + "\n" +
-      "⏱️ Còn " + Math.ceil(result.remainingMs / 1000) + " giây."
+      "⏱️ Còn " + Math.ceil(result.remainingMs / 1000) + " giây." +
+      (scoreSaved ? "" : "\n⚠️ Điểm chưa đồng bộ được lên BXH.")
     );
     return true;
   }
@@ -583,6 +598,7 @@ async function startSoloBotGame({ api, event }) {
   session.currentMeaning = noituBotAI.getCuratedMeaning(session.currentPhrase.display)?.definition || "";
   const openingMeaning = await noituBotAI.getPhraseMeaning(session.currentPhrase.display, { timeoutMs: 700 })
     .catch(() => noituBotAI.getCuratedMeaning(session.currentPhrase.display));
+  if (game.get(threadId) !== session || session.status !== "active") return;
   if (!openingMeaning?.definition) {
     game.stop(threadId);
     return send(api, event, "⚠️ Chưa tải được ý nghĩa từ mở màn. Hãy thử lại sau nhé!");
@@ -600,17 +616,21 @@ async function startSoloBotGame({ api, event }) {
 }
 
 async function playSoloBotTurn({ api, event, session, Users }) {
+  if (!isCurrentSoloSession(session)) return true;
   clearSoloTurnTimers(session.threadId);
   let reply = noituBotAI.chooseReply(session);
   let meaning = reply ? noituBotAI.getCuratedMeaning(reply.display) : null;
 
   if (!reply) {
     reply = await noituBotAI.findDynamicReply(session, { timeoutMs: 700 });
+    if (!isCurrentSoloSession(session)) return true;
     if (reply) {
       meaning = await noituBotAI.getPhraseMeaning(reply.display, { timeoutMs: 700 }).catch(() => null);
+      if (!isCurrentSoloSession(session)) return true;
     }
   }
 
+  if (!isCurrentSoloSession(session)) return true;
   if (!reply || !meaning?.definition) {
     game.stop(session.threadId);
     clearSoloTurnTimers(session.threadId);
@@ -627,8 +647,10 @@ async function playSoloBotTurn({ api, event, session, Users }) {
     return true;
   }
 
+  if (!isCurrentSoloSession(session)) return true;
   const botResult = game.play(session.threadId, session.botUid, reply.display);
   if (!botResult.ok) {
+    if (!isCurrentSoloSession(session)) return true;
     game.stop(session.threadId);
     clearSoloTurnTimers(session.threadId);
     await recallSoloLastPrompt(api, session);
@@ -730,6 +752,7 @@ async function handleSoloBotText({ api, event, Users, session }) {
     clearSoloTurnTimers(threadId);
     return await playSoloBotTurn({ api, event, session, Users });
   } catch (error) {
+    if (!isCurrentSoloSession(session)) return true;
     console.warn("[NOITU_SOLO_DICTIONARY]", error?.message || error);
     await send(api, event, "⚠️ Từ điển đang phản hồi chậm. Câu chưa bị tính sai, bạn thử lại nhé!");
     return true;
@@ -791,17 +814,23 @@ function clearGhepChuTimer(threadId) {
   ghepChuTimers.delete(String(threadId));
 }
 
-function scheduleGhepChuExpiry(api, event, threadId) {
+function scheduleGhepChuExpiry(api, event, threadId, minDelayMs = 20) {
   clearGhepChuTimer(threadId);
   const session = ghepChu.get(threadId);
   if (!session || session.status !== "active") return;
-  const delay = Math.max(20, ghepChu.remainingSeconds(session) * 1000);
+  const delay = Math.max(minDelayMs, ghepChu.remainingSeconds(session) * 1000);
   const key = String(threadId);
   const timer = setTimeout(async () => {
     if (ghepChuTimers.get(key) !== timer) return;
     ghepChuTimers.delete(key);
     const current = ghepChu.get(key);
     if (current !== session || current.status !== "active") return;
+    // A valid answer may arrive before the deadline but still be resolving
+    // the dictionary, saving points, or sending its updated card.
+    if (current.processing || current.replyPending) {
+      scheduleGhepChuExpiry(api, event, key, 250);
+      return;
+    }
     if (ghepChu.remainingSeconds(current) > 0) {
       scheduleGhepChuExpiry(api, event, key);
       return;
@@ -840,21 +869,18 @@ async function startGhepChu({ api, event }) {
     return sendGhepChuCard(api, event, existing, "🎮 Ván Ghép Chữ đang diễn ra — tiếp tục thử sức nhé!");
   }
 
-  let profile = {
+  const fallbackProfile = {
     requesterName: String(event?.data?.dName || event?.data?.name || "Người chơi"),
     requesterAvatarUrl: ""
   };
-  try {
-    profile = await getRequesterProfile(api, event, { waitMs: 120, skipAvatarWarm: true });
-  } catch {}
-
-  const result = await ghepChu.start(
-    threadId,
-    uid,
-    profile.requesterName || "Người chơi",
-    profile.requesterAvatarUrl || ""
-  );
+  // Reserve this group synchronously before waiting for profile metadata.
+  const startPromise = ghepChu.start(threadId, uid, fallbackProfile.requesterName, "");
+  const profilePromise = getRequesterProfile(api, event, { waitMs: 120, skipAvatarWarm: true })
+    .catch(() => fallbackProfile);
+  const [result, profile] = await Promise.all([startPromise, profilePromise]);
   if (!result.ok) return send(api, event, "⚠️ Không thể bắt đầu ván Ghép Chữ lúc này.");
+  result.session.playerName = String(profile.requesterName || fallbackProfile.requesterName).slice(0, 32);
+  result.session.requesterAvatarUrl = String(profile.requesterAvatarUrl || "");
   scheduleGhepChuExpiry(api, event, threadId);
   return sendGhepChuCard(
     api,
@@ -901,6 +927,8 @@ async function handleGhepChuText({ api, event, eventType, isSelf = false, Users 
     return true;
   }
 
+  session.replyPending = true;
+  try {
   if (action === "skip") {
     const result = await ghepChu.skip(threadId, uid);
     if (!result.ok && result.code !== "TIME_UP") return true;
@@ -931,10 +959,16 @@ async function handleGhepChuText({ api, event, eventType, isSelf = false, Users 
     return true;
   }
 
-  await updateNoituScore(Users || defaultUsers, uid, result.points, { move: true, mode: "gc" });
+  const scoreSaved = await updateNoituScore(Users || defaultUsers, uid, result.points, { move: true, mode: "gc" });
   scheduleGhepChuExpiry(api, event, threadId);
-  await sendGhepChuCard(api, event, result.session, `✅ Chính xác: ${result.completedAnswer}! +${result.points} điểm.`);
+  await sendGhepChuCard(api, event, result.session,
+    `✅ Chính xác: ${result.completedAnswer}! +${result.points} điểm.` +
+    (scoreSaved ? "" : "\n⚠️ Điểm ván này chưa đồng bộ được lên BXH.")
+  );
   return true;
+  } finally {
+    session.replyPending = false;
+  }
 }
 
 async function handleNoiTuText({ api, event, eventType, isSelf = false, Users }) {
@@ -1013,12 +1047,15 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false, Users })
     return true;
   }
 
-  await updateNoituScore(Users || defaultUsers, uid, 1, { move: true, mode: session.mode === "solo_bot" ? "solo" : "classic" });
+  const scoreSaved = await updateNoituScore(Users || defaultUsers, uid, 1, { move: true, mode: session.mode === "solo_bot" ? "solo" : "classic" });
   if (session.mode === "solo_bot" && result.nextPlayer?.uid === session.botUid) {
     return playSoloBotTurn({ api, event, session, Users });
   }
   const nextName = result.nextPlayer?.name || "người chơi tiếp theo";
-  await send(api, event, "✅ " + result.phrase.display + " · +1 điểm. Đến lượt " + nextName + "!");
+  await send(api, event,
+    "✅ " + result.phrase.display + " · +1 điểm. Đến lượt " + nextName + "!" +
+    (scoreSaved ? "" : "\n⚠️ Điểm chưa đồng bộ được lên BXH.")
+  );
   return true;
 }
 
@@ -1215,7 +1252,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   }
   if (action === "go") {
     const caro = require("../../core/runtime/services/games/caroService");
-    if (quickNoitu.get(threadId)?.status === "active" || noituRoom.get(threadId) || ghepChu.get(threadId)?.status === "active" || caro.isBusy(threadId)) {
+    if (quickNoitu.get(threadId)?.status === "active" || noituRoom.get(threadId) || ghepChu.isBusy(threadId) || caro.isBusy(threadId)) {
       return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở Nối Từ Solo.");
     }
     return startSoloBotGame({ api, event });
@@ -1224,7 +1261,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     const caro = require("../../core/runtime/services/games/caroService");
     if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước khi mở Nối Từ.");
     if (noituRoom.get(threadId)) return send(api, event, "⚠️ Nhóm đang có phòng Nối Từ. Hãy kết thúc phòng đó trước.");
-    if (ghepChu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Ghép Chữ. Hãy dừng ván đó trước khi mở Nối Từ.");
+    if (ghepChu.isBusy(threadId)) return send(api, event, "⚠️ Nhóm đang có ván Ghép Chữ. Hãy dừng ván đó trước khi mở Nối Từ.");
     if (caro.isBusy(threadId)) return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Nối Từ.");
     const name = String(event?.data?.dName || event?.data?.name || "Người chơi");
     const result = game.start(threadId, uid, name);
@@ -1340,4 +1377,4 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   return sendGuide(api, event, prefix, isNoituEnabled(Threads || defaultThreads, threadId));
 };
 module.exports.handleEvent = handleActiveGameText;
-module.exports._test = { help, leaderboard, resetNoituScores, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleSoloBotText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn, clearSoloTurnTimers, clearQuickNoituTimer, clearGhepChuTimer, scheduleQuickNoituExpiry, scheduleGhepChuExpiry, quickNoituTimers, ghepChuTimers, recallSoloLastPrompt, getSentMessageRefs, playerMentionPayload, addSoloPromptReaction, scheduleSoloTurn, finishSoloTimeout, finishSoloLoss, isNoituEnabled, setNoituEnabled, stopNoituGames, checkNoituWord, currentMonthKey, SOLO_TURN_MS };
+module.exports._test = { help, leaderboard, resetNoituScores, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleSoloBotText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn, clearSoloTurnTimers, clearQuickNoituTimer, clearGhepChuTimer, scheduleQuickNoituExpiry, scheduleGhepChuExpiry, quickNoituTimers, ghepChuTimers, isCurrentSoloSession, recallSoloLastPrompt, getSentMessageRefs, playerMentionPayload, addSoloPromptReaction, scheduleSoloTurn, finishSoloTimeout, finishSoloLoss, isNoituEnabled, setNoituEnabled, stopNoituGames, checkNoituWord, currentMonthKey, SOLO_TURN_MS };

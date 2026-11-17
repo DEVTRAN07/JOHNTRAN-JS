@@ -611,3 +611,84 @@ test("nt classic remains available as the explicit legacy turn-based mode", asyn
     else global.config = previousConfig;
   }
 });
+
+
+test("an old asynchronous Solo AI turn cannot reward or mutate a replacement game", async () => {
+  const threadId = "solo-ai-stale-turn";
+  const oldSession = command._test.createSoloBotSession(threadId, "old-player", "Old Player", () => 0).session;
+  let releaseReply;
+  const pendingReply = new Promise(resolve => { releaseReply = resolve; });
+  const originalChooseReply = noituBotAI.chooseReply;
+  const originalFindDynamicReply = noituBotAI.findDynamicReply;
+  const originalMeaning = noituBotAI.getPhraseMeaning;
+  const sent = [];
+  const scores = {};
+
+  noituBotAI.chooseReply = () => null;
+  noituBotAI.findDynamicReply = () => pendingReply;
+  noituBotAI.getPhraseMeaning = async () => ({ definition: "nghĩa thử" });
+  const Users = {
+    async getData(uid) { return { data: scores[uid] || {} }; },
+    async setData(uid, data) { scores[uid] = data; }
+  };
+
+  try {
+    const oldTurn = command._test.playSoloBotTurn({
+      api: { async sendMessage(payload) { sent.push(payload); } },
+      event: { threadId, type: 2, data: { uidFrom: "old-player" } },
+      session: oldSession,
+      Users
+    });
+
+    gameService.stop(threadId);
+    const newSession = command._test.createSoloBotSession(threadId, "new-player", "New Player", () => 0).session;
+    releaseReply({ display: "viên chức", normalized: "vien chuc" });
+    await oldTurn;
+
+    assert.equal(gameService.get(threadId), newSession);
+    assert.equal(newSession.status, "active");
+    assert.equal(scores["old-player"], undefined, "stale AI result must not award five points");
+    assert.equal(sent.length, 0, "stale AI result must not send an old prompt or result");
+  } finally {
+    noituBotAI.chooseReply = originalChooseReply;
+    noituBotAI.findDynamicReply = originalFindDynamicReply;
+    noituBotAI.getPhraseMeaning = originalMeaning;
+    gameService.sessions.clear();
+  }
+});
+
+test("Solo start does not send an opening prompt after its session is replaced during lookup", async () => {
+  const threadId = "solo-ai-stale-open";
+  const previousConfig = global.config;
+  global.config = { prefix: "/", allow_self_command: false };
+  const originalMeaning = noituBotAI.getPhraseMeaning;
+  let releaseMeaning;
+  noituBotAI.getPhraseMeaning = () => new Promise(resolve => { releaseMeaning = resolve; });
+  const sent = [];
+  const api = { async sendMessage(payload) { sent.push(payload); } };
+  const event = { threadId, type: 2, data: { uidFrom: "old-player", dName: "Old Player" } };
+
+  try {
+    const opening = command.run({
+      args: ["go"],
+      api,
+      event,
+      Users: { async getData() { return { data: {} }; }, async setData() {} },
+      Threads: {}
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    const oldSession = gameService.get(threadId);
+    assert.ok(oldSession);
+    gameService.stop(threadId);
+    const replacement = command._test.createSoloBotSession(threadId, "new-player", "New Player", () => 0).session;
+    releaseMeaning({ definition: "nghĩa thử" });
+    await opening;
+    assert.equal(gameService.get(threadId), replacement);
+    assert.equal(sent.length, 0, "old /nt go must not send an opening card after replacement");
+  } finally {
+    noituBotAI.getPhraseMeaning = originalMeaning;
+    gameService.sessions.clear();
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});

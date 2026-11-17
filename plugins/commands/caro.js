@@ -309,6 +309,7 @@ async function updateCaroStats(Users, player, mode, result) {
     return null;
   }
 
+  try {
   const uid = String(player.uid);
   const record = await Users.getData(uid);
   const data = record?.data && typeof record.data === "object" ? { ...record.data } : {};
@@ -340,6 +341,10 @@ async function updateCaroStats(Users, player, mode, result) {
   await Users.setData(uid, data);
 
   return { rawDelta, actualStarsDelta, stars: caro.stars };
+  } catch (error) {
+    console.error("[CARO_STATS]", error?.message || error);
+    return null;
+  }
 }
 
 async function settleGame({ api, event, Users, result }) {
@@ -350,8 +355,10 @@ async function settleGame({ api, event, Users, result }) {
     for (const symbol of ["X", "O"]) {
       const player = session.players[symbol];
       if (player?.kind === "human") {
-        await updateCaroStats(Users, player, session.mode, "draw");
-        scoreLines.push(`• ${player.name}: hòa, không đổi sao.`);
+        const score = await updateCaroStats(Users, player, session.mode, "draw");
+        scoreLines.push(score
+          ? `• ${player.name}: hòa, không đổi sao.`
+          : `• ${player.name}: hòa; chưa lưu được thống kê.`);
       }
     }
   } else {
@@ -360,12 +367,18 @@ async function settleGame({ api, event, Users, result }) {
 
     if (winner?.kind === "human") {
       const score = await updateCaroStats(Users, winner, session.mode, "win");
-      scoreLines.push(`• ${winner.name}: +2⭐ (hiện có ${score?.stars ?? "?"}⭐).`);
+      scoreLines.push(score
+        ? `• ${winner.name}: +2⭐ (hiện có ${score.stars}⭐).`
+        : `• ${winner.name}: thắng ván này nhưng chưa lưu được sao.`);
     }
     if (loser?.kind === "human") {
       const score = await updateCaroStats(Users, loser, session.mode, "loss");
-      const penalty = score?.actualStarsDelta === 0 ? "0⭐ (đã ở mức 0⭐)" : "-1⭐";
-      scoreLines.push(`• ${loser.name}: ${penalty} (hiện có ${score?.stars ?? "?"}⭐).`);
+      if (score) {
+        const penalty = score.actualStarsDelta === 0 ? "0⭐ (đã ở mức 0⭐)" : "-1⭐";
+        scoreLines.push(`• ${loser.name}: ${penalty} (hiện có ${score.stars}⭐).`);
+      } else {
+        scoreLines.push(`• ${loser.name}: thua ván này nhưng chưa lưu được thống kê.`);
+      }
     }
   }
 
@@ -686,7 +699,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     const noituRoom = require("../../core/runtime/services/games/noituRoomService");
     const ghepChu = require("../../core/runtime/services/games/ghepchuService");
     if (noitu.get(threadId)?.status === "active" || noituQuick.get(threadId)?.status === "active" ||
-        noituRoom.get(threadId) || ghepChu.get(threadId)?.status === "active") {
+        noituRoom.get(threadId) || ghepChu.isBusy(threadId)) {
       return send(api, event, "⚠️ Nhóm đang có game Nối Từ/Ghép Chữ. Hãy kết thúc game hiện tại trước khi mở Caro.");
     }
   }

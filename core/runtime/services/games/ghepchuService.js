@@ -436,6 +436,14 @@ function get(threadId) {
   return sessions.get(String(threadId || "")) || null;
 }
 
+function isBusy(threadId, now = Date.now()) {
+  const session = get(threadId);
+  if (!session) return false;
+  return session.status === "starting" ||
+    (session.status === "active" &&
+      (session.processing === true || session.replyPending === true || remainingSeconds(session, now) > 0));
+}
+
 async function submit(threadId, playerId, answer, options = {}) {
   const session = get(threadId);
   if (!session || session.status !== "active") return { ok: false, code: "NO_GAME" };
@@ -574,6 +582,7 @@ module.exports = {
   remainingSeconds,
   start,
   get,
+  isBusy,
   submit,
   skip,
   finish,

@@ -355,3 +355,28 @@ test("Ghép Chữ answer completion is cancelled when the session is stopped dur
   assert.equal(result.code, "CANCELLED");
   assert.equal(game.get(threadId).playerId, "user-2");
 });
+
+
+test("Ghép Chữ busy state reserves starting and processing sessions", async () => {
+  const starting = game.start("busy-starting", "user-1", "Player", "", {
+    preloadApi: false,
+    getJson: () => new Promise(() => {})
+  });
+  assert.equal(game.isBusy("busy-starting"), true, "starting session reserves its group");
+  game.remove("busy-starting");
+  await starting.catch(() => {});
+
+  const started = await game.start("busy-active", "user-1", "Player", "", {
+    getJson: mockDictionary,
+    random: () => 0
+  });
+  assert.equal(started.ok, true);
+  assert.equal(game.isBusy("busy-active"), true);
+  started.session.endsAt = Date.now() - 1;
+  assert.equal(game.isBusy("busy-active"), false, "expired idle session can be replaced");
+  started.session.replyPending = true;
+  assert.equal(game.isBusy("busy-active"), true, "a pending reply keeps the group occupied");
+  started.session.replyPending = false;
+  game.finish("busy-active");
+  assert.equal(game.isBusy("busy-active"), false);
+});

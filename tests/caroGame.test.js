@@ -348,3 +348,16 @@ test("a cleared Caro turn timer cannot remove the replacement timer", () => {
     global.clearTimeout = originalClearTimeout;
   }
 });
+
+
+test("Caro score persistence converts storage failures into a recoverable result", async () => {
+  const threadId = "caro-score-store-down";
+  const created = game.startSolo(threadId, { uid: "player", name: "Player", humanFirst: true });
+  assert.equal(created.ok, true);
+  const score = await caroCommand._test.updateCaroStats({
+    async getData() { throw new Error("database offline"); },
+    async setData() { throw new Error("should not write"); }
+  }, created.session.players.X, "solo", "win");
+  assert.equal(score, null, "a temporary DB failure must not escape the score helper");
+  game.finish(threadId);
+});
