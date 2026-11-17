@@ -543,6 +543,44 @@ test("Sâm leaving defender can complete the pass cycle and return lead to the l
   game.removeRoom(threadId);
 });
 
+test("Sâm leaving a live game retains the forfeited hand for wallet penalties", () => {
+  const threadId = "sam-leave-preserves-cards";
+  const created = game.create(threadId, { uid: "leaver", name: "Leaver" }, {
+    id: "81624", stake: 1000
+  });
+  game.join(threadId, "81624", { uid: "winner", name: "Winner" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "leaver", () => 0.32); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = {
+    leaver: [card(3), card(15)],
+    winner: [card(4)]
+  };
+  room.playedByUid = { leaver: 1, winner: 1 };
+  room.turnUid = "winner";
+  room.playedCount = 1;
+
+  const result = game.leave(threadId, "leaver");
+  assert.equal(result.ok, true);
+  assert.equal(result.forfeited, true);
+  assert.equal(room.status, "finished");
+  assert.equal(room.winnerUid, "winner");
+  assert.deepEqual(room.hands.leaver.map(item => item.id), ["3b", "15b"]);
+  assert.equal(room.settlement.net.leaver, -16000);
+  assert.equal(room.settlement.net.winner, 16000);
+  assert.deepEqual(room.settlement.transfers, [{
+    from: "leaver",
+    to: "winner",
+    amount: 16000,
+    reason: "leftover-heo-quad-cong"
+  }]);
+  game.removeRoom(threadId);
+});
+
 test("Sâm computes card-left, thối heo and cóng charges in the shared stake unit", () => {
   const room = {
     stake: 5000,
