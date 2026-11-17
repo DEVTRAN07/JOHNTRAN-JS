@@ -310,7 +310,9 @@ async function recallPrivateHand(api, room, uid) {
 }
 
 async function persistRoom(Threads, threadId) {
-  if (!Threads?.getData || !Threads?.setData) return true;
+  if (!Threads) return true;
+  if (typeof Threads.getData !== "function" ||
+      (typeof Threads.setDataAndWait !== "function" && typeof Threads.setData !== "function")) return false;
   try {
     const record = await Threads.getData(String(threadId));
     const data = record?.data && typeof record.data === "object" ? { ...record.data } : {};
