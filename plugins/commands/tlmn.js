@@ -18,6 +18,8 @@ const roomSaveLocks = new Map();
 const roomActionLocks = new Map();
 const messageLocks = new Map();
 const cleanupTimers = new Map();
+const AI_UID_PREFIX = "tlmn-ai:";
+const aiTimers = new Map();
 const SUIT_HELP = "b = Bích, ch = Chuồn, r = Rô, c = Cơ";
 
 module.exports.config = {
@@ -108,6 +110,10 @@ function getRawApi(api) {
 function sendText(api, event, message) {
   const payload = withRequesterMention(event, { msg: String(message || "") });
   return api.sendMessage(payload, event.threadId, event.type);
+}
+
+function isAiUid(uid) {
+  return String(uid || "").startsWith(AI_UID_PREFIX);
 }
 
 function recallTargets(response) {
@@ -549,6 +555,7 @@ function help(prefix) {
     "",
     "🕹️ BÀN CHƠI",
     prefix + "tlmn go — Mở bàn mới hoặc vào bàn đang chờ",
+    prefix + "tlmn ai — Chơi luyện tập với 3 AI (Admin)",
     prefix + "tlmn leave — Rời bàn",
     prefix + "tlmn cuoc <tiền> — Đổi cược, ví dụ cuoc 10k",
     prefix + "tlmn mode <nhatnhi|demla> — Chọn cách xếp hạng",
@@ -602,7 +609,9 @@ function tableCaption(room, notice = "") {
     "🃏 BÀN CHƠI TIẾN LÊN MIỀN NAM #" + room.id,
     "",
     "👑 Chủ phòng: " + room.ownerName,
-    "💰 Mức cược: " + formatMoney(room.bet) + " • 📜 Chế độ: " + modeLabel(room.mode),
+    room.practice
+      ? "🧠 Luyện tập với 3 AI • Không cược xu"
+      : "💰 Mức cược: " + formatMoney(room.bet) + " • 📜 Chế độ: " + modeLabel(room.mode),
     turn,
     ...(room.status === "waiting" ? ["⏱️ Bàn tự hủy sau 60 giây nếu chưa đủ người."] : []),
     "",
@@ -696,6 +705,7 @@ async function recallPrivateHand(api, room, uid) {
 }
 
 async function sendPrivateHand(api, room, item, hand, turn = false) {
+  if (item?.ai || isAiUid(item?.uid)) return true;
   await recallOrphanPrivateCards(api, item.uid, room.id);
   const key = "hand:" + room.id + ":" + item.uid;
   const suitNames = { b: "Bích", ch: "Chuồn", r: "Rô", c: "Cơ" };
@@ -706,8 +716,11 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
   const namedCards = hand.map(card =>
     engine.rankLabel(card.rank) + suitNames[card.suit]
   ).join(", ");
+  const adminHand = isAdmin(item.uid);
   const caption = [
-    "🃏 BÀI TRÊN TAY CỦA BẠN (" + hand.length + " lá):",
+    adminHand
+      ? "👑 BÀI HOÀNG GIA CỦA ADMIN (" + hand.length + " lá):"
+      : "🃏 BÀI TRÊN TAY CỦA BẠN (" + hand.length + " lá):",
     "👑 " + String(item.name || "Người chơi").toUpperCase(),
     "",
     "👉 " + codeCards,
@@ -737,7 +750,8 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
       room: { id: room.id, bet: room.bet, mode: room.mode },
       player: item,
       hand: hand.map(card => ({ ...card })),
-      isTurn: turn
+      isTurn: turn,
+      isAdmin: adminHand
     }, { timeout: 20000, poolSize: 1 });
     const response = await sendReplacement(api, key, item.uid, ThreadType.User, rawApiInstance =>
       rawApiInstance.sendMessage({ msg: caption, attachments: [imagePath], recallAfterMs: 0, ttlKind: "card" },
@@ -815,6 +829,125 @@ function scheduleRoomTurn(api, Users, Threads, room) {
   );
 }
 
+
+function chooseAiMove(room, uid) {
+  const hand = room?.hands?.[String(uid)] || [];
+  if (!hand.length) return null;
+  const mustContainThreeOfSpades = Number(room.playedCount) === 0;
+  let best = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  // A 13-card hand has only 8,191 non-empty subsets, so exhaustive legal
+  // candidate checking is cheap and avoids AI moves that break game rules.
+  const limit = 1 << hand.length;
+  for (let mask = 1; mask < limit; mask += 1) {
+    const cards = [];
+    for (let index = 0; index < hand.length; index += 1) {
+      if (mask & (1 << index)) cards.push(hand[index]);
+    }
+    if (mustContainThreeOfSpades && !cards.some(card => card.id === "3b")) continue;
+
+    const validation = engine.validatePlay(hand, cards, room.currentCombo || null, {
+      mustContainThreeOfSpades
+    });
+    if (!validation.ok) continue;
+
+    const combo = validation.combo;
+    const leadPenalty = room.currentCombo ? 0 : (cards.length === 1 ? 0 : cards.length * 100);
+    const score = leadPenalty + cards.length * 10 + combo.mainRank * 3 + combo.highSuit;
+    if (score < bestScore) {
+      bestScore = score;
+      best = {
+        cards: combo.cards.map(card => ({ ...card })),
+        input: combo.cards.map(engine.cardCode).join(" "),
+        combo,
+        score
+      };
+    }
+  }
+  return best;
+}
+
+function clearAiTurn(threadId) {
+  const key = String(threadId || "");
+  const timer = aiTimers.get(key);
+  if (timer) clearTimeout(timer);
+  aiTimers.delete(key);
+}
+
+function scheduleAiTurn(api, Users, Threads, room) {
+  if (!room || !room.practice || room.status !== "playing" || !isAiUid(room.turnUid)) {
+    if (room?.threadId) clearAiTurn(room.threadId);
+    return false;
+  }
+  const threadId = String(room.threadId);
+  const uid = String(room.turnUid);
+  const expectedPlayedCount = room.playedCount;
+  const expectedToken = String(room.gameToken || room.id);
+  clearAiTurn(threadId);
+
+  const timer = setTimeout(() => {
+    if (aiTimers.get(threadId) !== timer) return;
+    aiTimers.delete(threadId);
+    withRoomActionLock(threadId, async () => {
+      const current = game.get(threadId);
+      if (!current || current !== room || current.status !== "playing" ||
+          !current.practice || current.turnUid !== uid ||
+          current.playedCount !== expectedPlayedCount ||
+          String(current.gameToken || current.id) !== expectedToken) return;
+
+      const beforeMove = game.serialize(current);
+      const move = chooseAiMove(current, uid);
+      let action = move
+        ? game.play(threadId, uid, move.input)
+        : game.pass(threadId, uid);
+
+      if (!action.ok && !move && !current.currentCombo) {
+        action = game.timeoutTurn(threadId, uid);
+      }
+      if (!action.ok) {
+        console.warn("[TLMN_AI] Không tìm được nước hợp lệ:", action.code);
+        return;
+      }
+
+      if (!await persistRoom(Threads, threadId)) {
+        const restored = game.restore(beforeMove);
+        if (restored) {
+          scheduleRoomTurn(api, Users, Threads, restored);
+          scheduleAiTurn(api, Users, Threads, restored);
+        }
+        return;
+      }
+
+      const actor = current.players.find(item => item.uid === uid);
+      const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
+      if (action.finished) {
+        await endGame(api, syntheticEvent, Users, action.state, Threads);
+        return;
+      }
+
+      const notice = action.combo
+        ? "🤖 " + (actor?.name || "AI") + " đánh " + engine.formatCards(action.combo.cards) + "."
+        : "🤖 " + (actor?.name || "AI") + " bỏ lượt" +
+          (action.roundCleared ? " • Vòng mới bắt đầu." : ".");
+      await sendGroupRoom(api, syntheticEvent, action.room, notice);
+
+      const human = current.players.find(item => !item.ai && !isAiUid(item.uid));
+      if (human) {
+        await sendPrivateHand(api, current, human, current.hands[human.uid] || [],
+          current.turnUid === human.uid);
+      }
+      await persistRoom(Threads, threadId);
+      scheduleRoomTurn(api, Users, Threads, current);
+      scheduleAiTurn(api, Users, Threads, current);
+    }).catch(error => console.error("[TLMN_AI]", error?.stack || error));
+  }, 850);
+
+  timer.unref?.();
+  aiTimers.set(threadId, timer);
+  return true;
+}
+
 async function distributeHands(api, room) {
   const failed = [];
   for (const item of room.players) {
@@ -861,6 +994,21 @@ async function endGame(api, event, Users, roomState, Threads) {
   if (Threads && await persistRoom(Threads, room.threadId) === false) {
     await sendText(api, event, "⚠️ Chưa thể lưu kết quả ván bài vào database; xu chưa được chốt để tránh sai lệch số dư.");
     return;
+  }
+  if (room.practice) {
+    room.settled = true;
+    await persistRoom(Threads, room.threadId);
+    await finalizeRoomCleanup(api, Threads, room);
+    const rows = room.results || [];
+    return sendText(api, event, [
+      "🏁 KẾT THÚC VÁN LUYỆN TẬP VS AI #" + room.id,
+      "",
+      ...rows.map(row => (row.place === 1 ? "👑 " : "• ") +
+        row.place + ". " + row.name + " — còn " + row.cardsLeft + " lá"),
+      "",
+      "🧠 Đây là ván luyện tập, không cộng hoặc trừ xu.",
+      "👉 Gõ !tlmn ai để đấu lại với 3 AI."
+    ].join("\n"));
   }
   let payoutLines = [];
   try {
@@ -921,6 +1069,61 @@ async function hasSavedRoom(Threads, threadId) {
   } catch {
     return true;
   }
+}
+
+async function createAiPractice(context) {
+  const { api, event, Threads } = context;
+  const threadId = String(event?.threadId || "");
+  const uid = String(event?.data?.uidFrom || "");
+  const name = event?.data?.dName || event?.data?.name || "Admin";
+
+  if (event?.type !== ThreadType.Group) {
+    return sendText(api, event, "⚠️ Hãy dùng !tlmn ai trong nhóm để mở bàn luyện tập.");
+  }
+  if (!isAdmin(uid)) {
+    return sendText(api, event, "⛔ Chế độ luyện tập với AI hiện chỉ dành cho Admin bot.");
+  }
+  if (!isEnabled(Threads, threadId)) {
+    return sendText(api, event, "🚫 Game Tiến Lên đã tắt trong nhóm này.");
+  }
+  if (game.isBusy(threadId) || await hasSavedRoom(Threads, threadId)) {
+    return sendText(api, event, "⚠️ Nhóm đang có bàn Tiến Lên hoặc dữ liệu bàn cần khôi phục. Hãy kết thúc bàn hiện tại trước.");
+  }
+  const conflict = gameConflict(threadId);
+  if (conflict) {
+    return sendText(api, event, "⚠️ Nhóm đang chơi game " + conflict + ". Hãy kết thúc game đó trước.");
+  }
+
+  const created = game.create(threadId, { uid, name }, {
+    bet: 5000,
+    practice: true
+  });
+  if (!created.ok) {
+    return sendText(api, event, "⚠️ Không thể tạo bàn luyện tập với AI.");
+  }
+
+  const bots = ["🤖 AI • Tân thủ", "🤖 AI • Chiến thuật", "🤖 AI • Cao thủ"];
+  for (let index = 0; index < bots.length; index += 1) {
+    const joined = game.join(threadId, created.state.id, {
+      uid: AI_UID_PREFIX + created.state.id + ":" + (index + 1),
+      name: bots[index],
+      ai: true
+    });
+    if (!joined.ok) {
+      game.removeRoom(threadId);
+      await persistRoom(Threads, threadId);
+      return sendText(api, event, "⚠️ Không thể thêm đủ 3 AI; bàn luyện tập đã được đóng.");
+    }
+  }
+
+  if (!await persistRoom(Threads, threadId)) {
+    game.removeRoom(threadId);
+    await persistRoom(Threads, threadId);
+    return sendText(api, event, "⚠️ Database chưa lưu được bàn luyện tập; vui lòng thử lại.");
+  }
+  await sendGroupRoom(api, event, game.snapshot(created.state),
+    "🤖 Đã mở bàn luyện tập với 3 AI. Không cược xu; chỉ bài của bạn được gửi riêng.");
+  return startRoom(context);
 }
 
 async function createOrJoin({ api, event, Users, Threads }) {
@@ -1006,7 +1209,9 @@ async function startRoom({ api, event, Users, Threads }) {
     "Tất cả người chơi vui lòng KHÔNG CHẶN TIN NHẮN NGƯỜI LẠ với Bot, để Bot có thể chia bài và gửi ảnh các lá bài trên tay vào tin nhắn riêng cho bạn nhé!",
     "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước."
   ].join("\n"));
-  const reserved = await reserveRoomWallets(Users, state, () => persistRoom(Threads, threadId));
+  const reserved = state.practice
+    ? { ok: true, reserve: 0 }
+    : await reserveRoomWallets(Users, state, () => persistRoom(Threads, threadId));
   if (!reserved.ok) {
     return sendText(api, event, reserved.storageError || reserved.refundPending
       ? "⚠️ Không thể xác nhận hoặc hoàn khoản giữ cược an toàn. Bàn chưa bắt đầu; dữ liệu đối soát được giữ lại."
@@ -1042,10 +1247,13 @@ async function startRoom({ api, event, Users, Threads }) {
       " Người chơi hãy mở chat riêng với bot và bật nhận tin nhắn người lạ, sau đó chủ phòng có thể start lại.");
     return;
   }
-  await sendGroupRoom(api, event, result.room, "🎮 Đã chia 13 lá riêng cho từng người. Người có 3♠ đi trước.");
-  const first = room.players.find(item => item.uid === room.turnUid);
+  await sendGroupRoom(api, event, result.room,
+    room.practice
+      ? "🎮 Đã chia bài cho bạn và 3 AI. Người có 3♠ đi trước; ván này không cược xu."
+      : "🎮 Đã chia 13 lá riêng cho từng người. Người có 3♠ đi trước.");
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, Users, Threads, room);
+  scheduleAiTurn(api, Users, Threads, room);
 }
 
 async function doPlay(context, input) {
@@ -1101,6 +1309,7 @@ async function doPlay(context, input) {
   }
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, Users, Threads, room);
+  scheduleAiTurn(api, Users, Threads, room);
   return true;
 }
 
@@ -1137,6 +1346,7 @@ async function doPass(context) {
   }
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, context.Users, Threads, result.state);
+  scheduleAiTurn(api, context.Users, Threads, result.state);
   return true;
 }
  
@@ -1177,6 +1387,7 @@ async function runCommand(context) {
   const rest = args.slice(1).map(value => String(value));
   if (action === "help") return sendText(api, event, help(prefix));
 
+  if (action === "ai" || action === "vsai" || action === "bot") return createAiPractice(context);
   if (action === "go") return createOrJoin(context);
   if (action === "join") return joinRoom(context, rest[0]);
   if (action === "start") return startRoom(context);
@@ -1468,6 +1679,7 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
       const current = room.players.find(item => item.uid === room.turnUid);
       if (!await persistRoom(Threads, threadId)) continue;
       scheduleRoomTurn(api, Users, Threads, room);
+      scheduleAiTurn(api, Users, Threads, room);
       continue;
     }
 
@@ -1484,6 +1696,7 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
 
 module.exports._test = {
   parseAmount, formatMoney, normalizeWallet, tierForCoins,
+  isAiUid, chooseAiMove, scheduleAiTurn,
   tableCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,
