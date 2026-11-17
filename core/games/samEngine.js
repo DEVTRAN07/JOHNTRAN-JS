@@ -190,8 +190,8 @@ function canBeat(candidate, current) {
   if (!candidate || !current) return Boolean(candidate);
   if (candidate.type === "fourKind" && current.type === "single" && current.mainRank === 15) return true;
   if (candidate.type !== current.type || candidate.length !== current.length) return false;
-  if (candidate.mainRank !== current.mainRank) return candidate.mainRank > current.mainRank;
-  return candidate.highSuit > current.highSuit;
+  // Theo luật Sâm Lốc: chất không dùng để phân định độ lớn thông thường.
+  return candidate.mainRank > current.mainRank;
 }
 
 function validatePlay(hand, inputCards, currentCombo = null, options = {}) {
