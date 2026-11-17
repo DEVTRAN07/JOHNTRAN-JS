@@ -412,7 +412,7 @@ function chopTargetUnits(combo) {
   return 0;
 }
 
-function calculateLeftoverPenalty(hand, bet) {
+function calculateLeftoverPenalty(hand, bet, options = {}) {
   const cards = engine.sortHand(hand || []);
   const used = new Set();
   let amount = 0;
@@ -471,8 +471,15 @@ function calculateLeftoverPenalty(hand, bet) {
       }
     }
   }
-  amount += cards.filter(card => !used.has(card.id)).length * bet;
+  const looseCards = cards.filter(card => !used.has(card.id)).length;
+  if (options.includeOrdinaryRacs !== false) amount += looseCards * bet;
   return amount;
+}
+
+function calculateDeadWeaponPenalty(hand, bet) {
+  // GameVH's successful Kết 3 Bích adds only remaining heo/hàng to 26 stakes;
+  // ordinary unpaired leftover cards are not part of this special surcharge.
+  return calculateLeftoverPenalty(hand, bet, { includeOrdinaryRacs: false });
 }
 
 function calculateSettlement(room) {
@@ -515,7 +522,8 @@ function calculateSettlement(room) {
     }
   } else if (room.threeSpadesFinisherUid && !room.threeSpadesBlockedByUid) {
     for (const item of players) if (item.uid !== winnerUid) {
-      add(item.uid, winnerUid, 26 * bet, "ket-ba-bich", 0.05);
+      const deadWeapons = calculateDeadWeaponPenalty(room.hands?.[item.uid] || [], bet);
+      add(item.uid, winnerUid, 26 * bet + deadWeapons, "ket-ba-bich", 0.05);
     }
   } else {
     for (const item of players) {
@@ -1098,6 +1106,6 @@ module.exports = {
   get, getByCode, isBusy, snapshot, create, join, joinWaiting,
   updateBet, updateMode, watchLobby, watchTurn, clearTimer, timeoutTurn, resetToWaiting,
   removeRoom, start, play, pass, leave, stop, cancel, finishRoom, listActive, serialize, restore,
-  calculateSettlement, calculateLeftoverPenalty,
+  calculateSettlement, calculateLeftoverPenalty, calculateDeadWeaponPenalty,
   _test: { resolveWhiteHand }
 };
