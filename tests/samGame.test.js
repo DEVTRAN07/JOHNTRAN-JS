@@ -65,6 +65,11 @@ test("Sâm only allows higher same-size combinations, with four-kind cutting one
   const pair3 = engine.analyzeCombo([card(3), card(3, "r")]);
   const pair4 = engine.analyzeCombo([card(4), card(4, "r")]);
   assert.equal(engine.canBeat(pair4, pair3), true);
+  // Same rank with different suits is not a stronger Sâm combination.
+  const pair4LowSuit = engine.analyzeCombo([card(4, "b"), card(4, "ch")]);
+  const pair4HighSuit = engine.analyzeCombo([card(4, "r"), card(4, "c")]);
+  assert.equal(engine.canBeat(pair4HighSuit, pair4LowSuit), false);
+  assert.equal(engine.canBeat(pair4LowSuit, pair4HighSuit), false);
   assert.equal(engine.canBeat(pair4, engine.analyzeCombo([card(15)])), false);
 
   const quad = engine.analyzeCombo([card(7), card(7, "ch"), card(7, "r"), card(7, "c")]);
