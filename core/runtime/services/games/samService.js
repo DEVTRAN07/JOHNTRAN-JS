@@ -10,6 +10,7 @@ const LOBBY_TIMEOUT_MS = 5 * 60 * 1000;
 const roomsByThread = new Map();
 const roomsByCode = new Map();
 const timers = new Map();
+const previousWinners = new Map();
 
 function makeCode() {
   let code;
@@ -112,6 +113,7 @@ function joinWaiting(threadId, player) {
 function finish(room, winnerUid, reason = "normal") {
   if (room.status === "finished") return room.results || [];
   room.winnerUid = String(winnerUid || "");
+  if (room.winnerUid) previousWinners.set(String(room.threadId), room.winnerUid);
   room.status = "finished";
   room.finishedAt = Date.now();
   room.turnUid = null;
@@ -147,8 +149,10 @@ function start(threadId, uid, random = Math.random) {
   if (room.players.length > MAX_PLAYERS) return { ok: false, code: "FULL" };
   const dealt = engine.dealCards(room.players.map(item => item.uid), random);
   room.hands = dealt.hands;
-  room.firstPlayerUid = dealt.firstPlayerId;
-  room.turnUid = dealt.firstPlayerId;
+  const previousWinner = previousWinners.get(String(threadId));
+  room.firstPlayerUid = previousWinner && room.players.some(item => item.uid === previousWinner)
+    ? previousWinner : dealt.firstPlayerId;
+  room.turnUid = room.firstPlayerUid;
   room.lastPlayerUid = null;
   room.lastPlay = null;
   room.currentCombo = null;
@@ -163,7 +167,7 @@ function start(threadId, uid, random = Math.random) {
   })).filter(item => item.type);
   if (whiteHands.length) {
     whiteHands.sort((a, b) =>
-      engine.WHITE_HAND_PRIORITY.indexOf(a.type) - engine.WHITE_HAND_PRIORITY.indexOf(b.type) ||
+      engine.compareWhiteHands(room.hands[a.uid], a.type, room.hands[b.uid], b.type) ||
       room.players.findIndex(item => item.uid === a.uid) - room.players.findIndex(item => item.uid === b.uid)
     );
     const winner = whiteHands[0];
@@ -183,33 +187,37 @@ function calculateSettlement(room) {
     if (from && to && from !== to && value) transfers.push({ from, to, amount: value, reason });
   };
 
+  // Tiền chặt được trả trực tiếp cho người vừa bị chặt.
   for (const chop of Array.isArray(room.chopEvents) ? room.chopEvents : []) {
     add(chop.from, chop.to, chop.amount, chop.reason || "chop");
   }
 
   if (room.whiteHand || room.samStatus === "success") {
-    const amount = stake * (room.whiteHand ? 20 : 20);
     for (const player of room.players) {
-      if (player.uid !== winnerUid) add(player.uid, winnerUid, amount, room.whiteHand ? "white-hand" : "bao-sam-success");
+      if (player.uid !== winnerUid) {
+        add(player.uid, winnerUid, 20 * stake,
+          room.whiteHand ? "white-hand-20x" : "bao-sam-success-20x");
+      }
     }
   } else {
     for (const player of room.players) {
       const uid = String(player.uid);
       if (uid === winnerUid) continue;
       const hand = room.hands[uid] || [];
-      let amount = hand.length * stake;
-      const twos = hand.filter(card => Number(card.rank) === 15).length;
-      const fourKinds = new Set(hand.filter(card => Number(card.rank) !== 15)
-        .map(card => Number(card.rank))).size;
-      const hasFourKind = [...new Set(hand.map(card => Number(card.rank)))]
-        .some(rank => hand.filter(card => Number(card.rank) === rank).length === 4);
-      amount += twos * 15 * stake;
-      if (hasFourKind) amount += 15 * stake;
-      if (!(Number(room.playedByUid?.[uid]) > 0)) amount += 15 * stake;
-      add(uid, winnerUid, amount, "cards-left-and-penalties");
+      const counts = new Map();
+      for (const card of hand) counts.set(Number(card.rank), (counts.get(Number(card.rank)) || 0) + 1);
+      let amount = 0;
+      for (const [rank, count] of counts) {
+        if (rank === 15) amount += count * 15 * stake; // Thối 2
+        else if (count === 4) amount += 15 * stake; // Thối tứ quý
+        else amount += count * stake; // Mỗi lá rác còn lại
+      }
+      if (!(Number(room.playedByUid?.[uid]) > 0)) amount += 15 * stake; // Cóng
+      add(uid, winnerUid, amount, "leftover-heo-quad-cong");
     }
     if (room.samStatus === "failed" && room.samCallerUid && room.samBlockedByUid) {
-      add(room.samCallerUid, room.samBlockedByUid, 20 * stake, "bao-sam-failed");
+      add(room.samCallerUid, room.samBlockedByUid,
+        20 * stake * Math.max(1, room.players.length - 1), "den-sam-20x-per-opponent");
     }
   }
 
@@ -246,15 +254,15 @@ function play(threadId, uid, input) {
       !parsed.cards.some(card => card.id === highestCard.id)) {
     return { ok: false, code: "MUST_PLAY_HIGHEST_ON_BAO_ONE" };
   }
-  const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo, {
-    mustContainThreeOfSpades: room.playedCount === 0 &&
-      !room.samCallerUid && actor === room.firstPlayerUid
-  });
+  const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo);
   if (!validation.ok) return validation;
 
   const combo = validation.combo;
-  if (room.currentCombo && room.lastPlayerUid &&
-      combo.type === "fourKind" &&
+  if (engine.removeCards(hand, combo.cards).length === 0 &&
+      combo.cards.some(card => Number(card.rank) === 15)) {
+    return { ok: false, code: "CANNOT_FINISH_WITH_TWO" };
+  }
+  if (room.currentCombo && room.lastPlayerUid && combo.type === "fourKind" &&
       ((room.currentCombo.type === "single" && room.currentCombo.mainRank === 15) ||
        room.currentCombo.type === "fourKind")) {
     room.chopEvents ||= [];
@@ -263,10 +271,6 @@ function play(threadId, uid, input) {
       amount: 15 * Math.max(1, Math.floor(Number(room.stake) || 5000)),
       reason: room.currentCombo.type === "fourKind" ? "chop-four-kind" : "chop-two"
     });
-  }
-  if (engine.removeCards(hand, combo.cards).length === 0 &&
-      combo.cards.some(card => Number(card.rank) === 15)) {
-    return { ok: false, code: "CANNOT_FINISH_WITH_TWO" };
   }
   room.hands[actor] = engine.removeCards(hand, combo.cards);
   room.currentCombo = combo;
@@ -343,10 +347,7 @@ function timeoutTurn(threadId, uid) {
     return { ...pass(threadId, uid), timedOut: true, action: "pass" };
   }
   const hand = room.hands[String(uid)] || [];
-  const first = room.playedCount === 0 && !room.samCallerUid &&
-    uid === room.firstPlayerUid
-    ? hand.find(card => card.id === "3b")
-    : engine.sortHand(hand)[0];
+  const first = engine.sortHand(hand)[0];
   if (!first) return { ok: false, code: "NO_CARD" };
   return { ...play(threadId, uid, [first]), timedOut: true, action: "play" };
 }
