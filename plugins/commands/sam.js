@@ -846,6 +846,7 @@ async function leaveRoom(context) {
 
 async function runCommand(context) {
   const { args = [], api, event, Threads } = context;
+  const threadId = String(event?.threadId || "");
   const action = String(args[0] || "help").toLowerCase();
   const rest = args.slice(1).map(String);
   const prefix = global.config?.prefix || "!";
