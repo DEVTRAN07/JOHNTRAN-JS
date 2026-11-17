@@ -398,7 +398,7 @@ function calculateLeftoverPenalty(hand, bet) {
     }
   }
 
-  const pairRanks = [...counts.entries()].filter(([rank, count]) => rank !== 15 && count >= 2)
+  const pairRanks = [...counts.entries()].filter(([rank, count]) => rank !== 15 && count === 2)
     .map(([rank]) => rank).sort((a, b) => a - b);
   let bestRun = [];
   for (let i = 0; i < pairRanks.length; i += 1) {
@@ -514,8 +514,6 @@ function play(threadId, uid, input) {
   if (!room.trickParticipants.includes(actor)) room.trickParticipants.push(actor);
 
   const combo = validation.combo;
-  const chopMultiplier = combo.type === "pairRun" && combo.length >= 4 ? 12 :
-    combo.type === "fourKind" ? 8 : combo.type === "pairRun" && combo.length === 3 ? 6 : 0;
   const chops = previousCombo && previousLeader && (
     (previousCombo.type === "single" && previousCombo.mainRank === 15 &&
       (combo.type === "pairRun" && combo.length >= 3 || combo.type === "fourKind")) ||
@@ -525,10 +523,17 @@ function play(threadId, uid, input) {
     (previousCombo.type === "pairRun" && previousCombo.length >= 4 &&
       combo.type === "pairRun" && combo.length >= 4 && combo.mainRank > previousCombo.mainRank)
   );
-  if (chops && chopMultiplier) {
+  if (chops) {
+    let chopUnits = combo.type === "pairRun" && combo.length >= 4 ? 12 :
+      combo.type === "fourKind" ? 8 : 6;
+    if (previousCombo.type === "single" && previousCombo.mainRank === 15) {
+      const targetCard = previousCombo.cards?.[0];
+      chopUnits = targetCard && (targetCard.suit === "b" || targetCard.suit === "ch") ? 3 : 6;
+    }
     room.chopEvents ||= [];
     room.chopEvents.push({
-      from: previousLeader, to: actor, amount: chopMultiplier * Math.max(1, Number(room.bet) || 5000),
+      from: previousLeader, to: actor,
+      amount: chopUnits * Math.max(1, Number(room.bet) || 5000),
       reason: "chop-" + combo.type + "-" + (combo.length || 1)
     });
   }
