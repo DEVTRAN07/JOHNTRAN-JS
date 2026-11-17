@@ -175,6 +175,9 @@ function start(threadId, uid, random = Math.random) {
   room.finishOrder = [];
   room.startedAt = Date.now();
   room.status = "playing";
+  room.startCountdownAt = null;
+  room.startCountdownBy = null;
+  room.startCountdownMessage = null;
 
   const whiteHands = room.players.map(item => ({
     uid: item.uid, type: engine.detectWhiteHand(room.hands[item.uid])
