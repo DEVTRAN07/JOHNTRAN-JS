@@ -78,6 +78,17 @@ async function main() {
   ];
 
   const jobs = [
+    ["19-anti-protection-v2", "anti-protection-v2", {
+      prefix: "/",
+      items: [
+        { key:"anti_nude", label:"Chặn nội dung nhạy cảm", detail:"AI quét ảnh 18+ / khỏa thân", command:"/antinude", icon:"18+", tone:"#e83f9e", enabled:true },
+        { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục chữ, ảnh, video, voice", command:"/antirecall", icon:"↶", tone:"#a94ce5", enabled:true },
+        { key:"anti_danger_link", label:"Chặn link nguy hiểm", detail:"Link mời nhóm khác / URL độc hại", command:"/antilink", icon:"↗", tone:"#138fe5", enabled:false },
+        { key:"anti_sticker_spam", label:"Chống dội bom sticker", detail:"Phát hiện sticker gửi dồn dập", command:"/antispam", icon:"ST", tone:"#f18b1c", enabled:false },
+        { key:"anti_link", label:"Chặn tất cả link", detail:"Chặn đường dẫn trong nhóm", command:"/anti link", icon:"URL", tone:"#08aeba", enabled:false },
+        { key:"anti_spam", label:"Chống spam tin nhắn", detail:"Giới hạn tin nhắn gửi liên tục", command:"/anti spam", icon:"SP", tone:"#e4b91e", enabled:false }
+      ]
+    }],
     ["01-menu", "menu", {
       requesterName: "MrQ · Preview",
       requesterAvatarUrl: "",
@@ -331,7 +342,7 @@ async function main() {
     "Active outputs:",
     "01 menu, 02 menu folder, 03 topchat, 04 status, 05 /card profile,",
     "06 music search, 07 now playing, 08-11 reply.card variants, 12 generic card,",
-    "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand.",
+    "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand, 19 Anti-Protection V2.",
     "",
     "Reference only (not mapped into canvasWorker):",
     "17-18 legacy profile and avatar renderer previews."

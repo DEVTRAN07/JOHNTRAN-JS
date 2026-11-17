@@ -528,9 +528,9 @@ async function sendAntiMenu({ api, event, Threads }) {
 
   let imagePath = null;
   try {
-    imagePath = await renderCanvas("anti-protection", { items, prefix });
+    imagePath = await renderCanvas("anti-protection-v2", { items, prefix });
     await api.sendMessage({
-      msg:"🛡️ BẢO VỆ NHÓM (ANTI-PROTECTION)",
+      msg:"🛡️ BẢO VỆ NHÓM · ANTI-PROTECTION V2",
       attachments:[imagePath],
       ttlKind:"card"
     }, event.threadId, event.type);
@@ -540,7 +540,7 @@ async function sendAntiMenu({ api, event, Threads }) {
       msg:buildAntiMenuText(data, prefix)
     }, event.threadId, event.type);
   } catch (error) {
-    console.error("[ANTI_MENU]", error?.stack || error);
+    console.error("[ANTI_MENU_V2] Canvas mới không render được:", error?.stack || error);
     return api.sendMessage({
       msg:buildAntiMenuText(data, prefix) + "\n⚠️ Không tạo được ảnh Anti-Protection, bot đã gửi hướng dẫn dạng chữ."
     }, event.threadId, event.type);

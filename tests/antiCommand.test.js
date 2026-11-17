@@ -40,11 +40,11 @@ test("bare /anti sends the Anti-Protection image first and the status/instructio
     });
 
     assert.equal(rendered.length, 1);
-    assert.equal(rendered[0].type, "anti-protection");
+    assert.equal(rendered[0].type, "anti-protection-v2");
     assert.equal(rendered[0].data.items.length, 6);
     assert.equal(sent.length, 2, "the image and text guide are sent as two ordered messages");
     assert.deepEqual(sent[0].payload.attachments, [rendered[0].file]);
-    assert.match(sent[0].payload.msg, /ANTI-PROTECTION/);
+    assert.match(sent[0].payload.msg, /ANTI-PROTECTION V2/);
     assert.match(sent[1].payload.msg, /antinude on\|off/);
     assert.match(sent[1].payload.msg, /antirecall on\|off/);
     assert.match(sent[1].payload.msg, /anti link on\|off/);

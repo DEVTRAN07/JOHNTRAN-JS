@@ -36,7 +36,7 @@ test("settings Canvas renderer and worker expose host-list and theme cards", () 
 });
 
 test("Anti-Protection canvas renders the six live moderation features with statuses", async () => {
-  const file = await renderCanvas("anti-protection", {
+  const file = await renderCanvas("anti-protection-v2", {
     prefix: "/",
     items: [
       { key:"anti_nude", label:"Chặn nội dung nhạy cảm", icon:"18+", tone:"#e83f9e", enabled:true },
@@ -51,6 +51,8 @@ test("Anti-Protection canvas renders the six live moderation features with statu
     const buffer = fs.readFileSync(file);
     assert.ok(buffer.length > 1000);
     assert.equal(buffer.subarray(0,8).toString("hex"), "89504e470d0a1a0a");
+    assert.equal(buffer.readUInt32BE(16), 750, "Anti V2 should use the configured 750px Canvas width");
+    assert.equal(buffer.readUInt32BE(20), 720, "Anti V2 must be the dedicated full-height image, not the old short Mac-window card");
   } finally {
     try { fs.unlinkSync(file); } catch {}
   }
@@ -60,5 +62,6 @@ test("Anti-Protection canvas renderer is registered in the worker", () => {
   const renderer = require("../core/canvas/settings");
   const workerSource = fs.readFileSync(require.resolve("../core/workers/canvasWorker"), "utf8");
   assert.equal(typeof renderer.renderAntiProtectionCard, "function");
-  assert.match(workerSource, /case "anti-protection":/);
+  assert.equal(typeof renderer.renderAntiProtectionCardV2, "function");
+  assert.match(workerSource, /case "anti-protection-v2":/);
 });
