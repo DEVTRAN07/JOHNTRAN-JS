@@ -192,7 +192,65 @@ async function main() {
       ],
       footer: "JOHNTRAN · " + VERSION
     }],
-    ["13-sam-private-hand", "sam", {
+    ["13-tlmn-table", "tlmn", {
+      view: "table",
+      room: {
+        id: "81527", bet: 5000, mode: "nhatnhi", status: "playing",
+        playerCount: 4, turnUid: "preview-2", playedCount: 5,
+        players: [
+          { uid: "preview-1", name: "Minh Anh", handCount: 8 },
+          { uid: "preview-2", name: "Quang Huy", handCount: 10 },
+          { uid: "preview-3", name: "Bảo Trân", handCount: 7 },
+          { uid: "preview-4", name: "Gia Bảo", handCount: 4 }
+        ],
+        lastPlay: {
+          name: "Minh Anh",
+          cards: [
+            { rank: 7, suit: "b" }, { rank: 7, suit: "r" },
+            { rank: 8, suit: "c" }, { rank: 9, suit: "ch" },
+            { rank: 10, suit: "b" }
+          ]
+        },
+        currentCombo: { type: "straight", length: 5 }
+      }
+    }],
+    ["14-tlmn-private-hand", "tlmn", {
+      view: "hand",
+      room: { id: "81527", bet: 5000, mode: "nhatnhi", practice: false },
+      player: { uid: "preview-tlmn", name: "MrQ · Tiến Lên Preview" },
+      hand: [
+        { rank: 3, suit: "b" }, { rank: 4, suit: "c" }, { rank: 4, suit: "r" },
+        { rank: 5, suit: "ch" }, { rank: 6, suit: "b" }, { rank: 7, suit: "c" },
+        { rank: 8, suit: "r" }, { rank: 9, suit: "ch" }, { rank: 10, suit: "b" },
+        { rank: 11, suit: "c" }, { rank: 12, suit: "r" }, { rank: 14, suit: "ch" },
+        { rank: 15, suit: "c" }
+      ],
+      isTurn: true,
+      isAdmin: false
+    }],
+    ["15-sam-table", "sam", {
+      view: "table",
+      room: {
+        id: "81526", bet: 300, status: "playing", playerCount: 4,
+        turnUid: "sam-preview-2", playedCount: 3, samStatus: "called",
+        samCallerUid: "sam-preview-2",
+        players: [
+          { uid: "sam-preview-1", name: "Minh Anh", handCount: 7 },
+          { uid: "sam-preview-2", name: "Quang Huy", handCount: 8 },
+          { uid: "sam-preview-3", name: "Bảo Trân", handCount: 5 },
+          { uid: "sam-preview-4", name: "Gia Bảo", handCount: 10 }
+        ],
+        lastPlay: {
+          name: "Minh Anh",
+          cards: [
+            { rank: 8, suit: "b" }, { rank: 9, suit: "r" },
+            { rank: 10, suit: "c" }
+          ]
+        },
+        currentCombo: { type: "straight", length: 3 }
+      }
+    }],
+    ["16-sam-private-hand", "sam", {
       view: "hand",
       room: { id: "81526" },
       player: { uid: "preview-sam", name: "MrQ · Sâm Preview" },
@@ -273,10 +331,10 @@ async function main() {
     "Active outputs:",
     "01 menu, 02 menu folder, 03 topchat, 04 status, 05 /card profile,",
     "06 music search, 07 now playing, 08-11 reply.card variants, 12 generic card,",
-    "13 Sâm Lốc private hand card.",
+    "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand.",
     "",
     "Reference only (not mapped into canvasWorker):",
-    "13-14 legacy profile and avatar renderer previews."
+    "17-18 legacy profile and avatar renderer previews."
   ].join("\n"), "utf8");
 
   const files = fs.readdirSync(OUTPUT).filter(file => file.endsWith(".png"));
