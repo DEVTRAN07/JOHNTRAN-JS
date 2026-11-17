@@ -63,7 +63,8 @@ function withRoomSaveLock(threadId, operation) {
 }
 
 async function persistRoom(Threads, threadId) {
-  if (!Threads?.getData || !Threads?.setData) return false;
+  if (typeof Threads?.getData !== "function" ||
+      (typeof Threads.setDataAndWait !== "function" && typeof Threads.setData !== "function")) return false;
   return withRoomSaveLock(threadId, async () => {
     try {
       const record = await Threads.getData(String(threadId));
