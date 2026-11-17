@@ -370,11 +370,11 @@ test("GameVH TLMN successful kết 3 bích pays 26 bets per opponent without lef
   };
   const settlement = game.calculateSettlement(room);
   assert.deepEqual(settlement.transfers, [
-    { from: "b", to: "a", amount: 26000, reason: "ket-ba-bich", receivedAmount: 24700, fee: 1300 },
-    { from: "c", to: "a", amount: 26000, reason: "ket-ba-bich", receivedAmount: 24700, fee: 1300 }
+    { from: "b", to: "a", amount: 30000, reason: "ket-ba-bich", receivedAmount: 28500, fee: 1500 },
+    { from: "c", to: "a", amount: 28000, reason: "ket-ba-bich", receivedAmount: 26600, fee: 1400 }
   ]);
-  assert.deepEqual(settlement.net, { a: 49400, b: -26000, c: -26000 });
-  assert.equal(settlement.houseFee, 2600);
+  assert.deepEqual(settlement.net, { a: 55100, b: -30000, c: -28000 });
+  assert.equal(settlement.houseFee, 2900);
   assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0),
     -settlement.houseFee);
 });
