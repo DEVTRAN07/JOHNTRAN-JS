@@ -5,8 +5,8 @@ const { withRequesterMention } = require("../../core/mentions");
 const game = require("../../core/runtime/services/games/caroService");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 
-// One live Caro canvas card per group. Previous cards are explicitly undone
-// before a replacement is sent, avoiding a growing stack of board images.
+// One live Caro canvas card per group. A replacement is sent first; only
+// after Zalo returns its message IDs do we recall the previous board image.
 const boardCards = new Map();
 const boardUpdateQueues = new Map();
 
@@ -77,6 +77,33 @@ async function recallPreviousBoard(api, threadId, type) {
   if (result.failed.length) boardCards.set(key, result.failed);
   else boardCards.delete(key);
   return result.failed.length === 0;
+}
+
+async function sendBoardReplacement(api, threadId, type, sendReplacement) {
+  const key = String(threadId);
+  if (typeof sendReplacement !== "function") {
+    throw new TypeError("sendReplacement must be a function");
+  }
+
+  // Do not touch the existing board until Zalo confirms the new send.
+  const response = await sendReplacement();
+  const replacementTargets = getBoardRecallTargets(response);
+  if (!replacementTargets.length) {
+    console.error("[CARO_CANVAS] Zalo did not return message IDs for the new board; keeping the previous card.");
+    return response;
+  }
+
+  const previousTargets = boardCards.get(key) || [];
+  const recalled = await recallBoardMessages(api, key, type, previousTargets);
+
+  // Track the new board plus any older cards whose recall failed, so they
+  // can be retried on the next successful board update.
+  const unique = new Map();
+  for (const target of [...replacementTargets, ...recalled.failed]) {
+    unique.set(String(target.msgId) + ":" + String(target.cliMsgId), target);
+  }
+  boardCards.set(key, [...unique.values()]);
+  return response;
 }
 
 function enqueueBoardUpdate(threadId, operation) {
@@ -221,19 +248,20 @@ async function sendBoard(api, event, session, heading, extraLines = []) {
     try {
       imagePath = await renderCanvas("caro", { session: boardSession }, { timeout: 20000, poolSize: 1 });
 
-      // Recall the previous image only after the replacement is ready to send.
       // recallAfterMs: 0 disables the generic 60-second TTL for the live board.
-      await recallPreviousBoard(api, threadId, event.type);
-      const response = await api.sendMessage(withRequesterMention(event, {
-        msg: caption,
-        attachments: [imagePath],
-        recallAfterMs: 0
-      }), threadId, event.type);
-      rememberBoardResponse(threadId, response);
+      // Send the new board first; sendBoardReplacement recalls the old card only
+      // after this send succeeds and Zalo supplies the new message IDs.
+      const response = await sendBoardReplacement(api, threadId, event.type, () =>
+        api.sendMessage(withRequesterMention(event, {
+          msg: caption,
+          attachments: [imagePath],
+          recallAfterMs: 0
+        }), threadId, event.type)
+      );
       return response;
     } catch (error) {
       console.error("[CARO_CANVAS]", error?.stack || error);
-      await recallPreviousBoard(api, threadId, event.type);
+      // Keep the previous image if rendering or sending the replacement fails.
       return send(api, event, [caption, renderBoard(boardSession.board)].filter(Boolean).join("\n"));
     } finally {
       if (imagePath) {
@@ -724,6 +752,7 @@ module.exports._test = {
   rememberBoardResponse,
   recallBoardMessages,
   recallPreviousBoard,
+  sendBoardReplacement,
   enqueueBoardUpdate,
   leaderboard,
   updateCaroStats,

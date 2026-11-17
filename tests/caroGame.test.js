@@ -154,6 +154,85 @@ test("Caro board replacement recalls the previous canvas card for that group", a
   assert.equal(calls.length, 2, "recalling one group must not affect another group");
 });
 
+test("Caro sends a replacement board before recalling the previous image", async () => {
+  const threadId = "caro-send-before-recall";
+  const calls = [];
+  caroCommand._test.rememberBoardResponse(threadId, {
+    attachment: [{ msgId: 501, cliMsgId: "old-board" }]
+  });
+
+  const api = {
+    async undo(payload) {
+      calls.push("undo:" + payload.cliMsgId);
+    }
+  };
+  const response = await caroCommand._test.sendBoardReplacement(api, threadId, 1, async () => {
+    calls.push("send:new-board");
+    return {
+      message: { msgId: 502, cliMsgId: "new-caption" },
+      attachment: [{ msgId: 503, cliMsgId: "new-board" }]
+    };
+  });
+
+  assert.deepEqual(calls, ["send:new-board", "undo:old-board"]);
+  assert.equal(response.attachment[0].cliMsgId, "new-board");
+
+  await caroCommand._test.recallPreviousBoard(api, threadId, 1);
+  assert.deepEqual(calls, [
+    "send:new-board",
+    "undo:old-board",
+    "undo:new-caption",
+    "undo:new-board"
+  ], "the next update must recall the newly sent board, not the already recalled one");
+});
+
+test("Caro keeps the previous image when sending a replacement fails", async () => {
+  const threadId = "caro-send-failure-keeps-old";
+  const calls = [];
+  caroCommand._test.rememberBoardResponse(threadId, {
+    attachment: [{ msgId: 511, cliMsgId: "still-visible-board" }]
+  });
+
+  const api = {
+    async undo(payload) {
+      calls.push("undo:" + payload.cliMsgId);
+    }
+  };
+  await assert.rejects(
+    caroCommand._test.sendBoardReplacement(api, threadId, 1, async () => {
+      calls.push("send:failed");
+      throw new Error("Zalo send failed");
+    }),
+    /Zalo send failed/
+  );
+
+  assert.deepEqual(calls, ["send:failed"]);
+  assert.equal(await caroCommand._test.recallPreviousBoard(api, threadId, 1), true);
+  assert.deepEqual(calls, ["send:failed", "undo:still-visible-board"]);
+});
+
+test("Caro does not recall the previous image when Zalo returns no IDs for the new board", async () => {
+  const threadId = "caro-send-no-ids-keeps-old";
+  const calls = [];
+  caroCommand._test.rememberBoardResponse(threadId, {
+    attachment: [{ msgId: 521, cliMsgId: "tracked-old-board" }]
+  });
+
+  const response = await caroCommand._test.sendBoardReplacement({
+    async undo(payload) { calls.push("undo:" + payload.cliMsgId); }
+  }, threadId, 1, async () => {
+    calls.push("send:new-without-ids");
+    return { message: null, attachment: [] };
+  });
+
+  assert.deepEqual(response, { message: null, attachment: [] });
+  assert.deepEqual(calls, ["send:new-without-ids"]);
+  assert.equal(await caroCommand._test.recallPreviousBoard({
+    async undo(payload) { calls.push("undo:" + payload.cliMsgId); }
+  }, threadId, 1), true);
+  assert.deepEqual(calls, ["send:new-without-ids", "undo:tracked-old-board"]);
+});
+
 test("Caro card recall handles captions and all attachment message IDs", async () => {
   const threadId = "caro-recall-multiple";
   const seen = [];
