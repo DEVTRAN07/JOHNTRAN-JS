@@ -495,6 +495,54 @@ test("Sâm leaving trick leader clears the old combo and pass lock", () => {
   game.removeRoom(threadId);
 });
 
+test("Sâm leaving defender can complete the pass cycle and return lead to the last player", () => {
+  const threadId = "sam-leave-final-defender";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81624", stake: 1000 });
+  game.join(threadId, "81624", { uid: "b", name: "B" });
+  game.join(threadId, "81624", { uid: "c", name: "C" });
+  game.join(threadId, "81624", { uid: "d", name: "D" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.32); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = {
+    a: [card(5), card(7)],
+    b: [card(3), card(9)],
+    c: [card(4), card(8)],
+    d: [card(6), card(10)]
+  };
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.playedCount = 0;
+  room.passed = new Set();
+  room.finishOrder = [];
+
+  assert.equal(game.play(threadId, "a", "5b").ok, true);
+  assert.equal(game.pass(threadId, "b").ok, true);
+  assert.equal(game.pass(threadId, "c").ok, true);
+  assert.equal(room.turnUid, "d");
+  assert.equal(room.passed.size, 2);
+
+  const left = game.leave(threadId, "d");
+  assert.equal(left.ok, true);
+  assert.equal(room.status, "playing");
+  assert.equal(room.turnUid, "a");
+  assert.equal(room.currentCombo, null);
+  assert.equal(room.lastPlay, null);
+  assert.equal(room.passed.size, 0);
+
+  const lead = game.play(threadId, "a", "7b");
+  assert.equal(lead.ok, true);
+  assert.equal(lead.finished, true);
+  assert.equal(room.winnerUid, "a");
+  game.removeRoom(threadId);
+});
+
 test("Sâm computes card-left, thối heo and cóng charges in the shared stake unit", () => {
   const room = {
     stake: 5000,
