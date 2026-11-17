@@ -221,6 +221,7 @@ function calculateSettlement(room) {
         if (rank === 15) amount += count * 15 * stake; // Thối 2
         else if (count === 4) amount += 15 * stake; // Thối tứ quý
         else if (!cong) amount += count * stake; // Mỗi lá rác còn lại
+      }
       add(uid, winnerUid, amount, "leftover-heo-quad-cong");
     }
     if (room.samStatus === "failed" && room.samCallerUid && room.samBlockedByUid) {
