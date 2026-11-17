@@ -369,26 +369,50 @@ function gameConflict(threadId) {
 
 function help(prefix = "!") {
   return [
-    "🃏 SÂM LỐC — JOHNTRAN",
+    "🃏 HƯỚNG DẪN SÂM LỐC",
     "",
-    prefix + "sam go — Mở bàn hoặc tham gia bàn đang chờ",
-    prefix + "sam open — Tương tự go, mở/tham gia bàn",
-    prefix + "sam join <mã> — Vào bàn theo mã 5 số",
-    prefix + "sam cuoc <số> — Đặt cược 1K–1M xu (mặc định 5K)",
-    prefix + "sam start — Chủ bàn bắt đầu (2–4 người)",
-    prefix + "sam baosam — Báo Sâm trước nước đầu tiên",
-    prefix + "sam leave — Rời bàn",
-    prefix + "sam stop — Chủ bàn hủy bàn",
-    prefix + "sam info — Xem trạng thái bàn hiện tại",
-    prefix + "sam help — Xem hướng dẫn lệnh",
+    "52 lá • 2–4 người • mỗi người đúng 10 lá.",
+    "Thứ tự số: 2 > A > K > Q > J > 10 > ... > 3. Sâm chỉ so số, không so chất.",
     "",
-    "Mỗi người nhận 10 lá. Ăn trắng: sảnh 10 lá, tứ quý 2, 10 lá cùng màu, 3 sám cô hoặc 5 đôi.",
+    "🧩 BỘ BÀI",
+    "Lẻ • đôi • sám • sảnh liên tiếp từ 3 lá • tứ quý.",
+    "Không có sảnh K-A-2, A-2-3 hoặc 2-3-4.",
+    "",
+    "🔥 BÁO SÂM",
+    "Ai hô Sâm trước được quyền đánh đầu. Bị chặn dù chỉ một lần thì đền Sâm.",
+    "Đánh hết 10 lá mà không bị chặn: ăn 20 cược từ mỗi nhà.",
+    "Không ai báo Sâm: ván đầu người mở đầu ngẫu nhiên; ván sau người thắng ván trước đi đầu nếu còn trong bàn.",
+    "",
+    "🎮 ĐÁNH BÀI",
+    "Theo vòng; phải cùng loại và lớn hơn, hoặc dùng tứ quý chặt heo/tứ quý nhỏ hơn.",
+    "Bỏ lượt là bỏ cả vòng; người đánh cuối được mở vòng mới.",
+    "Không được đánh 2 làm lá cuối. Khi có người báo 1, người khác phải đánh lá lớn nhất trên tay; đánh nhỏ hơn để người báo 1 thắng sẽ bị phạt theo tổng số lá còn lại × cược.",
+    "",
+    "✨ TỚI TRẮNG (ăn 20 cược từ mỗi nhà)",
+    "Sảnh rồng 10 lá > tứ quý 2 > đồng hoa (10 lá cùng màu) > 3 sám > 5 đôi.",
+    "Nếu cùng loại, so lá cao nhất theo số; Sâm không so chất.",
+    "",
+    "⚔️ CHẶT",
+    "Tứ quý chặt 2 và tứ quý nhỏ hơn. Chặt chồng tính 15 cược cho mỗi lần chặt.",
+    "",
+    "💰 TÍNH TIỀN",
+    "Rác còn: 1 cược/lá • thối 2: 15 cược/lá • thối tứ quý: 15 cược/bộ.",
+    "Báo Sâm thành công: +20 cược từ mỗi nhà.",
+    "Báo Sâm thất bại: người báo đền 20 cược × (số người chơi − 1) cho người chặn.",
+    "Tới trắng: +20 cược từ mỗi nhà.",
+    "Cóng: 15 cược + tiền thối heo/hàng.",
+    "Tứ quý chặt 2: 15 cược/con • chặt tứ quý: 15 cược/bộ • chặt chồng: 15 cược/lần.",
+    "",
+    "🕹️ LỆNH",
+    prefix + "sam go — Mở/tham gia bàn",
+    prefix + "sam join <mã> — Vào bàn",
+    prefix + "sam cuoc <số> — Đặt cược (mặc định 5K)",
+    prefix + "sam start — Bắt đầu",
+    prefix + "sam baosam — Hô Sâm",
+    prefix + "sam info — Xem bàn • sam leave • sam stop • sam help",
     "Đánh: 3b • doi 7 • sam 9 • tuquy 5 • sanh 345 • chon 1,2 • pass",
-    "Nếu không ai báo Sâm, người có 3♠ mở đầu. Báo Sâm trước nước đầu tiên thì người báo được đánh trước.",
-    "Tứ quý chặn 1 lá 2 và tứ quý nhỏ hơn. Không được dùng 2 làm lá cuối để về.",
-    "Còn 1 lá sẽ được bot báo cả bàn. Báo Sâm bị chặn sẽ bị LỦNG SÂM.",
-    "Tính xu: bài còn × cược; thối 2 +15 cược/lá; thối tứ quý +15 cược; cóng +15 cược; báo Sâm thành công ăn 20 cược mỗi nhà, báo Sâm thất bại đền 20 cược cho người chặn.",
-    "Cược được giữ trước khi chia bài; hủy bàn hoặc lỗi gửi bài sẽ hoàn lại. Tiền dùng chung ví xu TLMN."
+    "",
+    "Xu ảo dùng chung ví với Tiến Lên. Bot ký quỹ trước khi chia bài và tự đối soát sau ván."
   ].join("\n");
 }
 
@@ -464,6 +488,11 @@ async function settleSamWallets(Users, room, Threads) {
   if (room.settled) return { ok: true, alreadySettled: true, rows: room.settlementRows || [] };
   if (!room.settlement || !room.locked || !Array.isArray(room.players)) {
     return { ok: false, code: "MISSING_SETTLEMENT_OR_ESCROW" };
+  }
+  const requiredLock = 250 * Math.max(1, Math.floor(Number(room.stake) || 5000));
+  if (!Number.isSafeInteger(requiredLock) ||
+      room.players.some(player => Number(room.locked[String(player.uid)]) !== requiredLock)) {
+    return { ok: false, code: "INSUFFICIENT_ESCROW" };
   }
   const netTotal = Object.values(room.settlement.net).reduce((sum, value) => sum + Number(value), 0);
   if (!Number.isSafeInteger(netTotal) || netTotal !== 0) {
@@ -577,7 +606,8 @@ async function startRoom(context) {
   if (room.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi.");
   const stake = Math.max(1000, Math.floor(Number(room.stake) || 5000));
   room.stake = stake;
-  room.bet = Math.ceil((110 * stake) / Math.max(1, room.players.length - 1));
+  room.bet = stake;
+  room.reservePerPlayer = 250 * stake;
   room.locked ||= {};
   room.lockPending ||= {};
   room.lockTransactionId ||= room.gameToken || room.id;
@@ -613,7 +643,9 @@ async function startRoom(context) {
     return;
   }
   await persistRoom(Threads, threadId);
-  await sendGroupRoom(api, event, game.snapshot(state), "🎮 Đã chia 10 lá cho mỗi người. Người có 3♠ đi trước.");
+  await sendGroupRoom(api, event, game.snapshot(state), "🎮 Đã chia đúng 10 lá cho mỗi người. " +
+    (state.previousWinnerUid && state.players.some(item => item.uid === state.previousWinnerUid)
+      ? "Người thắng ván trước được mở đầu." : "Người mở đầu được chọn ngẫu nhiên."));
   scheduleTurn(context, state);
 }
 
