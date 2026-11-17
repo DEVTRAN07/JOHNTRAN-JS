@@ -179,7 +179,7 @@ test("TLMN recognizes white hands and resolves them immediately", () => {
     { rank, suit: "b", id: String(rank) + "b" },
     { rank, suit: "c", id: String(rank) + "c" }
   ]).concat([{ rank: 9, suit: "b", id: "9b" }]);
-  assert.equal(engine.detectWhiteHand(sixPairs), "sixPairs");
+  assert.equal(engine.detectWhiteHand(sixPairs), "sixPairRun");
 
   const dragon = Array.from({ length: 12 }, (_, index) => {
     const rank = index + 3;
@@ -214,7 +214,7 @@ test("TLMN recognizes white hands and resolves them immediately", () => {
   room.finishOrder = [];
 
   const resolved = game._test.resolveWhiteHand(room);
-  assert.deepEqual(resolved, { uid: "owner", type: "sixPairs" });
+  assert.deepEqual(resolved, { uid: "owner", type: "sixPairRun" });
   assert.equal(room.status, "finished");
   assert.equal(room.finishOrder[0], "owner");
   assert.equal(room.results[0].uid, "owner");
@@ -223,7 +223,7 @@ test("TLMN recognizes white hands and resolves them immediately", () => {
   game.removeRoom(groupId);
   const restored = game.restore(saved);
   assert.ok(restored);
-  assert.equal(restored.whiteHand.type, "sixPairs");
+  assert.equal(restored.whiteHand.type, "sixPairRun");
   assert.equal(restored.status, "finished");
   game.removeRoom(groupId);
 });
