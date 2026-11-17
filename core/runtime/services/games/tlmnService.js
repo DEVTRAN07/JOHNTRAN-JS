@@ -540,10 +540,11 @@ function play(threadId, uid, input) {
     (previousCombo.type === "pair" && previousCombo.mainRank === 15 &&
       combo.type === "pairRun" && combo.length >= 4) ||
     (previousCombo.type === "pairRun" && previousCombo.length === 3 &&
-      (combo.type === "pairRun" && combo.length >= 4 || combo.type === "fourKind")) ||
-    (previousCombo.type === "fourKind" && combo.type === "pairRun" && combo.length >= 4) ||
+      ((combo.type === "pairRun" && combo.length >= 3) || combo.type === "fourKind")) ||
+    (previousCombo.type === "fourKind" &&
+      (combo.type === "fourKind" || (combo.type === "pairRun" && combo.length >= 4))) ||
     (previousCombo.type === "pairRun" && previousCombo.length >= 4 &&
-      combo.type === "pairRun" && combo.length >= 4 && combo.mainRank > previousCombo.mainRank)
+      combo.type === "pairRun" && combo.length >= 4)
   );
   if (chops) {
     let chopUnits = combo.type === "pairRun" && combo.length >= 4 ? 12 :
