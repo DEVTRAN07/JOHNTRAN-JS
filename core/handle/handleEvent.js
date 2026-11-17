@@ -27,8 +27,12 @@ async function handleEvent(eventType, eventData, api, isSelf = false) {
     try {
       const noituCommand = require("../../plugins/commands/noitu");
       if (typeof noituCommand?.handleEvent === "function") {
+        // This early game consumer runs before the regular event dispatcher.
+        // Wrap it through the same adapter so every auto-recalled game reply
+        // receives its clock reaction just like normal commands and events.
+        const gameApi = wrapForEvent(api, eventData, "noitu-active-game", eventData?.type);
         const consumed = await noituCommand.handleEvent({
-          api,
+          api: gameApi,
           event: eventData,
           eventType,
           isSelf,
