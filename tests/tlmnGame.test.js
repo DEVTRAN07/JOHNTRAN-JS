@@ -821,7 +821,7 @@ test("TLMN GameVH: four-pair run can cut after a prior pass and settles the full
     p4: [7,8,9].flatMap(rank => [
       { rank, suit: "b", id: String(rank) + "b" },
       { rank, suit: "c", id: String(rank) + "c" }
-    ])
+    ]).concat([{ rank: 10, suit: "c", id: "10c" }])
   };
   room.turnUid = "p1";
   assert.equal(game.play(groupId, "p1", "2b").ok, true);
