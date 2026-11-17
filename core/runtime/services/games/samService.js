@@ -126,6 +126,8 @@ function finish(room, winnerUid, reason = "normal") {
       ? "failed"
       : room.winnerUid === room.samCallerUid && room.samCallerHasPlayed
         ? "success" : "failed";
+    if (room.samStatus === "failed" && room.winnerUid !== room.samCallerUid &&
+        !room.samBlockedByUid) room.samBlockedByUid = room.winnerUid;
   }
   clearTimer(room.threadId);
   return room.results;
