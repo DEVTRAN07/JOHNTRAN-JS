@@ -24,6 +24,9 @@ module.exports.config = {
   cooldowns: 2
 };
 
+const MAX_SOURCE_ATTEMPTS = 3;
+const SOURCE_TIMEOUT_MS = 15000;
+
 function isVideo(buffer, contentType) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 512) return false;
   const type = String(contentType || "").toLowerCase();
@@ -37,12 +40,13 @@ module.exports.run = async ({ event, api }) => {
     return api.sendMessage("❌ Chưa có nguồn video.", threadId, type);
   }
 
+  await api.sendMessage({ msg: "⏳ Đang tìm và tải video..." }, threadId, type);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_vdgirl_"));
   const filePath = path.join(tempDir, "gai.mp4");
 
   try {
     const start = Math.floor(Math.random() * vdgirl.length);
-    const attempts = Math.min(5, vdgirl.length);
+    const attempts = Math.min(MAX_SOURCE_ATTEMPTS, vdgirl.length);
     let lastError = null;
     let downloaded = false;
 
@@ -50,8 +54,8 @@ module.exports.run = async ({ event, api }) => {
       const link = vdgirl[(start + i) % vdgirl.length];
       try {
         const { buffer, contentType, status } = await queuedGetBuffer(link, {
-          timeout: 90000,
-          retries: 2,
+          timeout: SOURCE_TIMEOUT_MS,
+          retries: 0,
           headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
             "Referer": "https://files.catbox.moe/",
@@ -99,3 +103,6 @@ module.exports.run = async ({ event, api }) => {
     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 };
+
+
+module.exports._test = { isVideo, MAX_SOURCE_ATTEMPTS, SOURCE_TIMEOUT_MS };

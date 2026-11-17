@@ -120,6 +120,7 @@ async function runCmd(name, args = [], eventOverride = {}) {
     record(`Config: ${section}`, Object.keys(obj).length >= 1, Object.keys(obj).length + " khoa");
   }
 
+  const NETWORK_CMDS = new Set(["autodown", "lyric", "girl", "vdgirl"]);
   // 4. Chạy từng lệnh (không tham số — phản hồi gợi ý/lỗi)
   const cmds = [...global.client.commands.keys()].sort();
   for (const name of cmds) {
@@ -137,7 +138,7 @@ async function runCmd(name, args = [], eventOverride = {}) {
   // Lệnh cần tải dữ liệu từ dịch vụ ngoài không được gọi trực tiếp trong CI.
   // Nguồn video/nhạc có thể chậm hoặc bị giới hạn theo IP; mock/contract tests
   // xác nhận luồng nội bộ, còn kiểm thử này chỉ xác nhận command đã nạp.
-  const NETWORK_CMDS = new Set(["autodown", "lyric", "vdgirl"]);
+
   const withArgs = [
     ["menu", ["menu", "2"]],
     ["menu", ["next"]],

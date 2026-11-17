@@ -5,6 +5,8 @@ const { getBuffer: queuedGetBuffer } = require("../../core/runtime/queuedHttp");
 
 const girlImages = require("../../assets/girl.json");
 const IMAGE_CACHE_TTL = 60 * 60 * 1000;
+const MAX_SOURCE_ATTEMPTS = 4;
+const SOURCE_TIMEOUT_MS = 10000;
 const IMAGE_CACHE_MAX_ENTRIES = 12;
 const IMAGE_CACHE_MAX_BYTES = 24 * 1024 * 1024;
 const imageCache = new Map();
@@ -67,8 +69,8 @@ async function getImageFromSource(url) {
   if (cached) return { buffer: cached.buffer, extension: cached.extension, cached: true };
 
   const response = await queuedGetBuffer(url, {
-    timeout: 30000,
-    retries: 2,
+    timeout: SOURCE_TIMEOUT_MS,
+    retries: 0,
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
       "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
@@ -94,10 +96,11 @@ module.exports.run = async ({ event, api }) => {
     return api.sendMessage("❌ Hiện chưa có ảnh để gửi.", threadId, type);
   }
 
+  await api.sendMessage({ msg: "⏳ Đang tìm và tải ảnh..." }, threadId, type);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_girl_"));
   try {
     const start = Math.floor(Math.random() * girlImages.length);
-    const attempts = Math.min(8, girlImages.length);
+    const attempts = Math.min(MAX_SOURCE_ATTEMPTS, girlImages.length);
     let selected = null;
     let lastError = null;
 
@@ -140,5 +143,7 @@ module.exports.run = async ({ event, api }) => {
 module.exports._test = {
   imageExtension,
   getImageFromSource,
-  imageCache
+  imageCache,
+  MAX_SOURCE_ATTEMPTS,
+  SOURCE_TIMEOUT_MS
 };
