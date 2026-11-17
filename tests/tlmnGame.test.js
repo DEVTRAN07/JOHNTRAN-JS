@@ -55,6 +55,14 @@ test("Tiến Lên: cảnh báo trước khi start, bài chỉ gửi riêng và c
       event: { ...group, data: { uidFrom: "owner", dName: "Wuang", content: "start" } }
     });
 
+    const countdownRoom = game.get(group.threadId);
+    assert.ok(countdownRoom?.startCountdownAt > Date.now(), "start opens a ten-second countdown before dealing");
+    command._test.clearStartCountdownTimer(group.threadId);
+    countdownRoom.startCountdownAt = null;
+    countdownRoom.startCountdownBy = null;
+    countdownRoom.startCountdownMessage = null;
+    await command._test.completeStartCountdown(api, group, Users, Threads, countdownRoom);
+
     const warningIndex = sent.findIndex(row => String(row.payload.msg || "").includes("KHÔNG CHẶN TIN NHẮN NGƯỜI LẠ"));
     assert.ok(warningIndex >= 0, "the group warning is sent");
     const privateImages = sent.filter(row => row.type === ThreadType.User && Array.isArray(row.payload.attachments));
