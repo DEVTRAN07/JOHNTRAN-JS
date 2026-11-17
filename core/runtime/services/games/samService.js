@@ -78,6 +78,7 @@ function create(threadId, owner, options = {}) {
   const host = makePlayer(owner);
   const room = {
     id, threadId: key, ownerId: host.uid, ownerName: host.name,
+    previousWinnerUid: String(options.previousWinnerUid || previousWinners.get(key) || ""),
     status: "waiting", players: [host], hands: null, turnUid: null,
     firstPlayerUid: null, lastPlayerUid: null, lastPlay: null,
     currentCombo: null, passed: new Set(), playedCount: 0,
@@ -149,10 +150,12 @@ function start(threadId, uid, random = Math.random) {
   if (room.players.length > MAX_PLAYERS) return { ok: false, code: "FULL" };
   const dealt = engine.dealCards(room.players.map(item => item.uid), random);
   room.hands = dealt.hands;
-  const previousWinner = previousWinners.get(String(threadId));
+  const previousWinner = String(room.previousWinnerUid || previousWinners.get(String(threadId)) || "");
   room.firstPlayerUid = previousWinner && room.players.some(item => item.uid === previousWinner)
     ? previousWinner : dealt.firstPlayerId;
   room.turnUid = room.firstPlayerUid;
+  room.previousWinnerUid = previousWinner && room.players.some(item => item.uid === previousWinner)
+    ? previousWinner : null;
   room.lastPlayerUid = null;
   room.lastPlay = null;
   room.currentCombo = null;
@@ -175,7 +178,7 @@ function start(threadId, uid, random = Math.random) {
     finish(room, winner.uid, "white-hand");
     return { ok: true, finished: true, whiteHand: room.whiteHand, room: snapshot(room), state: room };
   }
-  return { ok: true, finished: false, room: snapshot(room), state: room, firstPlayerId: dealt.firstPlayerId };
+  return { ok: true, finished: false, room: snapshot(room), state: room, firstPlayerId: room.firstPlayerUid };
 }
 function calculateSettlement(room) {
   if (!room || !Array.isArray(room.players) || !room.hands) return null;
