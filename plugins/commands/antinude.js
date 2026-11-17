@@ -8,7 +8,7 @@ module.exports.config = {
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
   description: "AI quét và xử lý ảnh 18+ / khỏa thân trong nhóm",
-  category: "Quản lý nhóm",
+  category: "Anti",
   usage: "antinude [on/off]",
   cooldowns: 1
 };

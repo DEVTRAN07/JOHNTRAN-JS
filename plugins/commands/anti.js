@@ -3,15 +3,18 @@ const fs = require("fs").promises;
 const path = require("path");
 const { ThreadType } = require("zalo-client");
 const http = require("../../core/http");
+const { renderCanvas } = require("../../core/canvas/workerRender");
+const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
+const fsSync = require("fs");
 
 module.exports.config = {
   name: "anti",
   version: "1.1.7",
-  role: 1,
+  role: 0,
   author: "ShinTHL09",
   description: "Bật/tắt các chế độ Anti của nhóm",
-  category: "Nhóm",
-  usage: "anti <link|undo|spam>",
+  category: "Anti",
+  usage: "anti [link|undo|spam] [on|off]",
   cooldowns: 2
 };
 
@@ -474,44 +477,130 @@ module.exports._test = {
   isExplicitAdultImage
 };
 
+const ANTI_MENU_ITEMS = Object.freeze([
+  { key:"anti_nude", label:"Chặn nội dung nhạy cảm", detail:"AI quét ảnh 18+ / khỏa thân", command:"/antinude", alias:"", icon:"18+", tone:"#e83f9e" },
+  { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục nội dung đã gỡ", command:"/antirecall", alias:"/anti undo", icon:"↶", tone:"#a94ce5" },
+  { key:"anti_danger_link", label:"Chặn link nguy hiểm", detail:"Link mời nhóm khác / URL độc hại", command:"/antilink", alias:"", icon:"↗", tone:"#138fe5" },
+  { key:"anti_sticker_spam", label:"Chống dội bom sticker", detail:"Phát hiện sticker gửi dồn dập", command:"/antispam", alias:"", icon:"ST", tone:"#f18b1c" },
+  { key:"anti_link", label:"Chặn tất cả link", detail:"Chặn đường dẫn trong nhóm", command:"/anti link", alias:"", icon:"URL", tone:"#08aeba" },
+  { key:"anti_spam", label:"Chống spam tin nhắn", detail:"Giới hạn tin nhắn gửi liên tục", command:"/anti spam", alias:"", icon:"SP", tone:"#e4b91e" }
+]);
+
+function buildAntiMenuText(threadData = {}, prefix = "/") {
+  const data = threadData && typeof threadData === "object" ? threadData : {};
+  const lines = [
+    "🛡️ BẢO VỆ NHÓM · TRẠNG THÁI HIỆN TẠI",
+    "━━━━━━━━━━━━━━━━━━"
+  ];
+  for (const item of ANTI_MENU_ITEMS) {
+    const enabled = data[item.key] === true;
+    lines.push((enabled ? "🟢" : "⚪") + " " + item.label + ": " + (enabled ? "ĐANG BẬT" : "ĐANG TẮT"));
+  }
+  lines.push(
+    "━━━━━━━━━━━━━━━━━━",
+    "👑 CHỈ TRƯỞNG NHÓM / QTV BOX ĐƯỢC BẬT TẮT",
+    "Cách dùng các lệnh:"
+  );
+  for (const item of ANTI_MENU_ITEMS) {
+    lines.push("• " + prefix + item.command.replace(/^\//, "") + " on|off" +
+      (item.alias ? "  (alias: " + item.alias + " on|off)" : ""));
+  }
+  lines.push(
+    "Ví dụ: " + prefix + "antinude on",
+    "Gõ /anti để xem lại bảng bảo vệ nhóm."
+  );
+  return lines.join("\n");
+}
+
+async function sendAntiMenu({ api, event, Threads }) {
+  const prefix = global.config?.prefix || "/";
+  const record = await Threads.getData(event.threadId);
+  const data = record?.data || {};
+  const items = ANTI_MENU_ITEMS.map(item => ({
+    key:item.key,
+    label:item.label,
+    detail:item.detail,
+    command:item.command,
+    icon:item.icon,
+    tone:item.tone,
+    enabled:data[item.key] === true
+  }));
+
+  let imagePath = null;
+  try {
+    imagePath = await renderCanvas("anti-protection", { items, prefix });
+    await api.sendMessage({
+      msg:"🛡️ BẢO VỆ NHÓM (ANTI-PROTECTION)",
+      attachments:[imagePath],
+      ttlKind:"card"
+    }, event.threadId, event.type);
+
+    // Gửi phần hướng dẫn riêng sau ảnh để thứ tự hiển thị luôn là ảnh trước, nội dung sau.
+    await api.sendMessage({
+      msg:buildAntiMenuText(data, prefix)
+    }, event.threadId, event.type);
+  } catch (error) {
+    console.error("[ANTI_MENU]", error?.stack || error);
+    return api.sendMessage({
+      msg:buildAntiMenuText(data, prefix) + "\n⚠️ Không tạo được ảnh Anti-Protection, bot đã gửi hướng dẫn dạng chữ."
+    }, event.threadId, event.type);
+  } finally {
+    if (imagePath) {
+      const timer = setTimeout(() => {
+        try { fsSync.rmSync(imagePath, { force:true }); } catch {}
+      }, 60000);
+      timer.unref?.();
+    }
+  }
+  return true;
+}
+
+module.exports._menu = {
+  ANTI_MENU_ITEMS,
+  buildAntiMenuText
+};
+
 module.exports.run = async function ({ api, event, args, Threads }) {
   const { threadId, type } = event;
-  const action = (args[0] || "").toLowerCase();
-
   if (type !== ThreadType.Group) {
-      return api.sendMessage("Lệnh này chỉ có thể được sử dụng trong nhóm chat.", threadId, type);
+    return api.sendMessage("Lệnh này chỉ có thể được sử dụng trong nhóm chat.", threadId, type);
   }
 
+  const action = String(args?.[0] || "").trim().toLowerCase();
   const keyMap = {
     link: "anti_link",
     undo: "anti_undo",
     spam: "anti_spam"
   };
-
   const key = keyMap[action];
 
   if (!key) {
+    return sendAntiMenu({ api, event, Threads });
+  }
+
+  const mode = String(args?.[1] || "").trim().toLowerCase();
+  if (mode && mode !== "on" && mode !== "off") {
+    return sendAntiMenu({ api, event, Threads });
+  }
+
+  const userId = event?.data?.uidFrom;
+  const groupAdminState = await getGroupAdminState(api, threadId, userId);
+  if (groupAdminState !== true) {
     return api.sendMessage({
-      plain: true,
-      msg: "🛡️ Quản lý chế độ Anti của nhóm\n\n" +
-      "• anti undo [on|off] - Chống thu hồi tin nhắn\n" +
-      "• anti link [on|off] - Chống gửi link\n" +
-      "• anti spam [on|off] - Chống spam tin nhắn\n" +
-      "• không ghi on/off = bật/tắt (toggle)"
+      msg:"🚫 Chỉ trưởng nhóm hoặc phó nhóm (QTV BOX) mới được bật/tắt chế độ Anti."
     }, threadId, type);
   }
 
-  const threadData = await Threads.getData(threadId);
-  const currentValue = threadData.data[key] || false;
-  // on/off tường minh nếu có tham số thứ 2, không thì toggle
-  const mode = (args[1] || "").toLowerCase();
-  const newValue = mode === "on" ? true : mode === "off" ? false : !currentValue;
+  const record = await Threads.getData(threadId);
+  const data = { ...(record?.data || {}) };
+  const newValue = mode === "on" ? true : mode === "off" ? false : data[key] !== true;
+  data[key] = newValue;
 
-  threadData.data[key] = newValue;
-  await Threads.setData(threadId, threadData.data);
+  const save = Threads.setDataAndWait || Threads.setData;
+  await save.call(Threads, threadId, data);
 
   return api.sendMessage({
-    plain: true,
-    msg: `✅ Đã ${newValue ? "bật" : "tắt"} chế độ Anti ${key.replace("anti_", "").toUpperCase()}.`
+    msg:"✅ Đã " + (newValue ? "bật" : "tắt") + " chế độ Anti " +
+      key.replace("anti_", "").toUpperCase() + "."
   }, threadId, type);
 };

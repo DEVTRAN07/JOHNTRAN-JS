@@ -8,7 +8,7 @@ module.exports.config = {
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
   description: "Chặn link mời nhóm Zalo khác và URL bị đánh dấu không an toàn",
-  category: "Quản lý nhóm",
+  category: "Anti",
   usage: "antilink [on/off]",
   cooldowns: 1
 };
