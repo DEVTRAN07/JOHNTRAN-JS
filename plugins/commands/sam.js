@@ -182,6 +182,11 @@ function roomCaption(room, notice = "") {
       return (index + 1) + ". " + player.name + " — " + count + place + turn;
     }).join("\n")
   ];
+  const oneCardPlayers = room.players.filter(player => player.handCount === 1);
+  if (oneCardPlayers.length) {
+    lines.push("", "⚠️ BÁO 1 LÁ: " + oneCardPlayers.map(player => player.name).join(", ") +
+      " chỉ còn 1 lá. Cả bàn cần chú ý chặn.");
+  }
   if (room.lastPlay?.cards?.length) {
     lines.push("", "🂠 " + room.lastPlay.name + " đánh: " + engine.formatCards(room.lastPlay.cards));
   }
@@ -371,10 +376,11 @@ function help(prefix = "!") {
     prefix + "sam leave — Rời bàn",
     prefix + "sam stop — Chủ bàn hủy bàn",
     "",
-    "Mỗi người nhận 10 lá. Có ăn trắng khi chia: sảnh 10 lá, tứ quý 2, 10 lá cùng màu, 3 sám cô hoặc 5 đôi.",
+    "Mỗi người nhận 10 lá. Ăn trắng: sảnh 10 lá, tứ quý 2, 10 lá cùng màu, 3 sám cô hoặc 5 đôi.",
     "Đánh: 3b • doi 7 • sam 9 • tuquy 5 • sanh 345 • chon 1,2 • pass",
-    "Tứ quý chặn 2 đơn. Sảnh phải cùng số lá và lớn hơn.",
-    "Báo Sâm bị người khác chặn sẽ bị LỦNG SÂM."
+    "Nếu không ai báo Sâm, người có 3♠ mở đầu. Báo Sâm trước nước đầu tiên thì người báo được đánh trước.",
+    "Tứ quý chặn 1 lá 2. Sảnh từ 3 lá liên tiếp, không dùng 2; không có đôi thông.",
+    "Còn 1 lá sẽ được bot báo cả bàn. Báo Sâm bị chặn sẽ bị LỦNG SÂM."
   ].join("\n");
 }
 
