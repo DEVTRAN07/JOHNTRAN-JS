@@ -463,6 +463,9 @@ async function submit(threadId, playerId, answer, options = {}) {
     const completedAnswer = session.puzzle.answer;
     const points = CORRECT_POINTS;
     await choosePuzzle(session, options);
+    if (get(threadId) !== session || session.status !== "active") {
+      return { ok: false, code: "CANCELLED", session };
+    }
     return {
       ok: true,
       code: "CORRECT",
@@ -501,6 +504,9 @@ async function skip(threadId, playerId, options = {}) {
     }
 
     await choosePuzzle(session, options);
+    if (get(threadId) !== session || session.status !== "active") {
+      return { ok: false, code: "CANCELLED", session };
+    }
     return {
       ok: true,
       code: "SKIPPED",

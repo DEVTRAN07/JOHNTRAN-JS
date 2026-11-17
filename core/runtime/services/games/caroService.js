@@ -235,6 +235,7 @@ function watchTurn(threadId, onTimeout) {
   const expectedMoves = session.moves;
 
   const timer = setTimeout(() => {
+    if (timers.get(key) !== timer) return;
     timers.delete(key);
     const current = get(key);
     if (current !== session || current.status !== "active" ||
@@ -256,6 +257,7 @@ function watchLobby(threadId, onTimeout) {
   if (!session || session.status !== "waiting") return false;
 
   const timer = setTimeout(() => {
+    if (timers.get(key) !== timer) return;
     timers.delete(key);
     const current = get(key);
     if (current !== session || current.status !== "waiting") return;
@@ -285,5 +287,6 @@ module.exports = {
   stop,
   finish,
   watchTurn,
-  watchLobby
+  watchLobby,
+  timers
 };

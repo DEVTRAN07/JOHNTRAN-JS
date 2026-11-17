@@ -70,3 +70,43 @@ test("quick plain-text handler only consumes answers from the active player", as
     else global.config = previousConfig;
   }
 });
+
+
+test("an obsolete quick-game timer cannot replace the new game's timer", async () => {
+  const threadId = "quick-stale-timer";
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const scheduled = [];
+  global.setTimeout = (callback, delay) => {
+    const timer = { callback, delay, cleared: false, unref() {} };
+    scheduled.push(timer);
+    return timer;
+  };
+  global.clearTimeout = timer => { if (timer) timer.cleared = true; };
+  const api = { async sendMessage() {} };
+  const event = { threadId, type: 2, data: { uidFrom: "p1" } };
+
+  try {
+    quick.start(threadId, "p1", "Old Player");
+    command._test.scheduleQuickNoituExpiry(api, event, threadId);
+    const oldTimer = scheduled.at(-1);
+
+    quick.finish(threadId);
+    quick.start(threadId, "p2", "New Player");
+    command._test.scheduleQuickNoituExpiry(api, { ...event, data: { uidFrom: "p2" } }, threadId);
+    const newTimer = scheduled.at(-1);
+    const newSession = quick.get(threadId);
+
+    await oldTimer.callback();
+
+    assert.equal(quick.get(threadId), newSession, "the new quick game must remain active");
+    assert.equal(command._test.quickNoituTimers.get(threadId), newTimer,
+      "the stale callback must not replace the new timer");
+    assert.equal(newTimer.cleared, false, "the active game's timer must remain scheduled");
+  } finally {
+    command._test.clearQuickNoituTimer(threadId);
+    quick.finish(threadId);
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  }
+});

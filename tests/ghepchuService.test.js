@@ -291,3 +291,67 @@ test("new Ghép Chữ round uses fallback immediately while dictionary API is st
   release({ data: { suggestions: [] } });
   await new Promise(resolve => setImmediate(resolve));
 });
+
+
+test("an obsolete Ghép Chữ timer cannot replace the timer of a new round", async () => {
+  const command = require("../plugins/commands/noitu");
+  const threadId = "ghepchu-stale-timer";
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const scheduled = [];
+  global.setTimeout = (callback, delay) => {
+    const timer = { callback, delay, cleared: false, unref() {} };
+    scheduled.push(timer);
+    return timer;
+  };
+  global.clearTimeout = timer => { if (timer) timer.cleared = true; };
+  const api = { async sendMessage() {} };
+  const event = { threadId, type: 2, data: { uidFrom: "gc-player" } };
+  const options = { getJson: mockDictionary, random: () => 0 };
+
+  try {
+    const first = await game.start(threadId, "gc-player", "Old Player", "", options);
+    assert.equal(first.ok, true);
+    command._test.scheduleGhepChuExpiry(api, event, threadId);
+    const oldTimer = scheduled.at(-1);
+
+    game.finish(threadId);
+    const second = await game.start(threadId, "gc-player-2", "New Player", "", options);
+    assert.equal(second.ok, true);
+    command._test.scheduleGhepChuExpiry(api, { ...event, data: { uidFrom: "gc-player-2" } }, threadId);
+    const newTimer = scheduled.at(-1);
+    const newSession = game.get(threadId);
+
+    await oldTimer.callback();
+
+    assert.equal(game.get(threadId), newSession, "the new Ghép Chữ round must remain active");
+    assert.equal(command._test.ghepChuTimers.get(threadId), newTimer,
+      "the stale callback must not replace the new timer");
+    assert.equal(newTimer.cleared, false, "the active round's timer must remain scheduled");
+  } finally {
+    command._test.clearGhepChuTimer(threadId);
+    game.remove(threadId);
+    game.clearDictionaryCache();
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  }
+});
+
+test("Ghép Chữ answer completion is cancelled when the session is stopped during processing", async () => {
+  const threadId = "ghepchu-stop-during-submit";
+  const options = { getJson: mockDictionary, random: () => 0 };
+  const started = await game.start(threadId, "user-1", "Player", "", options);
+  const answer = started.session.puzzle.answer;
+
+  const pending = game.submit(threadId, "user-1", answer, options);
+  const stopped = game.stop(threadId, "user-1");
+  assert.equal(stopped.ok, true);
+  game.remove(threadId);
+  const replacement = await game.start(threadId, "user-2", "Replacement", "", options);
+  assert.equal(replacement.ok, true);
+
+  const result = await pending;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "CANCELLED");
+  assert.equal(game.get(threadId).playerId, "user-2");
+});

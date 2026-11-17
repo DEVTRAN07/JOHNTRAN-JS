@@ -256,17 +256,20 @@ function scheduleQuickNoituExpiry(api, event, threadId) {
   const session = quickNoitu.get(threadId);
   if (!session || session.status !== "active") return;
   const delay = Math.max(20, quickNoitu.remainingMs(session));
+  const key = String(threadId);
   const timer = setTimeout(async () => {
-    const current = quickNoitu.get(threadId);
-    if (!current || current.status !== "active") return;
+    if (quickNoituTimers.get(key) !== timer) return;
+    quickNoituTimers.delete(key);
+    const current = quickNoitu.get(key);
+    if (current !== session || current.status !== "active") return;
     if (quickNoitu.remainingMs(current) > 0) {
-      scheduleQuickNoituExpiry(api, event, threadId);
+      scheduleQuickNoituExpiry(api, event, key);
       return;
     }
-    await finishQuickNoitu(api, event, quickNoitu.finish(threadId));
+    await finishQuickNoitu(api, event, quickNoitu.finish(key));
   }, delay);
   timer.unref?.();
-  quickNoituTimers.set(String(threadId), timer);
+  quickNoituTimers.set(key, timer);
 }
 
 async function startNoituRoom({ api, event }) {
@@ -793,19 +796,21 @@ function scheduleGhepChuExpiry(api, event, threadId) {
   const session = ghepChu.get(threadId);
   if (!session || session.status !== "active") return;
   const delay = Math.max(20, ghepChu.remainingSeconds(session) * 1000);
+  const key = String(threadId);
   const timer = setTimeout(async () => {
-    const current = ghepChu.get(threadId);
-    if (!current || current.status !== "active") return;
+    if (ghepChuTimers.get(key) !== timer) return;
+    ghepChuTimers.delete(key);
+    const current = ghepChu.get(key);
+    if (current !== session || current.status !== "active") return;
     if (ghepChu.remainingSeconds(current) > 0) {
-      scheduleGhepChuExpiry(api, event, threadId);
+      scheduleGhepChuExpiry(api, event, key);
       return;
     }
-    ghepChu.finish(threadId);
-    clearGhepChuTimer(threadId);
+    ghepChu.finish(key);
     await sendGhepChuCard(api, event, current, "⌛ Hết giờ! Đây là kết quả ván Ghép Chữ của bạn.");
   }, delay);
   timer.unref?.();
-  ghepChuTimers.set(String(threadId), timer);
+  ghepChuTimers.set(key, timer);
 }
 
 async function finishGhepChu(api, event, session, caption) {
@@ -1335,4 +1340,4 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   return sendGuide(api, event, prefix, isNoituEnabled(Threads || defaultThreads, threadId));
 };
 module.exports.handleEvent = handleActiveGameText;
-module.exports._test = { help, leaderboard, resetNoituScores, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleSoloBotText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn, clearSoloTurnTimers, recallSoloLastPrompt, getSentMessageRefs, playerMentionPayload, addSoloPromptReaction, scheduleSoloTurn, finishSoloTimeout, finishSoloLoss, isNoituEnabled, setNoituEnabled, stopNoituGames, checkNoituWord, currentMonthKey, SOLO_TURN_MS };
+module.exports._test = { help, leaderboard, resetNoituScores, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleSoloBotText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn, clearSoloTurnTimers, clearQuickNoituTimer, clearGhepChuTimer, scheduleQuickNoituExpiry, scheduleGhepChuExpiry, quickNoituTimers, ghepChuTimers, recallSoloLastPrompt, getSentMessageRefs, playerMentionPayload, addSoloPromptReaction, scheduleSoloTurn, finishSoloTimeout, finishSoloLoss, isNoituEnabled, setNoituEnabled, stopNoituGames, checkNoituWord, currentMonthKey, SOLO_TURN_MS };

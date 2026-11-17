@@ -311,3 +311,39 @@ test("Caro lifecycle distinguishes occupied and active groups", () => {
   game.finish(threadId);
   assert.equal(game.isBusy(threadId), false);
 });
+
+
+test("a cleared Caro turn timer cannot remove the replacement timer", () => {
+  const threadId = "caro-stale-turn-timer";
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const scheduled = [];
+  global.setTimeout = (callback, delay) => {
+    const timer = { callback, delay, cleared: false, unref() {} };
+    scheduled.push(timer);
+    return timer;
+  };
+  global.clearTimeout = timer => { if (timer) timer.cleared = true; };
+  let expired = 0;
+
+  try {
+    game.startSolo(threadId, { uid: "human", name: "Human" });
+    assert.equal(game.watchTurn(threadId, () => { expired++; }), true);
+    const oldTimer = scheduled.at(-1);
+
+    assert.equal(game.move(threadId, "human", 136).ok, true);
+    assert.equal(game.watchTurn(threadId, () => { expired++; }), true);
+    const newTimer = scheduled.at(-1);
+
+    oldTimer.callback();
+
+    assert.equal(game.timers.get(threadId), newTimer,
+      "an old callback must not delete the current turn timer");
+    assert.equal(newTimer.cleared, false);
+    assert.equal(expired, 0);
+  } finally {
+    game.finish(threadId);
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  }
+});
