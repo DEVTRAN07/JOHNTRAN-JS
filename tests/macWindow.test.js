@@ -40,9 +40,22 @@ test("card gets a macOS title bar with traffic-light controls", () => {
   );
 });
 
-test("shared card image output includes the macOS window frame", async () => {
+test("main menu image output is saved without Mac window chrome", async () => {
   const content = createCanvas(750, 300);
   const filePath = theme.save(content, "menu");
+
+  try {
+    const image = await loadImage(fs.readFileSync(filePath));
+    assert.equal(image.width, 750);
+    assert.equal(image.height, 300);
+  } finally {
+    fs.unlinkSync(filePath);
+  }
+});
+
+test("folder menu image output keeps the shared Mac window frame", async () => {
+  const content = createCanvas(750, 300);
+  const filePath = theme.save(content, "menu_folder");
 
   try {
     const image = await loadImage(fs.readFileSync(filePath));
