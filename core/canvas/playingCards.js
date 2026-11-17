@@ -72,17 +72,6 @@ function drawPlayingCard(ctx, card, x, y, width, height, scale = 1, options = {}
     size: centerSize, color: suit.color, align: "center"
   });
 
-  // Traditional mirrored corner mark.
-  ctx.save();
-  ctx.translate(x + width - 8 * scale, y + height - 7 * scale);
-  ctx.rotate(Math.PI);
-  ctx.font = "900 " + Math.max(9, Math.round((compact ? 18 : 21) * scale)) + "px Arial, sans-serif";
-  ctx.fillStyle = suit.color;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText(rank, 0, 0);
-  ctx.restore();
-
   // The index stays in the visible left/bottom area even when neighboring cards overlap.
   if (Number.isInteger(options.index) && options.index > 0) {
     const badgeW = Math.min(27 * scale, width * .42);
