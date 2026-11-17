@@ -675,3 +675,59 @@ test("TLMN leave UX: a departing player has their private hand recalled", async 
     game.removeRoom(groupId);
   }
 });
+
+
+test("TLMN new rule table calculates rác, black/red heo, đôi thông and tứ quý", () => {
+  const bet = 1000;
+  assert.equal(game.calculateLeftoverPenalty([
+    { rank: 3, suit: "b", id: "3b" }, { rank: 15, suit: "b", id: "15b" }
+  ], bet), 3000);
+  assert.equal(game.calculateLeftoverPenalty([
+    { rank: 3, suit: "b", id: "3b" }, { rank: 15, suit: "c", id: "15c" }
+  ], bet), 5000);
+  assert.equal(game.calculateLeftoverPenalty([
+    { rank: 15, suit: "b", id: "15b" }, { rank: 15, suit: "ch", id: "15ch" }
+  ], bet), 4000);
+  assert.equal(game.calculateLeftoverPenalty([3,4,5].flatMap(rank => [
+    { rank, suit: "b", id: String(rank) + "b" },
+    { rank, suit: "c", id: String(rank) + "c" }
+  ]), bet), 6000);
+  assert.equal(game.calculateLeftoverPenalty([7,7,7,7].map((rank, index) => ({
+    rank, suit: ["b","ch","r","c"][index], id: String(rank) + ["b","ch","r","c"][index]
+  })), bet), 8000);
+  assert.equal(game.calculateLeftoverPenalty([3,4,5,6].flatMap(rank => [
+    { rank, suit: "b", id: String(rank) + "b" },
+    { rank, suit: "c", id: String(rank) + "c" }
+  ]), bet), 12000);
+});
+
+test("TLMN settlement ledger is zero-sum and applies chop transfers separately", () => {
+  const room = {
+    bet: 1000,
+    players: [{ uid: "a" }, { uid: "b" }, { uid: "c" }],
+    finishOrder: ["a"],
+    hands: {
+      a: [],
+      b: [{ rank: 3, suit: "b", id: "3b" }],
+      c: [{ rank: 4, suit: "b", id: "4b" }]
+    },
+    chopEvents: [{ from: "b", to: "c", amount: 6000, reason: "chop-three-pairs" }]
+  };
+  const settlement = game.calculateSettlement(room);
+  assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
+  assert.equal(settlement.net.a, 2000);
+  assert.equal(settlement.net.b, -7000);
+  assert.equal(settlement.net.c, 5000);
+});
+
+test("TLMN white-hand multiplier follows the supplied priority schedule", () => {
+  const room = {
+    bet: 1000,
+    players: [{ uid: "winner" }, { uid: "loser" }],
+    hands: { winner: [], loser: [] },
+    whiteHand: { uid: "winner", type: "fivePairRun" }
+  };
+  const settlement = game.calculateSettlement(room);
+  assert.equal(settlement.net.winner, 4000);
+  assert.equal(settlement.net.loser, -4000);
+});
