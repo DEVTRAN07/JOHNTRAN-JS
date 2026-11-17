@@ -400,7 +400,7 @@ function help(prefix = "!") {
     "💰 TÍNH TIỀN",
     "Rác còn: 1 cược/lá • thối 2: 15 cược/lá • thối tứ quý: 15 cược/bộ.",
     "Báo Sâm thành công: +20 cược từ mỗi nhà.",
-    "Báo Sâm thất bại: người báo đền 20 cược × (số người chơi − 1) cho người chặn.",
+    "LỦNG SÂM / báo Sâm thất bại: người báo đền 20 cược × (số người chơi − 1) cho người chặn.",
     "Tới trắng: +20 cược từ mỗi nhà.",
     "Cóng: 15 cược + tiền thối heo/hàng.",
     "Tứ quý chặt 2: 15 cược/con • chặt tứ quý: 15 cược/bộ • chặt chồng: 15 cược/lần.",
