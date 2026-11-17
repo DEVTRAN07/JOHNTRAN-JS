@@ -1611,6 +1611,9 @@ async function doLeave(context) {
   const uid = String(event?.data?.uidFrom || "");
   const state = game.get(threadId);
   if (!state) return sendText(api, event, "⚠️ Bạn chưa ở trong bàn Tiến Lên.");
+  if (!state.players.some(item => String(item.uid) === uid)) {
+    return sendText(api, event, "⚠️ Bạn không có trong bàn Tiến Lên này.");
+  }
   if (state.status === "waiting" &&
       (Object.keys(state.locked || {}).length || Object.keys(state.lockPending || {}).length)) {
     const refunded = await refundRoomWallets(
@@ -1941,6 +1944,8 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
       const refunded = await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId));
       if (!refunded || !await persistRoom(Threads, threadId)) {
         console.error("[TLMN_RECOVERY] Chưa hoàn xong cược bàn chờ #" + room.id);
+        const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
+        scheduleLobbyCleanup({ api, Users, Threads, event: syntheticEvent }, room, 60 * 1000);
         continue;
       }
       const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
