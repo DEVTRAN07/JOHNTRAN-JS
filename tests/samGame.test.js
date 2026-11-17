@@ -417,7 +417,9 @@ test("Sâm pass locks a player out until the trick clears, then allows the next 
   room.hands = {
     a: [card(5), card(7), card(11)],
     b: [card(3), card(9), card(12)],
-    c: [card(6), card(8), card(10)]
+    // Keep C above one card after the second lead so this remains a
+    // pass-lock regression, not a Báo 1 response scenario.
+    c: [card(6), card(8), card(10), card(12)]
   };
   room.turnUid = "a";
   room.currentCombo = null;
@@ -472,7 +474,9 @@ test("Sâm leaving trick leader clears the old combo and pass lock", () => {
 
   const room = started.state;
   room.hands = {
-    a: [card(5), card(7)],
+    // A must retain more than one card while B passes; the test is about
+    // leader departure, not a report-one challenge.
+    a: [card(5), card(7), card(11)],
     b: [card(3), card(9)],
     c: [card(6), card(8)]
   };
@@ -512,8 +516,10 @@ test("Sâm leaving defender can complete the pass cycle and return lead to the l
   const room = started.state;
   room.hands = {
     a: [card(5), card(7)],
-    b: [card(3), card(9)],
-    c: [card(4), card(8)],
+    // B and C cannot beat A's 5, so their passes are legal even while
+    // A has one card; D leaves as the final defender in this test.
+    b: [card(3), card(4)],
+    c: [card(4), card(3)],
     d: [card(6), card(10)]
   };
   room.turnUid = "a";
