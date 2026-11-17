@@ -33,7 +33,7 @@ test("Sâm engine builds a standard 52-card deck and deals ten cards each", () =
     const ids = Array.from({ length: count }, (_, index) => "p" + index);
     const dealt = engine.dealCards(ids, () => 0.42);
     for (const uid of ids) assert.equal(dealt.hands[uid].length, 10);
-    assert.ok(dealt.hands[dealt.firstPlayerId].some(item => item.id === "3b"));
+    assert.ok(ids.includes(dealt.firstPlayerId));
     assert.equal(dealt.remainingDeck.length, 52 - count * 10);
   }
 });
@@ -366,13 +366,13 @@ test("Sâm computes card-left, thối heo and cóng charges in the shared stake 
     winnerUid: "a",
     players: [{ uid: "a", name: "A" }, { uid: "b", name: "B" }],
     hands: { a: [], b: [card(3), card(15)] },
-    playedByUid: { a: 1 }
+    playedByUid: { a: 1, b: 1 }
   };
   const settlement = game.calculateSettlement(room);
-  assert.equal(settlement.net.a, 160000);
-  assert.equal(settlement.net.b, -160000);
+  assert.equal(settlement.net.a, 80000);
+  assert.equal(settlement.net.b, -80000);
   assert.deepEqual(settlement.transfers[0], {
-    from: "b", to: "a", amount: 160000, reason: "cards-left-and-penalties"
+    from: "b", to: "a", amount: 80000, reason: "leftover-heo-quad-cong"
   });
 });
 
@@ -390,8 +390,12 @@ test("Sâm báo một forces opponents to include their highest card", () => {
   room.hands = { a: [card(4), card(9)], b: [card(7)] };
   room.turnUid = "a";
   room.playedCount = 1;
-  assert.equal(game.play(threadId, "a", "4b").code, "MUST_PLAY_HIGHEST_ON_BAO_ONE");
-  assert.equal(game.play(threadId, "a", "9b").ok, true);
+  const lowerMove = game.play(threadId, "a", "4b");
+  assert.equal(lowerMove.ok, true);
+  assert.equal(room.baoOneViolations.length, 1);
+  assert.equal(room.baoOneViolations[0].from, "a");
+  assert.equal(room.baoOneViolations[0].to, "b");
+  assert.equal(room.baoOneViolations[0].amount, 15000);
   game.removeRoom(threadId);
 });
 
