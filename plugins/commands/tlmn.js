@@ -756,9 +756,9 @@ async function sendGroupRoom(api, event, room, notice = "") {
   const mentions = [];
   if (room.status === "playing" && activePlayer && !activePlayer.ai && !isAiUid(activePlayer.uid)) {
     const cleanName = String(activePlayer.name || "Người chơi")
-      .replace(/[\\r\\n\\t]+/g, " ").replace(/\\s+/g, " ").trim() || "Người chơi";
+      .replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim() || "Người chơi";
     const tag = "@" + cleanName;
-    const line = "\\n\\n🎯 " + tag + " — tới lượt bạn, hãy đánh bài!";
+    const line = "\n\n🎯 " + tag + " — tới lượt bạn, hãy đánh bài!";
     const position = caption.length + line.indexOf(tag);
     caption += line;
     mentions.push({ uid: String(activePlayer.uid), pos: position, len: tag.length });
@@ -844,6 +844,8 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
     turn ? "🎯 ĐẾN LƯỢT BẠN — hãy đánh bài hoặc bỏ lượt." : "🔒 Chỉ bạn nhìn thấy các lá bài này.",
     "",
     "⚡ LỆNH ĐÁNH NHANH GỢI Ý:",
+    "• Chọn theo số trên ảnh: chon 1 hoặc chon 1,2,3 (từ trái sang phải)",
+    "• goiy: gợi ý riêng • auto: tự đánh bộ hợp lệ để xả nhiều lá",
     "• Đánh lẻ: 4r, 10b, jc, 2c",
     "• Đôi: Đôi 3 (doi 3), Đôi 4 (doi 4), Đôi K (doi k)",
     "• Sám cô: sam 7 / sam co 7",
@@ -1043,7 +1045,7 @@ async function sendMoveHint(context) {
         "Lá: " + engine.formatCards(move.cards),
         "Lệnh: " + move.input,
         "Có thể gõ auto để bot đánh giúp hoặc tự chọn bằng chon 1,2."
-      ].join("\\n")
+      ].join("\n")
     : "⛔ Không có bộ hợp lệ để chặn. Bạn có thể gõ bo để bỏ lượt.";
   try {
     await sendPrivateNotice(api, uid, message);
@@ -1464,6 +1466,7 @@ async function doPlay(context, input) {
       NOT_PLAYER: "⚠️ Bạn không tham gia bàn này.",
       NOT_TURN: "⏳ Chưa đến lượt bạn.",
       UNRECOGNIZED_PLAY: "⚠️ Không hiểu cách đánh. Ví dụ: 4b, doi 4, sanh 4567, tuquy 4.",
+      INVALID_SELECTION: "⚠️ Số lá không hợp lệ. Dùng chon 1 hoặc chon 1,2 theo số trên ảnh.",
       EMPTY_PLAY: "⚠️ Hãy nhập lá bài muốn đánh.",
       NOT_ENOUGH_CARDS: "⚠️ Bạn không có đủ lá để tạo tổ hợp đó.",
       INVALID_STRAIGHT: "⚠️ Sảnh phải gồm ít nhất 3 lá liên tiếp và không được có heo.",
@@ -1758,7 +1761,7 @@ async function runCommand(context) {
 }
 
 async function handleIncoming(context = {}) {
-  const { event, isSelf, Threads } = context;
+  const { api, event, isSelf, Threads } = context;
   if ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true) return false;
   const content = String(event?.data?.content || "").trim();
   const prefix = String(global.config?.prefix || "!");
@@ -1814,8 +1817,8 @@ async function handleIncoming(context = {}) {
       return true;
     }
     const hasCardSyntax = /(10|[3-9]|[jqka2])(ch|dt|b|r|c|t)/i.test(lower) ||
-      /^(doi(\\s*thong)?|doithong|pair|double|sam(\\s*co)?|triple|tu\\s*quy|tuquy|four|sanh|straight|le|single)\\b/.test(lower) ||
-      /^(chon|select|vi\\s*tri|vitri)\\b/.test(lower);
+      /^(doi(\s*thong)?|doithong|pair|double|sam(\s*co)?|triple|tu\s*quy|tuquy|four|sanh|straight|le|single)\b/.test(lower) ||
+      /^(chon|select|vi\s*tri|vitri)\b/.test(lower);
     if (hasCardSyntax) {
       await doPlay(context, content);
       return true;
