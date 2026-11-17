@@ -407,7 +407,7 @@ function help(prefix = "!") {
     "🕹️ LỆNH",
     prefix + "sam go — Mở/tham gia bàn",
     prefix + "sam join <mã> — Vào bàn",
-    prefix + "sam cuoc <số> — Đặt cược (mặc định 5K)",
+    prefix + "sam cuoc <số> — Đặt cược (mặc định 300)",
     prefix + "sam start — Bắt đầu",
     prefix + "sam baosam — Hô Sâm",
     prefix + "sam info — Xem bàn • sam leave • sam stop • sam help",
@@ -492,7 +492,7 @@ async function settleSamWallets(Users, room, Threads) {
   if (!room.settlement || !room.locked || !Array.isArray(room.players)) {
     return { ok: false, code: "MISSING_SETTLEMENT_OR_ESCROW" };
   }
-  const requiredLock = 250 * Math.max(1, Math.floor(Number(room.stake) || 5000));
+  const requiredLock = 250 * Math.max(100, Math.floor(Number(room.stake) || 300));
   if (!Number.isSafeInteger(requiredLock) ||
       room.players.some(player => Number(room.locked[String(player.uid)]) !== requiredLock)) {
     return { ok: false, code: "INSUFFICIENT_ESCROW" };
@@ -607,9 +607,9 @@ async function startRoom(context) {
   if (!room || room.status !== "waiting") return sendText(api, event, "⚠️ Không có bàn Sâm đang chờ.");
   if (room.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ bàn mới được bắt đầu.");
   if (room.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi.");
-  const stake = Math.max(1000, Math.floor(Number(room.stake) || 5000));
+  const stake = Math.max(100, Math.floor(Number(room.stake) || 300));
   room.stake = stake;
-  room.bet = stake;
+  room.bet = 1000; // Wallet helper validates the base game bet; reservePerPlayer carries the Sâm risk cap.
   room.reservePerPlayer = 250 * stake;
   room.locked ||= {};
   room.lockPending ||= {};
@@ -827,8 +827,8 @@ async function runCommand(context) {
     const room = await restoreRoom(Threads, event.threadId);
     if (!room || room.status !== "waiting") return sendText(api, event, "⚠️ Chỉ đổi cược khi bàn đang chờ.");
     if (room.ownerId !== String(event.data?.uidFrom || "")) return sendText(api, event, "⛔ Chỉ chủ bàn được đổi cược.");
-    if (!Number.isSafeInteger(amount) || amount < 1000 || amount > 1000000) {
-      return sendText(api, event, "⚠️ Cược Sâm từ 1K đến 1M xu. Ví dụ: !sam cuoc 10k.");
+    if (!Number.isSafeInteger(amount) || amount < 100 || amount > 1000000) {
+      return sendText(api, event, "⚠️ Cược Sâm từ 100 đến 1M xu. Ví dụ: !sam cuoc 500.");
     }
     room.stake = amount;
     await persistRoom(Threads, event.threadId);
