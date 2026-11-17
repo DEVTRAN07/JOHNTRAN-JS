@@ -1611,7 +1611,7 @@ async function runCommand(context) {
 
 async function handleIncoming(context = {}) {
   const { event, isSelf, Threads } = context;
-  if (isSelf || event?.isSelf) return false;
+  if ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true) return false;
   const content = String(event?.data?.content || "").trim();
   const prefix = String(global.config?.prefix || "!");
   if (!content || content.startsWith(prefix) || event?.type !== ThreadType.Group) return false;
