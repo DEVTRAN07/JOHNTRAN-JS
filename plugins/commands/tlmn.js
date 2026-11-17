@@ -645,7 +645,9 @@ function help(prefix) {
     "chon 1,2 — Chọn bài theo số thứ tự trên ảnh (từ trái sang phải)",
     "goiy — Gửi gợi ý riêng • auto — Tự đánh bộ hợp lệ nhanh nhất",
     "doi 4 — Chọn đôi 4  •  sanh 4567 — Chọn sảnh",
-    "tuquy 4 — Chọn tứ quý  •  doithong  — đánh các lá đôi thông",
+    "tuquy 4 — Chọn tứ quý  •  3dt / 4dt — chọn đôi thông",
+    "Mở ván cần 3♠; không ghép 2 vào sảnh.",
+    "Luật chặt: 3 đôi thông chặt heo; tứ quý chặt heo/đôi heo/3 đôi thông; 4 đôi thông chặt cả tứ quý và các bộ nhỏ hơn.",
     "",
     "♠️ KÝ HIỆU CHẤT",
     SUIT_HELP,
@@ -699,7 +701,7 @@ function tableCaption(room, notice = "") {
     notice,
     room.status === "waiting"
       ? "👉 Nhắn join " + room.id + " để vào bàn ngay!"
-      : "💡 Bài được gửi riêng. Gửi lá bài trong nhóm để đánh; bo/pass để bỏ lượt."
+      : "💡 Gửi lá bài trong nhóm để đánh • chon 1,2 chọn theo số trên ảnh • goiy/auto hỗ trợ đánh nhanh • bo để bỏ lượt."
   ].filter(Boolean).join("\n");
 }
 
