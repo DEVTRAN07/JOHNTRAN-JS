@@ -504,7 +504,7 @@ async function settleRoomWallets(Users, room, results) {
   const requiredLock = 78 * Number(room.bet);
   if (!Number.isSafeInteger(requiredLock) || requiredLock <= 0 ||
       room.players.some(item => Number(room.locked?.[item.uid]) !== requiredLock)) {
-    throw new Error("Thiếu khoản ký quỹ 26 cược/người; giữ nguyên bàn để đối soát.");
+    throw new Error("Thiếu khoản ký quỹ tối đa 78 cược/người; giữ nguyên bàn để đối soát.");
   }
   const lines = [];
   for (const player of room.players) {
