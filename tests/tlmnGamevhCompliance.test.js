@@ -434,7 +434,7 @@ test("GameVH TLMN successful Kết 3 Bích scales base 26 plus dead weapons acro
     ];
     if (count > 2) hands["k-2"] = [
       { rank: 15, suit: "b", id: "15b" },
-      { rank: 15, suit: "ch", id: "15ch" },
+      { rank: 15, suit: "r", id: "15r" },
       { rank: 8, suit: "b", id: "8b" }
     ];
     if (count > 3) hands["k-3"] = [
