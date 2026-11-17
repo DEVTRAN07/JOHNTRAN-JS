@@ -574,6 +574,7 @@ function play(threadId, uid, input) {
     room.activeUids = room.activeUids.filter(value => value !== actor);
     if (combo.cards.some(card => card.id === "3b")) {
       room.threeSpadesFinisherUid = actor;
+      room.threeSpadesBlockedByUid = null;
     } else if (!room.threeSpadesFinisherUid) {
       finishRoom(room);
       return { ok: true, finished: true, combo: validation.combo, handCount, results: room.results, room: snapshot(room), state: room };
