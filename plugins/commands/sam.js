@@ -509,8 +509,10 @@ async function refundSamWallets(Users, room, Threads) {
 }
 
 async function finishGame(context, room, notice = "") {
-  const { api, event, Threads } = context;
-  const { Users } = context;
+  const { api, event, Threads, Users } = context;
+  // Persist the terminal game state before touching wallets. Recovery can
+  // safely retry the idempotent per-player settlement after a restart.
+  await persistRoom(Threads, room.threadId);
   const settlement = await settleSamWallets(Users, room, Threads);
   if (!settlement.ok) {
     await persistRoom(Threads, room.threadId);
@@ -853,4 +855,18 @@ module.exports._test = {
   privateDestination, roomCaption, gameConflict, help, sendPrivateHand,
   recallRoomCards, createOrJoin, joinRoom, startRoom, doPlay, doPass, callSam, runCommand,
   settleSamWallets, refundSamWallets
+};
+
+
+module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
+  if (!Threads?.getAll) return;
+  for (const record of Threads.getAll() || []) {
+    const threadId = String(record?.threadId || record?.id || "");
+    if (!threadId) continue;
+    const room = await restoreRoom(Threads, threadId);
+    if (!room || room.status !== "finished" || room.settled) continue;
+    const event = { threadId, type: ThreadType.Group, data: {} };
+    await withRoomLock(threadId, () => finishGame({ api, Users, Threads, event }, room,
+      "🔄 Bot đã khôi phục và đối soát giao dịch sau khi khởi động lại."));
+  }
 };
