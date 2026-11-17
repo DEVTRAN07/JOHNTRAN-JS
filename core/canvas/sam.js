@@ -138,7 +138,7 @@ function renderSam(data = {}) {
     px(70), px(564), scale, {
       size: 13, weight: 800, color: "#73e8cf"
     });
-  text(ctx, "Báo Sâm: baosam  •  3♠ mở đầu  •  Bích b / Chuồn ch / Rô r / Cơ c",
+  text(ctx, "Báo Sâm: baosam  •  Sâm so số, không so chất",
     px(70), px(592), scale, {
       size: 11, weight: 800, color: "#d2c69e"
     });
