@@ -134,7 +134,7 @@ async function sendPrivateHand(api, room, player, hand, turn = false) {
     "Lệnh: chon 1,2 • doi 7 • sam 9 • tuquy 5 • sanh 345 • pass",
     "Báo Sâm trước nước đánh đầu tiên: baosam"
   ].filter(Boolean).join("\n");
-  const key = "sam-hand:" + player.uid;
+  const key = "sam-hand:" + room.id + ":" + player.uid;
   const rawApi = getRawApi(api);
   let imagePath = null;
   try {
@@ -253,6 +253,53 @@ async function sendGroupRoom(api, event, room, notice = "") {
       timer.unref?.();
     }
   }
+}
+
+async function recallRoomCards(api, room) {
+  if (!room) return 0;
+  let failures = 0;
+  const rawApi = getRawApi(api);
+  const groupKey = "sam-group:" + room.threadId;
+  const groupDestination = { threadId: String(room.threadId), type: ThreadType.Group };
+  const failedGroup = await recallMessages(rawApi, groupDestination,
+    messageCards.get(groupKey) || []);
+  if (failedGroup.length) {
+    messageCards.set(groupKey, failedGroup);
+    failures += failedGroup.length;
+  } else messageCards.delete(groupKey);
+
+  for (const player of room.players || []) {
+    const key = "sam-hand:" + room.id + ":" + player.uid;
+    const targets = messageCards.get(key) || [];
+    if (!targets.length) continue;
+    let destination;
+    try {
+      destination = privateDestination(api, player.uid);
+    } catch (error) {
+      failures += targets.length;
+      continue;
+    }
+    const failed = await recallMessages(rawApi, destination, targets);
+    if (failed.length) {
+      messageCards.set(key, failed);
+      failures += failed.length;
+    } else messageCards.delete(key);
+  }
+  return failures;
+}
+
+async function recallPrivateHand(api, room, uid) {
+  const key = "sam-hand:" + room.id + ":" + String(uid);
+  const targets = messageCards.get(key) || [];
+  if (!targets.length) return 0;
+  const destination = privateDestination(api, uid);
+  const failed = await recallMessages(api, destination, targets);
+  if (failed.length) {
+    messageCards.set(key, failed);
+    return failed.length;
+  }
+  messageCards.delete(key);
+  return 0;
 }
 
 async function persistRoom(Threads, threadId) {
@@ -425,6 +472,7 @@ async function finishGame(context, room, notice = "") {
     "👉 Gõ !sam go để mở bàn Sâm mới."
   ].join("\n"));
   await persistRoom(Threads, room.threadId);
+  await recallRoomCards(api, room);
   const cleanupRoomId = room.id;
   const cleanup = setTimeout(async () => {
     if (cleanupTimers.get(room.threadId) !== cleanup) return;
@@ -450,6 +498,7 @@ async function startRoom(context) {
   const state = started.state;
   const failed = await distributeHands(api, state);
   if (failed.length) {
+    await recallRoomCards(api, state);
     game.stop(threadId, uid);
     game.removeRoom(threadId);
     await persistRoom(Threads, threadId);
@@ -578,6 +627,10 @@ function scheduleTurn(context, room) {
       await sendGroupRoom(context.api, synthetic.event, action.room,
         action.action === "pass" ? "⏰ Hết 60 giây, Bot tự bỏ lượt." :
           "⏰ Hết 60 giây, Bot tự đánh " + engine.formatCards(action.combo.cards) + ".");
+      const actor = action.state.players.find(item => item.uid === uid);
+      if (actor && action.action === "play") {
+        await sendPrivateHand(context.api, action.state, actor, action.state.hands[uid] || [], false);
+      }
       const next = action.state.players.find(item => item.uid === action.state.turnUid);
       if (next) await sendPrivateHand(context.api, action.state, next, action.state.hands[next.uid] || [], true);
       scheduleTurn(context, action.state);
@@ -596,6 +649,9 @@ async function leaveRoom(context) {
     await persistRoom(Threads, threadId);
     return sendText(api, event, "🛑 Đã hủy bàn Sâm.");
   }
+  if (!result.cancelled) await recallPrivateHand(api, result.state, uid).catch(error => {
+    console.warn("[SAM_RECALL_PRIVATE]", error?.message || error);
+  });
   await persistRoom(Threads, threadId);
   if (result.state.status === "finished") return finishGame(context, result.state, "Người chơi đã rời bàn.");
   await sendGroupRoom(api, event, result.room, "👋 Người chơi đã rời bàn.");
@@ -619,6 +675,7 @@ async function runCommand(context) {
     if (!room) return sendText(api, event, "⚠️ Không có bàn Sâm.");
     const stopped = game.stop(event.threadId, event.data?.uidFrom);
     if (!stopped.ok) return sendText(api, event, "⛔ Chỉ chủ bàn mới được hủy.");
+    await recallRoomCards(api, room);
     game.removeRoom(event.threadId);
     await persistRoom(Threads, event.threadId);
     return sendText(api, event, "🛑 Đã hủy bàn Sâm #" + room.id + ".");
@@ -680,5 +737,5 @@ module.exports.handleIncoming = context => withRoomLock(
 );
 module.exports._test = {
   privateDestination, roomCaption, gameConflict, help, sendPrivateHand,
-  createOrJoin, joinRoom, startRoom, doPlay, doPass, callSam, runCommand
+  recallRoomCards, createOrJoin, joinRoom, startRoom, doPlay, doPass, callSam, runCommand
 };
