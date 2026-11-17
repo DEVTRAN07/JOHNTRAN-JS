@@ -542,6 +542,8 @@ async function settleRoomWallets(Users, room, results, onRoomChange = null) {
   // Existing rooms and newly created rooms both retain the 100x base escrow.
   // Any exceptional liability beyond this amount is topped up below by an
   // idempotent wallet transaction, not by blocking ordinary new players.
+  const requiredLock = Number(room.reservePerPlayer) ||
+    RESERVE_MULTIPLIER * Number(room.bet);
   if (!Number.isSafeInteger(requiredLock) || requiredLock <= 0 ||
       Object.keys(room.locked || {}).length !== room.players.length ||
       room.players.some(item => Number(room.locked?.[item.uid]) < requiredLock)) {
