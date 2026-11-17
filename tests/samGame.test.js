@@ -429,3 +429,47 @@ test("Sâm records a 15-stake transfer when a four-of-a-kind chops a two", () =>
   ));
   game.removeRoom(threadId);
 });
+
+
+test("Sâm cóng is 15 stakes plus heo and hàng, not ordinary rác cards", () => {
+  const room = {
+    stake: 1000,
+    winnerUid: "a",
+    players: [{ uid: "a" }, { uid: "b" }],
+    hands: { a: [], b: [card(3), card(4), card(15), card(15, "c")] },
+    playedByUid: { a: 1 }
+  };
+  const settlement = game.calculateSettlement(room);
+  assert.equal(settlement.net.b, -32000);
+  assert.equal(settlement.net.a, 32000);
+});
+
+test("Sâm failed call pays 20 stakes times opponents to the blocker", () => {
+  const room = {
+    stake: 1000,
+    winnerUid: "c",
+    samStatus: "failed",
+    samCallerUid: "a",
+    samBlockedByUid: "b",
+    players: [{ uid: "a" }, { uid: "b" }, { uid: "c" }],
+    hands: { a: [card(3)], b: [], c: [] },
+    playedByUid: { a: 1, b: 1, c: 1 }
+  };
+  const settlement = game.calculateSettlement(room);
+  assert.equal(settlement.net.a, -21000);
+  assert.equal(settlement.net.b, 20000);
+  assert.equal(settlement.net.c, 1000);
+  assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
+});
+
+test("Sâm white hand pays 20 stakes from each opponent", () => {
+  const room = {
+    stake: 1000,
+    winnerUid: "a",
+    whiteHand: { uid: "a", type: "longStraight" },
+    players: [{ uid: "a" }, { uid: "b" }, { uid: "c" }],
+    hands: { a: [], b: [], c: [] }
+  };
+  const settlement = game.calculateSettlement(room);
+  assert.deepEqual(settlement.net, { a: 40000, b: -20000, c: -20000 });
+});
