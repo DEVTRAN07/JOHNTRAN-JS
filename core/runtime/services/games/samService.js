@@ -185,7 +185,8 @@ function play(threadId, uid, input) {
   const parsed = Array.isArray(input) ? { ok: true, cards: input } : engine.parsePlayText(hand, input);
   if (!parsed.ok) return parsed;
   const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo, {
-    mustContainThreeOfSpades: room.playedCount === 0 && actor === room.firstPlayerUid
+    mustContainThreeOfSpades: room.playedCount === 0 &&
+      !room.samCallerUid && actor === room.firstPlayerUid
   });
   if (!validation.ok) return validation;
 
@@ -248,6 +249,11 @@ function callSam(threadId, uid) {
   room.samCallerUid = String(uid);
   room.samCallerHasPlayed = false;
   room.samStatus = "called";
+  room.turnUid = String(uid);
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.passed.clear();
   return { ok: true, room: snapshot(room), state: room };
 }
 function timeoutTurn(threadId, uid) {
@@ -259,7 +265,8 @@ function timeoutTurn(threadId, uid) {
     return { ...pass(threadId, uid), timedOut: true, action: "pass" };
   }
   const hand = room.hands[String(uid)] || [];
-  const first = room.playedCount === 0 && uid === room.firstPlayerUid
+  const first = room.playedCount === 0 && !room.samCallerUid &&
+    uid === room.firstPlayerUid
     ? hand.find(card => card.id === "3b")
     : engine.sortHand(hand)[0];
   if (!first) return { ok: false, code: "NO_CARD" };
