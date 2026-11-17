@@ -2,7 +2,7 @@
 
 const theme = require("./theme");
 const avatarCache = require("./avatarCache");
-const { drawPlayingCard } = require("./playingCards");
+const { drawPlayingCard: renderCardFace } = require("./playingCards");
 
 function drawText(ctx, text, x, y, scale, options = {}) {
   const size = Math.max(9, Math.round((options.size || 18) * scale));
@@ -42,7 +42,7 @@ function rankText(rank) {
 }
 
 function drawPlayingCard(ctx, card, x, y, w, h, scale, options = {}) {
-  return require("./playingCards").drawPlayingCard(ctx, card, x, y, w, h, scale, options);
+  return renderCardFace(ctx, card, x, y, w, h, scale, options);
 }
 
 function unusedCardRendererPlaceholder() {}
