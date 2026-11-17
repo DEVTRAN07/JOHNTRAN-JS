@@ -9,6 +9,7 @@ const engine = require("../../core/games/samEngine");
 
 const locks = new Map();
 const cleanupTimers = new Map();
+const messageCards = new Map();
 
 module.exports.config = {
   name: "sam",
@@ -46,6 +47,52 @@ function sendText(api, event, message) {
     withRequesterMention(event, { msg: String(message || "") }),
     event.threadId, event.type
   );
+}
+
+function responseTargets(response) {
+  const items = [
+    ...(response?.message ? [response.message] : []),
+    ...(Array.isArray(response?.attachment) ? response.attachment : [])
+  ];
+  const unique = new Map();
+  for (const item of items) {
+    const msgId = item?.msgId;
+    const cliMsgId = item?.cliMsgId;
+    if ((typeof msgId !== "string" && typeof msgId !== "number") ||
+        (typeof cliMsgId !== "string" && typeof cliMsgId !== "number")) continue;
+    unique.set(String(msgId) + ":" + String(cliMsgId), { msgId, cliMsgId });
+  }
+  return [...unique.values()];
+}
+
+async function recallMessages(api, destination, targets) {
+  const rawApi = getRawApi(api);
+  const failed = [];
+  for (const target of Array.isArray(targets) ? targets : []) {
+    try {
+      if (typeof rawApi?.undo !== "function") throw new Error("API thu hồi tin nhắn không khả dụng");
+      const result = await rawApi.undo(
+        { msgId: target.msgId, cliMsgId: target.cliMsgId },
+        String(destination.threadId), destination.type
+      );
+      if (result === false || result?.success === false) throw new Error("Zalo từ chối thu hồi card cũ");
+    } catch (error) {
+      failed.push(target);
+      console.warn("[SAM_RECALL]", error?.message || error);
+    }
+  }
+  return failed;
+}
+
+async function sendReplacement(api, key, destination, makeSend) {
+  const rawApi = getRawApi(api);
+  const response = await makeSend(rawApi);
+  const next = responseTargets(response);
+  if (!next.length) return response;
+  const previous = messageCards.get(key) || [];
+  const failed = await recallMessages(rawApi, destination, previous);
+  messageCards.set(key, [...next, ...failed]);
+  return response;
 }
 
 function privateDestination(api, uid) {
@@ -87,13 +134,40 @@ async function sendPrivateHand(api, room, player, hand, turn = false) {
     "Lệnh: chon 1,2 • doi 7 • sam 9 • tuquy 5 • sanh 345 • pass",
     "Báo Sâm trước nước đánh đầu tiên: baosam"
   ].filter(Boolean).join("\n");
+  const key = "sam-hand:" + room.id + ":" + player.uid;
+  const rawApi = getRawApi(api);
+  let imagePath = null;
   try {
-    const rawApi = getRawApi(api);
-    await rawApi.sendMessage({ msg: message }, destination.threadId, destination.type);
-    return true;
+    imagePath = await renderCanvas("sam", {
+      view: "hand",
+      room: { id: room.id },
+      player: { uid: player.uid, name: player.name },
+      hand: hand.map(card => ({ ...card })),
+      isTurn: Boolean(turn)
+    }, { timeout: 20000, poolSize: 1 });
+    const response = await sendReplacement(api, key, destination, sender =>
+      sender.sendMessage({ msg: message, attachments: [imagePath] },
+        destination.threadId, destination.type)
+    );
+    return Boolean(response);
   } catch (error) {
-    console.error("[SAM_PRIVATE_HAND]", error?.message || error);
-    return false;
+    console.error("[SAM_CANVAS_HAND]", error?.message || error);
+    try {
+      const response = await sendReplacement(api, key, destination, sender =>
+        sender.sendMessage({ msg: message }, destination.threadId, destination.type)
+      );
+      return Boolean(response);
+    } catch (sendError) {
+      console.error("[SAM_PRIVATE_HAND]", sendError?.message || sendError);
+      return false;
+    }
+  } finally {
+    if (imagePath) {
+      const timer = setTimeout(() => {
+        try { fs.rmSync(imagePath, { force: true }); } catch {}
+      }, 60000);
+      timer.unref?.();
+    }
   }
 }
 
@@ -126,28 +200,31 @@ function roomCaption(room, notice = "") {
 }
 
 async function sendGroupRoom(api, event, room, notice = "") {
-  const text = roomCaption(room, notice);
+  const textCaption = roomCaption(room, notice);
+  const lastPlay = room.lastPlay?.cards?.length
+    ? engine.formatCards(room.lastPlay.cards) : "Chưa có bộ bài nào được đánh";
+  const players = room.players.map(item => {
+    const turn = item.uid === room.turnUid ? "  ◀ ĐẾN LƯỢT" : "";
+    const count = item.handCount == null ? "Đang chờ" : item.handCount + " lá";
+    return item.name + " • " + count + turn;
+  });
+  const sections = [
+    { title: "NGƯỜI CHƠI", lines: players },
+    { title: "TRÊN BÀN", lines: [lastPlay] }
+  ];
+  if (room.samStatus) {
+    const caller = room.players.find(p => p.uid === room.samCallerUid)?.name || "Người chơi";
+    sections.push({
+      title: "BÁO SÂM",
+      lines: [room.samStatus === "called" ? caller + " đã báo Sâm" :
+        room.samStatus === "success" ? caller + " báo Sâm thành công" :
+          caller + " đã bị chặn — lủng Sâm"]
+    });
+  }
+  const destination = { threadId: String(event.threadId), type: event.type };
+  const key = "sam-group:" + room.threadId;
   let imagePath = null;
   try {
-    const lastPlay = room.lastPlay?.cards?.length
-      ? engine.formatCards(room.lastPlay.cards) : "Chưa có bộ bài nào được đánh";
-    const players = room.players.map(item => {
-      const turn = item.uid === room.turnUid ? "  ◀ ĐẾN LƯỢT" : "";
-      return item.name + " • " + (item.handCount == null ? "Đang chờ" : item.handCount + " lá") + turn;
-    });
-    const sections = [
-      { title: "NGƯỜI CHƠI", lines: players },
-      { title: "TRÊN BÀN", lines: [lastPlay] }
-    ];
-    if (room.samStatus) {
-      const caller = room.players.find(p => p.uid === room.samCallerUid)?.name || "Người chơi";
-      sections.push({
-        title: "BÁO SÂM",
-        lines: [room.samStatus === "called" ? caller + " đã báo Sâm" :
-          room.samStatus === "success" ? caller + " báo Sâm thành công" :
-            caller + " đã bị chặn — lủng Sâm"]
-      });
-    }
     imagePath = await renderCanvas("card", {
       chip: "JOHNTRAN  /  CARD GAME",
       brand: "SÂM LỐC",
@@ -157,13 +234,17 @@ async function sendGroupRoom(api, event, room, notice = "") {
       sections,
       footer: "Lẻ • Đôi • Sám • Tứ quý • Sảnh • Báo Sâm"
     }, { timeout: 20000, poolSize: 1 });
-    await getRawApi(api).sendMessage(
-      withRequesterMention(event, { msg: text, attachments: [imagePath] }),
-      event.threadId, event.type
+    return await sendReplacement(api, key, destination, sender =>
+      sender.sendMessage(withRequesterMention(event, {
+        msg: textCaption, attachments: [imagePath]
+      }), destination.threadId, destination.type)
     );
   } catch (error) {
     console.error("[SAM_CANVAS]", error?.message || error);
-    await sendText(api, event, text);
+    return sendReplacement(api, key, destination, sender =>
+      sender.sendMessage(withRequesterMention(event, { msg: textCaption }),
+        destination.threadId, destination.type)
+    );
   } finally {
     if (imagePath) {
       const timer = setTimeout(() => {
