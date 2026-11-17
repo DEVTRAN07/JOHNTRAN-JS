@@ -51,8 +51,8 @@ test("Anti-Protection canvas renders the six live moderation features with statu
     const buffer = fs.readFileSync(file);
     assert.ok(buffer.length > 1000);
     assert.equal(buffer.subarray(0,8).toString("hex"), "89504e470d0a1a0a");
-    assert.equal(buffer.readUInt32BE(16), 1280, "Anti V2 should use the dedicated full-width canvas");
-    assert.ok(buffer.readUInt32BE(20) > 1150, "Anti V2 must not fall back to the old short Mac-window card");
+    assert.equal(buffer.readUInt32BE(16), 750, "Anti V2 should use the configured 750px Canvas width");
+    assert.equal(buffer.readUInt32BE(20), 720, "Anti V2 must be the dedicated full-height image, not the old short Mac-window card");
   } finally {
     try { fs.unlinkSync(file); } catch {}
   }
