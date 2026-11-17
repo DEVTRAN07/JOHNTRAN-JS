@@ -154,7 +154,14 @@ test("Sâm call does not steal the 3♠ opening turn from another player", () =>
   const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81525" });
   assert.equal(created.ok, true);
   game.join(threadId, "81525", { uid: "b", name: "B" });
-  const started = game.start(threadId, "a", () => 0.19);
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try {
+    started = game.start(threadId, "a", () => 0.19);
+  } finally {
+    engine.detectWhiteHand = originalDetector;
+  }
   assert.equal(started.ok, true);
 
   const room = started.state;
