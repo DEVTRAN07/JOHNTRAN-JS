@@ -84,6 +84,7 @@ function create(threadId, owner, options = {}) {
     samCallerUid: null, samCallerHasPlayed: false, samStatus: null, samBlockedByUid: null,
     stake: Math.max(1000, Math.floor(Number(options.stake) || 5000)),
     playedByUid: {},
+    chopEvents: [],
     settlement: null,
     createdAt: Number(options.now) || Date.now(), startedAt: null, finishedAt: null
   };
@@ -182,6 +183,10 @@ function calculateSettlement(room) {
     if (from && to && from !== to && value) transfers.push({ from, to, amount: value, reason });
   };
 
+  for (const chop of Array.isArray(room.chopEvents) ? room.chopEvents : []) {
+    add(chop.from, chop.to, chop.amount, chop.reason || "chop");
+  }
+
   if (room.whiteHand || room.samStatus === "success") {
     const amount = stake * (room.whiteHand ? 20 : 20);
     for (const player of room.players) {
@@ -233,6 +238,14 @@ function play(threadId, uid, input) {
   const hand = room.hands[actor];
   const parsed = Array.isArray(input) ? { ok: true, cards: input } : engine.parsePlayText(hand, input);
   if (!parsed.ok) return parsed;
+  const oneCardOpponent = room.players.some(item =>
+    item.uid !== actor && room.hands[item.uid]?.length === 1
+  );
+  const highestCard = engine.sortHand(hand).slice(-1)[0];
+  if (oneCardOpponent && highestCard &&
+      !parsed.cards.some(card => card.id === highestCard.id)) {
+    return { ok: false, code: "MUST_PLAY_HIGHEST_ON_BAO_ONE" };
+  }
   const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo, {
     mustContainThreeOfSpades: room.playedCount === 0 &&
       !room.samCallerUid && actor === room.firstPlayerUid
@@ -240,6 +253,17 @@ function play(threadId, uid, input) {
   if (!validation.ok) return validation;
 
   const combo = validation.combo;
+  if (room.currentCombo && room.lastPlayerUid &&
+      combo.type === "fourKind" &&
+      ((room.currentCombo.type === "single" && room.currentCombo.mainRank === 15) ||
+       room.currentCombo.type === "fourKind")) {
+    room.chopEvents ||= [];
+    room.chopEvents.push({
+      from: room.lastPlayerUid, to: actor,
+      amount: 15 * Math.max(1, Math.floor(Number(room.stake) || 5000)),
+      reason: room.currentCombo.type === "fourKind" ? "chop-four-kind" : "chop-two"
+    });
+  }
   if (engine.removeCards(hand, combo.cards).length === 0 &&
       combo.cards.some(card => Number(card.rank) === 15)) {
     return { ok: false, code: "CANNOT_FINISH_WITH_TWO" };
@@ -403,7 +427,12 @@ function restore(saved) {
     currentCombo: saved.currentCombo || null, lastPlay: saved.lastPlay || null,
     results: Array.isArray(saved.results) ? saved.results : null,
     whiteHand: saved.whiteHand || null,
-    samCallerHasPlayed: Boolean(saved.samCallerHasPlayed)
+    samCallerHasPlayed: Boolean(saved.samCallerHasPlayed),
+    playedByUid: saved.playedByUid && typeof saved.playedByUid === "object" ? saved.playedByUid : {},
+    chopEvents: Array.isArray(saved.chopEvents) ? saved.chopEvents.filter(item =>
+      ids.has(String(item?.from || "")) && ids.has(String(item?.to || "")) &&
+      Number.isSafeInteger(Number(item?.amount)) && Number(item.amount) > 0
+    ).map(item => ({ ...item })) : []
   };
   if (room.status === "playing" && (!room.hands || !ids.has(String(room.turnUid || "")))) return null;
   const old = get(room.threadId);
