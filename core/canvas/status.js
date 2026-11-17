@@ -37,7 +37,7 @@ function drawAvatar(ctx, url, name, x, y, size) {
     const height = image.height * scale;
     ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height);
   } else {
-    ctx.fillStyle = "rgba(212,175,55,.16)";
+    ctx.fillStyle = "rgba(85,214,232,.16)";
     ctx.fillRect(x, y, size, size);
     ctx.font = theme.font(18, "JT-Bold");
     ctx.fillStyle = palette.accent;
@@ -77,7 +77,7 @@ function drawMetric(ctx, x, y, width, label, value, ratio, accent) {
 function drawInfo(ctx, x, y, width, label, value) {
   const S = theme.S;
   const palette = theme.PALETTE;
-  theme.panel(ctx, x, y, width, S(72), S(11), "rgba(212,175,55,.35)");
+  theme.panel(ctx, x, y, width, S(72), S(11), "rgba(85,214,232,.35)");
   theme.label(ctx, label, x + S(13), y + S(23), { size: 9, color: palette.mute });
   theme.text(ctx, value || "N/A", x + S(13), y + S(49), {
     size: 13, family: "JT-Bold", color: palette.ink2, maxWidth: width - S(26)
@@ -156,7 +156,7 @@ async function renderStatus(options = {}) {
     drawInfo(ctx, pad + index * (cardWidth + gap), infoY + S(8), cardWidth, item[0], item[1]);
   });
 
-  theme.panel(ctx, pad, footerY, W - pad * 2, S(38), S(9), "rgba(212,175,55,.30)");
+  theme.panel(ctx, pad, footerY, W - pad * 2, S(38), S(9), "rgba(85,214,232,.30)");
   theme.text(ctx, "JOHNTRAN  •  THIẾT BỊ ĐANG CHẠY BOT", pad + S(13), footerY + S(24), {
     size: 10, family: "JT-Mono", color: palette.mute
   });

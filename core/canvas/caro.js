@@ -161,7 +161,7 @@ function renderCaro(data = {}) {
           ? "rgba(229,185,79,.15)"
           : "rgba(255,255,255,.035)";
       ctx.fill();
-      ctx.strokeStyle = value ? color : "rgba(212,175,55,.24)";
+      ctx.strokeStyle = value ? color : "rgba(85,214,232,.24)";
       ctx.lineWidth = value ? Math.max(1.5, px(1.4)) : Math.max(1, px(0.8));
       ctx.stroke();
       ctx.restore();

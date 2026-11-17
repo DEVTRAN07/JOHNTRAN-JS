@@ -17,7 +17,7 @@ function drawAvatar(ctx, group, x, y, size) {
     const height = image.height * scale;
     ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height);
   } else {
-    ctx.fillStyle = "rgba(212,175,55,.16)";
+    ctx.fillStyle = "rgba(85,214,232,.16)";
     ctx.fillRect(x, y, size, size);
     ctx.font = theme.font(18, "JT-Bold");
     ctx.fillStyle = theme.PALETTE.accent;
@@ -37,7 +37,7 @@ function drawAvatar(ctx, group, x, y, size) {
 function drawGroupTile(ctx, group, index, x, y, width, height) {
   const S = theme.S;
   const palette = theme.PALETTE;
-  theme.panel(ctx, x, y, width, height, S(11), "rgba(212,175,55,.36)");
+  theme.panel(ctx, x, y, width, height, S(11), "rgba(85,214,232,.36)");
 
   const avatarSize = S(35);
   drawAvatar(ctx, group, x + S(11), y + (height - avatarSize) / 2, avatarSize);
