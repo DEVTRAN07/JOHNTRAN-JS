@@ -384,7 +384,7 @@ test("GameVH TLMN Thối 3 Bích scales to 2, 3 and 4 players with the documente
   const bet = 1000;
   for (const count of [2, 3, 4]) {
     const players = Array.from({ length: count }, (_, index) => ({
-      uid: "player-" + index
+      uid: index === 0 ? "thoi" : index === 1 ? "rescuer" : "player-" + index
     }));
     const room = {
       bet,
