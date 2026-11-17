@@ -43,6 +43,12 @@ function collectAvatarUrls(type, data = {}) {
         .map(item => item?.avatar)
     ];
   }
+  if (type === "tlmn") {
+    return (Array.isArray(data.room?.players) ? data.room.players : [])
+      .slice(0, 4)
+      .filter(item => !item?.ai)
+      .map(item => item?.avatarUrl);
+  }
   return [];
 }
 
