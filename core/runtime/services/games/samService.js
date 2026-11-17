@@ -257,7 +257,8 @@ function nextPlayer(room, uid) {
   const index = room.players.findIndex(item => item.uid === String(uid));
   for (let step = 1; step <= room.players.length; step += 1) {
     const candidate = room.players[(Math.max(0, index) + step) % room.players.length];
-    if (candidate && room.finishOrder.indexOf(candidate.uid) < 0) return candidate.uid;
+    if (candidate && room.finishOrder.indexOf(candidate.uid) < 0 &&
+        !room.passed?.has(String(candidate.uid))) return candidate.uid;
   }
   return null;
 }
@@ -268,6 +269,7 @@ function play(threadId, uid, input) {
   const actor = String(uid);
   if (!room.hands?.[actor]) return { ok: false, code: "NOT_PLAYER" };
   if (room.turnUid !== actor) return { ok: false, code: "NOT_TURN" };
+  if (room.passed?.has(actor)) return { ok: false, code: "ALREADY_PASSED" };
   const hand = room.hands[actor];
   const parsed = Array.isArray(input) ? { ok: true, cards: input } : engine.parsePlayText(hand, input);
   if (!parsed.ok) return parsed;
@@ -343,7 +345,6 @@ function play(threadId, uid, input) {
   room.lastPlay = { uid: actor, name: player?.name || actor, cards: combo.cards.map(card => ({ ...card })) };
   room.playedCount += 1;
   room.playedByUid[actor] = (Number(room.playedByUid[actor]) || 0) + combo.cards.length;
-  room.passed.clear();
 
   let samLung = false;
   if (room.samStatus === "called" && room.samCallerHasPlayed && actor !== room.samCallerUid) {
@@ -362,7 +363,20 @@ function play(threadId, uid, input) {
       combo, room: snapshot(room), state: room
     };
   }
-  room.turnUid = nextPlayer(room, actor);
+  const nextUid = nextPlayer(room, actor);
+  if (nextUid) {
+    room.turnUid = nextUid;
+  } else {
+    // Every other active player has already passed. End this trick now,
+    // reset the pass lock, and let the last player who played lead again.
+    room.currentCombo = null;
+    room.lastPlay = null;
+    room.lastPlayerUid = null;
+    room.activeChopChain = null;
+    room.passed.clear();
+    room.turnUid = actor;
+    return { ok: true, finished: false, roundCleared: true, samLung, combo, room: snapshot(room), state: room };
+  }
   return { ok: true, finished: false, samLung, combo, room: snapshot(room), state: room };
 }
 function pass(threadId, uid) {
@@ -434,13 +448,25 @@ function leave(threadId, uid) {
   }
   room.hands[actor] = [];
   room.passed.delete(actor);
+  const wasLeader = room.lastPlayerUid === actor;
+  const wasTurn = room.turnUid === actor;
   const remaining = room.players.map(item => item.uid).filter(id =>
     id !== actor && !room.finishOrder.includes(id)
   );
   if (remaining.length === 1) finish(room, remaining[0], "forfeit");
   else {
     room.finishOrder.push(actor);
-    room.turnUid = room.turnUid === actor ? nextPlayer(room, actor) : room.turnUid;
+    if (wasLeader) {
+      // A departed trick leader cannot remain as the active combo owner.
+      room.currentCombo = null;
+      room.lastPlay = null;
+      room.lastPlayerUid = null;
+      room.activeChopChain = null;
+      room.passed.clear();
+      room.turnUid = nextPlayer(room, actor);
+    } else if (wasTurn) {
+      room.turnUid = nextPlayer(room, actor);
+    }
     if (room.samStatus === "called" && room.samCallerUid === actor) room.samStatus = "failed";
   }
   return { ok: true, room: snapshot(room), state: room, forfeited: true };
