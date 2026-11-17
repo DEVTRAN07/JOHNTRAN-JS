@@ -19,6 +19,7 @@ module.exports.config = {
 const running = new Map(); // threadId -> { timer, count, times }
 const SEND_DELAY_MS = 1200; // sticker hiệu ứng nặng: gửi nhanh Zalo chặn
 const MAX_TIMES = 500;
+const { startSerialJob, stopSerialJob } = require("../../core/serialJob");
 
 module.exports.run = async function ({ api, event, args }) {
   const { threadId, type } = event;
@@ -28,9 +29,8 @@ module.exports.run = async function ({ api, event, args }) {
   if (sub === "off" || sub === "stop") {
     const job = running.get(threadId);
     if (!job) return api.sendMessage({ msg: "❌ Không có spam sticker nào đang chạy." }, threadId, type);
-    clearInterval(job.timer);
-    running.delete(threadId);
-    return api.sendMessage({ msg: `✅ Đã dừng spam sticker (đã gửi ${job.count}/${job.times}).` }, threadId, type);
+    stopSerialJob(threadId, running);
+    return api.sendMessage({ msg: `✅ Đã dừng spam sticker (đã gửi ${job.count}/${job.timesText}).` }, threadId, type);
   }
 
   // ===== KIỂM TRA NGUỒN (test 1 bộ, không spam) =====
@@ -99,37 +99,39 @@ module.exports.run = async function ({ api, event, args }) {
   const times = !Number.isFinite(wanted) || wanted < 0 ? 100 : Math.min(wanted || MAX_TIMES, MAX_TIMES);
   const timesText = wanted === 0 ? "∞ (tới khi off)" : String(times);
 
-  const job = { count: 0, times, timer: null };
-  job.timer = setInterval(async () => {
-    if (wanted !== 0 && job.count >= times) {
-      clearInterval(job.timer);
-      running.delete(threadId);
-      return api.sendMessage({ msg: `✅ Đã spam xong ${job.count} sticker hiệu ứng.` }, threadId, type);
-    }
-    const sticker = stickerStore.pick();
-    if (!sticker) {
-      clearInterval(job.timer);
-      running.delete(threadId);
-      return api.sendMessage({ msg: "❌ Kho sticker rỗng — dùng /spamsticker reload." }, threadId, type);
-    }
-    try {
+  const job = { count: 0, times: wanted === 0 ? 0 : times, timesText, timer: null };
+
+  await api.sendMessage({
+    msg: `▶️ Bắt đầu spam ${timesText} sticker hiệu ứng (kho ${pool.length} sticker).\n` +
+         `Tắt: ${global.config.prefix}spamsticker off`
+  }, threadId, type);
+
+  startSerialJob({
+    threadId,
+    running,
+    job,
+    delayMs: SEND_DELAY_MS,
+    async run() {
+      const sticker = stickerStore.pick();
+      if (!sticker) throw new Error("Kho sticker rỗng — dùng /spamsticker reload.");
       await api.sendSticker({
         id: sticker.id,
         cateId: sticker.cateId,
         type: sticker.type
       }, threadId, type);
-      job.count++;
-    } catch (error) {
-      console.error("Lỗi gửi sticker:", error.message);
-      clearInterval(job.timer);
-      running.delete(threadId);
-      return api.sendMessage({ msg: `❌ Lỗi khi gửi sticker (đã gửi ${job.count}/${timesText}) — Zalo có thể đang chặn.\n${error.message}`.slice(0, 300) }, threadId, type);
+    },
+    onComplete() {
+      return api.sendMessage({ msg: `✅ Đã spam xong ${job.count} sticker hiệu ứng.` }, threadId, type);
+    },
+    onError(error) {
+      console.error("Lỗi gửi sticker:", error?.message || error);
+      return api.sendMessage({
+        msg: `❌ Lỗi khi gửi sticker (đã gửi ${job.count}/${timesText}) — Zalo có thể đang chặn.\n${error?.message || error}`.slice(0, 300)
+      }, threadId, type);
     }
-  }, SEND_DELAY_MS);
-
-  running.set(threadId, job);
-  return api.sendMessage({
-    msg: `▶️ Bắt đầu spam ${timesText} sticker hiệu ứng (kho ${pool.length} sticker).\n` +
-         `Tắt: ${global.config.prefix}spamsticker off`
-  }, threadId, type);
+  });
+  return;
 };
+
+
+module.exports._test = { running };

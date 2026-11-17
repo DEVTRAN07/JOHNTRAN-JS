@@ -9,6 +9,7 @@ const SPAM_DIR = path.join(__dirname, "..", "..", "assets", "spam");
 const DEFAULT_TIMES = 20;
 const MAX_TIMES = 500;
 const DEFAULT_DELAY_MS = 1500;
+const { startSerialJob, stopSerialJob } = require("../../core/serialJob");
 
 // ===== Nạp ngôn ngữ từ folder =====
 let languages = {}; // { vi: [câu...], en: [...], mix: [...] }
@@ -110,8 +111,7 @@ module.exports.run = async function ({ api, event, args }) {
   if (sub === "off" || sub === "stop") {
     const job = running.get(threadId);
     if (!job) return api.sendMessage({ msg: "❌ Không có spam nào đang chạy." }, threadId, type);
-    clearInterval(job.timer);
-    running.delete(threadId);
+    stopSerialJob(threadId, running);
     return api.sendMessage({ msg: `✅ Đã dừng spam (đã gửi ${job.count}/${job.timesText}).` }, threadId, type);
   }
 
@@ -143,7 +143,8 @@ module.exports.run = async function ({ api, event, args }) {
   if (data?.mentions && Object.keys(data.mentions).length > 0) {
     for (const uid of Object.keys(data.mentions)) targets.push(uid);
   }
-  const opts = parseArgs(args.filter((a) => a.toLowerCase() !== sub || targets.length > 0));
+  // Keep the first argument: it may itself be the target UID.
+  const opts = parseArgs(args);
   for (const t of opts.targets) if (!targets.includes(t)) targets.push(t);
 
   if (targets.length === 0) {
@@ -190,34 +191,36 @@ module.exports.run = async function ({ api, event, args }) {
     return { text, mentions };
   };
 
-  job.timer = setInterval(async () => {
-    if (opts.times !== 0 && job.count >= opts.times) {
-      clearInterval(job.timer);
-      running.delete(threadId);
-      return api.sendMessage({ msg: `✅ Đã spam xong ${job.count} lần.` }, threadId, type);
-    }
-
-    const message = opts.message || pickSentence(opts.langs) || "Hello";
-    try {
-      const { text, mentions } = buildText(message);
-      await api.sendMessage({ msg: text, mentions }, threadId, type);
-      job.count++;
-    } catch (error) {
-      console.error("Lỗi gửi spam:", error.message);
-      clearInterval(job.timer);
-      running.delete(threadId);
-      return api.sendMessage({ msg: "❌ Lỗi khi gửi tin nhắn."}, threadId, type);
-    }
-  }, opts.delay);
-
-  running.set(threadId, job);
   const langText = opts.langs.length
     ? `ngôn ngữ: ${opts.langs.join(", ").toUpperCase()} (${opts.langs.reduce((s, l) => s + (languages[l]?.length || 0), 0)} câu)`
     : `câu ngẫu nhiên tất cả ${langNames().length} ngôn ngữ (${Object.values(languages).reduce((s, l) => s + l.length, 0)} câu)`;
 
-  return api.sendMessage({
+  await api.sendMessage({
     msg: `▶️ Bắt đầu spam ${timesText} lần • mỗi ${opts.delay / 1000}s\n` +
          `👥 ${targets.length} người • ${usingFolder ? langText : `nội dung: ${opts.message}`}\n` +
          `Dừng: ${global.config.prefix}spam off`
   }, threadId, type);
+
+  startSerialJob({
+    threadId,
+    running,
+    job,
+    delayMs: opts.delay,
+    async run() {
+      const message = opts.message || pickSentence(opts.langs) || "Hello";
+      const payload = buildText(message);
+      await api.sendMessage({ msg: payload.text, mentions: payload.mentions }, threadId, type);
+    },
+    onComplete() {
+      return api.sendMessage({ msg: `✅ Đã spam xong ${job.count} lần.` }, threadId, type);
+    },
+    onError(error) {
+      console.error("Lỗi gửi spam:", error?.message || error);
+      return api.sendMessage({ msg: "❌ Lỗi khi gửi tin nhắn." }, threadId, type);
+    }
+  });
+  return;
 };
+
+
+module.exports._test = { parseArgs, running, loadWords, pickSentence };
