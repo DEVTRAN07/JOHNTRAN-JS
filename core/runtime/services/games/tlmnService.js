@@ -300,6 +300,7 @@ function start(threadId, uid, random = Math.random) {
   const room = get(threadId);
   if (!room) return { ok: false, code: "NO_ROOM" };
   if (room.status !== "waiting") return { ok: false, code: "ALREADY_STARTED" };
+  if (Number(room.startCountdownAt) > 0) return { ok: false, code: "STARTING" };
   if (room.ownerId !== String(uid)) return { ok: false, code: "NOT_OWNER" };
   if (room.players.length < MIN_PLAYERS) return { ok: false, code: "NEED_TWO_PLAYERS" };
   if (room.players.length > MAX_PLAYERS) return { ok: false, code: "FULL" };
