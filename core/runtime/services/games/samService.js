@@ -88,6 +88,7 @@ function create(threadId, owner, options = {}) {
     stake: Math.max(100, Math.floor(Number(options.stake) || 300)),
     playedByUid: {},
     chopEvents: [],
+    activeChopChain: null,
     baoOneViolations: [],
     settlement: null,
     createdAt: Number(options.now) || Date.now(), startedAt: null, finishedAt: null
@@ -287,11 +288,34 @@ function play(threadId, uid, input) {
       ((room.currentCombo.type === "single" && room.currentCombo.mainRank === 15) ||
        room.currentCombo.type === "fourKind")) {
     room.chopEvents ||= [];
-    room.chopEvents.push({
-      from: room.lastPlayerUid, to: actor,
-      amount: 15 * Math.max(1, Math.floor(Number(room.stake) || 5000)),
-      reason: room.currentCombo.type === "fourKind" ? "chop-four-kind" : "chop-two"
-    });
+    const stake = Math.max(1, Math.floor(Number(room.stake) || 5000));
+    const isChain = room.currentCombo.type === "fourKind" &&
+      room.activeChopChain &&
+      room.activeChopChain.eventIndex === room.chopEvents.length - 1 &&
+      room.chopEvents[room.activeChopChain.eventIndex]?.to === room.lastPlayerUid;
+    if (isChain) {
+      const chain = room.activeChopChain;
+      chain.count += 1;
+      const event = room.chopEvents[chain.eventIndex];
+      event.to = actor;
+      event.amount = 15 * stake * chain.count;
+      event.reason = "chop-chain";
+    } else {
+      const event = {
+        from: room.lastPlayerUid,
+        to: actor,
+        amount: 15 * stake,
+        reason: room.currentCombo.type === "fourKind" ? "chop-four-kind" : "chop-two"
+      };
+      room.chopEvents.push(event);
+      room.activeChopChain = {
+        eventIndex: room.chopEvents.length - 1,
+        from: room.lastPlayerUid,
+        count: 1
+      };
+    }
+  } else {
+    room.activeChopChain = null;
   }
   room.hands[actor] = engine.removeCards(hand, combo.cards);
   room.currentCombo = combo;
@@ -337,6 +361,7 @@ function pass(threadId, uid) {
     const leader = room.lastPlayerUid;
     room.currentCombo = null;
     room.lastPlay = null;
+    room.activeChopChain = null;
     room.passed.clear();
     room.turnUid = leader;
     return { ok: true, roundCleared: true, room: snapshot(room), state: room };
@@ -455,6 +480,13 @@ function restore(saved) {
       ids.has(String(item?.from || "")) && ids.has(String(item?.to || "")) &&
       Number.isSafeInteger(Number(item?.amount)) && Number(item.amount) > 0
     ).map(item => ({ ...item })) : [],
+    activeChopChain: saved.activeChopChain &&
+      Number.isInteger(saved.activeChopChain.eventIndex) &&
+      saved.activeChopChain.eventIndex >= 0 &&
+      saved.activeChopChain.eventIndex < (Array.isArray(saved.chopEvents) ? saved.chopEvents.length : 0) &&
+      ids.has(String(saved.activeChopChain.from || "")) &&
+      Number.isInteger(saved.activeChopChain.count) && saved.activeChopChain.count > 0
+        ? { ...saved.activeChopChain } : null,
     baoOneViolations: Array.isArray(saved.baoOneViolations) ? saved.baoOneViolations.filter(item =>
       ids.has(String(item?.from || "")) && ids.has(String(item?.to || "")) &&
       Number.isSafeInteger(Number(item?.amount)) && Number(item.amount) > 0
