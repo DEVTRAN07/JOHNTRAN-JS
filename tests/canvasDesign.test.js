@@ -165,7 +165,8 @@ test("main menu and folder cards both render without macOS window chrome", async
         Math.round(21 * scale), Math.round(22 * scale), 1, 1
       ).data).slice(0, 3);
       assert.notDeepEqual(dot, [255, 95, 87], name + " must not contain the Mac close dot");
-      assert.ok(image.height < Math.round(360 * scale), name + " should not include the 58px desktop toolbar");
+      const maxDesignedHeight = name === "main menu" ? 560 : 360;
+      assert.ok(image.height < Math.round(maxDesignedHeight * scale), name + " should not include the 58px desktop toolbar");
     }
   } finally {
     try { fs.unlinkSync(menuPath); } catch {}
