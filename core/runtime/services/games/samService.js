@@ -1,0 +1,387 @@
+"use strict";
+
+const crypto = require("node:crypto");
+const engine = require("../../../games/samEngine");
+
+const MIN_PLAYERS = 2;
+const MAX_PLAYERS = 4;
+const MOVE_TIMEOUT_MS = 60 * 1000;
+const LOBBY_TIMEOUT_MS = 5 * 60 * 1000;
+const roomsByThread = new Map();
+const roomsByCode = new Map();
+const timers = new Map();
+
+function makeCode() {
+  let code;
+  do { code = String(crypto.randomInt(10000, 100000)); }
+  while (roomsByCode.has(code));
+  return code;
+}
+function clearTimer(threadId) {
+  const key = String(threadId);
+  const timer = timers.get(key);
+  if (timer) clearTimeout(timer);
+  timers.delete(key);
+}
+function get(threadId) { return roomsByThread.get(String(threadId)) || null; }
+function getByCode(code) { return roomsByCode.get(String(code)) || null; }
+function isBusy(threadId) {
+  const room = get(threadId);
+  return Boolean(room && room.status !== "finished" && room.status !== "cancelled");
+}
+function makePlayer(player) {
+  return {
+    uid: String(player?.uid || ""),
+    name: String(player?.name || "Người chơi").replace(/[\r\n\t]/g, " ").slice(0, 40)
+  };
+}
+function snapshot(room) {
+  if (!room) return null;
+  return {
+    id: room.id, threadId: room.threadId, ownerId: room.ownerId,
+    ownerName: room.ownerName, status: room.status,
+    players: room.players.map(item => ({
+      ...item,
+      handCount: room.hands?.[item.uid]?.length ?? (room.status === "waiting" ? null : 10),
+      place: room.finishOrder.indexOf(item.uid) + 1
+    })),
+    playerCount: room.players.length, turnUid: room.turnUid,
+    lastPlayerUid: room.lastPlayerUid,
+    lastPlay: room.lastPlay ? {
+      uid: room.lastPlay.uid, name: room.lastPlay.name,
+      cards: room.lastPlay.cards.map(card => ({ ...card }))
+    } : null,
+    currentCombo: room.currentCombo ? {
+      type: room.currentCombo.type, length: room.currentCombo.length,
+      mainRank: room.currentCombo.mainRank,
+      cards: room.currentCombo.cards.map(card => ({ ...card }))
+    } : null,
+    playedCount: room.playedCount,
+    samStatus: room.samStatus,
+    samCallerUid: room.samCallerUid,
+    samBlockedByUid: room.samBlockedByUid,
+    whiteHand: room.whiteHand,
+    winnerUid: room.winnerUid,
+    results: room.results ? room.results.map(row => ({ ...row })) : null
+  };
+}
+function create(threadId, owner, options = {}) {
+  const key = String(threadId || "");
+  if (!key || !owner?.uid) return { ok: false, code: "INVALID_INPUT" };
+  if (isBusy(key)) return { ok: false, code: "ROOM_EXISTS", room: snapshot(get(key)) };
+  const id = String(options.id || makeCode());
+  if (!/^\d{5}$/.test(id) || roomsByCode.has(id)) return { ok: false, code: "CODE_COLLISION" };
+  const host = makePlayer(owner);
+  const room = {
+    id, threadId: key, ownerId: host.uid, ownerName: host.name,
+    status: "waiting", players: [host], hands: null, turnUid: null,
+    firstPlayerUid: null, lastPlayerUid: null, lastPlay: null,
+    currentCombo: null, passed: new Set(), playedCount: 0,
+    finishOrder: [], results: null, winnerUid: null, whiteHand: null,
+    samCallerUid: null, samStatus: null, samBlockedByUid: null,
+    createdAt: Number(options.now) || Date.now(), startedAt: null, finishedAt: null
+  };
+  roomsByThread.set(key, room);
+  roomsByCode.set(id, room);
+  return { ok: true, room: snapshot(room), state: room };
+}
+function join(threadId, code, player) {
+  const room = getByCode(code);
+  if (!room) return { ok: false, code: "ROOM_NOT_FOUND" };
+  if (room.threadId !== String(threadId)) return { ok: false, code: "WRONG_GROUP" };
+  if (room.status !== "waiting") return { ok: false, code: "NOT_WAITING" };
+  const next = makePlayer(player);
+  if (!next.uid) return { ok: false, code: "INVALID_INPUT" };
+  const existing = room.players.find(item => item.uid === next.uid);
+  if (existing) return { ok: true, alreadyJoined: true, player: existing, room: snapshot(room), state: room };
+  if (room.players.length >= MAX_PLAYERS) return { ok: false, code: "FULL" };
+  room.players.push(next);
+  return { ok: true, player: next, room: snapshot(room), state: room };
+}
+function joinWaiting(threadId, player) {
+  const room = get(threadId);
+  return room ? join(threadId, room.id, player) : { ok: false, code: "NO_ROOM" };
+}
+function finish(room, winnerUid, reason = "normal") {
+  if (room.status === "finished") return room.results || [];
+  room.winnerUid = String(winnerUid || "");
+  room.status = "finished";
+  room.finishedAt = Date.now();
+  room.turnUid = null;
+  room.finishOrder = [
+    room.winnerUid,
+    ...room.players.map(item => item.uid).filter(id => id !== room.winnerUid)
+  ];
+  room.results = room.finishOrder.map((uid, index) => ({
+    uid,
+    name: room.players.find(item => item.uid === uid)?.name || uid,
+    place: index + 1,
+    cardsLeft: room.hands?.[uid]?.length || 0
+  }));
+  room.finishReason = reason;
+  if (room.samCallerUid) {
+    room.samStatus = room.samStatus === "failed"
+      ? "failed"
+      : room.winnerUid === room.samCallerUid ? "success" : "failed";
+  }
+  clearTimer(room.threadId);
+  return room.results;
+}
+function start(threadId, uid, random = Math.random) {
+  const room = get(threadId);
+  if (!room) return { ok: false, code: "NO_ROOM" };
+  if (room.status !== "waiting") return { ok: false, code: "ALREADY_STARTED" };
+  if (room.ownerId !== String(uid)) return { ok: false, code: "NOT_OWNER" };
+  if (room.players.length < MIN_PLAYERS) return { ok: false, code: "NEED_TWO_PLAYERS" };
+  if (room.players.length > MAX_PLAYERS) return { ok: false, code: "FULL" };
+  const dealt = engine.dealCards(room.players.map(item => item.uid), random);
+  room.hands = dealt.hands;
+  room.firstPlayerUid = dealt.firstPlayerId;
+  room.turnUid = dealt.firstPlayerId;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.currentCombo = null;
+  room.passed = new Set();
+  room.playedCount = 0;
+  room.finishOrder = [];
+  room.startedAt = Date.now();
+  room.status = "playing";
+
+  const whiteHands = room.players.map(item => ({
+    uid: item.uid, type: engine.detectWhiteHand(room.hands[item.uid])
+  })).filter(item => item.type);
+  if (whiteHands.length) {
+    whiteHands.sort((a, b) =>
+      engine.WHITE_HAND_PRIORITY.indexOf(a.type) - engine.WHITE_HAND_PRIORITY.indexOf(b.type) ||
+      room.players.findIndex(item => item.uid === a.uid) - room.players.findIndex(item => item.uid === b.uid)
+    );
+    const winner = whiteHands[0];
+    room.whiteHand = { uid: winner.uid, type: winner.type };
+    finish(room, winner.uid, "white-hand");
+    return { ok: true, finished: true, whiteHand: room.whiteHand, room: snapshot(room), state: room };
+  }
+  return { ok: true, finished: false, room: snapshot(room), state: room, firstPlayerId: dealt.firstPlayerId };
+}
+function nextPlayer(room, uid) {
+  const index = room.players.findIndex(item => item.uid === String(uid));
+  for (let step = 1; step <= room.players.length; step += 1) {
+    const candidate = room.players[(Math.max(0, index) + step) % room.players.length];
+    if (candidate && room.finishOrder.indexOf(candidate.uid) < 0) return candidate.uid;
+  }
+  return null;
+}
+function play(threadId, uid, input) {
+  const room = get(threadId);
+  if (!room || room.status !== "playing") return { ok: false, code: "NO_GAME" };
+  const actor = String(uid);
+  if (!room.hands?.[actor]) return { ok: false, code: "NOT_PLAYER" };
+  if (room.turnUid !== actor) return { ok: false, code: "NOT_TURN" };
+  const hand = room.hands[actor];
+  const parsed = Array.isArray(input) ? { ok: true, cards: input } : engine.parsePlayText(hand, input);
+  if (!parsed.ok) return parsed;
+  const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo, {
+    mustContainThreeOfSpades: room.playedCount === 0 && actor === room.firstPlayerUid
+  });
+  if (!validation.ok) return validation;
+
+  const combo = validation.combo;
+  room.hands[actor] = engine.removeCards(hand, combo.cards);
+  room.currentCombo = combo;
+  room.lastPlayerUid = actor;
+  const player = room.players.find(item => item.uid === actor);
+  room.lastPlay = { uid: actor, name: player?.name || actor, cards: combo.cards.map(card => ({ ...card })) };
+  room.playedCount += 1;
+  room.passed.clear();
+
+  let samLung = false;
+  if (room.samStatus === "called" && actor !== room.samCallerUid) {
+    room.samStatus = "failed";
+    room.samBlockedByUid = actor;
+    samLung = true;
+  }
+  if (!room.hands[actor].length) {
+    finish(room, actor, "normal");
+    return {
+      ok: true, finished: true, samLung,
+      samSuccess: room.samCallerUid === actor && room.samStatus === "success",
+      combo, room: snapshot(room), state: room
+    };
+  }
+  room.turnUid = nextPlayer(room, actor);
+  return { ok: true, finished: false, samLung, combo, room: snapshot(room), state: room };
+}
+function pass(threadId, uid) {
+  const room = get(threadId);
+  if (!room || room.status !== "playing") return { ok: false, code: "NO_GAME" };
+  const actor = String(uid);
+  if (!room.hands?.[actor]) return { ok: false, code: "NOT_PLAYER" };
+  if (room.turnUid !== actor) return { ok: false, code: "NOT_TURN" };
+  if (!room.currentCombo || !room.lastPlayerUid) return { ok: false, code: "CANNOT_PASS_ON_LEAD" };
+  if (room.lastPlayerUid === actor) return { ok: false, code: "LEADER_CANNOT_PASS" };
+  room.passed.add(actor);
+  const requiredPasses = room.players.length - 1;
+  if (room.passed.size >= requiredPasses) {
+    const leader = room.lastPlayerUid;
+    room.currentCombo = null;
+    room.lastPlay = null;
+    room.passed.clear();
+    room.turnUid = leader;
+    return { ok: true, roundCleared: true, room: snapshot(room), state: room };
+  }
+  room.turnUid = nextPlayer(room, actor);
+  return { ok: true, roundCleared: false, room: snapshot(room), state: room };
+}
+function callSam(threadId, uid) {
+  const room = get(threadId);
+  if (!room || room.status !== "playing") return { ok: false, code: "NO_GAME" };
+  if (!room.hands?.[String(uid)]) return { ok: false, code: "NOT_PLAYER" };
+  if (room.playedCount !== 0 || room.samStatus) return { ok: false, code: "TOO_LATE" };
+  room.samCallerUid = String(uid);
+  room.samStatus = "called";
+  room.turnUid = String(uid);
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.passed.clear();
+  return { ok: true, room: snapshot(room), state: room };
+}
+function timeoutTurn(threadId, uid) {
+  const room = get(threadId);
+  if (!room || room.status !== "playing" || room.turnUid !== String(uid)) {
+    return { ok: false, code: "NO_TURN" };
+  }
+  if (room.currentCombo && room.lastPlayerUid !== String(uid)) {
+    return { ...pass(threadId, uid), timedOut: true, action: "pass" };
+  }
+  const hand = room.hands[String(uid)] || [];
+  const first = room.playedCount === 0 && uid === room.firstPlayerUid
+    ? hand.find(card => card.id === "3b")
+    : engine.sortHand(hand)[0];
+  if (!first) return { ok: false, code: "NO_CARD" };
+  return { ...play(threadId, uid, [first]), timedOut: true, action: "play" };
+}
+function leave(threadId, uid) {
+  const room = get(threadId);
+  if (!room || room.status === "finished") return { ok: false, code: "NO_GAME" };
+  const actor = String(uid);
+  if (!room.players.some(item => item.uid === actor)) return { ok: false, code: "NOT_PLAYER" };
+  if (room.status === "waiting") {
+    if (room.ownerId !== actor) {
+      room.players = room.players.filter(item => item.uid !== actor);
+      return { ok: true, room: snapshot(room), state: room };
+    }
+    room.status = "cancelled";
+    clearTimer(threadId);
+    return { ok: true, cancelled: true, room: snapshot(room), state: room };
+  }
+  room.hands[actor] = [];
+  const remaining = room.players.map(item => item.uid).filter(id => id !== actor);
+  if (remaining.length === 1) finish(room, remaining[0], "forfeit");
+  else {
+    room.finishOrder.push(actor);
+    room.turnUid = room.turnUid === actor ? nextPlayer(room, actor) : room.turnUid;
+    if (room.samStatus === "called" && room.samCallerUid === actor) room.samStatus = "failed";
+  }
+  return { ok: true, room: snapshot(room), state: room, forfeited: true };
+}
+function stop(threadId, uid) {
+  const room = get(threadId);
+  if (!room) return { ok: false, code: "NO_ROOM" };
+  if (room.ownerId !== String(uid)) return { ok: false, code: "NOT_OWNER" };
+  room.status = "cancelled";
+  clearTimer(threadId);
+  return { ok: true, room: snapshot(room), state: room };
+}
+function removeRoom(threadId) {
+  const key = String(threadId);
+  const room = get(key);
+  clearTimer(key);
+  if (!room) return false;
+  roomsByThread.delete(key);
+  roomsByCode.delete(room.id);
+  return true;
+}
+function serialize(roomOrThreadId) {
+  const room = typeof roomOrThreadId === "object" && roomOrThreadId ? roomOrThreadId : get(roomOrThreadId);
+  if (!room) return null;
+  return {
+    ...room,
+    players: room.players.map(item => ({ ...item })),
+    hands: room.hands ? Object.fromEntries(Object.entries(room.hands).map(([uid, hand]) =>
+      [uid, hand.map(card => ({ ...card }))])) : null,
+    passed: [...room.passed],
+    finishOrder: [...room.finishOrder],
+    currentCombo: room.currentCombo ? { ...room.currentCombo, cards: room.currentCombo.cards.map(card => ({ ...card })) } : null,
+    lastPlay: room.lastPlay ? { ...room.lastPlay, cards: room.lastPlay.cards.map(card => ({ ...card })) } : null,
+    results: room.results ? room.results.map(row => ({ ...row })) : null,
+    whiteHand: room.whiteHand ? { ...room.whiteHand } : null
+  };
+}
+function restore(saved) {
+  if (!saved || typeof saved !== "object" || !saved.threadId || !/^\d{5}$/.test(String(saved.id || "")) ||
+      !Array.isArray(saved.players) || saved.players.length < 1 || saved.players.length > MAX_PLAYERS ||
+      !["waiting", "playing", "finished", "cancelled"].includes(saved.status)) return null;
+  const players = saved.players.map(makePlayer).filter(item => item.uid);
+  if (players.length !== saved.players.length || new Set(players.map(item => item.uid)).size !== players.length) return null;
+  const ids = new Set(players.map(item => item.uid));
+  if (!ids.has(String(saved.ownerId || ""))) return null;
+  const room = {
+    ...saved, threadId: String(saved.threadId), id: String(saved.id),
+    ownerId: String(saved.ownerId), ownerName: String(saved.ownerName || ""),
+    players, hands: saved.hands && typeof saved.hands === "object" ? saved.hands : null,
+    passed: new Set(Array.isArray(saved.passed) ? saved.passed.map(String).filter(uid => ids.has(uid)) : []),
+    finishOrder: Array.isArray(saved.finishOrder) ? saved.finishOrder.map(String).filter(uid => ids.has(uid)) : [],
+    currentCombo: saved.currentCombo || null, lastPlay: saved.lastPlay || null,
+    results: Array.isArray(saved.results) ? saved.results : null,
+    whiteHand: saved.whiteHand || null
+  };
+  if (room.status === "playing" && (!room.hands || !ids.has(String(room.turnUid || "")))) return null;
+  const old = get(room.threadId);
+  if (old) removeRoom(room.threadId);
+  const codeOwner = getByCode(room.id);
+  if (codeOwner && codeOwner.threadId !== room.threadId) return null;
+  roomsByThread.set(room.threadId, room);
+  roomsByCode.set(room.id, room);
+  return room;
+}
+function watchTurn(threadId, callback, timeoutMs = MOVE_TIMEOUT_MS) {
+  const key = String(threadId);
+  clearTimer(key);
+  const room = get(key);
+  if (!room || room.status !== "playing" || !room.turnUid) return false;
+  const uid = String(room.turnUid);
+  const playedCount = room.playedCount;
+  const timer = setTimeout(() => {
+    if (timers.get(key) !== timer) return;
+    timers.delete(key);
+    const current = get(key);
+    if (current !== room || current.status !== "playing" ||
+        current.turnUid !== uid || current.playedCount !== playedCount) return;
+    Promise.resolve(callback?.({ room: current, uid })).catch(() => {});
+  }, timeoutMs);
+  timer.unref?.();
+  timers.set(key, timer);
+  return true;
+}
+function watchLobby(threadId, callback, timeoutMs = LOBBY_TIMEOUT_MS) {
+  const key = String(threadId);
+  clearTimer(key);
+  const room = get(key);
+  if (!room || room.status !== "waiting") return false;
+  const timer = setTimeout(() => {
+    if (timers.get(key) !== timer) return;
+    timers.delete(key);
+    const current = get(key);
+    if (current !== room || current.status !== "waiting") return;
+    Promise.resolve(callback?.({ room: current })).catch(() => {});
+  }, timeoutMs);
+  timer.unref?.();
+  timers.set(key, timer);
+  return true;
+}
+module.exports = {
+  MIN_PLAYERS, MAX_PLAYERS, MOVE_TIMEOUT_MS, LOBBY_TIMEOUT_MS, timers,
+  get, getByCode, isBusy, snapshot, create, join, joinWaiting, start,
+  play, pass, callSam, timeoutTurn, leave, stop, removeRoom, serialize,
+  restore, watchTurn, watchLobby, finish
+};
