@@ -912,6 +912,7 @@ async function doPass(context) {
       NOT_TURN: "⏳ Chưa đến lượt bạn.",
       CANNOT_PASS_ON_LEAD: "⛔ Bạn đang cầm cái, không thể bỏ lượt.",
       LEADER_CANNOT_PASS: "⛔ Người đánh bộ hiện tại không thể tự bỏ lượt.",
+      MUST_PLAY_HIGHEST_CARD: "🚨 Có người đang Báo 1 lá. Lá lớn nhất của bạn có thể chặn nên bạn không được bỏ lượt; hãy đánh lá có số lớn nhất trên tay.",
       CANCEL_PENDING: "⏳ Bàn đang hoàn cược/đối soát an toàn. Vui lòng thử lại sau."
     };
     await sendText(api, event, messages[action.code] || "⚠️ Không thể bỏ lượt.");
