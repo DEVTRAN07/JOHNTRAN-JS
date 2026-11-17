@@ -78,7 +78,8 @@ function create(threadId, owner, options = {}) {
   if (!/^\d{5}$/.test(id) || roomsByCode.has(id)) return { ok: false, code: "CODE_COLLISION" };
   const host = makePlayer(owner);
   const room = {
-    id, threadId: key, ownerId: host.uid, ownerName: host.name,
+    id, gameToken: String(options.gameToken || crypto.randomUUID()),
+    threadId: key, ownerId: host.uid, ownerName: host.name,
     previousWinnerUid: String(options.previousWinnerUid || previousWinners.get(key) || ""),
     status: "waiting", players: [host], hands: null, turnUid: null,
     firstPlayerUid: null, lastPlayerUid: null, lastPlay: null,
