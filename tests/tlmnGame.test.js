@@ -795,13 +795,14 @@ test("TLMN chặt 2 đen pays 3 stakes and 2 đỏ pays 6 stakes", () => {
 });
 
 
-test("TLMN GameVH: a four-pair run can cut after a prior pass and settles the chop chain cumulatively", () => {
+test("TLMN GameVH: a player can re-enter after passing and the final chop settles the chain once", () => {
   const groupId = "tlmn-gamevh-chop-chain-after-pass";
   const room = game.create(groupId, { uid: "p1", name: "P1" }).state;
   game.join(groupId, room.id, { uid: "p2", name: "P2" });
+  game.join(groupId, room.id, { uid: "p3", name: "P3" });
   game.start(groupId, "p1", () => 0.37);
   room.status = "playing";
-  room.activeUids = ["p1", "p2"];
+  room.activeUids = ["p1", "p2", "p3"];
   room.finishOrder = [];
   room.forfeitUids = [];
   room.passed = new Set();
@@ -809,42 +810,39 @@ test("TLMN GameVH: a four-pair run can cut after a prior pass and settles the ch
   room.chopChainUnits = 0;
   room.chopChainEventIndex = null;
   room.hands = {
-    p1: [3,4,5,6].flatMap(rank => [
-      { rank, suit: "b", id: String(rank) + "b" },
-      { rank, suit: "c", id: String(rank) + "c" }
-    ]),
+    p1: [{ rank: 15, suit: "b", id: "15b" }, { rank: 10, suit: "b", id: "10b" }],
     p2: [
-      { rank: 15, suit: "b", id: "15b" },
-      { rank: 3, suit: "b", id: "3b" },
-      { rank: 3, suit: "c", id: "3c" },
-      { rank: 4, suit: "b", id: "4b" },
-      { rank: 4, suit: "c", id: "4c" },
-      { rank: 5, suit: "b", id: "5b" },
-      { rank: 5, suit: "c", id: "5c" },
-      { rank: 6, suit: "b", id: "6b" },
-      { rank: 6, suit: "c", id: "6c" }
+      { rank: 3, suit: "b", id: "3b" }, { rank: 3, suit: "c", id: "3c" },
+      { rank: 4, suit: "b", id: "4b" }, { rank: 4, suit: "c", id: "4c" },
+      { rank: 5, suit: "b", id: "5b" }, { rank: 5, suit: "c", id: "5c" }
+    ],
+    p3: [
+      { rank: 15, suit: "ch", id: "15ch" },
+      { rank: 6, suit: "b", id: "6b" }, { rank: 6, suit: "c", id: "6c" },
+      { rank: 7, suit: "b", id: "7b" }, { rank: 7, suit: "c", id: "7c" },
+      { rank: 8, suit: "b", id: "8b" }, { rank: 8, suit: "c", id: "8c" },
+      { rank: 9, suit: "b", id: "9b" }, { rank: 9, suit: "c", id: "9c" }
     ]
   };
-  room.turnUid = "p2";
-  room.currentCombo = engine.analyzeCombo([{ rank: 15, suit: "b", id: "15b" }]);
-  room.lastPlayerUid = "p1";
-  room.lastPlay = { uid: "p1", name: "P1", cards: [{ rank: 15, suit: "b", id: "15b" }] };
-  room.passed.add("p2");
-  // A new play clears the previous pass cycle; the player who passed can
-  // re-enter and use a four-pair run as GameVH's special exception.
-  room.passed.clear();
-  room.turnUid = "p2";
+  room.turnUid = "p1";
+  assert.equal(game.play(groupId, "p1", "2b").ok, true);
+  assert.equal(game.pass(groupId, "p2").ok, true);
+  assert.equal(room.turnUid, "p3");
+  assert.equal(game.play(groupId, "p3", "2ch").ok, true);
+  assert.equal(room.passed.size, 0, "a new play reopens the response window");
+  assert.equal(game.pass(groupId, "p1").ok, true);
+  assert.equal(room.turnUid, "p2");
+
   const firstCut = game.play(groupId, "p2", "3dt");
   assert.equal(firstCut.ok, true);
   assert.equal(room.chopEvents.length, 1);
   assert.equal(room.chopEvents[0].amount, 3 * room.bet);
 
-  room.turnUid = "p1";
-  const secondCut = game.play(groupId, "p1", "4dt");
+  const secondCut = game.play(groupId, "p3", "4dt");
   assert.equal(secondCut.ok, true);
   assert.equal(room.chopEvents.length, 1, "the chain is settled once, not as duplicate transfers");
   assert.deepEqual(room.chopEvents[0], {
-    from: "p2", to: "p1", amount: 9 * room.bet, reason: "chop-chain"
+    from: "p2", to: "p3", amount: 9 * room.bet, reason: "chop-chain"
   });
   game.removeRoom(groupId);
 });
