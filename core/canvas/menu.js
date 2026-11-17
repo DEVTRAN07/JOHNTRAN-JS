@@ -196,98 +196,241 @@ function drawBotIcon(ctx, cx, cy, size, color) {
   ctx.restore();
 }
 
-async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, commands }) {
+function getMainMenuPalette() {
+  const active = menuPalette.getPalette();
+  // Keep a deliberately chosen /theme preset, but use the blue JOHNTRAN
+  // identity when the menu has never been themed by an administrator.
+  let hasSavedTheme = false;
+  try { hasSavedTheme = fs.existsSync(menuPalette.THEME_FILE); } catch { /* keep default */ }
+  if (hasSavedTheme) return active;
+
+  const accent = "#62dcff";
+  return {
+    ...active,
+    label: "JOHNTRAN · Blue Neon",
+    accent,
+    background: ["#030914", "#07182d", "#102b4b", "#040d1d"],
+    panel: ["#102b4b", "#08182c"],
+    card: ["#122c4b", "#091a31"],
+    footer: ["#0c2038", "#071426"],
+    border: "rgba(98,220,255,.46)",
+    cardBorder: "rgba(98,220,255,.28)",
+    glow: ["rgba(33,151,255,.20)", "rgba(118,94,255,.13)"],
+    infoFill: "rgba(98,220,255,.10)",
+    infoBorder: "rgba(98,220,255,.40)",
+    text: "#f4f9ff",
+    muted: "#a9bfd8"
+  };
+}
+
+function paintMainMenuBackdrop(ctx, w, h, palette) {
+  paintBackdrop(ctx, w, h, palette);
+
+  // A restrained star field adds depth without competing with the menu.
+  ctx.save();
+  for (let i = 0; i < 64; i++) {
+    const x = (i * 173 + 47) % w;
+    const y = (i * 97 + 31) % h;
+    const radius = i % 9 === 0 ? theme.S(1.15) : theme.S(0.55);
+    const alpha = i % 4 === 0 ? 0.30 : 0.15;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(190,225,255," + alpha + ")";
+    ctx.fill();
+  }
+  const vignette = ctx.createRadialGradient(w * 0.5, h * 0.45, h * 0.18, w * 0.5, h * 0.45, w * 0.78);
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,4,14,.42)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
+
+function drawMainMenuShell(ctx, x, y, w, h, radius, palette) {
+  ctx.save();
+  rounded(ctx, x, y, w, h, radius);
+  ctx.shadowColor = "rgba(0,0,0,.52)";
+  ctx.shadowBlur = theme.S(28);
+  ctx.shadowOffsetY = theme.S(12);
+  const fill = ctx.createLinearGradient(x, y, x + w, y + h);
+  fill.addColorStop(0, palette.panel[0]);
+  fill.addColorStop(0.48, "#0b2039");
+  fill.addColorStop(1, palette.panel[1]);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.restore();
+
+  rounded(ctx, x, y, w, h, radius);
+  ctx.strokeStyle = palette.border;
+  ctx.lineWidth = Math.max(1, theme.S(1.25));
+  ctx.stroke();
+
+  rounded(ctx, x + theme.S(3), y + theme.S(3), w - theme.S(6), h - theme.S(6), Math.max(0, radius - theme.S(3)));
+  ctx.strokeStyle = "rgba(220,244,255,.10)";
+  ctx.lineWidth = Math.max(1, theme.S(0.8));
+  ctx.stroke();
+
+  const topGlow = ctx.createLinearGradient(x + theme.S(25), y, x + w - theme.S(25), y);
+  topGlow.addColorStop(0, "rgba(98,220,255,0)");
+  topGlow.addColorStop(0.48, "rgba(98,220,255,.42)");
+  topGlow.addColorStop(1, "rgba(98,220,255,0)");
+  ctx.fillStyle = topGlow;
+  ctx.fillRect(x + theme.S(24), y + theme.S(1), w - theme.S(48), Math.max(1, theme.S(1.2)));
+}
+
+function drawMenuPill(ctx, x, y, w, h, text, palette) {
+  ctx.save();
+  rounded(ctx, x, y, w, h, h / 2);
+  ctx.fillStyle = "rgba(98,220,255,.09)";
+  ctx.fill();
+  rounded(ctx, x, y, w, h, h / 2);
+  ctx.strokeStyle = "rgba(98,220,255,.25)";
+  ctx.lineWidth = Math.max(1, theme.S(0.75));
+  ctx.stroke();
+  drawText(ctx, text, x + w / 2, y + h * 0.68, 9.5, palette.accent, true, "center", w - theme.S(8));
+  ctx.restore();
+}
+
+function drawMainMenuTile(ctx, item, x, y, w, h, palette) {
+  ctx.save();
+  rounded(ctx, x, y, w, h, theme.S(12));
+  ctx.shadowColor = "rgba(0,0,0,.30)";
+  ctx.shadowBlur = theme.S(10);
+  ctx.shadowOffsetY = theme.S(4);
+  const fill = ctx.createLinearGradient(x, y, x + w, y + h);
+  fill.addColorStop(0, "#163657");
+  fill.addColorStop(0.5, palette.card[0]);
+  fill.addColorStop(1, palette.card[1]);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.restore();
+
+  rounded(ctx, x, y, w, h, theme.S(12));
+  ctx.strokeStyle = palette.cardBorder;
+  ctx.lineWidth = Math.max(1, theme.S(0.9));
+  ctx.stroke();
+
+  rounded(ctx, x + theme.S(1.5), y + theme.S(1.5), w - theme.S(3), h - theme.S(3), theme.S(10.5));
+  ctx.strokeStyle = "rgba(230,246,255,.075)";
+  ctx.lineWidth = Math.max(1, theme.S(0.7));
+  ctx.stroke();
+
+  const edge = ctx.createLinearGradient(x, y, x, y + h);
+  edge.addColorStop(0, "rgba(98,220,255,.85)");
+  edge.addColorStop(1, "rgba(98,220,255,.12)");
+  ctx.fillStyle = edge;
+  rounded(ctx, x + theme.S(1), y + theme.S(15), theme.S(2), h - theme.S(30), theme.S(1));
+  ctx.fill();
+
+  const iconCenterX = x + theme.S(40);
+  const centerY = y + h / 2;
+  drawCategoryIcon(ctx, resolveFolderIconSlug(item.slug, item.name), iconCenterX, centerY, theme.S(40));
+
+  const textX = x + theme.S(72);
+  const usage = String(item.usage || "").trim().toUpperCase();
+  const pillW = theme.S(54);
+  if (usage) drawMenuPill(ctx, x + w - pillW - theme.S(10), y + theme.S(10), pillW, theme.S(19), usage, palette);
+
+  drawText(ctx, String(item.name || "Danh mục").toUpperCase(), textX, centerY - theme.S(2), 19, palette.text, true, "left", w - theme.S(154));
+  drawText(ctx, item.category || "Các chức năng khả dụng", textX, centerY + theme.S(16), 11.5, palette.muted, false, "left", w - theme.S(91));
+
+  drawChevron(ctx, x + w - theme.S(16), centerY + theme.S(1), theme.S(4), palette.accent);
+}
+
+async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, prefix, totalCommands, commands }) {
   theme.initFonts();
   const S = theme.S;
   const W = theme.WIDTH;
   const H = Math.round(W * 900 / 1280);
   const result = theme.newCanvas(W, H);
   const ctx = result.ctx;
-  const palette = menuPalette.getPalette();
+  const palette = getMainMenuPalette();
 
-  paintBackdrop(ctx, W, H, palette);
+  paintMainMenuBackdrop(ctx, W, H, palette);
 
+  // Layer 2: one inset glass shell sits above the cinematic background.
   const panelX = S(18);
   const panelY = S(17);
   const panelW = W - panelX * 2;
   const panelH = H - panelY * 2;
-  drawOuterPanel(ctx, panelX, panelY, panelW, panelH, S(18), palette.panel, palette.border);
+  drawMainMenuShell(ctx, panelX, panelY, panelW, panelH, S(20), palette);
 
   const margin = S(32);
-  drawText(ctx, "Danh sách tính năng", margin, S(58), 24, palette.text, true);
-  const time = new Intl.DateTimeFormat("vi-VN", {
+  const brandX = margin + S(38);
+  drawBotIcon(ctx, margin + S(15), S(39), S(23), palette.accent);
+  drawText(ctx, "JOHNTRAN-JS", brandX, S(36), 22, palette.text, true);
+  drawText(ctx, "DANH SÁCH TÍNH NĂNG", brandX, S(54), 10.5, palette.muted, true);
+
+  const now = new Intl.DateTimeFormat("vi-VN", {
     hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh"
   }).format(new Date());
-  // Measure the rendered time first so the clock always keeps a clean gap.
+
+  const statusW = S(82);
+  const statusH = S(22);
+  const statusX = W - margin - statusW;
+  const statusY = S(22);
   ctx.save();
-  ctx.font = theme.font(19, "JT-Round-Bold");
-  const timeWidth = ctx.measureText(time).width;
+  rounded(ctx, statusX, statusY, statusW, statusH, statusH / 2);
+  ctx.fillStyle = "rgba(8,201,119,.12)";
+  ctx.fill();
+  rounded(ctx, statusX, statusY, statusW, statusH, statusH / 2);
+  ctx.strokeStyle = "rgba(8,201,119,.34)";
+  ctx.lineWidth = Math.max(1, S(0.8));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(statusX + S(13), statusY + statusH / 2, S(3.2), 0, Math.PI * 2);
+  ctx.fillStyle = "#08c977";
+  ctx.fill();
+  drawText(ctx, "ONLINE", statusX + S(24), statusY + S(15), 10, "#72f0bd", true);
   ctx.restore();
+
+  const timeWidth = (() => {
+    ctx.save();
+    ctx.font = theme.font(11, "JT-Round-Bold");
+    const value = ctx.measureText(now).width;
+    ctx.restore();
+    return value;
+  })();
   const timeRight = W - margin;
-  const timeLeft = timeRight - timeWidth;
-  const clockSize = S(14);
-  const clockGap = S(11);
-  drawClock(ctx, timeLeft - clockGap - clockSize / 2, S(51), clockSize, palette.accent);
-  drawText(ctx, time, timeRight, S(58), 19, palette.accent, true, "right");
+  drawClock(ctx, timeRight - timeWidth - S(14), S(61), S(10), palette.accent);
+  drawText(ctx, now, timeRight, S(65), 11, palette.accent, true, "right");
 
   const groups = Array.isArray(commands) ? commands : [];
+  const visibleCommandCount = Number.isFinite(Number(totalCommands))
+    ? Math.max(0, Number(totalCommands))
+    : groups.reduce((sum, item) => sum + (parseInt(String(item.usage || "0"), 10) || 0), 0);
+
+  drawText(ctx, groups.length + " DANH MỤC", margin, S(82), 9.5, palette.accent, true);
+  drawText(ctx, visibleCommandCount + " LỆNH KHẢ DỤNG", margin + S(96), S(82), 9.5, palette.muted, true);
+
+  // Layer 3: each category is an individually raised module inside the shell.
   const columns = 3;
-  const rows = Math.max(1, Math.ceil(groups.length / columns));
-  const gap = S(9);
-  const gridY = S(70);
+  const gap = S(10);
+  const gridY = S(93);
   const cardW = (W - margin * 2 - gap * (columns - 1)) / columns;
-  // Keep the same compact folder-card height even when empty folders are
-  // removed; the menu remains aligned with the reference instead of stretching
-  // the remaining cards and making their icons look distorted.
-  const cardH = S(81);
+  const cardH = S(74);
 
   groups.forEach((item, index) => {
     const col = index % columns;
     const row = Math.floor(index / columns);
     const x = margin + col * (cardW + gap);
     const y = gridY + row * (cardH + gap);
-
-    rounded(ctx, x, y, cardW, cardH, S(12));
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,.18)";
-    ctx.shadowBlur = S(7);
-    ctx.shadowOffsetY = S(3);
-    const cardFill = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
-    cardFill.addColorStop(0, palette.card[0]);
-    cardFill.addColorStop(1, palette.card[1]);
-    ctx.fillStyle = cardFill;
-    ctx.fill();
-    ctx.restore();
-    rounded(ctx, x, y, cardW, cardH, S(12));
-    ctx.strokeStyle = palette.cardBorder;
-    ctx.lineWidth = S(0.85);
-    ctx.stroke();
-    rounded(ctx, x + S(1), y + S(1), cardW - S(2), cardH - S(2), S(11));
-    ctx.strokeStyle = "rgba(255,255,255,.07)";
-    ctx.lineWidth = S(0.8);
-    ctx.stroke();
-
-    const slug = resolveFolderIconSlug(item.slug, item.name);
-    const iconSize = S(38);
-    const iconX = x + S(29);
-    drawCategoryIcon(ctx, slug, iconX, y + cardH / 2, iconSize);
-
-    const textX = x + S(57);
-    const maxTextWidth = cardW - S(91);
-    drawText(ctx, item.name, textX, y + cardH / 2 - S(2), 20, palette.text, true, "left", maxTextWidth);
-    drawText(ctx, item.category || "", textX, y + cardH / 2 + S(13), 12.5, palette.muted, false, "left", maxTextWidth);
-
-    drawChevron(ctx, x + cardW - S(15), y + cardH / 2, S(4.5), palette.accent);
+    drawMainMenuTile(ctx, item, x, y, cardW, cardH, palette);
   });
 
+  if (!groups.length) {
+    drawText(ctx, "Chưa có danh mục khả dụng", W / 2, H / 2, 18, palette.muted, true, "center");
+  }
+
   const footerX = margin;
-  const footerY = S(439);
+  const footerH = S(52);
+  const footerY = H - panelY - footerH - S(8);
   const footerW = W - margin * 2;
-  const footerH = S(56);
-  rounded(ctx, footerX, footerY, footerW, footerH, S(17));
+
   ctx.save();
+  rounded(ctx, footerX, footerY, footerW, footerH, S(15));
   ctx.shadowColor = "rgba(0,0,0,.34)";
-  ctx.shadowBlur = S(12);
+  ctx.shadowBlur = S(10);
   ctx.shadowOffsetY = S(4);
   const footerFill = ctx.createLinearGradient(footerX, footerY, footerX, footerY + footerH);
   footerFill.addColorStop(0, palette.footer[0]);
@@ -295,22 +438,23 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, c
   ctx.fillStyle = footerFill;
   ctx.fill();
   ctx.restore();
-  rounded(ctx, footerX, footerY, footerW, footerH, S(17));
+  rounded(ctx, footerX, footerY, footerW, footerH, S(15));
   ctx.strokeStyle = palette.border;
   ctx.lineWidth = S(0.9);
   ctx.stroke();
 
-  const avatarSize = S(40);
+  const avatarSize = S(35);
   const avatarX = footerX + S(11);
   const avatarY = footerY + (footerH - avatarSize) / 2;
   drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
-  drawText(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(12), footerY + S(36), 20, palette.text, true);
+  drawText(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(9), footerY + S(32), 13, palette.text, true, "left", S(125));
 
-  const iconY = footerY + footerH / 2;
-  // Reserve a dedicated version slot; the old icons overlapped v4.0.0.
-  drawPaletteIcon(ctx, W - margin - S(128), iconY, S(15), palette.accent);
-  drawBotIcon(ctx, W - margin - S(94), iconY, S(17), palette.accent);
-  drawText(ctx, "v" + (botVersion || "1.0.2"), W - margin - S(10), footerY + S(36), 16, palette.accent, true, "right");
+  drawText(ctx, groups.length + " DANH MỤC  ·  " + visibleCommandCount + " LỆNH", footerX + S(205), footerY + S(32), 10, palette.muted, true);
+
+  const prefixLabel = "PREFIX " + String(prefix || "/");
+  drawText(ctx, prefixLabel, W - margin - S(112), footerY + S(32), 10, palette.accent, true, "right", S(80));
+  drawBotIcon(ctx, W - margin - S(73), footerY + footerH / 2, S(16), palette.accent);
+  drawText(ctx, "v" + (botVersion || "1.0.2"), W - margin - S(8), footerY + S(32), 11, palette.accent, true, "right");
 
   return theme.save(result.canvas, "menu");
 }
