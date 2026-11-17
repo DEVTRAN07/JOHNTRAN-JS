@@ -314,6 +314,7 @@ async function persistRoom(Threads, threadId) {
     const record = await Threads.getData(String(threadId));
     const data = record?.data && typeof record.data === "object" ? { ...record.data } : {};
     const room = game.get(String(threadId));
+    if (room && room.winnerUid) data.sam_previous_winner = String(room.winnerUid);
     if (room && room.status !== "cancelled" &&
         (room.status !== "finished" || !room.settled)) data.sam_room = game.serialize(room);
     else delete data.sam_room;
@@ -441,7 +442,9 @@ async function createOrJoin(context) {
   }
   const conflict = gameConflict(threadId);
   if (conflict) return sendText(api, event, "⚠️ Nhóm đang chơi " + conflict + ". Hãy kết thúc ván đó trước.");
-  const created = game.create(threadId, { uid, name });
+  const savedThread = await Threads.getData(String(threadId)).catch(() => null);
+  const previousWinnerUid = String(savedThread?.data?.sam_previous_winner || "");
+  const created = game.create(threadId, { uid, name }, { previousWinnerUid });
   if (!created.ok) return sendText(api, event, "⚠️ Nhóm đã có bàn Sâm hoạt động.");
   game.watchLobby(threadId, async () => {
     game.removeRoom(threadId);
