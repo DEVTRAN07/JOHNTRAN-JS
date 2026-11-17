@@ -4,7 +4,6 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createCanvas, registerFont } = require("canvas");
-const { withMacWindow } = require("./macWindow");
 const BASE_CANVAS_THEME = "editorial";
 const PALETTE = {};
 const THEME_STYLE = {};
