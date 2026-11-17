@@ -13,7 +13,8 @@ const { sendGameGuideOnce } = require("../../core/games/gameGuideDelivery");
 const DEFAULT_COINS = 100000;
 const MIN_BET = 1000;
 const MAX_BET = 10000000;
-const MAX_RESERVE = 1000000000;
+const RESERVE_MULTIPLIER = 120;
+const MAX_RESERVE = 1200000000;
 const groupCards = new Map();
 const privateCards = new Map();
 const walletLocks = new Map();
@@ -463,7 +464,7 @@ async function reserveRoomWallets(Users, room, onChange = null) {
       !Number.isSafeInteger(room.bet) || room.bet < MIN_BET || room.bet > MAX_BET) {
     return { ok: false, storageError: true };
   }
-  const reserve = Number(room.reservePerPlayer) || room.bet * (room.players.length - 1);
+  const reserve = Number(room.reservePerPlayer) || RESERVE_MULTIPLIER * Number(room.bet);
   if (!Number.isSafeInteger(reserve) || reserve <= 0 || reserve > MAX_RESERVE) {
     return { ok: false, storageError: true };
   }
@@ -523,7 +524,7 @@ async function reserveRoomWallets(Users, room, onChange = null) {
   return { ok: true, reserve };
 }
 
-async function settleRoomWallets(Users, room, results) {
+async function settleRoomWallets(Users, room, results, onRoomChange = null) {
   if (room.settled) return [];
   const settlement = room.settlement || game.calculateSettlement(room);
   if (!settlement || !settlement.net || !Array.isArray(settlement.transfers)) {
@@ -538,12 +539,41 @@ async function settleRoomWallets(Users, room, results) {
   if (Object.keys(room.lockPending || {}).length) {
     throw new Error("Còn khoản ký quỹ đang chờ xác minh; chưa được chốt xu.");
   }
-  const requiredLock = 100 * Number(room.bet);
+  const requiredLock = Number(room.reservePerPlayer) ||
+    RESERVE_MULTIPLIER * Number(room.bet);
   if (!Number.isSafeInteger(requiredLock) || requiredLock <= 0 ||
       Object.keys(room.locked || {}).length !== room.players.length ||
-      room.players.some(item => Number(room.locked?.[item.uid]) !== requiredLock)) {
-    throw new Error("Thiếu khoản ký quỹ 100 cược/người; giữ nguyên bàn để đối soát.");
+      room.players.some(item => Number(room.locked?.[item.uid]) < requiredLock)) {
+    throw new Error("Thiếu khoản ký quỹ " +
+      Math.floor(requiredLock / Math.max(1, Number(room.bet))) +
+      " cược/người; giữ nguyên bàn để đối soát.");
   }
+
+  // Older live rooms may still hold the previous 100x reserve. Top up only
+  // when the actual final ledger requires it; transaction IDs make retries safe.
+  for (const player of room.players) {
+    const uid = String(player.uid);
+    const locked = Number(room.locked[uid]);
+    const net = Number(settlement.net[uid]);
+    if (!Number.isSafeInteger(locked) || !Number.isSafeInteger(net)) {
+      throw new Error("Số ký quỹ hoặc quyết toán không hợp lệ cho " + uid);
+    }
+    const topUp = Math.max(0, -(locked + net));
+    if (!topUp) continue;
+    const outcome = await changeWallet(
+      Users, uid, -topUp,
+      "tlmn-settlement-topup:" + String(room.gameToken || room.id) + ":" + uid
+    );
+    if (!outcome.ok) {
+      throw new Error("Người chơi " + uid +
+        " không đủ xu để bổ sung ký quỹ cho khoản thối/chặt; bàn được giữ để đối soát.");
+    }
+    room.locked[uid] = locked + topUp;
+    if (typeof onRoomChange === "function" && await onRoomChange() !== true) {
+      throw new Error("Chưa lưu được phần ký quỹ bổ sung cho " + uid + "; sẽ thử đối soát lại.");
+    }
+  }
+
   const lines = [];
   for (const player of room.players) {
     const uid = String(player.uid);
@@ -1266,7 +1296,10 @@ async function endGame(api, event, Users, roomState, Threads) {
   }
   let payoutLines = [];
   try {
-    payoutLines = await settleRoomWallets(Users, room, room.results || []);
+    payoutLines = await settleRoomWallets(
+      Users, room, room.results || [],
+      () => persistRoom(Threads, room.threadId)
+    );
   } catch (error) {
     console.error("[TLMN_SETTLEMENT]", error?.stack || error);
     await persistRoom(Threads, room.threadId);
@@ -1637,7 +1670,7 @@ async function startRoom({ api, event, Users, Threads }) {
 
   // Hướng dẫn luật và nhận bài được gửi riêng một lần cho từng người
   // ngay trước khi chia bài để tin nhắn trong nhóm không bị dài.
-  state.reservePerPlayer = state.practice ? 0 : 100 * Number(state.bet);
+  state.reservePerPlayer = state.practice ? 0 : RESERVE_MULTIPLIER * Number(state.bet);
   const reserved = state.practice
     ? { ok: true, reserve: 0 }
     : await reserveRoomWallets(Users, state, () => persistRoom(Threads, threadId));
@@ -2128,7 +2161,8 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
     restoreRoomCards(room);
 
     if (room.status === "waiting" && Number(room.startCountdownAt) > 0) {
-      const requiredLock = 100 * Number(room.bet);
+      const requiredLock = Number(room.reservePerPlayer) ||
+        RESERVE_MULTIPLIER * Number(room.bet);
       const reconciled = await reconcilePendingReservations(
         Users, room, () => persistRoom(Threads, threadId)
       );
@@ -2137,7 +2171,7 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
         : reconciled &&
           Object.keys(room.lockPending || {}).length === 0 &&
           Object.keys(room.locked || {}).length === room.players.length &&
-          room.players.every(player => Number(room.locked[player.uid]) === requiredLock);
+          room.players.every(player => Number(room.locked[player.uid]) >= requiredLock);
       if (!escrowValid) {
         clearStartCountdownTimer(threadId);
         room.startCountdownAt = null;
@@ -2227,6 +2261,7 @@ module.exports._test = {
   shouldSendMoveError, sendMoveHint, scheduleAiTurn, tableCaption, buildTurnMentionCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,
+  RESERVE_MULTIPLIER,
   finalizeRoomCleanup, recallRoomCards, recallPrivateHand, withRoomActionLock, doLeave,
   clearStartCountdownTimer, scheduleStartCountdown, completeStartCountdown,
   countdownReactionIcon, reactStartCountdown
