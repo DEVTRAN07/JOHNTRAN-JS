@@ -77,13 +77,6 @@ function dealCards(playerIds, random = Math.random) {
   }
   const deck = shuffleDeck(random);
   const dealtCount = ids.length * 13;
-  // In a 2-player game only half the deck is dealt. Guarantee that 3♠ is
-  // inside the dealt portion; otherwise turnUid would be undefined and no
-  // player could legally open the game.
-  const threeOfSpadesIndex = deck.findIndex(card => card.id === "3b");
-  if (threeOfSpadesIndex >= dealtCount) {
-    [deck[0], deck[threeOfSpadesIndex]] = [deck[threeOfSpadesIndex], deck[0]];
-  }
   const hands = Object.fromEntries(ids.map(uid => [uid, []]));
   for (let index = 0; index < dealtCount; index += 1) {
     hands[ids[index % ids.length]].push(deck[index]);
