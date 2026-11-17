@@ -465,6 +465,10 @@ async function settleSamWallets(Users, room, Threads) {
   if (!room.settlement || !room.locked || !Array.isArray(room.players)) {
     return { ok: false, code: "MISSING_SETTLEMENT_OR_ESCROW" };
   }
+  const netTotal = Object.values(room.settlement.net).reduce((sum, value) => sum + Number(value), 0);
+  if (!Number.isSafeInteger(netTotal) || netTotal !== 0) {
+    return { ok: false, code: "NON_ZERO_SUM_SETTLEMENT" };
+  }
   const rows = [];
   for (const player of room.players) {
     const uid = String(player.uid);
