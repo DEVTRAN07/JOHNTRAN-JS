@@ -439,13 +439,14 @@ function whiteHandCompareCards(hand, type) {
     return [...counts.entries()].filter(([, count]) => count >= minimum)
       .map(([rank]) => reps(rank)).filter(Boolean).sort((a, b) => compareCards(b, a));
   }
-  const pairRanks = [...counts.entries()].filter(([rank, count]) =>
-    rank !== 15 && count >= 2).map(([rank]) => rank).sort((a, b) => a - b);
+  const pairRanks = [...counts.entries()].filter(([, count]) => count >= 2)
+    .map(([rank]) => rank).sort((a, b) => a - b);
   if (type === "sixPairRun" || type === "fivePairRun") {
     const length = type === "sixPairRun" ? 6 : 5;
+    const runPairRanks = pairRanks.filter(rank => rank !== 15);
     let best = [];
-    for (let i = 0; i <= pairRanks.length - length; i += 1) {
-      const run = pairRanks.slice(i, i + length);
+    for (let i = 0; i <= runPairRanks.length - length; i += 1) {
+      const run = runPairRanks.slice(i, i + length);
       if (!run.every((rank, index) => index === 0 || rank === run[index - 1] + 1)) continue;
       const tuple = run.slice().reverse().map(reps).filter(Boolean);
       if (!best.length || tuple.some((card, index) =>
@@ -454,6 +455,7 @@ function whiteHandCompareCards(hand, type) {
     }
     return best;
   }
+  // A pair of 2s is valid in "6 đôi" (but not in a consecutive pair run).
   if (type === "sixPairs") return pairRanks.slice().reverse().map(reps).filter(Boolean);
   return [cards[cards.length - 1]].filter(Boolean);
 }
