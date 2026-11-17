@@ -418,8 +418,31 @@ function help(prefix = "!") {
   ].join("\n");
 }
 
+function scheduleLobbyCleanup(context, room, timeoutMs) {
+  if (!room?.threadId) return false;
+  return game.watchLobby(room.threadId, async () =>
+    withRoomLock(room.threadId, async () => {
+      const current = game.get(room.threadId);
+      if (!current || current.id !== room.id || current.status !== "waiting") return;
+      const refunded = await refundSamWallets(context.Users, current, context.Threads);
+      if (!refunded) {
+        await persistRoom(context.Threads, current.threadId);
+        await sendText(context.api, context.event,
+          "⚠️ Bàn Sâm #" + current.id +
+          " hết thời gian chờ nhưng khoản cược chưa hoàn an toàn. Dữ liệu được giữ lại để thử lại.");
+        scheduleLobbyCleanup(context, current, 60 * 1000);
+        return;
+      }
+      await recallRoomCards(context.api, current);
+      game.removeRoom(current.threadId);
+      await persistRoom(context.Threads, current.threadId);
+      await sendText(context.api, context.event,
+        "⌛ Bàn Sâm #" + current.id + " tự hủy do chờ quá lâu. Khoản cược chờ (nếu có) đã được hoàn.");
+    }), timeoutMs);
+}
+
 async function createOrJoin(context) {
-  const { api, event, Threads } = context;
+  const { api, event, Users, Threads } = context;
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
   const name = event?.data?.dName || event?.data?.name || "Người chơi";
@@ -447,11 +470,7 @@ async function createOrJoin(context) {
   const previousWinnerUid = String(savedThread?.data?.sam_previous_winner || "");
   const created = game.create(threadId, { uid, name }, { previousWinnerUid });
   if (!created.ok) return sendText(api, event, "⚠️ Nhóm đã có bàn Sâm hoạt động.");
-  game.watchLobby(threadId, async () => {
-    game.removeRoom(threadId);
-    await persistRoom(Threads, threadId);
-    await sendText(api, event, "⌛ Bàn Sâm #" + created.state.id + " tự hủy do chờ quá lâu.");
-  });
+  scheduleLobbyCleanup({ api, event, Users, Threads }, created.state);
   await persistRoom(Threads, threadId);
   await sendGroupRoom(api, event, created.room, "💡 Gõ !sam go để tham gia hoặc !sam start khi đủ người.");
 }
@@ -493,8 +512,12 @@ async function settleSamWallets(Users, room, Threads) {
   if (!room.settlement || !room.locked || !Array.isArray(room.players)) {
     return { ok: false, code: "MISSING_SETTLEMENT_OR_ESCROW" };
   }
+  if (Object.keys(room.lockPending || {}).length) {
+    return { ok: false, code: "PENDING_ESCROW_RESERVATION" };
+  }
   const requiredLock = 250 * Math.max(100, Math.floor(Number(room.stake) || 300));
   if (!Number.isSafeInteger(requiredLock) ||
+      Object.keys(room.locked).length !== room.players.length ||
       room.players.some(player => Number(room.locked[String(player.uid)]) !== requiredLock)) {
     return { ok: false, code: "INSUFFICIENT_ESCROW" };
   }
@@ -538,11 +561,16 @@ async function settleSamWallets(Users, room, Threads) {
 }
 
 async function refundSamWallets(Users, room, Threads) {
-  if (!room || !Object.keys(room.locked || {}).length) return true;
+  if (!room) return true;
+  const hasLocked = Object.keys(room.locked || {}).length > 0;
+  const hasPending = Object.keys(room.lockPending || {}).length > 0;
+  if (!hasLocked && !hasPending) return true;
   const refunded = await wallet.refundRoomWallets(
     Users, room, () => persistRoom(Threads, room.threadId)
   );
-  return refunded === true;
+  return refunded === true &&
+    Object.keys(room.locked || {}).length === 0 &&
+    Object.keys(room.lockPending || {}).length === 0;
 }
 
 async function finishGame(context, room, notice = "") {
@@ -634,13 +662,25 @@ async function startRoom(context) {
   const failed = await distributeHands(api, state);
   if (failed.length) {
     await recallRoomCards(api, state);
-    await refundSamWallets(context.Users, state, Threads);
+    state.cancelPending = true;
+    if (!await persistRoom(Threads, threadId)) {
+      return sendText(api, event,
+        "⚠️ Không gửi được bài riêng cho " + failed.join(", ") +
+        ". Database chưa lưu được yêu cầu hủy; bàn được giữ nguyên để đối soát an toàn.");
+    }
+    const refunded = await refundSamWallets(context.Users, state, Threads);
+    if (!refunded) {
+      await persistRoom(Threads, threadId);
+      return sendText(api, event,
+        "⚠️ Không gửi được bài riêng cho " + failed.join(", ") +
+        ". Khoản cược chưa hoàn xong; bàn được giữ để bot tiếp tục đối soát, không mở ván mới.");
+    }
     game.stop(threadId, uid);
     game.removeRoom(threadId);
     await persistRoom(Threads, threadId);
     return sendText(api, event,
       "🚫 Không gửi được bài riêng cho " + failed.join(", ") +
-      ". Đã hủy ván để bảo vệ bài. Người chơi hãy mở chat riêng với Bot và nhắn Bot trước.");
+      ". Đã hủy ván và hoàn cược để bảo vệ bài. Người chơi hãy mở chat riêng với Bot và nhắn Bot trước.");
   }
   if (started.finished) {
     await finishGame(context, state);
@@ -783,9 +823,17 @@ async function leaveRoom(context) {
   const result = game.leave(threadId, uid);
   if (!result.ok) return sendText(api, event, "⚠️ Bạn không có trong bàn Sâm.");
   if (result.cancelled) {
+    // Keep the persisted room recoverable while any interrupted reservation is refunded.
+    result.state.status = "waiting";
+    const refunded = await refundSamWallets(context.Users, result.state, Threads);
+    if (!refunded) {
+      await persistRoom(Threads, threadId);
+      return sendText(api, event,
+        "⚠️ Chưa hoàn được khoản cược đang chờ; bàn vẫn được giữ để thử lại, chưa bị xóa.");
+    }
     game.removeRoom(threadId);
     await persistRoom(Threads, threadId);
-    return sendText(api, event, "🛑 Đã hủy bàn Sâm.");
+    return sendText(api, event, "🛑 Đã hủy bàn Sâm. Khoản cược chờ (nếu có) đã được hoàn.");
   }
   if (!result.cancelled) await recallPrivateHand(api, result.state, uid).catch(error => {
     console.warn("[SAM_RECALL_PRIVATE]", error?.message || error);
@@ -801,6 +849,10 @@ async function runCommand(context) {
   const action = String(args[0] || "help").toLowerCase();
   const rest = args.slice(1).map(String);
   const prefix = global.config?.prefix || "!";
+  const activeRoom = game.get(threadId);
+  if (activeRoom?.cancelPending && !["stop", "info", "status", "help"].includes(action)) {
+    return sendText(api, event, "⏳ Bàn Sâm đang hoàn cược/đối soát an toàn. Tạm khóa nước đi và thử lại sau.");
+  }
   if (action === "help") return sendText(api, event, help(prefix));
   if (action === "go" || action === "open" || action === "create") return createOrJoin(context);
   if (action === "join") return joinRoom(context, rest[0]);
@@ -811,15 +863,30 @@ async function runCommand(context) {
   if (action === "stop") {
     const room = await restoreRoom(Threads, event.threadId);
     if (!room) return sendText(api, event, "⚠️ Không có bàn Sâm.");
-    if (room.status === "playing" && !await refundSamWallets(context.Users, room, Threads)) {
-      return sendText(api, event, "⚠️ Chưa hoàn cược được an toàn; bàn vẫn được giữ.");
+    // Authorize before touching escrow; a non-owner must never be able to unlock everyone.
+    if (room.ownerId !== String(event.data?.uidFrom || "")) {
+      return sendText(api, event, "⛔ Chỉ chủ bàn mới được hủy.");
+    }
+    if (room.status === "finished") {
+      if (!room.settled) {
+        await finishGame(context, room, "Chủ bàn yêu cầu kết thúc; hệ thống vẫn phải chốt kết quả đã hoàn tất.");
+        return;
+      }
+      await recallRoomCards(api, room);
+      game.removeRoom(event.threadId);
+      await persistRoom(Threads, event.threadId);
+      return sendText(api, event, "ℹ️ Ván Sâm đã được quyết toán, không cần hủy.");
+    }
+    if (!await refundSamWallets(context.Users, room, Threads)) {
+      await persistRoom(Threads, event.threadId);
+      return sendText(api, event, "⚠️ Chưa hoàn cược được an toàn; bàn vẫn được giữ để thử lại.");
     }
     const stopped = game.stop(event.threadId, event.data?.uidFrom);
     if (!stopped.ok) return sendText(api, event, "⛔ Chỉ chủ bàn mới được hủy.");
     await recallRoomCards(api, room);
     game.removeRoom(event.threadId);
     await persistRoom(Threads, event.threadId);
-    return sendText(api, event, "🛑 Đã hủy bàn Sâm #" + room.id + ".");
+    return sendText(api, event, "🛑 Đã hủy bàn Sâm #" + room.id + ". Cược đã được hoàn (nếu có).");
   }
   if (action === "cuoc" || action === "bet") {
     const raw = String(rest[0] || "").toLowerCase().replace(/[$,\s]/g, "");
@@ -851,6 +918,10 @@ async function handleIncomingImpl(context = {}) {
   const threadId = String(event?.threadId || "");
   const room = await restoreRoom(Threads, threadId);
   if (!room) return false;
+  if (room.cancelPending) {
+    await sendText(api, event, "⏳ Bàn Sâm đang hoàn cược/đối soát an toàn; tạm thời chưa nhận nước đi.");
+    return true;
+  }
   if (room.status === "playing") scheduleTurn(context, room);
   const lower = engine.normalizeText(content);
   if (lower === "start" && room.status === "waiting") {
@@ -903,9 +974,70 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
     const threadId = String(record?.threadId || record?.id || "");
     if (!threadId) continue;
     const room = await restoreRoom(Threads, threadId);
-    if (!room || room.status !== "finished" || room.settled) continue;
+    if (!room) continue;
     const event = { threadId, type: ThreadType.Group, data: {} };
-    await withRoomLock(threadId, () => finishGame({ api, Users, Threads, event }, room,
-      "🔄 Bot đã khôi phục và đối soát giao dịch sau khi khởi động lại."));
+    const context = { api, Users, Threads, event };
+
+    if (room.status === "waiting") {
+      // A crash may happen after a reservation is debited but before start() is persisted.
+      const refunded = await withRoomLock(threadId, () =>
+        refundSamWallets(Users, room, Threads)
+      );
+      if (!refunded || !await persistRoom(Threads, threadId)) {
+        await sendText(api, event,
+          "⚠️ Bàn Sâm #" + room.id + " đang chờ đối soát khoản cược sau khi bot khởi động lại. Bot giữ dữ liệu, không xóa bàn.");
+        continue;
+      }
+      scheduleLobbyCleanup(context, room);
+      continue;
+    }
+
+    if (room.status === "playing" && room.cancelPending) {
+      const refunded = await withRoomLock(threadId, () =>
+        refundSamWallets(Users, room, Threads)
+      );
+      if (!refunded) {
+        await persistRoom(Threads, threadId);
+        await sendText(api, event,
+          "⚠️ Yêu cầu hủy bàn Sâm #" + room.id + " đã được khôi phục nhưng hoàn cược còn chờ. Bot sẽ giữ bàn để đối soát tiếp.");
+        continue;
+      }
+      game.stop(threadId, room.ownerId);
+      await recallRoomCards(api, room);
+      game.removeRoom(threadId);
+      await persistRoom(Threads, threadId);
+      await sendText(api, event,
+        "🛑 Bot đã khôi phục yêu cầu hủy bàn Sâm #" + room.id + " và hoàn cược.");
+      continue;
+    }
+
+    if (room.status === "playing") {
+      const reconciled = await wallet.reconcilePendingReservations(
+        Users, room, () => persistRoom(Threads, threadId)
+      );
+      const requiredLock = 250 * Math.max(100, Math.floor(Number(room.stake) || 300));
+      const escrowValid = reconciled &&
+        Object.keys(room.lockPending || {}).length === 0 &&
+        Object.keys(room.locked || {}).length === room.players.length &&
+        room.players.every(player => Number(room.locked[player.uid]) === requiredLock);
+      if (!escrowValid) {
+        await persistRoom(Threads, threadId);
+        await sendText(api, event,
+          "⚠️ Ván Sâm #" + room.id + " đã khôi phục nhưng ký quỹ chưa khớp. Bot giữ nguyên bàn để quản trị viên đối soát, không tự mở lượt hoặc trừ thêm xu.");
+        continue;
+      }
+      const failed = await distributeHands(api, room);
+      await persistRoom(Threads, threadId);
+      await sendGroupRoom(api, event, game.snapshot(room),
+        "🔄 Bot đã khôi phục ván Sâm sau khi khởi động lại." +
+        (failed.length ? "\n⚠️ Chưa gửi lại được bài riêng cho: " + failed.join(", ") + "." : ""));
+      scheduleTurn(context, room);
+      continue;
+    }
+
+    if (room.status === "finished" && !room.settled) {
+      await withRoomLock(threadId, () => finishGame(context, room,
+        "🔄 Bot đã khôi phục và đối soát giao dịch sau khi khởi động lại."));
+    }
   }
 };
