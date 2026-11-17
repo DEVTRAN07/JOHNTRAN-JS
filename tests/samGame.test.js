@@ -440,8 +440,8 @@ test("Sâm cóng is 15 stakes plus heo and hàng, not ordinary rác cards", () =
     playedByUid: { a: 1 }
   };
   const settlement = game.calculateSettlement(room);
-  assert.equal(settlement.net.b, -32000);
-  assert.equal(settlement.net.a, 32000);
+  assert.equal(settlement.net.b, -45000);
+  assert.equal(settlement.net.a, 45000);
 });
 
 test("Sâm failed call pays 20 stakes times opponents to the blocker", () => {
