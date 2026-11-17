@@ -5,6 +5,8 @@ const avatarCache = require("./avatarCache");
 const theme = require("./theme");
 const menuPalette = require("./menuPalette");
 const { drawCategoryIcon } = require("./menuIcons");
+const os = require("os");
+const path = require("path");
 
 function rounded(ctx, x, y, w, h, r) {
   const radius = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -196,6 +198,16 @@ function drawBotIcon(ctx, cx, cy, size, color) {
   ctx.restore();
 }
 
+function saveMainMenuImage(canvas) {
+  const filePath = path.join(
+    os.tmpdir(),
+    "jt_menu_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".png"
+  );
+  // The /menu attachment is a finished card, not a screenshot inside a Mac window.
+  fs.writeFileSync(filePath, canvas.toBuffer("image/png"));
+  return filePath;
+}
+
 function getMainMenuPalette() {
   const active = menuPalette.getPalette();
   // Keep a deliberately chosen /theme preset, but use the blue JOHNTRAN
@@ -331,7 +343,7 @@ function drawMainMenuTile(ctx, item, x, y, w, h, palette) {
   const pillW = theme.S(54);
   if (usage) drawMenuPill(ctx, x + w - pillW - theme.S(10), y + theme.S(10), pillW, theme.S(19), usage, palette);
 
-  drawText(ctx, String(item.name || "Danh mục").toUpperCase(), textX, centerY - theme.S(2), 19, palette.text, true, "left", w - theme.S(154));
+  drawText(ctx, String(item.name || "Danh mục").toUpperCase(), textX, centerY - theme.S(2), 19, palette.text, true, "left", w - theme.S(100));
   drawText(ctx, item.category || "Các chức năng khả dụng", textX, centerY + theme.S(16), 11.5, palette.muted, false, "left", w - theme.S(91));
 
   drawChevron(ctx, x + w - theme.S(16), centerY + theme.S(1), theme.S(4), palette.accent);
@@ -377,13 +389,40 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, p
   drawClock(ctx, timeLeft - clockGap - clockSize / 2, S(61), clockSize, palette.accent);
   drawText(ctx, time, timeRight, S(65), 11, palette.accent, true, "right");
 
-  const groups = Array.isArray(commands) ? commands : [];
-  const visibleCommandCount = Number.isFinite(Number(totalCommands))
+  const groups = Array.isArray(commands) ? commands.slice() : [];
+  const menuOrder = {
+    info: 0, public: 1, music: 2, game: 3, tools: 4,
+    test: 5, anti: 6, manager: 7, admin: 8, bot: 9, mybot: 9, hidden: 10
+  };
+  groups.sort((a, b) => {
+    const aKey = resolveFolderIconSlug(a.slug, a.name);
+    const bKey = resolveFolderIconSlug(b.slug, b.name);
+    return (menuOrder[aKey] ?? 99) - (menuOrder[bKey] ?? 99);
+  });
+
+  const explicitCommandCount = totalCommands !== undefined &&
+    totalCommands !== null && Number.isFinite(Number(totalCommands));
+  const usageCounts = groups.map(item => {
+    const count = parseInt(String(item.usage || "").trim(), 10);
+    return Number.isFinite(count) && count >= 0 ? count : null;
+  }).filter(count => count !== null);
+  const hasCommandCount = explicitCommandCount || usageCounts.length > 0;
+  const visibleCommandCount = explicitCommandCount
     ? Math.max(0, Number(totalCommands))
-    : groups.reduce((sum, item) => sum + (parseInt(String(item.usage || "0"), 10) || 0), 0);
+    : usageCounts.reduce((sum, count) => sum + count, 0);
 
   drawText(ctx, groups.length + " DANH MỤC", margin, S(82), 9.5, palette.accent, true);
-  drawText(ctx, visibleCommandCount + " LỆNH KHẢ DỤNG", margin + S(96), S(82), 9.5, palette.muted, true);
+  drawText(
+    ctx,
+    hasCommandCount ? visibleCommandCount + " LỆNH KHẢ DỤNG" : "CHỌN DANH MỤC ĐỂ XEM LỆNH",
+    margin + S(96),
+    S(82),
+    9.5,
+    palette.muted,
+    true,
+    "left",
+    W - margin * 2 - S(110)
+  );
 
   // Layer 3: each category is an individually raised module inside the shell.
   const columns = 3;
@@ -431,14 +470,14 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, p
   drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
   drawText(ctx, requesterName || "Người dùng", avatarX + avatarSize + S(9), footerY + S(32), 13, palette.text, true, "left", S(125));
 
-  drawText(ctx, groups.length + " DANH MỤC  ·  " + visibleCommandCount + " LỆNH", footerX + S(205), footerY + S(32), 10, palette.muted, true);
+  drawText(ctx, hasCommandCount ? groups.length + " DANH MỤC  ·  " + visibleCommandCount + " LỆNH" : groups.length + " DANH MỤC", footerX + S(205), footerY + S(32), 10, palette.muted, true);
 
   const prefixLabel = "PREFIX " + String(prefix || "/");
   drawText(ctx, prefixLabel, W - margin - S(112), footerY + S(32), 10, palette.accent, true, "right", S(80));
   drawBotIcon(ctx, W - margin - S(73), footerY + footerH / 2, S(16), palette.accent);
   drawText(ctx, "v" + (botVersion || "1.0.2"), W - margin - S(8), footerY + S(32), 11, palette.accent, true, "right");
 
-  return theme.save(result.canvas, "menu");
+  return saveMainMenuImage(result.canvas);
 }
 
 const FOLDER_ICON_ALIASES = Object.freeze({ utility: "public", group: "manager", bot: "mybot", special: "hidden" });
