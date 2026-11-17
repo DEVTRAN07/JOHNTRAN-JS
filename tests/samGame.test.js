@@ -906,10 +906,8 @@ test("Sâm settlement retry after restart reuses the same transaction IDs", asyn
     return originalSet(uid, data);
   };
 
-  await assert.rejects(
-    command._test.settleSamWallets(Users, room, Threads),
-    /simulated database write failure/
-  );
+  const partial = await command._test.settleSamWallets(Users, room, Threads);
+  assert.deepEqual(partial, { ok: false, code: "WALLET_CREDIT_FAILED", uid: "b" });
   assert.equal(Users.records.get("a").tlmn.coins, 100000 + Number(room.settlement.net.a));
   assert.equal(room.settled, false);
 
