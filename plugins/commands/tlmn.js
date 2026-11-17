@@ -484,7 +484,10 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
   const key = "hand:" + room.id + ":" + item.uid;
   const handLabels = engine.formatCards(hand);
   const suitNames = { b: "Bích", ch: "Chuồn", r: "Rô", c: "Cơ" };
-  const codeCards = hand.map(card => card.id).join("  ");
+  const suitCodes = { b: "b", ch: "ch", r: "r", c: "c" };
+  const codeCards = hand.map(card =>
+    engine.rankLabel(card.rank).toLowerCase() + suitCodes[card.suit]
+  ).join("  ");
   const namedCards = hand.map(card =>
     engine.rankLabel(card.rank) + suitNames[card.suit]
   ).join(", ");
@@ -693,6 +696,7 @@ async function startRoom({ api, event, Users, Threads }) {
   if (state.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ phòng mới được bắt đầu.");
   if (state.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi mới bắt đầu được.");
   await sendText(api, event, [
+    "**JOHNTRAN** ❗",
     "🔔 LƯU Ý QUAN TRỌNG TRƯỚC KHI BẮT ĐẦU VÁN BÀI:",
     "Tất cả người chơi vui lòng KHÔNG CHẶN TIN NHẮN NGƯỜI LẠ với Bot, để Bot có thể chia bài và gửi ảnh các lá bài trên tay vào tin nhắn riêng cho bạn nhé!",
     "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước."
