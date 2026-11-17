@@ -390,8 +390,9 @@ test("GameVH TLMN blocked kết 3 bích charges only players who joined the fina
     hands: {
       a: [],
       b: [],
-      c: [{ rank: 3, suit: "b", id: "3b" }],
-      d: [{ rank: 4, suit: "b", id: "4b" }]
+      // Empty hands isolate the blocked-3♠ payouts from ordinary leftover-card fees.
+      c: [],
+      d: []
     },
     chopEvents: [],
     threeSpadesBlockEvents: [
