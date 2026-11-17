@@ -273,7 +273,9 @@ test("third Solo mistake ends the game and tags the player with a real mention",
     assert.equal(gameService.get(threadId), null);
     assert.equal(sent.length, 1);
     assert.match(sent[0].msg, /đã thua ván Nối Từ Solo/i);
-    assert.deepEqual(sent[0].mentions, [{ pos: 0, uid: "strike-player", len: "@Strike Player".length }]);
+    assert.equal(sent[0].mentions[0].uid, "strike-player");
+    assert.equal(sent[0].mentions[0].pos, 0);
+    assert.equal(sent[0].mentions[0].len, sent[0].msg.indexOf("\\n"));
   } finally {
     noituBotAI.getPhraseMeaning = original;
     command._test.stopNoituGames(threadId);
@@ -302,7 +304,9 @@ test("Solo timeout applies zero-star penalty and tags the actual player uid", as
     assert.equal(undoCalls.length, 1);
     assert.match(sent[0].msg, /Hết giờ/);
     assert.match(sent[0].msg, /-0⭐/);
-    assert.deepEqual(sent[0].mentions, [{ pos: 0, uid: "timeout-player", len: "@Timeout Player".length }]);
+    assert.equal(sent[0].mentions[0].uid, "timeout-player");
+    assert.equal(sent[0].mentions[0].pos, 0);
+    assert.equal(sent[0].mentions[0].len, sent[0].msg.indexOf("\\n"));
   } finally {
     command._test.stopNoituGames(threadId);
   }

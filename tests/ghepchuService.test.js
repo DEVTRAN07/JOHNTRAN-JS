@@ -187,7 +187,9 @@ test("repeated wrong Ghép Chữ answers are notified only once in the same puzz
   try {
     await command._test.handleGhepChuText(context("đáp án sai một"));
     await command._test.handleGhepChuText(context("đáp án sai hai"));
-    assert.equal(sent.filter(item => /Chưa đúng rồi/.test(item.msg)).length, 1);
+    await command._test.handleGhepChuText(context("đáp án sai ba"));
+    assert.equal(sent.filter(item => /Chưa đúng rồi/.test(item.msg)).length, 1,
+      "one puzzle round should produce at most one wrong-answer notice");
   } finally {
     game.remove(threadId);
     game.clearDictionaryCache();

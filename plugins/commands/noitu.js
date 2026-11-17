@@ -635,13 +635,14 @@ async function playSoloBotTurn({ api, event, session, Users }) {
   }
 
   session.currentMeaning = meaning.definition;
-  return sendSoloPrompt(api, event, session,
+  await sendSoloPrompt(api, event, session,
     "🤖 JOHNTRAN AI: **" + botResult.phrase.display + "**\\n" +
     "📖 Ý nghĩa: " + meaning.definition + "\\n\\n" +
     "👉 Đến lượt bạn, hãy nối từ bắt đầu bằng **" + botResult.phrase.last + "**.\\n" +
     "⏱️ Còn **60 giây**.\\n" +
     "✅ Đúng **+1⭐** | ❌ Sai **3 lần thì thua**. Gõ **lose** để chịu thua."
   );
+  return true;
 }
 
 async function handleSoloBotText({ api, event, Users, session }) {
@@ -687,7 +688,7 @@ async function handleSoloBotText({ api, event, Users, session }) {
   if (!phrase) {
     if (!session.invalidPhraseNoticeSent) {
       session.invalidPhraseNoticeSent = true;
-      await send(api, event, "💬 Hãy trả lời bằng cụm từ tiếng Việt gồm 2–4 tiếng, có nghĩa.");
+      await send(api, event, "💬 Hãy trả lời bằng một cụm từ tiếng Việt gồm 2–4 tiếng. Các cụm từ phải có nghĩa.");
     }
     return true;
   }
@@ -916,8 +917,7 @@ async function handleGhepChuText({ api, event, eventType, isSelf = false, Users 
   if (!result.ok) {
     if (result.code === "WRONG") {
       const now = Date.now();
-      if (session.lastWrongNoticeRound !== session.round ||
-          now - (Number(session.lastWrongNoticeAt) || 0) >= 5000) {
+      if (session.lastWrongNoticeRound !== session.round) {
         session.lastWrongNoticeRound = session.round;
         session.lastWrongNoticeAt = now;
         await send(api, event, "❌ Chưa đúng rồi, thử sắp xếp lại nhé!");

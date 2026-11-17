@@ -58,6 +58,7 @@ const CURATED_MEANING_SOURCE = Object.freeze({
   "sinh viên": "Người đang theo học tại trường cao đẳng hoặc đại học.",
   "sinh nhật": "Ngày kỷ niệm ngày một người được sinh ra.",
   "sinh học": "Ngành khoa học nghiên cứu về sự sống và sinh vật.",
+  "sinh giới": "Toàn bộ thế giới sinh vật, bao gồm các sinh vật sống trên Trái Đất.",
   "hoa hồng": "Loài hoa có cánh mềm, thường có gai ở thân và nhiều màu sắc.",
   "hoa quả": "Cách gọi chung các loại quả dùng làm thực phẩm.",
   "hoa lá": "Cây cỏ, hoa và lá nói chung.",
