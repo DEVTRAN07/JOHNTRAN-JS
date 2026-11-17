@@ -188,7 +188,7 @@ function parsePlayText(hand, input) {
   match = source.match(/^(doi\s*thong|doithong)\s+(.+)$/);
   if (match) {
     const ranks = parseRankSequence(match[2]);
-    if (ranks.length < 3 || ranks.some((rank, index) => rank === 15 ||
+    if (![3, 4].includes(ranks.length) || ranks.some((rank, index) => rank === 15 ||
         (index > 0 && rank !== ranks[index - 1] + 1))) {
       return { ok: false, code: "INVALID_PAIR_RUN" };
     }
@@ -265,7 +265,7 @@ function analyzeCombo(inputCards) {
       uniqueRanks.every((rank, index) => index === 0 || rank === uniqueRanks[index - 1] + 1)) {
     type = "straight";
     mainRank = Math.max(...uniqueRanks);
-  } else if (cards.length >= 6 && cards.length % 2 === 0 &&
+  } else if (cards.length >= 6 && cards.length <= 8 && cards.length % 2 === 0 &&
       uniqueRanks.length === cards.length / 2 && counts.every(count => count === 2) &&
       uniqueRanks.every((rank, index) => rank !== 15 &&
         (index === 0 || rank === uniqueRanks[index - 1] + 1))) {
