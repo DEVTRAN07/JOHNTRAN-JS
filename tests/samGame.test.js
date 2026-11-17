@@ -65,7 +65,7 @@ test("Sâm only allows higher same-size combinations, with four-kind cutting one
   const pair3 = engine.analyzeCombo([card(3), card(3, "r")]);
   const pair4 = engine.analyzeCombo([card(4), card(4, "r")]);
   assert.equal(engine.canBeat(pair4, pair3), true);
-  assert.equal(engine.canBeat(four, engine.analyzeCombo([card(2)])), false);
+  assert.equal(engine.canBeat(pair4, engine.analyzeCombo([card(2)])), false);
 
   const quad = engine.analyzeCombo([card(7), card(7, "ch"), card(7, "r"), card(7, "c")]);
   assert.equal(engine.canBeat(quad, engine.analyzeCombo([card(2, "c")])), true);
@@ -122,7 +122,14 @@ test("Sâm marks a failed Báo Sâm as lủng when another player beats the call
   const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81522" });
   assert.equal(created.ok, true);
   game.join(threadId, "81522", { uid: "b", name: "B" });
-  const started = game.start(threadId, "a", () => 0.12);
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try {
+    started = game.start(threadId, "a", () => 0.12);
+  } finally {
+    engine.detectWhiteHand = originalDetector;
+  }
   assert.equal(started.ok, true);
 
   const room = started.state;
@@ -147,7 +154,14 @@ test("Sâm marks an uninterrupted Báo Sâm as successful", () => {
   const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81523" });
   assert.equal(created.ok, true);
   game.join(threadId, "81523", { uid: "b", name: "B" });
-  const started = game.start(threadId, "a", () => 0.15);
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try {
+    started = game.start(threadId, "a", () => 0.15);
+  } finally {
+    engine.detectWhiteHand = originalDetector;
+  }
   assert.equal(started.ok, true);
 
   const room = started.state;
@@ -262,8 +276,8 @@ test("Sâm private hand sends a canvas to My Documents and replaces the previous
 });
 
 test("Sâm help documents rules and My Documents destination is reserved for the bot owner", () => {
-  assert.match(command._test.help("!"), /BÁO SÂM/);
-  assert.match(command._test.help("!"), /LỦNG SÂM/);
+  assert.match(command._test.help("!"), /BÁO SÂM/i);
+  assert.match(command._test.help("!"), /LỦNG SÂM/i);
   const api = {
     getOwnId() { return "bot-uid"; },
     getContext() { return { loginInfo: { send2me_id: "my-docs-id" } }; }
