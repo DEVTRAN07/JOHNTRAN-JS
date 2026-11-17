@@ -10,6 +10,7 @@ const logger = require("../utils/logger");
 const { wrapApi } = require("./message");
 const { attachGroupBotState, getGroupBotStateSnapshot } = require("./runtime/groupBotState");
 const { readAdminGroups, writeAdminGroups } = require("./runtime/adminGroups");
+const { getAntiProtectionState, setAntiProtectionState } = require("./runtime/antiProtection");
 
 async function ensureThreadStoreReady() {
   const database = require("./runtime/adapters/database");
@@ -355,7 +356,7 @@ async function handleRequest(req, res, url) {
       const disabled = Array.isArray(thread.data?.disabled_commands)
         ? thread.data.disabled_commands.map(value => String(value).toLowerCase())
         : [];
-      return json(200, { gid, disabled, all, botEnabled: thread.data?.bot_enabled === true });
+      return json(200, { gid, disabled, all, botEnabled: thread.data?.bot_enabled === true, antiFeatures: getAntiProtectionState(thread.data) });
     }
 
     if (req.method === "POST") {
@@ -379,6 +380,22 @@ async function handleRequest(req, res, url) {
           await Threads.setDataAndWait(gid, data);
         }
         return json(200, { gid, botEnabled: data.bot_enabled });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, "antiFeature")) {
+        const feature = String(body.antiFeature || "").trim();
+        if (feature === "anti_nude" && body.enabled === true &&
+            !(process.env.OPENAI_API_KEY || process.env.JT_ANTINUDE_OPENAI_API_KEY)) {
+          return json(409, { error: "Chưa cấu hình OPENAI_API_KEY nên chưa thể bật AI quét ảnh." });
+        }
+        let antiFeatures;
+        try {
+          antiFeatures = setAntiProtectionState(data, feature, body.enabled);
+        } catch (error) {
+          return json(400, { error: error.message });
+        }
+        await Threads.setDataAndWait(gid, data);
+        return json(200, { gid, antiFeature:feature, enabled:body.enabled, antiFeatures });
       }
 
       const command = String(body.command || "").trim().toLowerCase();
