@@ -170,27 +170,62 @@ test("TLMN practice deals Admin a strong hand while AI still answers normally", 
   game.removeRoom(groupId);
 });
 
-test("TLMN real-player tables keep the normal shuffled deal for an Admin owner", () => {
-  const groupId = "tlmn-real-room-fair-admin-deal";
-  const created = game.create(groupId, { uid: "admin", name: "Admin" }, {
+test("TLMN gives the strongest hand to an Admin seated in a human table", () => {
+  const groupId = "tlmn-real-room-admin-priority";
+  const created = game.create(groupId, { uid: "host", name: "Chủ bàn" }, {
     practice: false
   });
   assert.equal(created.ok, true);
-  const playerIds = ["admin", "player-2", "player-3", "player-4"];
+  const players = [
+    { uid: "admin", name: "Admin" },
+    { uid: "player-3", name: "Người chơi 3" },
+    { uid: "player-4", name: "Người chơi 4" }
+  ];
+  for (const player of players) {
+    assert.equal(game.join(groupId, created.room.id, player).ok, true);
+  }
+
+  const started = game.start(groupId, "host", () => 0.317, {
+    adminUids: ["admin"]
+  });
+  assert.equal(started.ok, true);
+  const room = started.state;
+  assert.equal(room.practice, false);
+  assert.equal(room.turnUid, "admin");
+  assert.equal(room.adminPriorityUid, "admin");
+  assert.ok(room.hands.admin.some(card => card.id === "3b"));
+  assert.equal(room.hands.admin.filter(card => card.rank === 15).length, 4);
+  assert.equal(room.hands.admin.filter(card => card.rank === 14).length, 4);
+  assert.equal(room.hands.admin.filter(card => card.rank === 13).length, 4);
+
+  for (const player of room.players.filter(item => item.uid !== "admin")) {
+    assert.equal(room.hands[player.uid].length, 13);
+    assert.equal(room.hands[player.uid].some(card => card.rank >= 13), false);
+  }
+  game.removeRoom(groupId);
+});
+
+test("TLMN tables with no seated Admin keep the normal fair shuffled deal", () => {
+  const groupId = "tlmn-real-room-no-admin-fair-deal";
+  const created = game.create(groupId, { uid: "host", name: "Chủ bàn" }, {
+    practice: false
+  });
+  assert.equal(created.ok, true);
+  const playerIds = ["host", "player-2", "player-3", "player-4"];
   for (const uid of playerIds.slice(1)) {
     assert.equal(game.join(groupId, created.room.id, { uid, name: uid }).ok, true);
   }
 
-  const expected = engine.dealCards(playerIds, () => 0.317).hands.admin
+  const expected = engine.dealCards(playerIds, () => 0.317).hands.host
     .map(card => card.id);
-  const started = game.start(groupId, "admin", () => 0.317);
+  const started = game.start(groupId, "host", () => 0.317, { adminUids: [] });
   assert.equal(started.ok, true);
   assert.deepEqual(
-    started.state.hands.admin.map(card => card.id),
+    started.state.hands.host.map(card => card.id),
     expected,
-    "real-player tables must not use the practice-only strong-hand deal"
+    "a table without an Admin must keep the normal shuffled deal"
   );
-  assert.equal(started.state.practice, false);
+  assert.equal(started.state.adminPriorityUid, null);
   game.removeRoom(groupId);
 });
 
