@@ -1502,7 +1502,6 @@ async function doPlay(context, input) {
       INVALID_COMBINATION: "⚠️ Bộ bài không hợp lệ. Hãy kiểm tra lẻ/đôi/sám/sảnh/tứ quý/đôi thông.",
       CARD_NOT_IN_HAND: "⚠️ Lá bài đó không có trong bài riêng của bạn.",
       DUPLICATE_CARD: "⚠️ Bạn đã nhập trùng một lá bài.",
-      MUST_PLAY_THREE_SPADES: "⚠️ Vòng đầu phải có lá 3♠ (3b).",
       CANNOT_BEAT: "⛔ Bài này không chặt được bộ đang nằm trên bàn.",
       NO_GAME: "⚠️ Ván đã kết thúc."
     };
