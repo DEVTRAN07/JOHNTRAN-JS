@@ -8,6 +8,7 @@ const game = require("../../core/runtime/services/games/tlmnService");
 const engine = require("../../core/games/tlmnEngine");
 const { firstMention, withRequesterMention } = require("../../core/mentions");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
+const { sendGameGuideOnce } = require("../../core/games/gameGuideDelivery");
 
 const DEFAULT_COINS = 100000;
 const MIN_BET = 1000;
@@ -190,6 +191,33 @@ function privateDestination(api, uid) {
     type: ThreadType.User,
     myDocuments: false
   };
+}
+
+async function sendPrivateGameGuide(api, Users, uid) {
+  const userId = String(uid || "");
+  if (!userId || isAiUid(userId)) return { ok: false, sent: false, code: "INVALID_UID" };
+  let destination;
+  try {
+    destination = privateDestination(api, userId);
+  } catch (error) {
+    console.warn("[TLMN_PRIVATE_GUIDE_DEST]", error?.message || error);
+    return { ok: false, sent: false, code: "PRIVATE_DESTINATION_FAILED" };
+  }
+  const result = await sendGameGuideOnce({
+    Users,
+    uid: userId,
+    gameKey: "tlmn",
+    send: () => getRawApi(api).sendMessage(
+      { msg: gameGuide() },
+      destination.threadId,
+      destination.type
+    )
+  });
+  if (!result.ok) console.warn("[TLMN_PRIVATE_GUIDE]", result.code);
+  if (result.sent && !result.persisted) {
+    console.warn("[TLMN_PRIVATE_GUIDE] Đã gửi nhưng chưa lưu được cờ gửi một lần.");
+  }
+  return result;
 }
 
 function recallTargets(response) {
@@ -628,54 +656,60 @@ async function setEnabled(Threads, threadId, enabled) {
   else await Threads.setData(threadId, data);
 }
 
-function help(prefix) {
+function gameGuide(prefix = global.config?.prefix || "!") {
   return [
-    "🃏 HƯỚNG DẪN TIẾN LÊN MIỀN NAM",
+    "📘 HƯỚNG DẪN TIẾN LÊN MIỀN NAM",
     "",
-    "52 lá • 2–4 người • mỗi người 13 lá.",
-    "Thứ tự số: 2 > A > K > Q > J > 10 > ... > 3.",
-    "Thứ tự chất khi cùng số: ♥ > ♦ > ♣ > ♠.",
+    "• Bộ bài 52 lá, 2–4 người, mỗi người 13 lá.",
+    "• Thứ tự số: 2 > A > K > Q > J > 10 > 9 > ... > 3.",
+    "• Khi cùng số: ♥ > ♦ > ♣ > ♠.",
     "",
     "🧩 BỘ BÀI",
-    "Lá lẻ • đôi • ba lá • sảnh liên tiếp (không có 2) • 3 đôi thông • tứ quý • 4 đôi thông.",
-    "4 đôi thông > tứ quý > 3 đôi thông.",
+    "Lá lẻ, đôi, ba lá, sảnh liên tiếp (không có 2), 3 đôi thông, tứ quý và 4 đôi thông.",
     "",
-    "🎮 CÁCH CHƠI",
-    "Ván đầu người đánh trước được chọn ngẫu nhiên; ván sau người thắng ván trước đi đầu nếu còn trong bàn.",
-    "Đánh theo vòng; người sau phải cùng loại và lớn hơn hoặc dùng hàng chặt. Bỏ lượt khóa bạn khỏi vòng; ngoại lệ: 4 đôi thông vẫn được chặt dù đã bỏ lượt. Người đánh cuối được mở vòng mới.",
-    "Người đầu tiên hết bài thắng ván.",
-    "",
-    "✨ TỚI TRẮNG (ăn từ mỗi nhà theo cược):",
-    "Sảnh rồng 9x • 6 đôi thông 8x • 4 bộ ba 7x • 2 tứ quý 6x.",
-    "12 lá đồng chất 5x • 5 đôi thông 4x • tứ quý 2 3x • 6 đôi 2x.",
-    "Cùng loại: so lá cao nhất của bộ; ưu tiên số rồi đến chất. Tới trắng không tính thối/chặt.",
+    "🎮 CÁCH ĐÁNH",
+    "Người mở đầu được chọn ngẫu nhiên; ván sau người thắng trước đi đầu nếu còn trong bàn.",
+    "Người sau phải đánh cùng loại và lớn hơn, hoặc dùng hàng chặt hợp lệ. Bỏ lượt thì nghỉ đến hết vòng; 4 đôi thông vẫn có thể chặt sau khi bỏ lượt. Người đánh cuối được mở vòng mới.",
+    "Người đầu tiên hết bài là người thắng duy nhất; tất cả nhà còn lại đều thua ván đó.",
     "",
     "⚔️ CHẶT",
     "3 đôi thông chặt 2 và 3 đôi thông nhỏ hơn.",
     "Tứ quý chặt 2, 3 đôi thông và tứ quý nhỏ hơn.",
-    "4 đôi thông chặt 2, đôi 2, 3 đôi thông, tứ quý và 4 đôi thông nhỏ hơn, kể cả khi đã bỏ lượt.",
-    "Chặt chồng: cộng dồn giá trị heo/hàng trong chuỗi; người có hàng bị chặt cuối trả tổng cho người chặt cuối.",
+    "4 đôi thông chặt 2, đôi 2, 3 đôi thông, tứ quý và 4 đôi thông nhỏ hơn; kể cả khi đã bỏ lượt.",
+    "Chặt chồng: số tiền hàng/heo được cộng dồn; người bị chặt cuối trả chuỗi cho người chặt cuối.",
     "",
-    "💰 THỐI / CHẶT (đơn vị cược)",
-    "Rác 1 • 2 đen thối 2 / chặt 3 • 2 đỏ thối 4 / chặt 6.",
-    "Đôi 2 đen thối 4 / chặt 6 • đôi 2 khác màu thối 6 / chặt 9 • đôi 2 đỏ thối 8 / chặt 12.",
-    "3 đôi thông 6 • tứ quý 8 • 4 đôi thông 12.",
-    "Kết 3♠: mỗi nhà thua trả 26 cược. Chặn kết 3♠: người bị chặn trả 26 cược cho từng người đã tham gia vòng cuối.",
+    "♠ KẾT 3 BÍCH",
+    "Chỉ kết khi 3♠ là lá cuối cùng. Nếu không bị chặn, mỗi nhà thua trả 26 cược. Nếu bị chặn, người kết bị chặn trả 26 cược cho từng người tham gia vòng cuối; người không tham gia vòng cuối không bị tính.",
     "",
-    "🕹️ LỆNH",
-    prefix + "tlmn go — Mở/tham gia bàn",
-    prefix + "tlmn ai — Luyện tập với AI (không cược)",
-    prefix + "tlmn cuoc <số> — Đặt cược (mặc định 1K), ví dụ 10k",
-    "join <mã> • start • leave • stop • pass/bo • goiy • auto • chon 1,2",
-    "Đánh: 3b • doi 4 • sam 7 • sanh 345 • tuquy 4 • 3dt • 4dt",
-    prefix + "tlmn info • bxh • pay @user <số> • nap @user <số>",
+    "✨ TỚI TRẮNG",
+    "Ưu tiên: sảnh rồng 9x > 6 đôi thông 8x > 4 bộ ba 7x > 2 tứ quý 6x > 12 lá đồng chất 5x > 5 đôi thông 4x > tứ quý 2 3x > 6 đôi 2x.",
+    "Tới trắng không tính thối/chặt.",
     "",
-    "Xu là đơn vị ảo trong game. Bot giữ 100 cược/người làm ký quỹ và tự quyết toán theo sổ thối/chặt."
+    "💰 THỐI BÀI",
+    "Rác 1 cược/lá; 2 đen 2 cược, 2 đỏ 4 cược; đôi 2 đen 4, đôi khác màu 6, đôi 2 đỏ 8; 3 đôi thông 6, tứ quý 8, 4 đôi thông 12 cược.",
+    "",
+    "🕹️ LỆNH NHANH",
+    prefix + "tlmn go — mở bàn • join <mã> — vào bàn • start — bắt đầu",
+    prefix + "tlmn cuoc <số> — đổi cược • leave — rời bàn • stop — hủy bàn",
+    "Trong lượt: chon 1,2 • pass/bo • goiy • auto • 3dt • 4dt • doi 7 • sam 8 • sanh 345",
+    "",
+    "📩 Hướng dẫn này được gửi riêng một lần. Hãy cho phép nhận tin nhắn từ người lạ của Bot để nhận bài và thông báo lượt."
   ].join("\n");
 }
 
-function modeLabel(mode) {
-  return mode === "demla" ? "Đếm Lá" : "Nhất Nhì Ba Bét";
+function help(prefix) {
+  return [
+    "🃏 LỆNH TIẾN LÊN MIỀN NAM",
+    prefix + "tlmn go — mở bàn • ai — luyện tập với AI",
+    prefix + "tlmn join <mã> — vào bàn • cuoc <số> — đặt cược",
+    prefix + "tlmn start • leave • stop • info • bxh",
+    "Trong lượt: chon 1,2 • pass/bo • goiy • auto • 3dt • 4dt",
+    "Hướng dẫn luật chi tiết được Bot gửi riêng một lần khi bạn nhận bài lần đầu."
+  ].join("\n");
+}
+
+function modeLabel() {
+  return "Về nhất • các nhà còn lại thua";
 }
 
 function buildTurnMentionCaption(room, caption) {
@@ -868,19 +902,7 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
     "",
     turn ? "🎯 ĐẾN LƯỢT BẠN — hãy đánh bài hoặc bỏ lượt." : "🔒 Chỉ bạn nhìn thấy các lá bài này.",
     "",
-    "⚡ LỆNH ĐÁNH NHANH GỢI Ý:",
-    "• Chọn theo số trên ảnh: chon 1 hoặc chon 1,2,3 (từ trái sang phải)",
-    "• goiy: gợi ý riêng • auto: tự đánh bộ hợp lệ để xả nhiều lá",
-    "• Đánh lẻ: 4r, 10b, jc, 2c",
-    "• Đôi: Đôi 3 (doi 3), Đôi 4 (doi 4), Đôi K (doi k)",
-    "• Sám cô: sam 7 / sam co 7",
-    "• Đôi thông: 3 đôi thông (3dt / doithong 345), 4 đôi thông (4dt / doithong 3456)",
-    "• Sảnh: sanh 345, sanh 10-j-q, sanh jqk",
-    "• Tứ quý: tuquy 4",
-    "• Bỏ lượt: bo / pass",
-    "",
-    "♠ Bích (b) • ♣ Chuồn (ch) • ♦ Rô (r) • ♥ Cơ (c)",
-    "💡 Có thể gõ có dấu hoặc không dấu."
+    "♠ Bích (b) • ♣ Chuồn (ch) • ♦ Rô (r) • ♥ Cơ (c)"
   ].join("\n");
   const fallback = caption + "\n\n" + codeCards + "\n(" + namedCards + ")";
   const rawApi = getRawApi(api);
@@ -1160,9 +1182,10 @@ function scheduleAiTurn(api, Users, Threads, room) {
   return true;
 }
 
-async function distributeHands(api, room) {
+async function distributeHands(api, room, Users) {
   const failed = [];
   for (const item of room.players) {
+    if (!item.ai && !isAiUid(item.uid)) await sendPrivateGameGuide(api, Users, item.uid);
     const hand = room.hands[item.uid] || [];
     const sent = await sendPrivateHand(api, room, item, hand, item.uid === room.turnUid);
     if (!sent) failed.push(item.name);
@@ -1221,8 +1244,9 @@ async function endGame(api, event, Users, roomState, Threads) {
           " — " + (engine.WHITE_HAND_LABEL[room.whiteHand.type] || room.whiteHand.type),
         ""
       ] : []),
-      ...rows.map(row => (row.place === 1 ? "👑 " : "• ") +
-        row.place + ". " + row.name + " — còn " + row.cardsLeft + " lá"),
+      ...rows.map(row => row.place === 1
+        ? "👑 THẮNG • " + row.name + " — còn " + row.cardsLeft + " lá"
+        : "❌ THUA • " + row.name + " — còn " + row.cardsLeft + " lá"),
       "",
       "🧠 Đây là ván luyện tập, không cộng hoặc trừ xu.",
       "👉 Gõ !tlmn ai để đấu lại với 3 AI."
@@ -1514,7 +1538,7 @@ async function completeStartCountdown(api, event, Users, Threads, room) {
     return false;
   }
 
-  const failedPrivate = await distributeHands(api, roomState);
+  const failedPrivate = await distributeHands(api, roomState, Users);
   if (failedPrivate.length) {
     await recallRoomCards(api, roomState);
     game.resetToWaiting(threadId);
@@ -1594,18 +1618,8 @@ async function startRoom({ api, event, Users, Threads }) {
   if (Number(state.startCountdownAt) > 0) return sendText(api, event, "⏱️ Bàn đang đếm ngược. Vui lòng đợi đồng hồ về 0.");
   if (state.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi mới bắt đầu được.");
 
-  if (state.practice) {
-    await sendText(api, event,
-      "🧠 CHẾ ĐỘ LUYỆN TẬP: Không cược xu. Admin được chia bộ bài mạnh để thử chiến thuật; AI vẫn đánh chặn theo luật bình thường.");
-  } else {
-    await sendText(api, event, [
-      "**JOHNTRAN** ❗",
-      "🔔 LƯU Ý QUAN TRỌNG TRƯỚC KHI BẮT ĐẦU VÁN BÀI:",
-      "Tất cả người chơi vui lòng KHÔNG CHẶN TIN NHẮN NGƯỜI LẠ với Bot, để Bot có thể chia bài và gửi ảnh các lá bài trên tay vào tin nhắn riêng cho bạn nhé!",
-      "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước."
-    ].join("\n"));
-  }
-
+  // Hướng dẫn luật và nhận bài được gửi riêng một lần cho từng người
+  // ngay trước khi chia bài để tin nhắn trong nhóm không bị dài.
   state.reservePerPlayer = state.practice ? 0 : 100 * Number(state.bet);
   const reserved = state.practice
     ? { ok: true, reserve: 0 }
@@ -2166,7 +2180,7 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
     }
 
     if (room.status === "playing") {
-      const failedPrivate = await distributeHands(api, room);
+      const failedPrivate = await distributeHands(api, room, Users);
       const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
       await sendGroupRoom(api, syntheticEvent, game.snapshot(room),
         "🔄 Bot đã khôi phục ván sau khi khởi động lại." +
@@ -2191,7 +2205,8 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
 
 module.exports._test = {
   parseAmount, formatMoney, normalizeWallet, tierForCoins,
-  isAiUid, privateDestination, sendPrivateHand, chooseAiMove, chooseQuickMove,
+  isAiUid, privateDestination, gameGuide, help, sendPrivateGameGuide, distributeHands,
+  sendPrivateHand, chooseAiMove, chooseQuickMove,
   shouldSendMoveError, sendMoveHint, scheduleAiTurn, tableCaption, buildTurnMentionCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,

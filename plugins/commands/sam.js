@@ -7,6 +7,7 @@ const { renderCanvas } = require("../../core/canvas/workerRender");
 const game = require("../../core/runtime/services/games/samService");
 const engine = require("../../core/games/samEngine");
 const wallet = require("./tlmn")._test;
+const { sendGameGuideOnce } = require("../../core/games/gameGuideDelivery");
 
 const locks = new Map();
 const cleanupTimers = new Map();
@@ -111,6 +112,33 @@ function privateDestination(api, uid) {
   return { threadId: target, type: ThreadType.User, myDocuments: false };
 }
 
+async function sendPrivateGameGuide(api, Users, uid) {
+  const userId = String(uid || "");
+  if (!userId) return { ok: false, sent: false, code: "INVALID_UID" };
+  let destination;
+  try {
+    destination = privateDestination(api, userId);
+  } catch (error) {
+    console.warn("[SAM_PRIVATE_GUIDE_DEST]", error?.message || error);
+    return { ok: false, sent: false, code: "PRIVATE_DESTINATION_FAILED" };
+  }
+  const result = await sendGameGuideOnce({
+    Users,
+    uid: userId,
+    gameKey: "sam",
+    send: () => getRawApi(api).sendMessage(
+      { msg: gameGuide() },
+      destination.threadId,
+      destination.type
+    )
+  });
+  if (!result.ok) console.warn("[SAM_PRIVATE_GUIDE]", result.code);
+  if (result.sent && !result.persisted) {
+    console.warn("[SAM_PRIVATE_GUIDE] Đã gửi nhưng chưa lưu được cờ gửi một lần.");
+  }
+  return result;
+}
+
 async function sendPrivateHand(api, room, player, hand, turn = false) {
   let destination;
   try { destination = privateDestination(api, player.uid); }
@@ -133,10 +161,7 @@ async function sendPrivateHand(api, room, player, hand, turn = false) {
     codes,
     "(" + names + ")",
     "",
-    turn ? "🎯 ĐẾN LƯỢT BẠN." : "🔒 Bài này chỉ bạn nhìn thấy.",
-    "",
-    "Lệnh: chon 1,2 • doi 7 • sam 9 • tuquy 5 • sanh 345 • pass",
-    "Báo Sâm trước nước đầu tiên: baosam (người báo được đánh trước)"
+    turn ? "🎯 ĐẾN LƯỢT BẠN." : "🔒 Bài này chỉ bạn nhìn thấy."
   ].filter(Boolean).join("\n");
   const key = "sam-hand:" + room.id + ":" + player.uid;
   const rawApi = getRawApi(api);
@@ -353,52 +378,53 @@ function gameConflict(threadId) {
   return null;
 }
 
-function help(prefix = "!") {
+function gameGuide(prefix = global.config?.prefix || "!") {
   return [
-    "🃏 HƯỚNG DẪN SÂM LỐC",
+    "📘 HƯỚNG DẪN SÂM LỐC",
     "",
-    "52 lá • 2–4 người • mỗi người đúng 10 lá.",
-    "Thứ tự số: 2 > A > K > Q > J > 10 > ... > 3. Sâm chỉ so số, không so chất.",
+    "• Bộ bài 52 lá, 2–4 người, mỗi người 10 lá.",
+    "• Thứ tự số: 2 > A > K > Q > J > 10 > ... > 3. Sâm chỉ so số, không so chất.",
     "",
     "🧩 BỘ BÀI",
-    "Lẻ • đôi • sám • sảnh liên tiếp từ 3 lá • tứ quý.",
-    "Không có sảnh K-A-2, A-2-3 hoặc 2-3-4.",
+    "Lẻ, đôi, sám cô, sảnh từ 3 lá liên tiếp và tứ quý. Không có sảnh K-A-2, A-2-3 hoặc 2-3-4.",
     "",
     "🔥 BÁO SÂM",
-    "Ai hô Sâm trước được quyền đánh đầu. Bị chặn dù chỉ một lần thì đền Sâm.",
-    "Đánh hết 10 lá mà không bị chặn: ăn 20 cược từ mỗi nhà.",
-    "Không ai báo Sâm: ván đầu người mở đầu ngẫu nhiên; ván sau người thắng ván trước đi đầu nếu còn trong bàn.",
+    "Trước nước đánh đầu tiên, người chơi có thể hô baosam; người báo được đánh đầu. Nếu bị chặn dù chỉ một lần thì báo Sâm thất bại và người báo đền 20 cược × số đối thủ cho người chặn. Nếu đánh hết bài mà không bị chặn, người báo ăn 20 cược từ mỗi nhà.",
     "",
-    "🎮 ĐÁNH BÀI",
-    "Theo vòng; phải cùng loại và lớn hơn, hoặc dùng tứ quý chặt heo/tứ quý nhỏ hơn.",
-    "Bỏ lượt là bỏ cả vòng; người đánh cuối được mở vòng mới.",
-    "Không được đánh 2 làm lá cuối. Khi có người báo 1, người khác phải đánh lá lớn nhất trên tay; đánh nhỏ hơn để người báo 1 thắng sẽ bị phạt theo tổng số lá còn lại × cược.",
+    "🎮 CÁCH ĐÁNH",
+    "Đánh theo vòng; người sau phải cùng loại và lớn hơn. Tứ quý chặt được 2 và tứ quý nhỏ hơn. Bỏ lượt thì nghỉ đến hết vòng; người đánh cuối mở vòng mới.",
+    "Người đầu tiên hết bài thắng duy nhất; tất cả nhà còn lại thua ngay. Không được đánh 2 làm lá cuối.",
     "",
-    "✨ TỚI TRẮNG (ăn 20 cược từ mỗi nhà)",
-    "Sảnh rồng 10 lá > tứ quý 2 > đồng hoa (10 lá cùng màu) > 3 sám > 5 đôi.",
-    "Nếu cùng loại, so lá cao nhất theo số; Sâm không so chất.",
+    "🚨 BÁO 1 LÁ",
+    "Khi có người chỉ còn 1 lá, các đối thủ phải đánh lá có số lớn nhất trên tay. Sâm không phân biệt chất khi xác định lá lớn nhất. Đánh số nhỏ hơn để người báo 1 về nhất bị phạt theo tổng số lá còn lại × cược.",
     "",
-    "⚔️ CHẶT",
-    "Tứ quý chặt 2 và tứ quý nhỏ hơn. Chặt chồng tính 15 cược cho mỗi lần chặt.",
+    "✨ TỚI TRẮNG",
+    "Ưu tiên: sảnh rồng 10 lá > tứ quý 2 > 10 lá cùng màu > 3 sám cô > 5 đôi. Tới trắng ăn 20 cược từ mỗi nhà.",
     "",
     "💰 TÍNH TIỀN",
     "Rác còn: 1 cược/lá • thối 2: 15 cược/lá • thối tứ quý: 15 cược/bộ.",
-    "Báo Sâm thành công: +20 cược từ mỗi nhà.",
-    "LỦNG SÂM / báo Sâm thất bại: người báo đền 20 cược × (số người chơi − 1) cho người chặn.",
-    "Tới trắng: +20 cược từ mỗi nhà.",
-    "Cóng: 15 cược + tiền thối heo/hàng.",
-    "Tứ quý chặt 2: 15 cược/con • chặt tứ quý: 15 cược/bộ • chặt chồng: 15 cược/lần.",
+    "Cóng: 15 cược cộng tiền thối heo/hàng. Chặt 2 hoặc tứ quý: 15 cược; chặt chồng: 15 cược cho mỗi lần.",
+    "Xu ảo dùng chung ví với Tiến Lên. Bot giữ cược trước ván và đối soát theo sổ giao dịch sau ván.",
     "",
     "🕹️ LỆNH",
-    prefix + "sam go — Mở/tham gia bàn",
-    prefix + "sam join <mã> — Vào bàn",
-    prefix + "sam cuoc <số> — Đặt cược (mặc định 300)",
-    prefix + "sam start — Bắt đầu",
-    prefix + "sam baosam — Hô Sâm",
-    prefix + "sam info — Xem bàn • sam leave • sam stop • sam help",
-    "Đánh: 3b • doi 7 • sam 9 • tuquy 5 • sanh 345 • chon 1,2 • pass",
+    prefix + "sam go — mở bàn • join <mã> — vào bàn • cuoc <số> — cược",
+    prefix + "sam start — bắt đầu • baosam — báo Sâm • pass/bo — bỏ lượt",
+    prefix + "sam info • leave • stop",
+    "Trong lượt: chon 1,2 • 3b • doi 7 • sam 9 • tuquy 5 • sanh 345",
     "",
-    "Xu ảo dùng chung ví với Tiến Lên. Bot ký quỹ trước khi chia bài và tự đối soát sau ván."
+    "📩 Hướng dẫn này được gửi riêng một lần. Hãy cho phép nhận tin nhắn từ người lạ của Bot để nhận bài."
+  ].join("\n");
+}
+
+function help(prefix = "!") {
+  return [
+    "🃏 LỆNH SÂM LỐC",
+    prefix + "sam go — mở bàn • join <mã> — vào bàn",
+    prefix + "sam cuoc <số> — đặt cược • start — bắt đầu",
+    prefix + "sam baosam — báo Sâm • pass/bo — bỏ lượt",
+    prefix + "sam info • leave • stop",
+    "Trong lượt: chon 1,2 • 3b • doi 7 • sam 9 • tuquy 5 • sanh 345",
+    "Hướng dẫn luật chi tiết được Bot gửi riêng một lần khi bạn nhận bài lần đầu."
   ].join("\n");
 }
 
@@ -484,9 +510,10 @@ async function joinRoom(context, code) {
     joined.alreadyJoined ? "✅ Bạn đã ở trong bàn." : "✅ " + joined.player.name + " đã vào bàn.");
 }
 
-async function distributeHands(api, room) {
+async function distributeHands(api, room, Users) {
   const failed = [];
   for (const player of room.players) {
+    await sendPrivateGameGuide(api, Users, player.uid);
     const ok = await sendPrivateHand(api, room, player, room.hands[player.uid] || [],
       player.uid === room.turnUid);
     if (!ok) failed.push(player.name);
@@ -605,7 +632,9 @@ async function finishGame(context, room, notice = "") {
           " chặn. Ván kết thúc."
         : "🏆 " + (winner?.name || "Người chơi") + " đã đánh hết 10 lá và về nhất.";
   const results = (room.results || []).map(row =>
-    (row.place === 1 ? "👑 " : "• ") + row.place + ". " + row.name + " — còn " + row.cardsLeft + " lá"
+    row.place === 1
+      ? "👑 THẮNG • " + row.name + " — còn " + row.cardsLeft + " lá"
+      : "❌ THUA • " + row.name + " — còn " + row.cardsLeft + " lá"
   );
   await sendGroupRoom(api, event, game.snapshot(room), [outcome, notice].filter(Boolean).join("\n"));
   await sendText(api, event, [
@@ -687,7 +716,7 @@ async function completeStartCountdown(context, room) {
   }
 
   const state = started.state;
-  const failed = await distributeHands(api, state);
+  const failed = await distributeHands(api, state, Users);
   if (failed.length) {
     await recallRoomCards(api, state);
     state.cancelPending = true;
@@ -1124,7 +1153,8 @@ module.exports.handleIncoming = context => withRoomLock(
   context?.event?.threadId, () => handleIncomingImpl(context)
 );
 module.exports._test = {
-  privateDestination, roomCaption, gameConflict, help, sendPrivateHand,
+  privateDestination, roomCaption, gameConflict, gameGuide, help,
+  sendPrivateGameGuide, distributeHands, sendPrivateHand,
   recallRoomCards, createOrJoin, joinRoom, startRoom, scheduleStartCountdown,
   completeStartCountdown, countdownReactionIcon, reactStartCountdown, doPlay, doPass, callSam, runCommand,
   settleSamWallets, refundSamWallets
@@ -1224,7 +1254,7 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
           "⚠️ Ván Sâm #" + room.id + " đã khôi phục nhưng ký quỹ chưa khớp. Bot giữ nguyên bàn để quản trị viên đối soát, không tự mở lượt hoặc trừ thêm xu.");
         continue;
       }
-      const failed = await distributeHands(api, room);
+      const failed = await distributeHands(api, room, Users);
       await persistRoom(Threads, threadId);
       await sendGroupRoom(api, event, game.snapshot(room),
         "🔄 Bot đã khôi phục ván Sâm sau khi khởi động lại." +

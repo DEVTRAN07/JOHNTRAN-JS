@@ -11,6 +11,42 @@ function pairRunHand(ranks) {
   ]);
 }
 
+test("GameVH TLMN stops immediately when the first player empties their hand; every other player loses", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const groupId = "tlmn-gamevh-first-player-wins-only";
+  const room = game.create(groupId, { uid: "a", name: "A" }).state;
+  game.join(groupId, room.id, { uid: "b", name: "B" });
+  game.join(groupId, room.id, { uid: "c", name: "C" });
+  game.start(groupId, "a", () => 0.37);
+
+  room.status = "playing";
+  room.activeUids = ["a", "b", "c"];
+  room.finishOrder = [];
+  room.forfeitUids = [];
+  room.threeSpadesFinisherUid = null;
+  room.threeSpadesBlockedByUid = null;
+  room.hands = {
+    a: [{ rank: 3, suit: "c", id: "3c" }],
+    b: [{ rank: 4, suit: "b", id: "4b" }, { rank: 7, suit: "b", id: "7b" }],
+    c: [{ rank: 5, suit: "c", id: "5c" }, { rank: 8, suit: "c", id: "8c" }]
+  };
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.passed = new Set();
+  room.playedCount = 0;
+
+  const result = game.play(groupId, "a", "3c");
+  assert.equal(result.ok, true);
+  assert.equal(result.finished, true);
+  assert.equal(room.status, "finished");
+  assert.equal(room.settlement.winnerUid, "a");
+  assert.ok(room.settlement.transfers.some(item => item.from === "b" && item.to === "a"));
+  assert.ok(room.settlement.transfers.some(item => item.from === "c" && item.to === "a"));
+  assert.equal(room.activeUids.length, 0);
+  game.removeRoom(groupId);
+});
+
 test("GameVH TLMN only accepts three-pair and four-pair runs as playable combos", () => {
   const threePairs = pairRunHand([3, 4, 5]);
   const fourPairs = pairRunHand([3, 4, 5, 6]);

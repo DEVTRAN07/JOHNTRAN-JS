@@ -316,9 +316,11 @@ test("Sâm group board automatically warns when a player is down to one card", (
   assert.match(caption, /Người B chỉ còn 1 lá/);
 });
 
-test("Sâm help documents rules and My Documents destination is reserved for the bot owner", () => {
-  assert.match(command._test.help("!"), /BÁO SÂM/i);
-  assert.match(command._test.help("!"), /LỦNG SÂM/i);
+test("Sâm command help stays short; full rules are in the private guide", () => {
+  assert.match(command._test.help("!"), /!sam baosam/);
+  assert.doesNotMatch(command._test.help("!"), /LỦNG SÂM/i);
+  assert.match(command._test.gameGuide("!"), /BÁO SÂM/i);
+  assert.match(command._test.gameGuide("!"), /LỦNG SÂM/i);
   const api = {
     getOwnId() { return "bot-uid"; },
     getContext() { return { loginInfo: { send2me_id: "my-docs-id" } }; }

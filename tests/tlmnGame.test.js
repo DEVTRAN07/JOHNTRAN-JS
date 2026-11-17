@@ -15,7 +15,7 @@ const engine = require("../core/games/tlmnEngine");
 const game = require("../core/runtime/services/games/tlmnService");
 const command = require("../plugins/commands/tlmn");
 
-test("Tiến Lên: cảnh báo trước khi start, bài chỉ gửi riêng và có hướng dẫn mã lá", async () => {
+test("Tiến Lên: hướng dẫn được gửi riêng một lần, bài riêng không lặp lại phần lệnh dài", async () => {
   const sent = [];
   let sequence = 0;
   const api = {
@@ -63,17 +63,28 @@ test("Tiến Lên: cảnh báo trước khi start, bài chỉ gửi riêng và c
     countdownRoom.startCountdownMessage = null;
     await command._test.completeStartCountdown(api, group, Users, Threads, countdownRoom);
 
-    const warningIndex = sent.findIndex(row => String(row.payload.msg || "").includes("KHÔNG CHẶN TIN NHẮN NGƯỜI LẠ"));
-    assert.ok(warningIndex >= 0, "the group warning is sent");
+    const privateGuides = sent.filter(row =>
+      row.type === ThreadType.User && !Array.isArray(row.payload.attachments) &&
+      String(row.payload.msg || "").includes("HƯỚNG DẪN TIẾN LÊN MIỀN NAM")
+    );
+    assert.equal(privateGuides.length, 2, "each real player gets a separate first-time guide");
+    assert.ok(privateGuides.every(row => row.threadId !== group.threadId));
+    assert.ok(privateGuides.every(row => String(row.payload.msg).includes("tất cả nhà còn lại đều thua")));
     const privateImages = sent.filter(row => row.type === ThreadType.User && Array.isArray(row.payload.attachments));
     assert.equal(privateImages.length, 2, "one private hand image per player");
     assert.ok(privateImages.every(row => row.threadId !== group.threadId));
     assert.ok(privateImages.every(row => String(row.payload.msg).includes("BÀI TRÊN TAY CỦA BẠN")));
-    assert.ok(privateImages.every(row => String(row.payload.msg).includes("LỆNH ĐÁNH NHANH GỢI Ý")));
-    assert.ok(privateImages.every(row => /👉 [3456789]|👉 10|👉 J|👉 Q|👉 K|👉 A|👉 2/.test(String(row.payload.msg))));
+    assert.ok(privateImages.every(row => !String(row.payload.msg).includes("LỆNH ĐÁNH NHANH GỢI Ý")));
     const groupPayloads = sent.filter(row => row.threadId === group.threadId);
     assert.equal(groupPayloads.some(row => String(row.payload.msg || "").includes("BÀI TRÊN TAY CỦA BẠN")), false);
-    assert.ok(warningIndex < sent.findIndex(row => row.type === ThreadType.User && Array.isArray(row.payload.attachments)));
+    assert.equal(groupPayloads.some(row => String(row.payload.msg || "").includes("KHÔNG CHẶN TIN NHẮN NGƯỜI LẠ")), false);
+
+    await command._test.sendPrivateGameGuide(api, Users, "owner");
+    await command._test.sendPrivateGameGuide(api, Users, "guest");
+    assert.equal(sent.filter(row =>
+      row.type === ThreadType.User && !Array.isArray(row.payload.attachments) &&
+      String(row.payload.msg || "").includes("HƯỚNG DẪN TIẾN LÊN MIỀN NAM")
+    ).length, 2, "later turns do not resend the guide");
   } finally {
     game.removeRoom(group.threadId);
     delete require.cache[rendererPath];
