@@ -1203,12 +1203,17 @@ async function startRoom({ api, event, Users, Threads }) {
   if (!state || state.status !== "waiting") return sendText(api, event, "⚠️ Không có bàn đang chờ trong nhóm.");
   if (state.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ phòng mới được bắt đầu.");
   if (state.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi mới bắt đầu được.");
-  await sendText(api, event, [
-    "**JOHNTRAN** ❗",
-    "🔔 LƯU Ý QUAN TRỌNG TRƯỚC KHI BẮT ĐẦU VÁN BÀI:",
-    "Tất cả người chơi vui lòng KHÔNG CHẶN TIN NHẮN NGƯỜI LẠ với Bot, để Bot có thể chia bài và gửi ảnh các lá bài trên tay vào tin nhắn riêng cho bạn nhé!",
-    "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước."
-  ].join("\n"));
+  if (state.practice) {
+    await sendText(api, event,
+      "🧠 CHẾ ĐỘ LUYỆN TẬP: Không cược xu. Bot sẽ gửi bài của Admin riêng và tự điều khiển 3 AI.");
+  } else {
+    await sendText(api, event, [
+      "**JOHNTRAN** ❗",
+      "🔔 LƯU Ý QUAN TRỌNG TRƯỚC KHI BẮT ĐẦU VÁN BÀI:",
+      "Tất cả người chơi vui lòng KHÔNG CHẶN TIN NHẮN NGƯỜI LẠ với Bot, để Bot có thể chia bài và gửi ảnh các lá bài trên tay vào tin nhắn riêng cho bạn nhé!",
+      "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước."
+    ].join("\n"));
+  }
   const reserved = state.practice
     ? { ok: true, reserve: 0 }
     : await reserveRoomWallets(Users, state, () => persistRoom(Threads, threadId));
@@ -1243,7 +1248,9 @@ async function startRoom({ api, event, Users, Threads }) {
     await persistRoom(Threads, threadId);
     await sendGroupRoom(api, event, game.snapshot(room),
       "🚫 Không gửi được bài riêng cho " + failedPrivate.join(", ") +
-      ". Ván đã hủy để bảo vệ bài; " + (refunded ? "xu cược đã hoàn." : "khoản hoàn cược đang được đồng bộ.") +
+      ". Ván đã hủy để bảo vệ bài; " +
+      (room.practice ? "đây là ván luyện tập nên không có xu cược." :
+        refunded ? "xu cược đã hoàn." : "khoản hoàn cược đang được đồng bộ.") +
       " Người chơi hãy mở chat riêng với bot và bật nhận tin nhắn người lạ, sau đó chủ phòng có thể start lại.");
     return;
   }
