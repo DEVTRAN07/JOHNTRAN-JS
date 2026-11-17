@@ -40,10 +40,12 @@ function snapshot(room) {
     ownerName: room.ownerName,
     bet: room.bet,
     mode: room.mode,
+    practice: Boolean(room.practice),
     status: room.status,
     players: room.players.map(player => ({
       uid: player.uid,
       name: player.name,
+      ai: Boolean(player.ai),
       handCount: room.hands?.[player.uid]?.length ?? (room.status === "waiting" ? null : 13),
       place: room.finishOrder.findIndex(uid => uid === player.uid) + 1
     })),
@@ -85,6 +87,7 @@ function create(threadId, owner, options = {}) {
     ownerName: String(owner.name || "Chủ phòng").slice(0, 40),
     bet,
     mode: options.mode === "demla" ? "demla" : "nhatnhi",
+    practice: Boolean(options.practice),
     status: "waiting",
     players: [{ uid: String(owner.uid), name: String(owner.name || "Chủ phòng").slice(0, 40) }],
     hands: null,
@@ -125,7 +128,11 @@ function join(threadId, code, player) {
     return { ok: true, alreadyJoined: true, player: room.players.find(item => item.uid === uid), room: snapshot(room), state: room };
   }
   if (room.players.length >= MAX_PLAYERS) return { ok: false, code: "FULL" };
-  const item = { uid, name: String(player.name || "Người chơi").slice(0, 40) };
+  const item = {
+    uid,
+    name: String(player.name || "Người chơi").slice(0, 40),
+    ai: Boolean(player.ai)
+  };
   room.players.push(item);
   return { ok: true, player: item, room: snapshot(room), state: room };
 }
@@ -517,7 +524,8 @@ function restore(saved) {
   const id = String(saved.id);
   const players = saved.players.map(item => ({
     uid: String(item?.uid || ""),
-    name: String(item?.name || "Người chơi").replace(/[\r\n\t]/g, " ").slice(0, 40)
+    name: String(item?.name || "Người chơi").replace(/[\r\n\t]/g, " ").slice(0, 40),
+    ai: Boolean(item?.ai)
   })).filter(item => item.uid);
 
   if (players.length < 1 || players.length > MAX_PLAYERS ||
