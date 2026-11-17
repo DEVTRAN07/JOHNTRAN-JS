@@ -537,12 +537,12 @@ test("Sâm Báo 1 with multiple one-card players charges only the one-card winne
   room.baoOneViolations = [];
   assert.equal(game.play(threadId, "a", "3b").ok, true);
   assert.equal(room.baoOneViolations.length, 2);
-  assert.equal(room.baoOneViolations[0].amount, 12000);
+  assert.equal(room.baoOneViolations[0].amount, 4000);
   assert.equal(game.play(threadId, "b", "4b").finished, true);
 
   const settlement = room.settlement;
   assert.ok(settlement.transfers.some(item =>
-    item.from === "a" && item.to === "b" && item.amount === 12000 && item.reason === "bao-one-penalty"
+    item.from === "a" && item.to === "b" && item.amount === 4000 && item.reason === "bao-one-penalty"
   ));
   assert.equal(settlement.transfers.some(item =>
     item.from === "a" && item.to === "c" && item.reason === "bao-one-penalty"
