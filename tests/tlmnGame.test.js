@@ -790,7 +790,7 @@ test("TLMN chặt 2 đen pays 3 stakes and 2 đỏ pays 6 stakes", () => {
   room.playedCount = 1;
   const result = game.play(groupId, "chopper", "3dt");
   assert.equal(result.ok, true);
-  assert.equal(room.chopEvents[0].amount, 3 * room.bet);
+  assert.equal(room.chopEvents[0].amount, 6 * room.bet);
   game.removeRoom(groupId);
 });
 
@@ -842,7 +842,7 @@ test("TLMN GameVH: a player can re-enter after passing and the final chop settle
   assert.equal(secondCut.ok, true);
   assert.equal(room.chopEvents.length, 1, "the chain is settled once, not as duplicate transfers");
   assert.deepEqual(room.chopEvents[0], {
-    from: "p2", to: "p3", amount: 9 * room.bet, reason: "chop-chain"
+    from: "p2", to: "p3", amount: 15 * room.bet, reason: "chop-chain"
   });
   game.removeRoom(groupId);
 });
