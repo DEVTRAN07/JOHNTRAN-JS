@@ -268,7 +268,7 @@ function renderTable(ctx, width, height, scale, data) {
   } else {
     const title = room.status === "waiting"
       ? "MỜI NGƯỜI CHƠI THAM GIA"
-      : room.playedCount === 0 ? "NGƯỜI CÓ 3♠ ĐI TRƯỚC" : "CHƯA CÓ BÀI TRÊN BÀN";
+      : room.playedCount === 0 ? (room.previousWinnerUid ? "NGƯỜI THẮNG VÁN TRƯỚC ĐI ĐẦU" : "NGƯỜI MỞ ĐẦU NGẪU NHIÊN") : "CHƯA CÓ BÀI TRÊN BÀN";
     drawText(ctx, title, width / 2, tableY + px(133), scale, {
       size: 17, weight: 900, color: "#f4dfb0", align: "center"
     });
