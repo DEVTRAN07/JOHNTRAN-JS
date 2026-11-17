@@ -1399,7 +1399,7 @@ async function startRoom({ api, event, Users, Threads }) {
   if (state.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi mới bắt đầu được.");
   if (state.practice) {
     await sendText(api, event,
-      "🧠 CHẾ ĐỘ LUYỆN TẬP: Không cược xu. Admin luôn được 3♠ đi đầu; 3 AI sẽ nhường khi Admin ra bài.");
+      "🧠 CHẾ ĐỘ LUYỆN TẬP: Không cược xu. Admin được chia bộ bài mạnh để thử chiến thuật; AI vẫn đánh chặn theo luật bình thường.");
   } else {
     await sendText(api, event, [
       "**JOHNTRAN** ❗",
@@ -1450,7 +1450,7 @@ async function startRoom({ api, event, Users, Threads }) {
   }
   await sendGroupRoom(api, event, result.room,
     room.practice
-      ? "🎮 Đã chia bài cho Admin. Phòng luyện tập trợ giúp Admin thắng; AI sẽ nhường lượt khi Admin ra bài."
+      ? "🎮 Đã chia bài luyện tập cho Admin. AI sẽ tự tìm nước đánh hợp lệ, không tự động nhường lượt."
       : "🎮 Đã chia 13 lá riêng cho từng người. Người có 3♠ đi trước.");
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, Users, Threads, room);
