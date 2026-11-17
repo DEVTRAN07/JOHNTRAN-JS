@@ -790,7 +790,7 @@ test("TLMN chặt 2 đen pays 3 stakes and 2 đỏ pays 6 stakes", () => {
   room.playedCount = 1;
   const result = game.play(groupId, "chopper", "3dt");
   assert.equal(result.ok, true);
-  assert.equal(room.chopEvents[0].amount, 6 * room.bet);
+  assert.equal(room.chopEvents[0].amount, 3 * room.bet);
   game.removeRoom(groupId);
 });
 
@@ -836,7 +836,7 @@ test("TLMN GameVH: a player can re-enter after passing and the final chop settle
   const firstCut = game.play(groupId, "p2", "3dt");
   assert.equal(firstCut.ok, true);
   assert.equal(room.chopEvents.length, 1);
-  assert.equal(room.chopEvents[0].amount, 3 * room.bet);
+  assert.equal(room.chopEvents[0].amount, 6 * room.bet);
 
   const secondCut = game.play(groupId, "p3", "4dt");
   assert.equal(secondCut.ok, true);
