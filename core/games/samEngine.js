@@ -122,6 +122,31 @@ function parsePlayText(hand, input) {
     return cards.length === 4 ? { ok: true, cards } : { ok: false, code: "NOT_ENOUGH_CARDS" };
   }
 
+  match = source.match(/^(sanh|straight)\s+(.+)$/);
+  if (match) {
+    const sequenceSource = match[2].replace(/[\s,._-]+/g, "").toLowerCase();
+    const sequence = [];
+    const tokenPattern = /(10|[3-9]|[jqka2])/g;
+    let token;
+    let consumed = "";
+    while ((token = tokenPattern.exec(sequenceSource)) !== null) {
+      if (token.index !== consumed.length) return { ok: false, code: "INVALID_STRAIGHT" };
+      const rank = RANK_VALUE[token[1]] ?? (/^\d+$/.test(token[1]) ? Number(token[1]) : null);
+      if (!RANK_LABEL[rank]) return { ok: false, code: "INVALID_STRAIGHT" };
+      sequence.push(rank);
+      consumed += token[0];
+    }
+    if (consumed !== sequenceSource || sequence.length < 3 ||
+        sequence.includes(15) || new Set(sequence).size !== sequence.length ||
+        sequence.some((rank, index) => index > 0 && rank !== sequence[index - 1] + 1)) {
+      return { ok: false, code: "INVALID_STRAIGHT" };
+    }
+    const sortedHand = sortHand(hand);
+    const cards = sequence.map(rank => sortedHand.filter(card => card.rank === rank).slice(-1)[0]);
+    if (cards.some(card => !card)) return { ok: false, code: "NOT_ENOUGH_CARDS" };
+    return { ok: true, cards: sortHand(cards) };
+  }
+
   const matches = [...source.matchAll(/(10|[3-9]|[jqka2])(ch|b|r|c|t)/g)];
   if (!matches.length) return { ok: false, code: "UNRECOGNIZED_PLAY" };
   const residue = source.replace(/(10|[3-9]|[jqka2])(ch|b|r|c|t)/g, "")
