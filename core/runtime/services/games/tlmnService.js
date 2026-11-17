@@ -545,6 +545,13 @@ function play(threadId, uid, input) {
   const hand = room.hands[actor] || [];
   const parsed = engine.parsePlayText(hand, input);
   if (!parsed.ok) return parsed;
+  const candidate = engine.analyzeCombo(parsed.cards);
+  const wasPassed = room.passed.has(actor);
+  // GameVH's four-pair-run exception is the only way back into a trick
+  // after passing; other combinations remain locked out for that trick.
+  if (wasPassed && !(candidate?.type === "pairRun" && candidate.length >= 4)) {
+    return { ok: false, code: "ALREADY_PASSED" };
+  }
   const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo);
   if (!validation.ok) return validation;
 
@@ -623,7 +630,7 @@ function play(threadId, uid, input) {
     cards: validation.combo.cards.map(card => ({ ...card }))
   };
   room.playedCount += 1;
-  room.passed.clear();
+  if (wasPassed) room.passed.delete(actor);
 
   const handCount = room.hands[actor].length;
   if (handCount === 0) {
