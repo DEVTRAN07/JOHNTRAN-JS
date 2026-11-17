@@ -2010,5 +2010,5 @@ module.exports._test = {
   shouldSendMoveError, sendMoveHint, scheduleAiTurn, tableCaption, buildTurnMentionCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,
-  finalizeRoomCleanup, recallRoomCards, recallPrivateHand, withRoomActionLock
+  finalizeRoomCleanup, recallRoomCards, recallPrivateHand, withRoomActionLock, doLeave
 };
