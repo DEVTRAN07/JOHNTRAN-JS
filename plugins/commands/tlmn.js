@@ -1747,7 +1747,7 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
 
 module.exports._test = {
   parseAmount, formatMoney, normalizeWallet, tierForCoins,
-  isAiUid, privateDestination, chooseAiMove, scheduleAiTurn,
+  isAiUid, privateDestination, sendPrivateHand, chooseAiMove, scheduleAiTurn,
   tableCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,
