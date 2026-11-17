@@ -22,6 +22,16 @@ function get(threadId) {
   return sessions.get(String(threadId)) || null;
 }
 
+// A waiting PvP lobby and an active match both occupy the group.
+function isBusy(threadId) {
+  const session = get(threadId);
+  return Boolean(session && session.status !== "ended");
+}
+
+function isPlaying(threadId) {
+  return get(threadId)?.status === "active";
+}
+
 function makePlayer(uid, name, kind = "human") {
   return {
     uid: String(uid),
@@ -31,8 +41,7 @@ function makePlayer(uid, name, kind = "human") {
 }
 
 function canStart(threadId) {
-  const current = get(threadId);
-  return !current || current.status === "ended";
+  return !isBusy(threadId);
 }
 
 function startSolo(threadId, options = {}) {
@@ -228,7 +237,7 @@ function watchTurn(threadId, onTimeout) {
   const timer = setTimeout(() => {
     timers.delete(key);
     const current = get(key);
-    if (!current || current.status !== "active" ||
+    if (current !== session || current.status !== "active" ||
         current.moves !== expectedMoves ||
         current.turnSymbol !== symbol ||
         current.turnUid !== player.uid) return;
@@ -249,7 +258,7 @@ function watchLobby(threadId, onTimeout) {
   const timer = setTimeout(() => {
     timers.delete(key);
     const current = get(key);
-    if (!current || current.status !== "waiting") return;
+    if (current !== session || current.status !== "waiting") return;
     current.status = "ended";
     Promise.resolve(onTimeout?.({ session: current }))
       .catch(() => {});
@@ -264,6 +273,8 @@ module.exports = {
   LOBBY_TIMEOUT_MS,
   sessions,
   get,
+  isBusy,
+  isPlaying,
   startSolo,
   startPvp,
   join,

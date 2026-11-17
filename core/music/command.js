@@ -198,7 +198,8 @@ async function runMusic(providerName, { api, event, args, reply }) {
       return reply.error(`Số thứ tự không hợp lệ (1 - ${pageTracks.length}) ở trang ${pending.page || 1}.`);
     }
     music.clearPending(key);
-    return sendTrack(reply, threadId, type, track, providerName, api, options.quality);
+    const selectedQuality = options.quality || pending.quality || null;
+    return sendTrack(reply, threadId, type, track, providerName, api, selectedQuality);
   }
 
   const nav = (args[0] || "").toLowerCase();

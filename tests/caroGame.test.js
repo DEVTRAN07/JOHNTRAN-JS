@@ -212,3 +212,23 @@ test("Caro board recall keeps failed IDs so the next update can retry", async ()
   assert.equal(await caroCommand._test.recallPreviousBoard(successfulApi, threadId, 1), true);
   assert.equal(attempts, 3);
 });
+
+
+test("Caro lifecycle distinguishes occupied and active groups", () => {
+  const threadId = "caro-lifecycle-" + Date.now();
+  const waiting = game.startPvp(threadId, { uid: "host", name: "Host" });
+  assert.equal(waiting.ok, true);
+  assert.equal(game.isBusy(threadId), true, "waiting lobby reserves the group");
+  assert.equal(game.isPlaying(threadId), false, "waiting lobby is not accepting board moves");
+
+  game.stop(threadId);
+  assert.equal(game.isBusy(threadId), false, "ended sessions must not block other games");
+  assert.equal(game.isPlaying(threadId), false);
+
+  const restarted = game.startSolo(threadId, { uid: "human", name: "Human" });
+  assert.equal(restarted.ok, true, "a new game can replace an ended session");
+  assert.equal(game.isBusy(threadId), true);
+  assert.equal(game.isPlaying(threadId), true);
+  game.finish(threadId);
+  assert.equal(game.isBusy(threadId), false);
+});

@@ -275,7 +275,7 @@ async function startNoituRoom({ api, event }) {
   if (!uid || !threadId) return;
   const caro = require("../../core/runtime/services/games/caroService");
   if (game.get(threadId)?.status === "active" || ghepChu.get(threadId)?.status === "active" ||
-      quickNoitu.get(threadId)?.status === "active" || caro.get(threadId)) {
+      quickNoitu.get(threadId)?.status === "active" || caro.isBusy(threadId)) {
     return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở phòng Nối Từ.");
   }
   const result = noituRoom.create(threadId, uid, event?.data?.dName || event?.data?.name || "Người chơi");
@@ -390,7 +390,7 @@ async function startQuickNoitu({ api, event }) {
   const threadId = String(event?.threadId || "");
   if (!uid || !threadId) return;
   const caro = require("../../core/runtime/services/games/caroService");
-  if (game.get(threadId)?.status === "active" || ghepChu.get(threadId)?.status === "active" || noituRoom.get(threadId) || caro.get(threadId)) {
+  if (game.get(threadId)?.status === "active" || ghepChu.get(threadId)?.status === "active" || noituRoom.get(threadId) || caro.isBusy(threadId)) {
     return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở Nối Từ Tốc Độ.");
   }
   const result = quickNoitu.start(threadId, uid, event?.data?.dName || event?.data?.name || "Người chơi");
@@ -821,7 +821,7 @@ async function startGhepChu({ api, event }) {
     return send(api, event, "⚠️ Nhóm đang có ván Nối Từ. Hãy dừng ván đó trước khi mở Ghép Chữ.");
   }
   const caro = require("../../core/runtime/services/games/caroService");
-  if (caro.get(threadId)) {
+  if (caro.isBusy(threadId)) {
     return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Ghép Chữ.");
   }
   if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước.");
@@ -1210,7 +1210,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   }
   if (action === "go") {
     const caro = require("../../core/runtime/services/games/caroService");
-    if (quickNoitu.get(threadId)?.status === "active" || noituRoom.get(threadId) || ghepChu.get(threadId)?.status === "active" || caro.get(threadId)) {
+    if (quickNoitu.get(threadId)?.status === "active" || noituRoom.get(threadId) || ghepChu.get(threadId)?.status === "active" || caro.isBusy(threadId)) {
       return send(api, event, "⚠️ Nhóm đang có game khác. Hãy kết thúc game hiện tại trước khi mở Nối Từ Solo.");
     }
     return startSoloBotGame({ api, event });
@@ -1220,7 +1220,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     if (quickNoitu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Nối Từ Tốc Độ. Hãy dừng ván đó trước khi mở Nối Từ.");
     if (noituRoom.get(threadId)) return send(api, event, "⚠️ Nhóm đang có phòng Nối Từ. Hãy kết thúc phòng đó trước.");
     if (ghepChu.get(threadId)?.status === "active") return send(api, event, "⚠️ Nhóm đang có ván Ghép Chữ. Hãy dừng ván đó trước khi mở Nối Từ.");
-    if (caro.get(threadId)) return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Nối Từ.");
+    if (caro.isBusy(threadId)) return send(api, event, "⚠️ Nhóm đang có ván Caro. Hãy kết thúc ván đó trước khi mở Nối Từ.");
     const name = String(event?.data?.dName || event?.data?.name || "Người chơi");
     const result = game.start(threadId, uid, name);
     if (!result.ok) return send(api, event, "⚠️ Nhóm đang có ván Nối Từ. Gõ join để vào lượt.");
