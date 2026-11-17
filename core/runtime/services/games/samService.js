@@ -388,6 +388,28 @@ function pass(threadId, uid) {
   if (room.turnUid !== actor) return { ok: false, code: "NOT_TURN" };
   if (!room.currentCombo || !room.lastPlayerUid) return { ok: false, code: "CANNOT_PASS_ON_LEAD" };
   if (room.lastPlayerUid === actor) return { ok: false, code: "LEADER_CANNOT_PASS" };
+
+  // GameVH Báo 1: when the reported player's remaining card is the
+  // current single, an opponent who can beat it must play their highest
+  // card instead of passing. If their highest rank cannot beat it, passing
+  // remains legal. Lower-card plays are still settled by the Bao 1 penalty.
+  if (room.currentCombo.type === "single") {
+    const reportedOne = room.players.find(item =>
+      item.uid !== actor &&
+      !room.finishOrder.includes(item.uid) &&
+      room.hands?.[item.uid]?.length === 1
+    );
+    const highestRank = (room.hands[actor] || []).reduce((highest, card) =>
+      Math.max(highest, Number(card.rank) || 0), 0);
+    if (reportedOne && highestRank > Number(room.currentCombo.mainRank || 0)) {
+      return {
+        ok: false,
+        code: "MUST_PLAY_HIGHEST_CARD",
+        reportedUid: reportedOne.uid
+      };
+    }
+  }
+
   room.passed.add(actor);
   const activeCount = room.players.filter(item => !room.finishOrder.includes(item.uid)).length;
   const requiredPasses = Math.max(0, activeCount - 1);
@@ -425,7 +447,19 @@ function timeoutTurn(threadId, uid) {
     return { ok: false, code: "NO_TURN" };
   }
   if (room.currentCombo && room.lastPlayerUid !== String(uid)) {
-    return { ...pass(threadId, uid), timedOut: true, action: "pass" };
+    const passed = pass(threadId, uid);
+    if (!passed.ok && passed.code === "MUST_PLAY_HIGHEST_CARD") {
+      const highest = engine.sortHand(room.hands[String(uid)] || []).slice(-1)[0];
+      if (highest) {
+        return {
+          ...play(threadId, uid, [highest]),
+          timedOut: true,
+          action: "play",
+          forcedByBaoOne: true
+        };
+      }
+    }
+    return { ...passed, timedOut: true, action: "pass" };
   }
   const hand = room.hands[String(uid)] || [];
   const first = engine.sortHand(hand)[0];
