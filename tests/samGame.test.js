@@ -297,6 +297,20 @@ test("Sâm private hand sends a canvas to My Documents and replaces the previous
   }
 });
 
+test("Sâm group board automatically warns when a player is down to one card", () => {
+  const caption = command._test.roomCaption({
+    id: "81527",
+    status: "playing",
+    turnUid: "p2",
+    players: [
+      { uid: "p1", name: "Người A", handCount: 4, place: 0 },
+      { uid: "p2", name: "Người B", handCount: 1, place: 0 }
+    ]
+  });
+  assert.match(caption, /BÁO 1 LÁ/);
+  assert.match(caption, /Người B chỉ còn 1 lá/);
+});
+
 test("Sâm help documents rules and My Documents destination is reserved for the bot owner", () => {
   assert.match(command._test.help("!"), /BÁO SÂM/i);
   assert.match(command._test.help("!"), /LỦNG SÂM/i);
