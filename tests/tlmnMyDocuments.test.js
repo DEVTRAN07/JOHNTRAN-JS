@@ -96,7 +96,7 @@ test("TLMN Admin keeps the royal hand design in real-player rooms too", async ()
     assert.equal(canvasCalls.length, 1);
     assert.equal(canvasCalls[0][0], "tlmn");
     assert.equal(canvasCalls[0][1].isAdmin, true);
-    assert.equal(canvasCalls[0][1].room.practice, false);
+    assert.equal(canvasCalls[0][1].room.id, room.id);
     assert.match(api.sent[0].payload.msg, /BÀI HOÀNG GIA CỦA ADMIN/);
   } finally {
     global.users = previousUsers;
