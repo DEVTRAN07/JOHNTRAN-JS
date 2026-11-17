@@ -19,7 +19,7 @@ module.exports.config = {
   author: "JOHNTRAN",
   description: "Sâm Lốc 2–4 người, 10 lá mỗi người, báo Sâm và lủng Sâm",
   category: "Game",
-  usage: "sam [go|join <mã>|start|baosam|pass|leave|stop|help]",
+  usage: "sam [go|join <mã>|start|baosam|pass|leave|stop|info|help]",
   cooldowns: 0,
   dependencies: {}
 };
@@ -370,11 +370,14 @@ function help(prefix = "!") {
     "🃏 SÂM LỐC — JOHNTRAN",
     "",
     prefix + "sam go — Mở bàn hoặc tham gia bàn đang chờ",
+    prefix + "sam open — Tương tự go, mở/tham gia bàn",
     prefix + "sam join <mã> — Vào bàn theo mã 5 số",
     prefix + "sam start — Chủ bàn bắt đầu (2–4 người)",
     prefix + "sam baosam — Báo Sâm trước nước đầu tiên",
     prefix + "sam leave — Rời bàn",
     prefix + "sam stop — Chủ bàn hủy bàn",
+    prefix + "sam info — Xem trạng thái bàn hiện tại",
+    prefix + "sam help — Xem hướng dẫn lệnh",
     "",
     "Mỗi người nhận 10 lá. Ăn trắng: sảnh 10 lá, tứ quý 2, 10 lá cùng màu, 3 sám cô hoặc 5 đôi.",
     "Đánh: 3b • doi 7 • sam 9 • tuquy 5 • sanh 345 • chon 1,2 • pass",
@@ -671,7 +674,7 @@ async function runCommand(context) {
   const rest = args.slice(1).map(String);
   const prefix = global.config?.prefix || "!";
   if (action === "help") return sendText(api, event, help(prefix));
-  if (action === "go" || action === "open") return createOrJoin(context);
+  if (action === "go" || action === "open" || action === "create") return createOrJoin(context);
   if (action === "join") return joinRoom(context, rest[0]);
   if (action === "start") return startRoom(context);
   if (action === "baosam" || action === "bao" || action === "xinlang") return callSam(context);
@@ -687,7 +690,7 @@ async function runCommand(context) {
     await persistRoom(Threads, event.threadId);
     return sendText(api, event, "🛑 Đã hủy bàn Sâm #" + room.id + ".");
   }
-  if (action === "info") {
+  if (action === "info" || action === "status") {
     const room = await restoreRoom(Threads, event.threadId);
     return room ? sendGroupRoom(api, event, game.snapshot(room)) : sendText(api, event, "⚠️ Nhóm chưa có bàn Sâm.");
   }
