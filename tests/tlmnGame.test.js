@@ -696,6 +696,9 @@ test("TLMN new rule table calculates rác, black/red heo, đôi thông and tứ 
   assert.equal(game.calculateLeftoverPenalty([7,7,7,7].map((rank, index) => ({
     rank, suit: ["b","ch","r","c"][index], id: String(rank) + ["b","ch","r","c"][index]
   })), bet), 8000);
+  assert.equal(game.calculateLeftoverPenalty([15,15,15,15].map((rank, index) => ({
+    rank, suit: ["b","ch","r","c"][index], id: String(rank) + ["b","ch","r","c"][index]
+  })), bet), 12000, "two black and two red twos are charged by their two-pair rates only");
   assert.equal(game.calculateLeftoverPenalty([3,4,5,6].flatMap(rank => [
     { rank, suit: "b", id: String(rank) + "b" },
     { rank, suit: "c", id: String(rank) + "c" }
