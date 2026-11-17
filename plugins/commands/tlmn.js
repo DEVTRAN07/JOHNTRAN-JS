@@ -504,7 +504,7 @@ async function settleRoomWallets(Users, room, results) {
   const requiredLock = 26 * (room.players.length - 1) * Number(room.bet);
   if (!Number.isSafeInteger(requiredLock) || requiredLock <= 0 ||
       room.players.some(item => Number(room.locked?.[item.uid]) !== requiredLock)) {
-    throw new Error("Thiếu khoản ký quỹ tối đa 78 cược/người; giữ nguyên bàn để đối soát.");
+    throw new Error("Thiếu khoản ký quỹ 100 cược/người; giữ nguyên bàn để đối soát.");
   }
   const lines = [];
   for (const player of room.players) {
@@ -661,7 +661,7 @@ function help(prefix) {
     "Đánh: 3b • doi 4 • sam 7 • sanh 345 • tuquy 4 • 3dt • 4dt",
     prefix + "tlmn info • bxh • pay @user <số> • nap @user <số>",
     "",
-    "Xu là đơn vị ảo trong game. Bot giữ tối đa 26 cược/người làm ký quỹ và tự quyết toán theo sổ thối/chặt."
+    "Xu là đơn vị ảo trong game. Bot giữ 100 cược/người làm ký quỹ và tự quyết toán theo sổ thối/chặt."
   ].join("\n");
 }
 
@@ -1427,7 +1427,7 @@ async function startRoom({ api, event, Users, Threads }) {
       "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước."
     ].join("\n"));
   }
-  state.reservePerPlayer = state.practice ? 0 : 26 * (state.players.length - 1) * Number(state.bet);
+  state.reservePerPlayer = state.practice ? 0 : 100 * Number(state.bet);
   const reserved = state.practice
     ? { ok: true, reserve: 0 }
     : await reserveRoomWallets(Users, state, () => persistRoom(Threads, threadId));
