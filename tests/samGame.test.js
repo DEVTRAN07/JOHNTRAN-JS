@@ -1061,3 +1061,37 @@ test("Sâm startup completes a saved cancelPending refund instead of resuming th
   assert.equal(game.get(threadId), null);
   assert.equal(Threads.records.get(threadId)?.sam_room, undefined);
 });
+
+
+test("Sâm settlement rejects pending or malformed escrow ledger before wallet writes", async () => {
+  const Users = makeMemoryUsers({ a: 75000, b: 75000 });
+  const Threads = makeMemoryThreads();
+  const base = {
+    id: "81617",
+    gameToken: "sam-escrow-guard",
+    stake: 100,
+    players: [{ uid: "a", name: "A" }, { uid: "b", name: "B" }],
+    locked: { a: 25000, b: 25000 },
+    lockPending: { a: { amount: 25000, transactionId: "pending" } },
+    settlement: {
+      winnerUid: "a",
+      transfers: [],
+      net: { a: 0, b: 0 }
+    },
+    winnerUid: "a",
+    settled: false
+  };
+
+  const pending = await command._test.settleSamWallets(Users, base, Threads);
+  assert.deepEqual(pending, { ok: false, code: "PENDING_ESCROW_RESERVATION" });
+
+  const malformed = {
+    ...base,
+    lockPending: {},
+    settlement: { winnerUid: "a", transfers: [], net: { a: 0 } }
+  };
+  const invalid = await command._test.settleSamWallets(Users, malformed, Threads);
+  assert.deepEqual(invalid, { ok: false, code: "INVALID_SETTLEMENT_LEDGER" });
+  assert.equal(Users.records.get("a").tlmn.coins, 75000);
+  assert.equal(Users.records.get("b").tlmn.coins, 75000);
+});
