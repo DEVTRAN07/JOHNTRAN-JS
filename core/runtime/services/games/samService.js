@@ -87,6 +87,7 @@ function create(threadId, owner, options = {}) {
     stake: Math.max(1000, Math.floor(Number(options.stake) || 5000)),
     playedByUid: {},
     chopEvents: [],
+    baoOneViolations: [],
     settlement: null,
     createdAt: Number(options.now) || Date.now(), startedAt: null, finishedAt: null
   };
@@ -194,6 +195,11 @@ function calculateSettlement(room) {
   for (const chop of Array.isArray(room.chopEvents) ? room.chopEvents : []) {
     add(chop.from, chop.to, chop.amount, chop.reason || "chop");
   }
+  for (const violation of Array.isArray(room.baoOneViolations) ? room.baoOneViolations : []) {
+    if (String(violation.to) === winnerUid) {
+      add(violation.from, violation.to, violation.amount, "bao-one-penalty");
+    }
+  }
 
   if (room.whiteHand || room.samStatus === "success") {
     for (const player of room.players) {
@@ -209,13 +215,12 @@ function calculateSettlement(room) {
       const hand = room.hands[uid] || [];
       const counts = new Map();
       for (const card of hand) counts.set(Number(card.rank), (counts.get(Number(card.rank)) || 0) + 1);
-      let amount = 0;
+      const cong = !(Number(room.playedByUid?.[uid]) > 0);
+      let amount = cong ? 15 * stake : 0; // Cóng: 15 cược, không tính rác thường
       for (const [rank, count] of counts) {
         if (rank === 15) amount += count * 15 * stake; // Thối 2
         else if (count === 4) amount += 15 * stake; // Thối tứ quý
-        else amount += count * stake; // Mỗi lá rác còn lại
-      }
-      if (!(Number(room.playedByUid?.[uid]) > 0)) amount += 15 * stake; // Cóng
+        else if (!cong) amount += count * stake; // Mỗi lá rác còn lại
       add(uid, winnerUid, amount, "leftover-heo-quad-cong");
     }
     if (room.samStatus === "failed" && room.samCallerUid && room.samBlockedByUid) {
@@ -249,14 +254,12 @@ function play(threadId, uid, input) {
   const hand = room.hands[actor];
   const parsed = Array.isArray(input) ? { ok: true, cards: input } : engine.parsePlayText(hand, input);
   if (!parsed.ok) return parsed;
-  const oneCardOpponent = room.players.some(item =>
+  const oneCardOpponents = room.players.filter(item =>
     item.uid !== actor && room.hands[item.uid]?.length === 1
   );
   const highestCard = engine.sortHand(hand).slice(-1)[0];
-  if (oneCardOpponent && highestCard &&
-      !parsed.cards.some(card => card.id === highestCard.id)) {
-    return { ok: false, code: "MUST_PLAY_HIGHEST_ON_BAO_ONE" };
-  }
+  const ignoresHighest = oneCardOpponents.length && highestCard &&
+    !parsed.cards.some(card => card.id === highestCard.id);
   const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo);
   if (!validation.ok) return validation;
 
@@ -264,6 +267,17 @@ function play(threadId, uid, input) {
   if (engine.removeCards(hand, combo.cards).length === 0 &&
       combo.cards.some(card => Number(card.rank) === 15)) {
     return { ok: false, code: "CANNOT_FINISH_WITH_TWO" };
+  }
+  if (ignoresHighest) {
+    room.baoOneViolations ||= [];
+    const totalCards = room.players.reduce((sum, item) =>
+      sum + (room.hands[item.uid]?.length || 0), 0);
+    for (const target of oneCardOpponents) {
+      room.baoOneViolations.push({
+        from: actor, to: target.uid,
+        amount: totalCards * Math.max(1, Math.floor(Number(room.stake) || 5000))
+      });
+    }
   }
   if (room.currentCombo && room.lastPlayerUid && combo.type === "fourKind" &&
       ((room.currentCombo.type === "single" && room.currentCombo.mainRank === 15) ||
@@ -434,6 +448,10 @@ function restore(saved) {
     samCallerHasPlayed: Boolean(saved.samCallerHasPlayed),
     playedByUid: saved.playedByUid && typeof saved.playedByUid === "object" ? saved.playedByUid : {},
     chopEvents: Array.isArray(saved.chopEvents) ? saved.chopEvents.filter(item =>
+      ids.has(String(item?.from || "")) && ids.has(String(item?.to || "")) &&
+      Number.isSafeInteger(Number(item?.amount)) && Number(item.amount) > 0
+    ).map(item => ({ ...item })) : [],
+    baoOneViolations: Array.isArray(saved.baoOneViolations) ? saved.baoOneViolations.filter(item =>
       ids.has(String(item?.from || "")) && ids.has(String(item?.to || "")) &&
       Number.isSafeInteger(Number(item?.amount)) && Number(item.amount) > 0
     ).map(item => ({ ...item })) : []
