@@ -104,7 +104,7 @@ test("stopping a serial job during an in-flight send prevents future sends", asy
     await inFlight;
 
     assert.equal(running.has("group-2"), false);
-    assert.equal(job.count, 0, "a stopped in-flight send is not counted as another active cycle");
+    assert.equal(job.count, 1, "a send that completed successfully before stop is counted");
     assert.equal(timers.length, 1, "no future send should be scheduled");
   } finally {
     global.setTimeout = originalSetTimeout;

@@ -49,9 +49,10 @@ function startSerialJob({ threadId, running, job, delayMs, run, onComplete, onEr
         return;
       }
 
-      // Stop may have been requested while the current API call was in flight.
-      if (running.get(key) !== job || job.stopped) return;
+      // The send succeeded, so count it even if /off was pressed while
+      // the API call was in flight. Stopping still prevents the next cycle.
       job.count = Math.max(0, Number(job.count) || 0) + 1;
+      if (running.get(key) !== job || job.stopped) return;
       schedule();
     }, delay);
     job.timer.unref?.();
