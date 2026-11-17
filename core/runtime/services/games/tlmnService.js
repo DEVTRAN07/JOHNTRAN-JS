@@ -73,6 +73,8 @@ function snapshot(room) {
     threeSpadesFinisherUid: room.threeSpadesFinisherUid || null,
     threeSpadesBlockedByUid: room.threeSpadesBlockedByUid || null,
     threeSpadesAttemptUid: room.threeSpadesAttemptUid || null,
+    threeSpadesThoiUid: room.threeSpadesThoiUid || null,
+    threeSpadesRescuerUid: room.threeSpadesRescuerUid || null,
     createdAt: room.createdAt,
     startedAt: room.startedAt,
     finishedAt: room.finishedAt,
@@ -115,6 +117,8 @@ function create(threadId, owner, options = {}) {
     threeSpadesFinisherUid: null,
     threeSpadesBlockedByUid: null,
     threeSpadesAttemptUid: null,
+    threeSpadesThoiUid: null,
+    threeSpadesRescuerUid: null,
     threeSpadesBlockEvents: [],
     chopEvents: [],
     settlement: null,
@@ -261,6 +265,8 @@ function resetToWaiting(threadId) {
   room.finishedAt = null;
   room.results = null;
   room.whiteHand = null;
+  room.threeSpadesThoiUid = null;
+  room.threeSpadesRescuerUid = null;
   room.settled = false;
   return true;
 }
@@ -472,15 +478,23 @@ function calculateLeftoverPenalty(hand, bet) {
 function calculateSettlement(room) {
   const players = room.players || [];
   const bet = Math.max(1, Math.floor(Number(room.bet) || 5000));
+  const hasThreeSpadesThoi = Boolean(room.threeSpadesThoiUid && room.threeSpadesRescuerUid);
   const winnerUid = String(room.whiteHand?.uid ||
-    (room.threeSpadesFinisherUid && !room.threeSpadesBlockedByUid
-      ? room.threeSpadesFinisherUid : room.finishOrder?.[0] || ""));
+    (hasThreeSpadesThoi ? room.threeSpadesRescuerUid :
+      room.threeSpadesFinisherUid && !room.threeSpadesBlockedByUid
+        ? room.threeSpadesFinisherUid : room.finishOrder?.[0] || ""));
   const transfers = [];
   const add = (from, to, amount, reason) => {
     const value = Math.max(0, Math.floor(Number(amount) || 0));
     if (from && to && from !== to && value) transfers.push({ from, to, amount: value, reason });
   };
-  if (room.whiteHand) {
+  if (hasThreeSpadesThoi) {
+    // GameVH's "Thối 3 Bích": if the player who just played is left holding
+    // only 3♠ and another player covers that play, the blocker rescues the
+    // table and receives 26 stakes per other player (not a normal chop fee).
+    add(room.threeSpadesThoiUid, room.threeSpadesRescuerUid,
+      26 * bet * Math.max(1, players.length - 1), "thoi-ba-bich");
+  } else if (room.whiteHand) {
     const multiplier = {
       dragonStraight: 9, sixPairRun: 8, fourTriples: 7, twoFourKinds: 6,
       twelveSameSuit: 5, fivePairRun: 4, fourTwos: 3, sixPairs: 2
@@ -576,6 +590,12 @@ function play(threadId, uid, input) {
 
   const previousCombo = room.currentCombo;
   const previousLeader = room.lastPlayerUid;
+  // A player who has just played their penultimate card and is left with
+  // only 3♠ loses that special escape if another player covers the play.
+  const threeSpadesThoiUid = previousCombo && previousLeader && previousLeader !== actor &&
+    room.hands[previousLeader]?.length === 1 &&
+    room.hands[previousLeader]?.[0]?.id === "3b"
+      ? previousLeader : null;
   if (!room.currentCombo) {
     room.trickParticipants = [];
     room.trickTwoUnits = 0;
@@ -590,7 +610,7 @@ function play(threadId, uid, input) {
   const playedTwoUnits = combo.cards.reduce((sum, card) => sum + (card.rank === 15
     ? (card.suit === "b" || card.suit === "ch" ? 3 : 6) : 0), 0);
   room.trickTwoUnits = Math.max(0, Number(room.trickTwoUnits) || 0) + playedTwoUnits;
-  const chops = previousCombo && previousLeader && (
+  const chops = !threeSpadesThoiUid && previousCombo && previousLeader && (
     (previousCombo.type === "single" && previousCombo.mainRank === 15 &&
       (combo.type === "pairRun" && combo.length >= 3 || combo.type === "fourKind")) ||
     (previousCombo.type === "pair" && previousCombo.mainRank === 15 &&
@@ -657,6 +677,32 @@ function play(threadId, uid, input) {
   };
   room.playedCount += 1;
   if (wasPassed) room.passed.delete(actor);
+
+  if (threeSpadesThoiUid) {
+    room.threeSpadesThoiUid = threeSpadesThoiUid;
+    room.threeSpadesRescuerUid = actor;
+    // This rescue wins the whole game even when the rescuer still has cards.
+    // Preserve earlier finishers as losers and rank the 3♠ holder last.
+    room.finishOrder = [actor, ...room.finishOrder.filter(value => value !== actor)];
+    room.activeUids = room.activeUids.filter(value => value !== threeSpadesThoiUid);
+    room.forfeitUids ||= [];
+    if (!room.forfeitUids.includes(threeSpadesThoiUid)) {
+      room.forfeitUids.push(threeSpadesThoiUid);
+    }
+    finishRoom(room);
+    return {
+      ok: true,
+      finished: true,
+      threeSpadesThoi: true,
+      threeSpadesThoiUid,
+      threeSpadesRescuerUid: actor,
+      combo: validation.combo,
+      handCount: room.hands[actor]?.length || 0,
+      results: room.results,
+      room: snapshot(room),
+      state: room
+    };
+  }
 
   const handCount = room.hands[actor].length;
   if (handCount === 0) {
