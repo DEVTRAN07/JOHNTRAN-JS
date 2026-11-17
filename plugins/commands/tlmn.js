@@ -7,6 +7,7 @@ const { renderCanvas } = require("../../core/canvas/workerRender");
 const game = require("../../core/runtime/services/games/tlmnService");
 const engine = require("../../core/games/tlmnEngine");
 const { firstMention, withRequesterMention } = require("../../core/mentions");
+const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 
 const DEFAULT_COINS = 100000;
 const MIN_BET = 1000;
@@ -20,6 +21,10 @@ const messageLocks = new Map();
 const cleanupTimers = new Map();
 const AI_UID_PREFIX = "tlmn-ai:";
 const aiTimers = new Map();
+const moveErrorNotices = new Map();
+const groupMoveErrorNotices = new Map();
+const MOVE_ERROR_USER_COOLDOWN_MS = 12000;
+const MOVE_ERROR_GROUP_COOLDOWN_MS = 2500;
 const SUIT_HELP = "b = Bích, ch = Chuồn, r = Rô, c = Cơ";
 
 module.exports.config = {
@@ -110,6 +115,47 @@ function getRawApi(api) {
 function sendText(api, event, message) {
   const payload = withRequesterMention(event, { msg: String(message || "") });
   return api.sendMessage(payload, event.threadId, event.type);
+}
+
+function shouldSendMoveError(threadId, uid, code, now = Date.now()) {
+  const groupKey = String(threadId || "");
+  const userKey = groupKey + ":" + String(uid || "");
+  const userUntil = moveErrorNotices.get(userKey) || 0;
+  const groupUntil = groupMoveErrorNotices.get(groupKey) || 0;
+  if (now < userUntil || now < groupUntil) return false;
+
+  const userCooldown = code === "UNRECOGNIZED_PLAY" ? 18000 : MOVE_ERROR_USER_COOLDOWN_MS;
+  moveErrorNotices.set(userKey, now + userCooldown);
+  groupMoveErrorNotices.set(groupKey, now + MOVE_ERROR_GROUP_COOLDOWN_MS);
+
+  if (moveErrorNotices.size > 1000) {
+    for (const [key, expiry] of moveErrorNotices) {
+      if (expiry <= now) moveErrorNotices.delete(key);
+      if (moveErrorNotices.size <= 700) break;
+    }
+  }
+  if (groupMoveErrorNotices.size > 500) {
+    for (const [key, expiry] of groupMoveErrorNotices) {
+      if (expiry <= now) groupMoveErrorNotices.delete(key);
+      if (groupMoveErrorNotices.size <= 350) break;
+    }
+  }
+  return true;
+}
+
+async function sendMoveError(api, event, uid, code, message) {
+  if (!shouldSendMoveError(event?.threadId, uid, code)) return false;
+  await sendText(api, event, message);
+  return true;
+}
+
+async function sendPrivateNotice(api, uid, message) {
+  const destination = privateDestination(api, uid);
+  return getRawApi(api).sendMessage(
+    { msg: String(message || "") },
+    destination.threadId,
+    destination.type
+  );
 }
 
 function isAiUid(uid) {
@@ -596,6 +642,8 @@ function help(prefix) {
     "stop — Chủ phòng hủy bàn",
     "bo / pass — Bỏ lượt khi có người đánh trước",
     "Gửi lá bài: 3b, 10r, 2c hoặc nhiều lá liền nhau",
+    "chon 1,2 — Chọn bài theo số thứ tự trên ảnh (từ trái sang phải)",
+    "goiy — Gửi gợi ý riêng • auto — Tự đánh bộ hợp lệ nhanh nhất",
     "doi 4 — Chọn đôi 4  •  sanh 4567 — Chọn sảnh",
     "tuquy 4 — Chọn tứ quý  •  doithong  — đánh các lá đôi thông",
     "",
@@ -662,7 +710,10 @@ async function renderImage(api, kind, key, threadId, type, data, caption, fallba
     const payload = { msg: caption, attachments: [imagePath], recallAfterMs: 0, ttlKind: "card" };
     if (kind === "group") {
       return await sendReplacement(api, key, threadId, type,
-        rawApi => rawApi.sendMessage(withRequesterMention(data.event, payload), threadId, type));
+        rawApi => rawApi.sendMessage(withRequesterMention(
+        data.event,
+        data.mentions?.length ? { ...payload, mentions: data.mentions } : payload
+      ), threadId, type));
     }
     return await sendReplacement(api, key, threadId, type,
       rawApi => rawApi.sendMessage(payload, threadId, type));
@@ -670,7 +721,12 @@ async function renderImage(api, kind, key, threadId, type, data, caption, fallba
     console.error("[TLMN_CANVAS]", error?.stack || error);
     const rawApi = getRawApi(api);
     try {
-      if (kind === "group") return await rawApi.sendMessage(withRequesterMention(data.event, { msg: fallbackText || caption }), threadId, type);
+      if (kind === "group") return await rawApi.sendMessage(withRequesterMention(
+        data.event,
+        data.mentions?.length
+          ? { msg: fallbackText || caption, mentions: data.mentions }
+          : { msg: fallbackText || caption }
+      ), threadId, type);
       return await rawApi.sendMessage({ msg: fallbackText || caption }, threadId, type);
     } catch (sendError) {
       console.error("[TLMN_SEND]", sendError?.message || sendError);
@@ -687,10 +743,29 @@ async function renderImage(api, kind, key, threadId, type, data, caption, fallba
 }
 
 async function sendGroupRoom(api, event, room, notice = "") {
-  const caption = tableCaption(room, notice);
+  const players = await Promise.all((room.players || []).map(async item => {
+    if (item.ai || isAiUid(item.uid)) return item;
+    const profile = await getRequesterProfile(api, {
+      data: { uidFrom: item.uid, dName: item.name }
+    }, { waitMs: 350, skipAvatarWarm: true });
+    return { ...item, avatarUrl: profile?.requesterAvatarUrl || "" };
+  }));
+  const displayRoom = { ...room, players };
+  let caption = tableCaption(displayRoom, notice);
+  const activePlayer = players.find(item => String(item.uid) === String(room.turnUid));
+  const mentions = [];
+  if (room.status === "playing" && activePlayer && !activePlayer.ai && !isAiUid(activePlayer.uid)) {
+    const cleanName = String(activePlayer.name || "Người chơi")
+      .replace(/[\\r\\n\\t]+/g, " ").replace(/\\s+/g, " ").trim() || "Người chơi";
+    const tag = "@" + cleanName;
+    const line = "\\n\\n🎯 " + tag + " — tới lượt bạn, hãy đánh bài!";
+    const position = caption.length + line.indexOf(tag);
+    caption += line;
+    mentions.push({ uid: String(activePlayer.uid), pos: position, len: tag.length });
+  }
   return renderImage(
     api, "group", "group:" + room.threadId, room.threadId, event.type,
-    { view: "table", room, event },
+    { view: "table", room: displayRoom, event, mentions },
     caption,
     caption
   );
@@ -874,6 +949,12 @@ function scheduleRoomTurn(api, Users, Threads, room) {
 function chooseAiMove(room, uid) {
   const hand = room?.hands?.[String(uid)] || [];
   if (!hand.length) return null;
+
+  // In the explicitly admin-only practice sandbox, AI opponents pass every
+  // Admin-led trick so the owner can test the full play flow and win reliably.
+  if (room.practice && room.practiceWinnerUid &&
+      String(room.lastPlayerUid) === String(room.practiceWinnerUid) &&
+      room.currentCombo) return null;
   const mustContainThreeOfSpades = Number(room.playedCount) === 0;
   let best = null;
   let bestScore = Number.POSITIVE_INFINITY;
@@ -907,6 +988,70 @@ function chooseAiMove(room, uid) {
     }
   }
   return best;
+}
+
+function chooseQuickMove(room, uid) {
+  const hand = room?.hands?.[String(uid)] || [];
+  if (!hand.length) return null;
+  const mustContainThreeOfSpades = Number(room.playedCount) === 0;
+  const priorities = { pairRun: 90, straight: 75, fourKind: 70, triple: 45, pair: 30, single: 10 };
+  let best = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  // Explore every subset of a 13-card hand, then keep the legal move that
+  // sheds the most cards while preferring structured combinations.
+  for (let mask = 1; mask < (1 << hand.length); mask += 1) {
+    const cards = [];
+    for (let index = 0; index < hand.length; index += 1) {
+      if (mask & (1 << index)) cards.push(hand[index]);
+    }
+    if (mustContainThreeOfSpades && !cards.some(card => card.id === "3b")) continue;
+    const validation = engine.validatePlay(hand, cards, room.currentCombo || null, {
+      mustContainThreeOfSpades
+    });
+    if (!validation.ok) continue;
+    const combo = validation.combo;
+    const score = cards.length * 1000 + (priorities[combo.type] || 0) * 10 -
+      combo.mainRank * 2 - combo.highSuit;
+    if (score > bestScore) {
+      bestScore = score;
+      best = {
+        cards: combo.cards.map(card => ({ ...card })),
+        input: combo.cards.map(engine.cardCode).join(" "),
+        combo,
+        score
+      };
+    }
+  }
+  return best;
+}
+
+async function sendMoveHint(context) {
+  const { api, event } = context;
+  const uid = String(event?.data?.uidFrom || "");
+  const room = game.get(String(event?.threadId || ""));
+  if (!room || room.status !== "playing" || !room.activeUids.includes(uid)) return false;
+  if (room.turnUid !== uid) {
+    await sendMoveError(api, event, uid, "NOT_TURN", "⏳ Chưa đến lượt bạn.");
+    return true;
+  }
+  const move = chooseQuickMove(room, uid);
+  const message = move
+    ? [
+        "⚡ GỢI Ý NƯỚC ĐÁNH NHANH",
+        "Bộ: " + engine.COMBO_LABEL[move.combo.type],
+        "Lá: " + engine.formatCards(move.cards),
+        "Lệnh: " + move.input,
+        "Có thể gõ auto để bot đánh giúp hoặc tự chọn bằng chon 1,2."
+      ].join("\\n")
+    : "⛔ Không có bộ hợp lệ để chặn. Bạn có thể gõ bo để bỏ lượt.";
+  try {
+    await sendPrivateNotice(api, uid, message);
+  } catch (error) {
+    console.warn("[TLMN_HINT]", error?.message || error);
+    await sendMoveError(api, event, uid, "HINT_DELIVERY", "⚠️ Chưa gửi được gợi ý vào bài riêng.");
+  }
+  return true;
 }
 
 function clearAiTurn(threadId) {
@@ -1137,7 +1282,8 @@ async function createAiPractice(context) {
 
   const created = game.create(threadId, { uid, name }, {
     bet: 5000,
-    practice: true
+    practice: true,
+    practiceWinnerUid: uid
   });
   if (!created.ok) {
     return sendText(api, event, "⚠️ Không thể tạo bàn luyện tập với AI.");
@@ -1297,7 +1443,7 @@ async function startRoom({ api, event, Users, Threads }) {
   }
   await sendGroupRoom(api, event, result.room,
     room.practice
-      ? "🎮 Đã chia bài cho bạn và 3 AI. Người có 3♠ đi trước; ván này không cược xu."
+      ? "🎮 Đã chia bài cho Admin. Phòng luyện tập trợ giúp Admin thắng; AI sẽ nhường lượt khi Admin ra bài."
       : "🎮 Đã chia 13 lá riêng cho từng người. Người có 3♠ đi trước.");
   await persistRoom(Threads, threadId);
   scheduleRoomTurn(api, Users, Threads, room);
@@ -1328,7 +1474,9 @@ async function doPlay(context, input) {
       CANNOT_BEAT: "⛔ Bài này không chặt được bộ đang nằm trên bàn.",
       NO_GAME: "⚠️ Ván đã kết thúc."
     };
-    if (errors[result.code]) await sendText(api, event, errors[result.code]);
+    if (errors[result.code]) await sendMoveError(
+      api, event, uid, result.code, errors[result.code]
+    );
     return true;
   }
 
@@ -1642,13 +1790,32 @@ async function handleIncoming(context = {}) {
     await doLeave(context);
     return true;
   }
-  if (["bo", "pass", "skip"].includes(lower) && room.status === "playing") {
-    await doPass(context);
-    return true;
-  }
   if (room.status === "playing" && room.activeUids.includes(String(event?.data?.uidFrom || ""))) {
+    if (["goi y", "goiy", "hint", "suggest"].includes(lower)) {
+      await sendMoveHint(context);
+      return true;
+    }
+    if (["auto", "danh nhanh", "ra nhanh", "tu dong"].includes(lower)) {
+      const uid = String(event?.data?.uidFrom || "");
+      if (room.turnUid !== uid) {
+        await sendMoveError(api, event, uid, "NOT_TURN", "⏳ Chưa đến lượt bạn.");
+        return true;
+      }
+      const move = chooseQuickMove(room, uid);
+      if (!move) {
+        await sendMoveError(api, event, uid, "NO_AUTO_MOVE", "⛔ Không tìm được nước đánh hợp lệ; hãy gõ bo nếu được phép.");
+        return true;
+      }
+      await doPlay(context, move.input);
+      return true;
+    }
+    if (["bo", "pass", "skip"].includes(lower)) {
+      await doPass(context);
+      return true;
+    }
     const hasCardSyntax = /(10|[3-9]|[jqka2])(ch|dt|b|r|c|t)/i.test(lower) ||
-      /^(doi(\s*thong)?|doithong|pair|double|sam(\s*co)?|triple|tu\s*quy|tuquy|four|sanh|straight|le|single)\b/.test(lower);
+      /^(doi(\\s*thong)?|doithong|pair|double|sam(\\s*co)?|triple|tu\\s*quy|tuquy|four|sanh|straight|le|single)\\b/.test(lower) ||
+      /^(chon|select|vi\\s*tri|vitri)\\b/.test(lower);
     if (hasCardSyntax) {
       await doPlay(context, content);
       return true;
@@ -1747,8 +1914,8 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
 
 module.exports._test = {
   parseAmount, formatMoney, normalizeWallet, tierForCoins,
-  isAiUid, privateDestination, sendPrivateHand, chooseAiMove, scheduleAiTurn,
-  tableCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
+  isAiUid, privateDestination, sendPrivateHand, chooseAiMove, chooseQuickMove,
+  shouldSendMoveError, sendMoveHint, scheduleAiTurn, tableCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,
   finalizeRoomCleanup, recallRoomCards, recallPrivateHand, withRoomActionLock
