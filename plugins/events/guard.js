@@ -7,7 +7,8 @@
 // cách làm an toàn nhất là cảnh cáo + kick khi tái phạm.
 const fs = require("fs");
 const path = require("path");
-const { Reactions, GroupEventType } = require("zalo-client");
+const { Reactions } = require("zalo-client");
+const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
 
 const BADWORDS_FILE = path.join(__dirname, "..", "..", "assets", "spam", "badwords.txt");
 const WARN_LIMIT = 3; // số cảnh cáo trước khi kick
@@ -72,15 +73,16 @@ module.exports.run = async function ({ api, event, Threads, isSelf }) {
   const content = String(data?.content || "");
   if (!content) return;
 
-  // Bỏ qua lệnh và tin của admin nhóm (admin nhóm tự gửi link thì không canh)
-  const isGroupAdmin = data?.isGroupAdmin === true || data?.isAdmin === true || data?.isGroupAdmin === 1;
-  if (isGroupAdmin) return;
+  const uid = String(data.uidFrom || "");
+  if (!uid) return;
+
+  // Event flags can be absent on some Zalo frames. Skip moderation unless
+  // the live group profile confirms the sender is not an admin.
+  const hasAdminFlag = data?.isGroupAdmin === true || data?.isAdmin === true || data?.isGroupAdmin === 1;
+  if (hasAdminFlag || await getGroupAdminState(api, threadId, uid) !== false) return;
 
   const thread = (await Threads.getData(threadId)).data || {};
   if (!thread.event_guard) return;
-
-  const uid = String(data.uidFrom || "");
-  if (!uid) return;
 
   const allowed = defaultAllowedHosts().concat(Array.isArray(thread.guard_allowed_hosts) ? thread.guard_allowed_hosts : []);
   const link = content.match(LINK_RE)?.[1];

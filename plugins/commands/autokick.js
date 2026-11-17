@@ -1,4 +1,6 @@
 // Tự động kick thành viên vi phạm từ cấm (lưu theo nhóm trong DB)
+const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
+
 module.exports.config = {
   name: "autokick",
   aliases: ["kick","tucam"],
@@ -93,12 +95,9 @@ module.exports.handleEvent = async function ({ api, event, Threads }) {
   const isAdmin = global.users?.admin?.includes(uid) || global.users?.support?.includes(uid);
   if (isAdmin) return;
 
-  // Quản trị nhóm được miễn trừ
-  try {
-    const info = await api.getGroupInfo(threadId);
-    const g = info?.gridInfoMap?.[threadId];
-    if (g && (g.creatorId === uid || (g.adminIds || []).includes(uid))) return;
-  } catch { /* bỏ qua */ }
+  // Never apply an automatic kick unless Zalo confirms the sender is not
+  // a group admin. Missing role metadata or API errors are treated as unknown.
+  if (await getGroupAdminState(api, threadId, uid) !== false) return;
 
   const content = data.content.toLowerCase();
   const found = autoKick.words.find((w) => new RegExp(`(^|\\s)${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`, "i").test(content));
