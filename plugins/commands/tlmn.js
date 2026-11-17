@@ -530,8 +530,10 @@ async function settleRoomWallets(Users, room, results) {
     throw new Error("Thiếu sổ quyết toán thối/chặt; không chốt xu.");
   }
   const netTotal = Object.values(settlement.net).reduce((sum, value) => sum + Number(value), 0);
-  if (!Number.isSafeInteger(netTotal) || netTotal !== 0) {
-    throw new Error("Sổ thối/chặt không cân bằng; không chốt xu.");
+  const houseFee = Number(settlement.houseFee) || 0;
+  if (!Number.isSafeInteger(netTotal) || !Number.isSafeInteger(houseFee) ||
+      houseFee < 0 || netTotal !== -houseFee) {
+    throw new Error("Sổ thối/chặt không khớp khoản phí GameVH; không chốt xu.");
   }
   if (Object.keys(room.lockPending || {}).length) {
     throw new Error("Còn khoản ký quỹ đang chờ xác minh; chưa được chốt xu.");
@@ -1292,6 +1294,10 @@ async function endGame(api, event, Users, roomState, Threads) {
       (result.place === 1 ? "👑 " : "• ") + "**" + result.name + "** (" + result.label +
       "): **" + sign + formatMoney(result.change) + "**"
     );
+  }
+  if (Number(room.settlement?.houseFee) > 0) {
+    lines.push("", "🏦 Phí hệ thống 5% trên khoản nhận đặc biệt 3 Bích: " +
+      formatMoney(room.settlement.houseFee) + ".");
   }
   lines.push("", "👉 Ván bài đã kết thúc! Nhắn **!tlmn go** (hoặc **go**) để mở bàn mới và chơi tiếp nhé!");
   return sendText(api, event, lines.join("\n"));
