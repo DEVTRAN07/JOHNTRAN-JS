@@ -80,7 +80,7 @@ test("Tiến Lên engine: 52 lá và chia 13 lá cho 2–4 người", () => {
     const ids = Array.from({ length: count }, (_, index) => "p" + index);
     const dealt = engine.dealCards(ids, () => 0.37);
     assert.ok(ids.every(uid => dealt.hands[uid].length === 13));
-    assert.ok(dealt.hands[dealt.firstPlayerId].some(card => card.id === "3b"));
+    assert.ok(ids.includes(dealt.firstPlayerId));
   }
 });
 
@@ -119,7 +119,7 @@ test("TLMN engine: all direct card examples parse", () => {
   assert.equal(engine.parseCardCode("3t").suit, "ch");
 });
 
-test("TLMN service: timeout automatically plays 3b on the opening turn", () => {
+test("TLMN service: timeout automatically plays a legal card on the random opening turn", () => {
   const groupId = "tlmn-timeout-opening";
   const created = game.create(groupId, { uid: "owner", name: "Owner" });
   assert.equal(created.ok, true);
@@ -130,7 +130,7 @@ test("TLMN service: timeout automatically plays 3b on the opening turn", () => {
   const timeout = game.timeoutTurn(groupId, firstUid);
   assert.equal(timeout.ok, true);
   assert.equal(timeout.action, "play");
-  assert.ok(timeout.combo.cards.some(card => card.id === "3b"));
+  assert.ok(room.hands[firstUid].every(card => card.id !== timeout.combo.cards[0].id));
   game.removeRoom(groupId);
 });
 
@@ -393,7 +393,14 @@ test("TLMN wallet: settlement is idempotent and statistics are atomic with payou
   await command._test.readWallet(Users, "loser");
   const room = game.create("tlmn-settlement", { uid: "winner" }).state;
   game.join("tlmn-settlement", room.id, { uid: "loser" });
-  room.locked = { winner: 5000, loser: 5000 };
+  room.bet = 5000;
+  room.locked = { winner: 130000, loser: 130000 };
+  room.hands = { winner: [], loser: [{ rank: 3, suit: "b", id: "3b" }] };
+  room.settlement = {
+    bet: 5000, winnerUid: "winner",
+    transfers: [{ from: "loser", to: "winner", amount: 5000, reason: "thoi-bai" }],
+    net: { winner: 5000, loser: -5000 }
+  };
   const results = [
     { uid: "winner", name: "Winner", place: 1 },
     { uid: "loser", name: "Loser", place: 2 }
@@ -411,7 +418,7 @@ test("TLMN wallet: settlement is idempotent and statistics are atomic with payou
 });
 
 
-test("TLMN deal: 3♠ is always in a dealt hand for 2, 3, and 4 players", () => {
+test("TLMN deal: random first player is valid for 2, 3, and 4 players", () => {
   let checked = 0;
   for (const playerCount of [2, 3, 4]) {
     for (let seed = 1; seed <= 200; seed += 1) {
@@ -423,7 +430,7 @@ test("TLMN deal: 3♠ is always in a dealt hand for 2, 3, and 4 players", () => 
       const ids = Array.from({ length: playerCount }, (_, index) => "seed-" + index);
       const dealt = engine.dealCards(ids, random);
       assert.ok(dealt.firstPlayerId, "missing first player: " + playerCount + " players, seed " + seed);
-      assert.ok(dealt.hands[dealt.firstPlayerId].some(card => card.id === "3b"));
+      assert.ok(ids.includes(dealt.firstPlayerId));
       assert.ok(ids.every(uid => dealt.hands[uid].length === 13));
       checked += 1;
     }
@@ -528,7 +535,7 @@ test("TLMN settlement: missing buy-in is rejected without minting coins", async 
       { uid: "no-buyin-a", name: "A", place: 1 },
       { uid: "no-buyin-b", name: "B", place: 2 }
     ]),
-    /Thiếu khoản giữ cược/
+    /Thiếu khoản ký quỹ/
   );
   assert.equal((await command._test.readWallet(Users, "no-buyin-a")).coins, 100000);
   assert.equal((await command._test.readWallet(Users, "no-buyin-b")).coins, 100000);
