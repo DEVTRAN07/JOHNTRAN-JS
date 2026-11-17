@@ -10,6 +10,7 @@ const MOVE_TIMEOUT_MS = 60 * 1000;
 const roomsByGroup = new Map();
 const roomsByCode = new Map();
 const timers = new Map();
+const previousWinners = new Map();
 
 function makeCode() {
   let code;
@@ -66,6 +67,8 @@ function snapshot(room) {
       cards: room.lastPlay.cards.map(card => ({ ...card }))
     } : null,
     playedCount: room.playedCount,
+    threeSpadesFinisherUid: room.threeSpadesFinisherUid || null,
+    threeSpadesBlockedByUid: room.threeSpadesBlockedByUid || null,
     createdAt: room.createdAt,
     startedAt: room.startedAt,
     finishedAt: room.finishedAt,
@@ -103,6 +106,13 @@ function create(threadId, owner, options = {}) {
     lastPlay: null,
     passed: new Set(),
     playedCount: 0,
+    trickParticipants: [],
+    threeSpadesFinisherUid: null,
+    threeSpadesBlockedByUid: null,
+    threeSpadesBlockEvents: [],
+    chopEvents: [],
+    settlement: null,
+    reservePerPlayer: 0,
     createdAt: Number(options.now) || Date.now(),
     startedAt: null,
     finishedAt: null,
@@ -282,6 +292,10 @@ function start(threadId, uid, random = Math.random) {
   if (room.players.length > MAX_PLAYERS) return { ok: false, code: "FULL" };
 
   const dealt = engine.dealCards(room.players.map(player => player.uid), random);
+  const previousWinner = previousWinners.get(String(threadId));
+  if (previousWinner && room.players.some(item => item.uid === previousWinner)) {
+    dealt.firstPlayerId = previousWinner;
+  }
 
   // Only the explicitly requested, no-coin Admin practice room receives a
   // curated training hand. Every human table always keeps the fair shuffled deal.
@@ -354,6 +368,99 @@ function nextActive(room, uid) {
   return null;
 }
 
+function calculateLeftoverPenalty(hand, bet) {
+  const cards = engine.sortHand(hand || []);
+  const used = new Set();
+  let amount = 0;
+  const twos = cards.filter(card => card.rank === 15);
+  const black = twos.filter(card => card.suit === "b" || card.suit === "ch");
+  const red = twos.filter(card => card.suit === "r" || card.suit === "c");
+  let blackPairs = Math.floor(black.length / 2);
+  let redPairs = Math.floor(red.length / 2);
+  const mixedPairs = Math.min(black.length % 2, red.length % 2);
+  amount += blackPairs * 4 * bet + redPairs * 8 * bet + mixedPairs * 6 * bet;
+  if ((black.length % 2) + (red.length % 2) - 2 * mixedPairs) {
+    amount += (black.length % 2 ? 2 : 4) * bet;
+  }
+  for (const card of twos) used.add(card.id);
+
+  const counts = new Map();
+  for (const card of cards.filter(item => !used.has(item.id))) {
+    counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
+  }
+  for (const [rank, count] of counts) {
+    if (count === 4) {
+      amount += 8 * bet;
+      for (const card of cards.filter(item => item.rank === rank)) used.add(card.id);
+    }
+  }
+
+  const pairRanks = [...counts.entries()].filter(([rank, count]) => rank !== 15 && count >= 2)
+    .map(([rank]) => rank).sort((a, b) => a - b);
+  let bestRun = [];
+  for (let i = 0; i < pairRanks.length; i += 1) {
+    let run = [pairRanks[i]];
+    for (let j = i + 1; j < pairRanks.length && pairRanks[j] === run[run.length - 1] + 1; j += 1) {
+      run.push(pairRanks[j]);
+    }
+    if (run.length > bestRun.length) bestRun = run;
+  }
+  if (bestRun.length >= 4) {
+    amount += 12 * bet;
+    for (const rank of bestRun.slice(-4)) {
+      for (const card of cards.filter(item => item.rank === rank)) used.add(card.id);
+    }
+  } else if (bestRun.length >= 3) {
+    amount += 6 * bet;
+    for (const rank of bestRun.slice(-3)) {
+      for (const card of cards.filter(item => item.rank === rank)) used.add(card.id);
+    }
+  }
+  amount += cards.filter(card => !used.has(card.id)).length * bet;
+  return amount;
+}
+
+function calculateSettlement(room) {
+  const players = room.players || [];
+  const bet = Math.max(1, Math.floor(Number(room.bet) || 5000));
+  const winnerUid = String(room.whiteHand?.uid ||
+    (room.threeSpadesFinisherUid && !room.threeSpadesBlockedByUid
+      ? room.threeSpadesFinisherUid : room.finishOrder?.[0] || ""));
+  const transfers = [];
+  const add = (from, to, amount, reason) => {
+    const value = Math.max(0, Math.floor(Number(amount) || 0));
+    if (from && to && from !== to && value) transfers.push({ from, to, amount: value, reason });
+  };
+  if (room.whiteHand) {
+    const multiplier = {
+      dragonStraight: 9, sixPairRun: 8, fourTriples: 7, twoFourKinds: 6,
+      twelveSameSuit: 5, fivePairRun: 4, fourTwos: 3, sixPairs: 2
+    }[room.whiteHand.type] || 0;
+    for (const item of players) if (item.uid !== winnerUid) {
+      add(item.uid, winnerUid, multiplier * bet, "white-hand-" + room.whiteHand.type);
+    }
+  } else if (room.threeSpadesFinisherUid && !room.threeSpadesBlockedByUid) {
+    for (const item of players) if (item.uid !== winnerUid) {
+      add(item.uid, winnerUid, 26 * bet, "ket-ba-bich");
+    }
+  } else {
+    for (const item of players) {
+      if (item.uid === winnerUid) continue;
+      add(item.uid, winnerUid, calculateLeftoverPenalty(room.hands?.[item.uid] || [], bet), "thoi-bai");
+    }
+  }
+  for (const event of room.chopEvents || []) add(event.from, event.to, event.amount, event.reason);
+  for (const event of room.threeSpadesBlockEvents || []) {
+    add(event.from, event.to, event.amount, "chan-ket-ba-bich");
+  }
+  const net = Object.fromEntries(players.map(item => [String(item.uid), 0]));
+  for (const transfer of transfers) {
+    net[transfer.from] -= transfer.amount;
+    net[transfer.to] += transfer.amount;
+  }
+  return { bet, winnerUid, transfers, net, calculatedAt: Date.now() };
+}
+
 function finishRoom(room) {
   if (room.status === "finished") return room.results || [];
   const left = room.activeUids.slice().sort((a, b) =>
@@ -372,13 +479,10 @@ function finishRoom(room) {
   room.finishedAt = Date.now();
   room.results = room.finishOrder.map((uid, index) => {
     const item = player(room, uid);
-    return {
-      uid,
-      name: item?.name || uid,
-      place: index + 1,
-      cardsLeft: room.hands?.[uid]?.length || 0
-    };
+    return { uid, name: item?.name || uid, place: index + 1, cardsLeft: room.hands?.[uid]?.length || 0 };
   });
+  room.settlement = calculateSettlement(room);
+  if (room.settlement?.winnerUid) previousWinners.set(String(room.threadId), room.settlement.winnerUid);
   clearTimer(room.threadId);
   return room.results;
 }
@@ -398,13 +502,55 @@ function play(threadId, uid, input) {
   const hand = room.hands[actor] || [];
   const parsed = engine.parsePlayText(hand, input);
   if (!parsed.ok) return parsed;
-  const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo, {
-    mustContainThreeOfSpades: room.playedCount === 0
-  });
+  const validation = engine.validatePlay(hand, parsed.cards, room.currentCombo);
   if (!validation.ok) return validation;
 
-  room.hands[actor] = engine.removeCards(hand, validation.combo.cards);
-  room.currentCombo = validation.combo;
+  const previousCombo = room.currentCombo;
+  const previousLeader = room.lastPlayerUid;
+  if (!room.currentCombo) room.trickParticipants = [];
+  if (!room.trickParticipants.includes(actor)) room.trickParticipants.push(actor);
+
+  const combo = validation.combo;
+  const chopMultiplier = combo.type === "pairRun" && combo.length >= 4 ? 12 :
+    combo.type === "fourKind" ? 8 : combo.type === "pairRun" && combo.length === 3 ? 6 : 0;
+  const chops = previousCombo && previousLeader && (
+    (previousCombo.type === "single" && previousCombo.mainRank === 15 &&
+      (combo.type === "pairRun" && combo.length >= 3 || combo.type === "fourKind")) ||
+    (previousCombo.type === "pairRun" && previousCombo.length === 3 &&
+      (combo.type === "pairRun" && combo.length >= 4 || combo.type === "fourKind")) ||
+    (previousCombo.type === "fourKind" && combo.type === "pairRun" && combo.length >= 4) ||
+    (previousCombo.type === "pairRun" && previousCombo.length >= 4 &&
+      combo.type === "pairRun" && combo.length >= 4 && combo.mainRank > previousCombo.mainRank)
+  );
+  if (chops && chopMultiplier) {
+    room.chopEvents ||= [];
+    room.chopEvents.push({
+      from: previousLeader, to: actor, amount: chopMultiplier * Math.max(1, Number(room.bet) || 5000),
+      reason: "chop-" + combo.type + "-" + (combo.length || 1)
+    });
+  }
+
+  if (previousCombo?.type === "single" && previousCombo.mainRank === 3 &&
+      room.threeSpadesFinisherUid && previousLeader === room.threeSpadesFinisherUid) {
+    room.threeSpadesBlockedByUid = actor;
+    const participants = [...new Set(room.trickParticipants)];
+    room.threeSpadesBlockEvents ||= [];
+    for (const uid of participants) {
+      if (uid !== room.threeSpadesFinisherUid) room.threeSpadesBlockEvents.push({
+        from: room.threeSpadesFinisherUid, to: uid,
+        amount: 26 * Math.max(1, Number(room.bet) || 5000)
+      });
+    }
+    room.finishOrder = room.finishOrder.filter(uid => uid !== room.threeSpadesFinisherUid);
+    room.forfeitUids ||= [];
+    if (!room.forfeitUids.includes(room.threeSpadesFinisherUid)) {
+      room.forfeitUids.push(room.threeSpadesFinisherUid);
+    }
+    room.threeSpadesFinisherUid = null;
+  }
+
+  room.hands[actor] = engine.removeCards(hand, combo.cards);
+  room.currentCombo = combo;
   room.lastPlayerUid = actor;
   room.lastPlay = {
     uid: actor,
@@ -418,7 +564,13 @@ function play(threadId, uid, input) {
   if (handCount === 0) {
     room.finishOrder.push(actor);
     room.activeUids = room.activeUids.filter(value => value !== actor);
-    if (room.mode === "demla" || room.activeUids.length <= 1) {
+    if (combo.cards.some(card => card.id === "3b")) {
+      room.threeSpadesFinisherUid = actor;
+    } else if (!room.threeSpadesFinisherUid && !room.threeSpadesBlockedByUid) {
+      finishRoom(room);
+      return { ok: true, finished: true, combo: validation.combo, handCount, results: room.results, room: snapshot(room), state: room };
+    }
+    if (room.activeUids.length <= 1 && !room.threeSpadesFinisherUid) {
       finishRoom(room);
       return { ok: true, finished: true, combo: validation.combo, handCount, results: room.results, room: snapshot(room), state: room };
     }
@@ -450,7 +602,12 @@ function pass(threadId, uid) {
   const requiredPasses = room.activeUids.length - (leaderStillPlaying ? 1 : 0);
   if (room.passed.size >= requiredPasses) {
     const previousLeader = room.lastPlayerUid;
+    if (room.threeSpadesFinisherUid && !room.threeSpadesBlockedByUid) {
+      finishRoom(room);
+      return { ok: true, roundCleared: true, finished: true, room: snapshot(room), state: room };
+    }
     room.currentCombo = null;
+    room.trickParticipants = [];
     room.lastPlay = null;
     room.passed.clear();
     room.turnUid = room.activeUids.includes(previousLeader)
@@ -571,6 +728,13 @@ function serialize(roomOrThreadId) {
       ...room.lastPlay,
       cards: room.lastPlay.cards.map(card => ({ ...card }))
     } : null,
+    trickParticipants: [...(room.trickParticipants || [])],
+    threeSpadesFinisherUid: room.threeSpadesFinisherUid || null,
+    threeSpadesBlockedByUid: room.threeSpadesBlockedByUid || null,
+    threeSpadesBlockEvents: (room.threeSpadesBlockEvents || []).map(item => ({ ...item })),
+    chopEvents: (room.chopEvents || []).map(item => ({ ...item })),
+    settlement: room.settlement ? JSON.parse(JSON.stringify(room.settlement)) : null,
+    reservePerPlayer: Number(room.reservePerPlayer) || 0,
     locked: { ...(room.locked || {}) },
     lockPending: { ...(room.lockPending || {}) },
     messageCards: {
