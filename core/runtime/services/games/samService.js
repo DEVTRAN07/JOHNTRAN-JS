@@ -40,6 +40,7 @@ function snapshot(room) {
   return {
     id: room.id, threadId: room.threadId, ownerId: room.ownerId,
     ownerName: room.ownerName, status: room.status,
+    bet: Number(room.stake || 5000),
     players: room.players.map(item => ({
       ...item,
       handCount: room.hands?.[item.uid]?.length ?? (room.status === "waiting" ? null : 10),
@@ -81,6 +82,9 @@ function create(threadId, owner, options = {}) {
     currentCombo: null, passed: new Set(), playedCount: 0,
     finishOrder: [], results: null, winnerUid: null, whiteHand: null,
     samCallerUid: null, samCallerHasPlayed: false, samStatus: null, samBlockedByUid: null,
+    stake: Math.max(1000, Math.floor(Number(options.stake) || 5000)),
+    playedByUid: {},
+    settlement: null,
     createdAt: Number(options.now) || Date.now(), startedAt: null, finishedAt: null
   };
   roomsByThread.set(key, room);
@@ -129,6 +133,7 @@ function finish(room, winnerUid, reason = "normal") {
     if (room.samStatus === "failed" && room.winnerUid !== room.samCallerUid &&
         !room.samBlockedByUid) room.samBlockedByUid = room.winnerUid;
   }
+  room.settlement = calculateSettlement(room);
   clearTimer(room.threadId);
   return room.results;
 }
@@ -167,6 +172,50 @@ function start(threadId, uid, random = Math.random) {
   }
   return { ok: true, finished: false, room: snapshot(room), state: room, firstPlayerId: dealt.firstPlayerId };
 }
+function calculateSettlement(room) {
+  if (!room || !Array.isArray(room.players) || !room.hands) return null;
+  const stake = Math.max(1, Math.floor(Number(room.stake) || 5000));
+  const winnerUid = String(room.winnerUid || "");
+  const transfers = [];
+  const add = (from, to, amount, reason) => {
+    const value = Math.max(0, Math.floor(Number(amount) || 0));
+    if (from && to && from !== to && value) transfers.push({ from, to, amount: value, reason });
+  };
+
+  if (room.whiteHand || room.samStatus === "success") {
+    const amount = stake * (room.whiteHand ? 20 : 20);
+    for (const player of room.players) {
+      if (player.uid !== winnerUid) add(player.uid, winnerUid, amount, room.whiteHand ? "white-hand" : "bao-sam-success");
+    }
+  } else {
+    for (const player of room.players) {
+      const uid = String(player.uid);
+      if (uid === winnerUid) continue;
+      const hand = room.hands[uid] || [];
+      let amount = hand.length * stake;
+      const twos = hand.filter(card => Number(card.rank) === 15).length;
+      const fourKinds = new Set(hand.filter(card => Number(card.rank) !== 15)
+        .map(card => Number(card.rank))).size;
+      const hasFourKind = [...new Set(hand.map(card => Number(card.rank)))]
+        .some(rank => hand.filter(card => Number(card.rank) === rank).length === 4);
+      amount += twos * 15 * stake;
+      if (hasFourKind) amount += 15 * stake;
+      if (!(Number(room.playedByUid?.[uid]) > 0)) amount += 15 * stake;
+      add(uid, winnerUid, amount, "cards-left-and-penalties");
+    }
+    if (room.samStatus === "failed" && room.samCallerUid && room.samBlockedByUid) {
+      add(room.samCallerUid, room.samBlockedByUid, 20 * stake, "bao-sam-failed");
+    }
+  }
+
+  const net = Object.fromEntries(room.players.map(player => [String(player.uid), 0]));
+  for (const transfer of transfers) {
+    net[transfer.from] -= transfer.amount;
+    net[transfer.to] += transfer.amount;
+  }
+  return { stake, winnerUid, transfers, net, calculatedAt: Date.now() };
+}
+
 function nextPlayer(room, uid) {
   const index = room.players.findIndex(item => item.uid === String(uid));
   for (let step = 1; step <= room.players.length; step += 1) {
@@ -191,12 +240,17 @@ function play(threadId, uid, input) {
   if (!validation.ok) return validation;
 
   const combo = validation.combo;
+  if (engine.removeCards(hand, combo.cards).length === 0 &&
+      combo.cards.some(card => Number(card.rank) === 15)) {
+    return { ok: false, code: "CANNOT_FINISH_WITH_TWO" };
+  }
   room.hands[actor] = engine.removeCards(hand, combo.cards);
   room.currentCombo = combo;
   room.lastPlayerUid = actor;
   const player = room.players.find(item => item.uid === actor);
   room.lastPlay = { uid: actor, name: player?.name || actor, cards: combo.cards.map(card => ({ ...card })) };
   room.playedCount += 1;
+  room.playedByUid[actor] = (Number(room.playedByUid[actor]) || 0) + combo.cards.length;
   room.passed.clear();
 
   let samLung = false;
@@ -399,5 +453,5 @@ module.exports = {
   MIN_PLAYERS, MAX_PLAYERS, MOVE_TIMEOUT_MS, LOBBY_TIMEOUT_MS, timers,
   get, getByCode, isBusy, snapshot, create, join, joinWaiting, start,
   play, pass, callSam, timeoutTurn, leave, stop, removeRoom, serialize,
-  restore, watchTurn, watchLobby, finish
+  restore, watchTurn, watchLobby, finish, calculateSettlement
 };
