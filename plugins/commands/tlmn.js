@@ -1531,7 +1531,8 @@ async function doPlay(context, input) {
       DUPLICATE_CARD: "⚠️ Bạn đã nhập trùng một lá bài.",
       CANNOT_BEAT: "⛔ Bài này không chặt được bộ đang nằm trên bàn.",
       ALREADY_PASSED: "⛔ Bạn đã bỏ lượt; chỉ được quay lại vòng này bằng 4 đôi thông.",
-      NO_GAME: "⚠️ Ván đã kết thúc."
+      NO_GAME: "⚠️ Ván đã kết thúc.",
+      CANCEL_PENDING: "⏳ Bàn đang hoàn cược/đối soát an toàn. Vui lòng thử lại sau."
     };
     if (errors[result.code]) await sendMoveError(
       api, event, uid, result.code, errors[result.code]
@@ -1579,7 +1580,8 @@ async function doPass(context) {
       NOT_PLAYER: "⚠️ Bạn không tham gia bàn này.",
       NOT_TURN: "⏳ Chưa đến lượt bạn.",
       CANNOT_PASS_ON_LEAD: "⚠️ Bạn đang được quyền ra bài, không thể bỏ lượt ở vòng mới.",
-      LEADER_CANNOT_PASS: "⚠️ Người vừa đánh bài không thể tự bỏ lượt ở vòng đó."
+      LEADER_CANNOT_PASS: "⚠️ Người vừa đánh bài không thể tự bỏ lượt ở vòng đó.",
+      CANCEL_PENDING: "⏳ Bàn đang hoàn cược/đối soát an toàn. Vui lòng thử lại sau."
     };
     if (messages[result.code]) await sendText(api, event, messages[result.code]);
     return true;
@@ -1657,6 +1659,10 @@ async function runCommand(context) {
   const prefix = global.config?.prefix || "!";
   const action = String(args[0] || "help").toLowerCase();
   const rest = args.slice(1).map(value => String(value));
+  const activeRoom = game.get(threadId);
+  if (activeRoom?.cancelPending && !["stop", "info", "help"].includes(action)) {
+    return sendText(api, event, "⏳ Bàn Tiến Lên đang hoàn cược/đối soát an toàn. Tạm khóa nước đi và thử lại sau.");
+  }
   if (action === "help") return sendText(api, event, help(prefix));
 
   if (action === "ai" || action === "vsai" || action === "bot") return createAiPractice(context);
@@ -1852,6 +1858,10 @@ async function handleIncoming(context = {}) {
   const threadId = String(event?.threadId || "");
   const room = game.get(threadId);
   if (!isEnabled(Threads, threadId)) return false;
+  if (room?.cancelPending) {
+    await sendText(api, event, "⏳ Bàn Tiến Lên đang hoàn cược/đối soát an toàn; tạm thời chưa nhận thao tác.");
+    return true;
+  }
 
   if (lower === "go" && (!room || room.status === "waiting")) {
     await createOrJoin(context);
