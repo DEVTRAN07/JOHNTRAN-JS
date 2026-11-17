@@ -45,7 +45,6 @@ function drawPlayingCard(ctx, card, x, y, w, h, scale, options = {}) {
   return renderCardFace(ctx, card, x, y, w, h, scale, options);
 }
 
-function unusedCardRendererPlaceholder() {}
 
 function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
   const px = value => Math.round(value * scale);
