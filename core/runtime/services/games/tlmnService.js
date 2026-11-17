@@ -88,6 +88,8 @@ function create(threadId, owner, options = {}) {
     bet,
     mode: options.mode === "demla" ? "demla" : "nhatnhi",
     practice: Boolean(options.practice),
+    practiceWinnerUid: options.practice && options.practiceWinnerUid
+      ? String(options.practiceWinnerUid) : null,
     status: "waiting",
     players: [{ uid: String(owner.uid), name: String(owner.name || "Chủ phòng").slice(0, 40) }],
     hands: null,
@@ -256,6 +258,25 @@ function start(threadId, uid, random = Math.random) {
   if (room.players.length > MAX_PLAYERS) return { ok: false, code: "FULL" };
 
   const dealt = engine.dealCards(room.players.map(player => player.uid), random);
+
+  // Practice rooms may be configured as a guaranteed-win sandbox for their
+  // owner. This is never enabled in public/money rooms.
+  if (room.practice && room.practiceWinnerUid && dealt.hands[room.practiceWinnerUid]) {
+    const winnerHand = dealt.hands[room.practiceWinnerUid];
+    if (dealt.firstPlayerId !== room.practiceWinnerUid) {
+      const holderHand = dealt.hands[dealt.firstPlayerId];
+      const threeOfSpadesIndex = holderHand.findIndex(card => card.id === "3b");
+      if (threeOfSpadesIndex >= 0 && winnerHand.length) {
+        const exchangedCard = winnerHand[0];
+        holderHand[threeOfSpadesIndex] = exchangedCard;
+        winnerHand[0] = { rank: 3, suit: "b", id: "3b" };
+        dealt.hands[dealt.firstPlayerId] = engine.sortHand(holderHand);
+        dealt.hands[room.practiceWinnerUid] = engine.sortHand(winnerHand);
+      }
+    }
+    if (winnerHand.some(card => card.id === "3b")) dealt.firstPlayerId = room.practiceWinnerUid;
+  }
+
   room.hands = dealt.hands;
   room.deckLeft = dealt.remainingDeck.length;
   room.activeUids = room.players.map(player => player.uid);
@@ -650,6 +671,8 @@ function restore(saved) {
   const room = {
     ...saved,
     id,
+    practiceWinnerUid: saved.practice === true && playerIds.has(String(saved.practiceWinnerUid || ""))
+      ? String(saved.practiceWinnerUid) : null,
     gameToken: String(saved.gameToken || crypto.randomUUID()),
     threadId,
     ownerId,
