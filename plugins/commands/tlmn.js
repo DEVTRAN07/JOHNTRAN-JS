@@ -464,7 +464,8 @@ async function reserveRoomWallets(Users, room, onChange = null) {
       !Number.isSafeInteger(room.bet) || room.bet < MIN_BET || room.bet > MAX_BET) {
     return { ok: false, storageError: true };
   }
-  const reserve = Number(room.reservePerPlayer) || RESERVE_MULTIPLIER * Number(room.bet);
+  const reserve = Number(room.reservePerPlayer) ||
+    Number(room.bet) * Math.max(1, room.players.length - 1);
   if (!Number.isSafeInteger(reserve) || reserve <= 0 || reserve > MAX_RESERVE) {
     return { ok: false, storageError: true };
   }
