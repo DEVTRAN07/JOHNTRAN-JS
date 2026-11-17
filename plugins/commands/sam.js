@@ -869,6 +869,8 @@ async function doPlay(context, input) {
       NO_GAME: "⚠️ Không có ván Sâm đang chơi.",
       NOT_PLAYER: "⚠️ Bạn không ở trong bàn Sâm.",
       NOT_TURN: "⏳ Chưa đến lượt bạn.",
+      CANNOT_LEAVE_TWO_LAST: "⚠️ Không được để lá 2 làm lá cuối. Hãy đánh 2 sớm hơn hoặc chọn bộ khác.",
+      CANNOT_FINISH_WITH_TWO: "⚠️ Không thể kết thúc ván bằng lá 2.",
       CANNOT_BEAT: "⛔ Bộ bài không chặn được bộ đang nằm trên bàn.",
       INVALID_COMBINATION: "⚠️ Bộ bài không hợp lệ. Dùng lẻ, đôi, sám, tứ quý hoặc sảnh.",
       INVALID_SELECTION: "⚠️ Số lá chọn không hợp lệ.",
