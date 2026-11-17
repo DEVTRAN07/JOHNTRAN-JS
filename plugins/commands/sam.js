@@ -125,7 +125,7 @@ async function sendPrivateGameGuide(api, Users, uid) {
   const result = await sendGameGuideOnce({
     Users,
     uid: userId,
-    gameKey: "sam",
+    gameKey: "sam_rules_v2",
     send: () => getRawApi(api).sendMessage(
       { msg: gameGuide() },
       destination.threadId,
