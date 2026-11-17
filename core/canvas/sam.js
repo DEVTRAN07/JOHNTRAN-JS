@@ -231,9 +231,9 @@ function renderTable(ctx, width, height, scale, data) {
     const statusText = room.samStatus === "called" ? "🔥 ĐANG BÁO SÂM" :
       room.samStatus === "success" ? "✓ BÁO SÂM THÀNH CÔNG" : "✕ LỦNG SÂM";
     const statusColor = room.samStatus === "failed" ? "#7e2430" : "#0e7655";
-    panel(ctx, width / 2 - px(118), px(619), px(236), px(38),
+    panel(ctx, width - px(286), px(82), px(236), px(38),
       px(12), statusColor, "#e4c783");
-    text(ctx, statusText, width / 2, px(644), scale, {
+    text(ctx, statusText, width - px(168), px(107), scale, {
       size: 12, color: "#fff9e9", align: "center"
     });
   }
