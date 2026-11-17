@@ -134,7 +134,7 @@ function parsePlayText(hand, input) {
   // Example: "chon 1,2" selects the first two visible cards from left to right.
   let match = source.match(/^(chon|select|vi\s*tri|vitri)\s+(.+)$/);
   if (match) {
-    const tokens = match[2].split(/[\\s,;]+/).filter(Boolean);
+    const tokens = match[2].split(/[\s,;]+/).filter(Boolean);
     const indexes = tokens.map(token => Number(token));
     if (!indexes.length || indexes.some(index => !Number.isInteger(index) || index < 1 || index > cards.length) ||
         new Set(indexes).size !== indexes.length) {
