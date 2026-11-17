@@ -605,7 +605,8 @@ test("TLMN turn UX: pass refreshes the passer's private hand without a second DM
   game.start(groupId, "pass-owner", () => 0.37);
   const room = game.get(groupId);
   const opener = room.turnUid;
-  assert.equal(game.play(groupId, opener, "3b").ok, true);
+  const openerCard = engine.sortHand(room.hands[opener])[0];
+  assert.equal(game.play(groupId, opener, engine.cardCode(openerCard)).ok, true);
   const passerUid = room.turnUid;
   const passer = room.players.find(item => item.uid === passerUid);
   const event = {
