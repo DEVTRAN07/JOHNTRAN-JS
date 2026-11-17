@@ -1252,6 +1252,10 @@ async function cancelRoom(api, event, Users, room, message) {
 
 function gameConflict(threadId) {
   try {
+    const sam = require("../../core/runtime/services/games/samService");
+    if (sam.isBusy?.(threadId)) return "Sâm Lốc";
+  } catch {}
+  try {
     const caro = require("../../core/runtime/services/games/caroService");
     if (caro.isBusy?.(threadId)) return "Caro";
   } catch {}
