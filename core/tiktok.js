@@ -27,6 +27,23 @@ function apiChain() {
   return [...new Set([configured, ...FALLBACK_APIS].filter(Boolean))];
 }
 
+function normalizeVideoData(data = {}) {
+  const videoUrl = [data.hdplay, data.play, data.wmplay]
+    .find(value => typeof value === "string" && value.trim()) || "";
+  const musicUrl = typeof data.music === "string" ? data.music.trim() : "";
+  if (!videoUrl && !musicUrl) {
+    throw new Error("TikTok không trả về link video hoặc âm thanh khả dụng.");
+  }
+  return {
+    title: String(data.title || "TikTok video"),
+    author: String(data.author?.nickname || "Không rõ"),
+    duration: Number(data.duration) || 0,
+    videoUrl,
+    musicUrl,
+    thumbnail: String(data.cover || data.origin_cover || "")
+  };
+}
+
 /**
  * Lấy thông tin video TikTok: { title, author, duration, videoUrl, thumbnail }
  * Thử lần lượt các endpoint cho tới khi có kết quả.
@@ -41,16 +58,7 @@ async function getVideoInfo(url) {
 
       const data = res.data?.data;
       if (res.data && (res.data.code === 0 || res.data.code === 200) && data) {
-        const videoUrl = data.hdplay || data.play || data.wmplay || data.music;
-        if (!videoUrl) throw new Error("Video không có link tải (có thể đã bị xoá)");
-
-        return {
-          title: data.title || "TikTok video",
-          author: data.author?.nickname || "Không rõ",
-          duration: Number(data.duration) || 0,
-          videoUrl,
-          thumbnail: data.cover || data.origin_cover || ""
-        };
+        return normalizeVideoData(data);
       }
       errors.push(`${base}: ${res.data?.msg || "không có dữ liệu"}`);
     } catch (error) {
@@ -77,4 +85,4 @@ async function healthCheck() {
   }
 }
 
-module.exports = { isTikTokUrl, getVideoInfo, healthCheck, DEFAULT_API };
+module.exports = { isTikTokUrl, getVideoInfo, healthCheck, normalizeVideoData, DEFAULT_API };

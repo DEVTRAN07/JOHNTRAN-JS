@@ -14,3 +14,23 @@ assert.strictEqual(isTikTokUrl(null), false);
 assert.strictEqual(isTikTokUrl(""), false);
 
 console.log("✓ tiktok tests passed");
+
+
+const normalizedVideo = require("../core/tiktok").normalizeVideoData({
+  title: "A TikTok",
+  author: { nickname: "Creator" },
+  duration: 12,
+  hdplay: "https://cdn.example/video.mp4",
+  music: "https://cdn.example/audio.mp3?token=1",
+  cover: "https://cdn.example/cover.jpg"
+});
+assert.strictEqual(normalizedVideo.videoUrl, "https://cdn.example/video.mp4");
+assert.strictEqual(normalizedVideo.musicUrl, "https://cdn.example/audio.mp3?token=1");
+assert.strictEqual(normalizedVideo.author, "Creator");
+
+const musicOnly = require("../core/tiktok").normalizeVideoData({
+  music: "https://cdn.example/audio.m4a"
+});
+assert.strictEqual(musicOnly.videoUrl, "");
+assert.strictEqual(musicOnly.musicUrl, "https://cdn.example/audio.m4a");
+assert.throws(() => require("../core/tiktok").normalizeVideoData({}), /không trả về link video hoặc âm thanh/i);
