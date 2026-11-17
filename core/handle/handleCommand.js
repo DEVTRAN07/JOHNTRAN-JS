@@ -52,9 +52,9 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   const menuGroupShortcut = folderMenuRuntime.resolveMenuGroup(global.client.commands, UIDUsage, commandName);
   // Groups stay silent by default; only /bot on and /bot status pass while OFF.
   if (type === ThreadType.Group && !canRunCommandInGroup(threadInfo, commandName, args)) return;
-  // A bare category shortcut opens its card. Commands with the same name
-  // (for example /anti and /admin) still execute normally when arguments exist.
-  if (!command || (menuGroupShortcut && args.length === 0)) {
+  // A bare category shortcut opens its folder unless the command explicitly
+  // owns the bare invocation (e.g. /anti renders the live Anti-Protection card).
+  if (!command || (menuGroupShortcut && folderMenuRuntime.shouldOpenMenuShortcut(command, args))) {
     try {
       const folderMenu = folderMenuRuntime;
       const folder = menuGroupShortcut;

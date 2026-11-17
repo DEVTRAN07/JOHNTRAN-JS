@@ -42,6 +42,13 @@ test("bare /anti sends the Anti-Protection image first and the status/instructio
     assert.equal(rendered.length, 1);
     assert.equal(rendered[0].type, "anti-protection-v2");
     assert.equal(rendered[0].data.items.length, 6);
+    assert.deepEqual(rendered[0].data.items.map(item => item.key), [
+      "anti_nude", "anti_undo", "anti_danger_link",
+      "anti_sticker_spam", "anti_link", "anti_spam"
+    ]);
+    assert.deepEqual(rendered[0].data.items.map(item => item.enabled), [
+      true, true, false, true, false, false
+    ], "the /anti image must mirror the exact group flags also managed by Panel");
     assert.equal(sent.length, 2, "the image and text guide are sent as two ordered messages");
     assert.deepEqual(sent[0].payload.attachments, [rendered[0].file]);
     assert.match(sent[0].payload.msg, /ANTI-PROTECTION V2/);

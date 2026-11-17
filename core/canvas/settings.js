@@ -493,9 +493,29 @@ function renderAntiProtectionCardV2(data = {}) {
       textX, y + S(39), 13.5, "#f7f9fd", true, "left", textWidth);
     drawText(ctx, item.detail || "Chế độ bảo vệ nhóm",
       textX, y + S(57), 8.1, "#c5cfdd", false, "left", textWidth);
-    drawText(ctx, item.enabled === true ? "ĐANG BẬT" : "ĐANG TẮT",
+    drawText(ctx, item.enabled === true ? "✓ ĐANG BẬT" : "○ ĐANG TẮT",
       textX, y + S(76), 7.6, item.enabled === true ? "#74e2b4" : "#adb8c8",
       true, "left", textWidth);
+
+    // Enabled features also receive an explicit green check badge on the icon,
+    // so the image remains readable even in a compressed Zalo chat preview.
+    if (item.enabled === true) {
+      const badgeX = iconX + S(40);
+      const badgeY = iconY + S(3);
+      ctx.beginPath();
+      ctx.arc(badgeX, badgeY, S(8), 0, Math.PI * 2);
+      ctx.fillStyle = "#16bf83";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(badgeX - S(4), badgeY);
+      ctx.lineTo(badgeX - S(1), badgeY + S(3));
+      ctx.lineTo(badgeX + S(4), badgeY - S(3));
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = Math.max(1, S(1.6));
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    }
 
     const switchW = S(43);
     const switchH = S(24);

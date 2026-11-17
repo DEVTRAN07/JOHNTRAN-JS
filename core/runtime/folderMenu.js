@@ -241,6 +241,12 @@ function invalidateMenuGroupIndex(commands) {
   }
 }
 
+function shouldOpenMenuShortcut(command, args) {
+  return Array.isArray(args) &&
+    args.length === 0 &&
+    command?.config?.preferCommandOnBare !== true;
+}
+
 function menuGroupForCommand(command) {
   const config = command?.config || {};
   const name = String(config.name || "").toLowerCase();
@@ -324,5 +330,6 @@ module.exports = {
   canonicalCategory, renderFolders, renderFolder, renderAllCommands,
   normalizeFolder, ALL_FOLDER_KEYS,
   MENU_GROUPS, menuGroupForCommand, collectMenuGroups, resolveMenuGroup, collectMenuGroupCommands,
-  invalidateMenuGroupIndex
+  invalidateMenuGroupIndex,
+  shouldOpenMenuShortcut
 };
