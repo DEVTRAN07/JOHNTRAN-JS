@@ -145,8 +145,8 @@ function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
     size: 11, weight: 800, color: active ? "#ffe17d" : "#b7c7bd"
   });
   if (active && compact) {
-    drawText(ctx, "▶", x + w - px(14), y + px(68), scale, {
-      size: 14, weight: 900, color: "#43e8b5", align: "right"
+    drawText(ctx, "▶ ĐẾN LƯỢT", x + w - px(14), y + px(68), scale, {
+      size: 11, weight: 900, color: "#43e8b5", align: "right"
     });
   } else if (active) {
     roundPanel(ctx, x + w - px(102), y + px(22), px(84), px(34), px(10),
@@ -169,8 +169,8 @@ function seatLayout(playerCount) {
   if (Number(playerCount) >= 4) {
     return [
       { x: 370, y: 174, w: 340, h: 92 },
-      { x: 34, y: 378, w: 194, h: 100 },
-      { x: 852, y: 378, w: 194, h: 100 },
+      { x: 22, y: 378, w: 230, h: 100 },
+      { x: 828, y: 378, w: 230, h: 100 },
       { x: 370, y: 568, w: 340, h: 92 }
     ];
   }
@@ -214,7 +214,7 @@ function renderTable(ctx, width, height, scale, data) {
       px(position.h), scale, index, Boolean(item && item.uid === room.turnUid));
   });
 
-  const tableX = players.length >= 4 ? px(240) : px(180);
+  const tableX = players.length >= 4 ? px(260) : px(180);
   const tableY = px(306);
   const tableW = width - tableX * 2;
   const tableH = px(244);
@@ -248,7 +248,7 @@ function renderTable(ctx, width, height, scale, data) {
     const cards = lastPlay.cards.slice(0, 13);
     const cardGap = px(5);
     const available = tableW - px(54);
-    const cardW = Math.min(px(48), Math.floor((available - cardGap * (cards.length - 1)) / cards.length));
+    const cardW = Math.min(px(60), Math.floor((available - cardGap * (cards.length - 1)) / cards.length));
     const cardH = px(100);
     const total = cards.length * cardW + (cards.length - 1) * cardGap;
     const startX = (width - total) / 2;
@@ -289,7 +289,7 @@ function renderTable(ctx, width, height, scale, data) {
     const current = players.find(item => item.uid === room.turnUid);
     drawText(ctx, "⏳ LƯỢT CỦA " + String(current?.name || "NGƯỜI CHƠI").toUpperCase() + "  •  60 GIÂY",
       width / 2, px(700), scale, {
-        size: 11, weight: 900, color: "#ffe19b", align: "center"
+        size: 13, weight: 900, color: "#fff0bc", align: "center"
       });
   }
 
@@ -362,7 +362,7 @@ function renderHand(ctx, width, height, scale, data) {
       size: 11, weight: 800, color: "#c0d9ca"
     });
   drawText(ctx, "Thứ tự từ trái sang phải  •  b Bích  •  ch Chuồn  •  r Rô  •  c Cơ",
-    px(78), commandY + px(150), scale, {
+    px(78), commandY + px(145), scale, {
       size: 10, weight: 900, color: "#ffd34f"
     });
   drawText(ctx, room.practice
