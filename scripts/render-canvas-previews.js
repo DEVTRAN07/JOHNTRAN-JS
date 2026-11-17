@@ -191,6 +191,25 @@ async function main() {
         { title: "THAO TÁC", lines: ["Dùng /menu để xem lệnh", "Dùng /status để xem thiết bị"] }
       ],
       footer: "JOHNTRAN · " + VERSION
+    }],
+    ["13-sam-private-hand", "sam", {
+      view: "hand",
+      room: { id: "81526" },
+      player: { uid: "preview-sam", name: "MrQ · Sâm Preview" },
+      hand: [
+        { rank: 3, suit: "b", id: "3b" },
+        { rank: 4, suit: "ch", id: "4ch" },
+        { rank: 5, suit: "r", id: "5r" },
+        { rank: 6, suit: "c", id: "6c" },
+        { rank: 7, suit: "b", id: "7b" },
+        { rank: 8, suit: "ch", id: "8ch" },
+        { rank: 9, suit: "r", id: "9r" },
+        { rank: 10, suit: "c", id: "10c" },
+        { rank: 14, suit: "b", id: "14b" },
+        { rank: 15, suit: "c", id: "15c" }
+      ],
+      isTurn: true,
+      isAdmin: false
     }]
   ];
 
@@ -253,7 +272,8 @@ async function main() {
     "",
     "Active outputs:",
     "01 menu, 02 menu folder, 03 topchat, 04 status, 05 /card profile,",
-    "06 music search, 07 now playing, 08-11 reply.card variants, 12 generic card.",
+    "06 music search, 07 now playing, 08-11 reply.card variants, 12 generic card,",
+    "13 Sâm Lốc private hand card."
     "",
     "Reference only (not mapped into canvasWorker):",
     "13-14 legacy profile and avatar renderer previews."
