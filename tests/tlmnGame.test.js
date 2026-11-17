@@ -437,6 +437,39 @@ test("TLMN wallet: settlement is idempotent and statistics are atomic with payou
 });
 
 
+test("TLMN wallet: GameVH 3 Bich fee is debited from the gross payout and reconciled", async () => {
+  const rows = new Map();
+  const Users = {
+    async getData(uid) { return { data: rows.get(String(uid)) || {} }; },
+    async setDataAndWait(uid, data) { rows.set(String(uid), data); }
+  };
+  const beforeWinner = await command._test.readWallet(Users, "winner-fee");
+  const beforeLoser = await command._test.readWallet(Users, "loser-fee");
+  const room = game.create("tlmn-fee-settlement", { uid: "winner-fee" }).state;
+  game.join("tlmn-fee-settlement", room.id, { uid: "loser-fee" });
+  room.bet = 5000;
+  room.locked = { "winner-fee": 500000, "loser-fee": 500000 };
+  room.settlement = {
+    bet: 5000,
+    winnerUid: "winner-fee",
+    transfers: [{
+      from: "loser-fee", to: "winner-fee", amount: 5000,
+      receivedAmount: 4750, fee: 250, reason: "thoi-ba-bich"
+    }],
+    net: { "winner-fee": 4750, "loser-fee": -5000 },
+    houseFee: 250
+  };
+
+  const result = await command._test.settleRoomWallets(Users, room, []);
+  const afterWinner = await command._test.readWallet(Users, "winner-fee");
+  const afterLoser = await command._test.readWallet(Users, "loser-fee");
+  assert.equal(result.length, 2);
+  assert.equal(afterWinner.coins, beforeWinner.coins + 500000 + 4750);
+  assert.equal(afterLoser.coins, beforeLoser.coins + 500000 - 5000);
+  assert.equal(room.settled, true);
+  game.removeRoom("tlmn-fee-settlement");
+});
+
 test("TLMN deal: random first player is valid for 2, 3, and 4 players", () => {
   let checked = 0;
   for (const playerCount of [2, 3, 4]) {
