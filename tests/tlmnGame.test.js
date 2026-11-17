@@ -245,6 +245,33 @@ test("TLMN command: invalid move replies are throttled per player and group", ()
   assert.equal(allow("throttle-group", "p2", "UNRECOGNIZED_PLAY", 22000), true);
 });
 
+test("TLMN board tags the human whose turn is active", () => {
+  const room = {
+    status: "playing",
+    turnUid: "next-player",
+    players: [
+      { uid: "owner", name: "Owner" },
+      { uid: "next-player", name: "Nguyễn Văn A" }
+    ]
+  };
+  const tagged = command._test.buildTurnMentionCaption(room, "TABLE");
+  assert.match(tagged.caption, /@Nguyễn Văn A/);
+  assert.equal(tagged.mentions.length, 1);
+  assert.equal(tagged.mentions[0].uid, "next-player");
+  assert.equal(tagged.caption.slice(tagged.mentions[0].pos,
+    tagged.mentions[0].pos + tagged.mentions[0].len), "@Nguyễn Văn A");
+
+  const aiRoom = {
+    ...room,
+    players: [...room.players, { uid: "tlmn-ai:1", name: "AI", ai: true }],
+    turnUid: "tlmn-ai:1"
+  };
+  assert.deepEqual(command._test.buildTurnMentionCaption(aiRoom, "TABLE"), {
+    caption: "TABLE",
+    mentions: []
+  });
+});
+
 test("TLMN event plugin registers ordinary group messages", () => {
   const tlmnEvent = require("../plugins/events/tlmn");
   assert.ok(tlmnEvent.config.event_type.includes("message"));
