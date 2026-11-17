@@ -6,6 +6,7 @@ const { withRequesterMention } = require("../../core/mentions");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const game = require("../../core/runtime/services/games/samService");
 const engine = require("../../core/games/samEngine");
+const wallet = require("./tlmn")._test;
 
 const locks = new Map();
 const cleanupTimers = new Map();
@@ -313,7 +314,8 @@ async function persistRoom(Threads, threadId) {
     const record = await Threads.getData(String(threadId));
     const data = record?.data && typeof record.data === "object" ? { ...record.data } : {};
     const room = game.get(String(threadId));
-    if (room && room.status !== "cancelled" && room.status !== "finished") data.sam_room = game.serialize(room);
+    if (room && room.status !== "cancelled" &&
+        (room.status !== "finished" || !room.settled)) data.sam_room = game.serialize(room);
     else delete data.sam_room;
     if (typeof Threads.setDataAndWait === "function") await Threads.setDataAndWait(String(threadId), data);
     else await Threads.setData(String(threadId), data);
@@ -455,8 +457,64 @@ async function distributeHands(api, room) {
   return failed;
 }
 
+async function settleSamWallets(Users, room, Threads) {
+  if (room.settled) return { ok: true, alreadySettled: true, rows: room.settlementRows || [] };
+  if (!room.settlement || !room.locked || !Array.isArray(room.players)) {
+    return { ok: false, code: "MISSING_SETTLEMENT_OR_ESCROW" };
+  }
+  const rows = [];
+  for (const player of room.players) {
+    const uid = String(player.uid);
+    const locked = Number(room.locked[uid]);
+    const net = Number(room.settlement.net?.[uid]);
+    if (!Number.isSafeInteger(locked) || locked < 0 || !Number.isSafeInteger(net) ||
+        locked + net < 0) {
+      return { ok: false, code: "INVALID_ESCROW", uid };
+    }
+    const outcome = await wallet.changeWallet(
+      Users, uid, locked + net,
+      "sam-settle:" + String(room.gameToken || room.id) + ":" + uid,
+      { mutateData(data, current) {
+        current.games += 1;
+        if (uid === String(room.winnerUid)) current.wins += 1;
+        else current.losses += 1;
+        current.name = String(player.name || uid).slice(0, 40);
+        data.tlmn = current;
+      }}
+    );
+    if (!outcome.ok) return { ok: false, code: "WALLET_CREDIT_FAILED", uid };
+    rows.push({
+      uid, name: player.name, change: net,
+      coins: outcome.coins, locked, net
+    });
+    room.settlementRows = rows.slice();
+    await persistRoom(Threads, room.threadId);
+  }
+  room.locked = {};
+  room.settled = true;
+  room.settlementError = null;
+  await persistRoom(Threads, room.threadId);
+  return { ok: true, rows };
+}
+
+async function refundSamWallets(Users, room, Threads) {
+  if (!room || !Object.keys(room.locked || {}).length) return true;
+  const refunded = await wallet.refundRoomWallets(
+    Users, room, () => persistRoom(Threads, room.threadId)
+  );
+  return refunded === true;
+}
+
 async function finishGame(context, room, notice = "") {
   const { api, event, Threads } = context;
+  const { Users } = context;
+  const settlement = await settleSamWallets(Users, room, Threads);
+  if (!settlement.ok) {
+    await persistRoom(Threads, room.threadId);
+    await sendText(api, event, "⚠️ Chưa thể chốt xu Sâm an toàn (" + settlement.code +
+      "). Bot giữ nguyên dữ liệu bàn để tự đối soát, không tự trừ lặp.");
+    return false;
+  }
   const winner = room.players.find(item => item.uid === room.winnerUid);
   const outcome = room.whiteHand
     ? "✨ ĂN TRẮNG: " + (winner?.name || "Người chơi") + " — " +
@@ -477,6 +535,12 @@ async function finishGame(context, room, notice = "") {
     "",
     outcome,
     ...results,
+    "",
+    "💰 MỨC CƯỢC: " + Number(room.stake || 5000).toLocaleString("vi-VN") + " xu",
+    ...(settlement.rows || []).map(row =>
+      (row.change >= 0 ? "🟢 +" : "🔴 ") + Math.abs(row.change).toLocaleString("vi-VN") +
+      " xu • " + row.name + " • Số dư " + Number(row.coins).toLocaleString("vi-VN")
+    ),
     "",
     "👉 Gõ !sam go để mở bàn Sâm mới."
   ].join("\n"));
@@ -502,12 +566,32 @@ async function startRoom(context) {
   if (!room || room.status !== "waiting") return sendText(api, event, "⚠️ Không có bàn Sâm đang chờ.");
   if (room.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ bàn mới được bắt đầu.");
   if (room.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi.");
+  const stake = Math.max(1000, Math.floor(Number(room.stake) || 5000));
+  room.stake = stake;
+  room.bet = Math.ceil((110 * stake) / Math.max(1, room.players.length - 1));
+  room.locked ||= {};
+  room.lockPending ||= {};
+  room.lockTransactionId ||= room.gameToken || room.id;
+  const reserved = await wallet.reserveRoomWallets(
+    context.Users, room, () => persistRoom(Threads, threadId)
+  );
+  if (!reserved.ok) {
+    return sendText(api, event, reserved.storageError
+      ? "⚠️ Không thể giữ cược trong ví. Ván chưa bắt đầu."
+      : "💸 " + (reserved.player?.name || "Một người chơi") +
+        " không đủ xu. Cần giữ " + (reserved.required || room.bet * (room.players.length - 1)).toLocaleString("vi-VN") +
+        " xu để đảm bảo thanh toán thối/chặt.");
+  }
   const started = game.start(threadId, uid);
-  if (!started.ok) return sendText(api, event, "⚠️ Không thể bắt đầu bàn Sâm.");
+  if (!started.ok) {
+    await refundSamWallets(context.Users, room, Threads);
+    return sendText(api, event, "⚠️ Không thể bắt đầu bàn Sâm; đã hoàn cược.");
+  }
   const state = started.state;
   const failed = await distributeHands(api, state);
   if (failed.length) {
     await recallRoomCards(api, state);
+    await refundSamWallets(context.Users, state, Threads);
     game.stop(threadId, uid);
     game.removeRoom(threadId);
     await persistRoom(Threads, threadId);
@@ -683,12 +767,29 @@ async function runCommand(context) {
   if (action === "stop") {
     const room = await restoreRoom(Threads, event.threadId);
     if (!room) return sendText(api, event, "⚠️ Không có bàn Sâm.");
+    if (room.status === "playing" && !await refundSamWallets(context.Users, room, Threads)) {
+      return sendText(api, event, "⚠️ Chưa hoàn cược được an toàn; bàn vẫn được giữ.");
+    }
     const stopped = game.stop(event.threadId, event.data?.uidFrom);
     if (!stopped.ok) return sendText(api, event, "⛔ Chỉ chủ bàn mới được hủy.");
     await recallRoomCards(api, room);
     game.removeRoom(event.threadId);
     await persistRoom(Threads, event.threadId);
     return sendText(api, event, "🛑 Đã hủy bàn Sâm #" + room.id + ".");
+  }
+  if (action === "cuoc" || action === "bet") {
+    const raw = String(rest[0] || "").toLowerCase().replace(/[$,\s]/g, "");
+    const match = raw.match(/^(\d+(?:\.\d+)?)(k|m)?$/);
+    const amount = match ? Math.floor(Number(match[1]) * (match[2] === "m" ? 1000000 : match[2] === "k" ? 1000 : 1)) : 0;
+    const room = await restoreRoom(Threads, event.threadId);
+    if (!room || room.status !== "waiting") return sendText(api, event, "⚠️ Chỉ đổi cược khi bàn đang chờ.");
+    if (room.ownerId !== String(event.data?.uidFrom || "")) return sendText(api, event, "⛔ Chỉ chủ bàn được đổi cược.");
+    if (!Number.isSafeInteger(amount) || amount < 1000 || amount > 1000000) {
+      return sendText(api, event, "⚠️ Cược Sâm từ 1K đến 1M xu. Ví dụ: !sam cuoc 10k.");
+    }
+    room.stake = amount;
+    await persistRoom(Threads, event.threadId);
+    return sendGroupRoom(api, event, game.snapshot(room), "💰 Đã đặt cược Sâm: " + amount.toLocaleString("vi-VN") + " xu/người.");
   }
   if (action === "info" || action === "status") {
     const room = await restoreRoom(Threads, event.threadId);
@@ -747,5 +848,6 @@ module.exports.handleIncoming = context => withRoomLock(
 );
 module.exports._test = {
   privateDestination, roomCaption, gameConflict, help, sendPrivateHand,
-  recallRoomCards, createOrJoin, joinRoom, startRoom, doPlay, doPass, callSam, runCommand
+  recallRoomCards, createOrJoin, joinRoom, startRoom, doPlay, doPass, callSam, runCommand,
+  settleSamWallets, refundSamWallets
 };
