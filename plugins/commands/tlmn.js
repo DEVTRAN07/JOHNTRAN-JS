@@ -1342,6 +1342,32 @@ async function createAiPractice(context) {
   return startRoom(context);
 }
 
+function scheduleLobbyCleanup(context, room, timeoutMs) {
+  if (!room?.threadId) return false;
+  const { api, Users, Threads, event } = context;
+  return game.watchLobby(room.threadId, async () =>
+    withRoomActionLock(room.threadId, async () => {
+      const current = game.get(room.threadId);
+      if (!current || current.id !== room.id || current.status !== "waiting") return;
+      const refunded = await refundRoomWallets(
+        Users, current, () => persistRoom(Threads, current.threadId)
+      );
+      if (!refunded) {
+        await persistRoom(Threads, current.threadId);
+        await sendText(api, event,
+          "⚠️ Bàn Tiến Lên #" + current.id +
+          " hết thời gian chờ nhưng khoản cược chưa hoàn an toàn. Bot giữ dữ liệu để thử lại.");
+        scheduleLobbyCleanup(context, current, 60 * 1000);
+        return;
+      }
+      await recallRoomCards(api, current);
+      game.removeRoom(current.threadId);
+      await persistRoom(Threads, current.threadId);
+      await sendText(api, event,
+        "⌛ Bàn Tiến Lên #" + current.id + " tự hủy sau thời gian chờ. Khoản cược chờ (nếu có) đã được hoàn.");
+    }), timeoutMs);
+}
+
 async function createOrJoin({ api, event, Users, Threads }) {
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
@@ -1378,12 +1404,7 @@ async function createOrJoin({ api, event, Users, Threads }) {
   const result = game.create(threadId, { uid, name }, { bet: 1000, previousWinnerUid });
   if (!result.ok) return sendText(api, event, "⚠️ Nhóm đã có bàn Tiến Lên đang hoạt động.");
   const room = result.state;
-  game.watchLobby(threadId, async () => {
-    await recallRoomCards(api, room);
-    game.removeRoom(threadId);
-    await persistRoom(Threads, threadId);
-    await sendText(api, event, "⌛ Bàn Tiến Lên #" + room.id + " tự hủy sau 60 giây vì không đủ người chơi.");
-  });
+  scheduleLobbyCleanup({ api, event, Users, Threads }, room);
   await sendGroupRoom(api, event, result.room, "💡 Chủ phòng có thể đổi mức cược trước khi bấm start.");
   await persistRoom(Threads, threadId);
 }
@@ -1589,6 +1610,17 @@ async function doLeave(context) {
   const uid = String(event?.data?.uidFrom || "");
   const state = game.get(threadId);
   if (!state) return sendText(api, event, "⚠️ Bạn chưa ở trong bàn Tiến Lên.");
+  if (state.status === "waiting" &&
+      (Object.keys(state.locked || {}).length || Object.keys(state.lockPending || {}).length)) {
+    const refunded = await refundRoomWallets(
+      Users, state, () => persistRoom(Threads, threadId)
+    );
+    if (!refunded) {
+      await persistRoom(Threads, threadId);
+      return sendText(api, event,
+        "⚠️ Bàn đang có khoản cược chờ chưa hoàn an toàn. Bạn chưa thể rời bàn; bot giữ dữ liệu để đối soát.");
+    }
+  }
   const result = game.leave(threadId, uid);
   if (!result.ok) return sendText(api, event, "⚠️ Bạn không ở trong bàn này.");
   if (result.finished) return endGame(api, event, Users, result.state, context.Threads);
@@ -1650,6 +1682,15 @@ async function runCommand(context) {
         (cleaned ? ". Xu cược đã được hoàn và card đã thu hồi." : ". Xu đã hoàn; bot đang thử thu hồi card cũ."));
     }
 
+    if (Object.keys(room.locked || {}).length || Object.keys(room.lockPending || {}).length) {
+      const refunded = await refundRoomWallets(
+        Users, room, () => persistRoom(Threads, threadId)
+      );
+      if (!refunded) {
+        await persistRoom(Threads, threadId);
+        return sendText(api, event, "⚠️ Chưa hoàn cược an toàn; bàn chờ được giữ lại để thử lại.");
+      }
+    }
     const roomId = room.id;
     const cleaned = await finalizeRoomCleanup(api, Threads, room);
     return sendText(api, event, "🛑 Đã hủy bàn #" + roomId +
@@ -1690,6 +1731,16 @@ async function runCommand(context) {
           room.cancelPending = false;
           await finalizeRoomCleanup(api, Threads, room);
         } else {
+          if (Object.keys(room.locked || {}).length || Object.keys(room.lockPending || {}).length) {
+            const refunded = await refundRoomWallets(
+              Users, room, () => persistRoom(Threads, threadId)
+            );
+            if (!refunded) {
+              await persistRoom(Threads, threadId);
+              return sendText(api, event,
+                "⚠️ Không thể tắt game an toàn vì khoản cược bàn chờ chưa hoàn xong. Bot giữ bàn để đối soát.");
+            }
+          }
           await finalizeRoomCleanup(api, Threads, room);
         }
       }
@@ -1891,13 +1942,8 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
         console.error("[TLMN_RECOVERY] Chưa hoàn xong cược bàn chờ #" + room.id);
         continue;
       }
-      game.watchLobby(threadId, async () => {
-        await recallRoomCards(api, room);
-        game.removeRoom(threadId);
-        await persistRoom(Threads, threadId);
-        const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
-        await sendText(api, syntheticEvent, "⌛ Bàn Tiến Lên #" + room.id + " tự hủy sau 60 giây vì không đủ người chơi.");
-      });
+      const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
+      scheduleLobbyCleanup({ api, Users, Threads, event: syntheticEvent }, room);
       continue;
     }
 
