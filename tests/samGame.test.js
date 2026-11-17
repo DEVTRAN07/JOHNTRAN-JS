@@ -646,9 +646,9 @@ test("Sâm compares simultaneous white hands of the same type by their highest q
     triples(8), "threeTriples", triples(7), "threeTriples"
   ) < 0);
 
-  const lowColor = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  const lowColor = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13]
     .map((rank, index) => card(rank, index % 2 ? "ch" : "b"));
-  const highColor = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+  const highColor = [3, 4, 5, 6, 7, 8, 9, 10, 12, 14]
     .map((rank, index) => card(rank, index % 2 ? "ch" : "b"));
   assert.equal(engine.detectWhiteHand(lowColor), "sameColor");
   assert.equal(engine.detectWhiteHand(highColor), "sameColor");
