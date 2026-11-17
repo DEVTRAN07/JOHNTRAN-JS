@@ -626,6 +626,11 @@ test("TLMN renderer: table layout provides seats around the center for 2, 3, and
     assert.equal(new Set(layout.map(seat => seat.x + ":" + seat.y)).size, count);
     assert.ok(layout.every(seat => seat.w > 0 && seat.h > 0));
   }
+  const fourSeats = renderer._test.seatLayout(4);
+  assert.ok(fourSeats[0].y < fourSeats[1].y, "seat 1 is at the top");
+  assert.ok(fourSeats[1].x < fourSeats[2].x, "seat 2 is at the left");
+  assert.ok(fourSeats[2].y > fourSeats[1].y, "seat 3 is at the bottom");
+  assert.ok(fourSeats[3].x > fourSeats[2].x, "seat 4 is at the right");
 });
 
 
