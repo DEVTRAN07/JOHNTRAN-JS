@@ -38,6 +38,16 @@ test("Sâm engine builds a standard 52-card deck and deals ten cards each", () =
   }
 });
 
+test("Sâm renderer seats follow the same counterclockwise turn order", () => {
+  const renderer = require("../core/canvas/sam");
+  const seats = renderer._test.seatLayout(4);
+  assert.equal(seats.length, 4);
+  assert.ok(seats[0].y < seats[1].y, "seat 1 is at the top");
+  assert.ok(seats[1].x < seats[2].x, "seat 2 is at the left");
+  assert.ok(seats[2].y > seats[1].y, "seat 3 is at the bottom");
+  assert.ok(seats[3].x > seats[2].x, "seat 4 is at the right");
+});
+
 test("Sâm parses singles, pairs, triples, quads, straights and numbered selection", () => {
   const hand = [
     card(3), card(4), card(5), card(6),
