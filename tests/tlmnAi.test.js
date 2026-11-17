@@ -138,6 +138,13 @@ test("TLMN admin practice guarantees the Admin opens and AI yields every Admin-l
   const room = game.get(groupId);
   assert.equal(room.turnUid, "admin");
   assert.ok(room.hands.admin.some(card => card.id === "3b"));
+  assert.equal(room.hands.admin.filter(card => card.rank === 15).length, 4);
+  assert.equal(room.hands.admin.filter(card => card.rank === 14).length, 4);
+  assert.equal(room.hands.admin.filter(card => card.rank === 13).length, 4);
+  for (const player of room.players.filter(item => item.ai)) {
+    assert.equal(room.hands[player.uid].length, 13);
+    assert.equal(room.hands[player.uid].some(card => card.rank >= 13), false);
+  }
 
   // Admin can clear the whole hand one card at a time. Each AI must legally
   // pass the Admin-led trick; this mode is only for a private practice room.
