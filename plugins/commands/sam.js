@@ -1062,6 +1062,10 @@ async function runCommand(context) {
   }
   if (action === "info" || action === "status") {
     const room = await restoreRoom(Threads, event.threadId);
+    if (room && Number(room.startCountdownAt) > 0) {
+      return sendText(api, event, "⏱️ Bàn Sâm #" + room.id + " đang chuẩn bị bắt đầu. Còn " +
+        Math.max(0, Math.ceil((Number(room.startCountdownAt) - Date.now()) / 1000)) + " giây.");
+    }
     return room ? sendGroupRoom(api, event, game.snapshot(room)) : sendText(api, event, "⚠️ Nhóm chưa có bàn Sâm.");
   }
   return sendText(api, event, help(prefix));
