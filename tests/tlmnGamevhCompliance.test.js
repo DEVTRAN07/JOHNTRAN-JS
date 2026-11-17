@@ -355,3 +355,74 @@ test("GameVH TLMN blocked kết 3 bích charges only players who joined the fina
     item.from === "a" && item.to === "d" && item.reason === "chan-ket-ba-bich"
   ), false);
 });
+
+
+test("GameVH TLMN allows four-pair run to cut after its player has passed", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const groupId = "tlmn-four-pair-after-pass";
+  const created = game.create(groupId, { uid: "a", name: "A" }, { code: "83761", bet: 1000 });
+  assert.equal(created.ok, true);
+  game.join(groupId, created.room.id, { uid: "b", name: "B" });
+  game.join(groupId, created.room.id, { uid: "c", name: "C" });
+
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(groupId, "a", () => 0.43); }
+  finally { engine.detectWhiteHand = originalDetector; }
+  const room = started.state;
+  const card = (rank, suit) => ({ rank, suit, id: String(rank) + suit });
+
+  room.activeUids = ["a", "b", "c"];
+  room.finishOrder = [];
+  room.forfeitUids = [];
+  room.hands = {
+    a: [
+      card(15, "b"),
+      card(3, "b"), card(3, "ch"),
+      card(4, "b"), card(4, "ch"),
+      card(5, "b"), card(5, "ch"), card(11, "b")
+    ],
+    b: [
+      card(7, "b"), card(7, "ch"),
+      card(8, "b"), card(8, "ch"),
+      card(9, "b"), card(9, "ch"),
+      card(10, "b"), card(10, "ch"), card(12, "b")
+    ],
+    c: [card(15, "ch"), card(13, "b")]
+  };
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.passed = new Set();
+  room.playedCount = 0;
+  room.trickParticipants = [];
+  room.chopEvents = [];
+  room.chopChainUnits = 0;
+  room.chopChainTwoUnits = 0;
+  room.chopChainEventIndex = null;
+  room.trickTwoUnits = 0;
+
+  assert.equal(game.play(groupId, "a", "2b").ok, true);
+  assert.equal(game.pass(groupId, "b").ok, true);
+  assert.equal(room.passed.has("b"), true);
+  assert.equal(game.play(groupId, "c", "2ch").ok, true);
+  assert.equal(game.play(groupId, "a", "doithong 345").ok, true);
+
+  const returnedAfterPass = game.play(groupId, "b", "doithong 78910");
+  assert.equal(returnedAfterPass.ok, true);
+  assert.equal(room.passed.has("b"), false);
+  assert.equal(room.currentCombo.type, "pairRun");
+  assert.equal(room.currentCombo.length, 4);
+  game.removeRoom(groupId);
+});
+
+test("GameVH TLMN four-pair run can cut a pair of 2s, while three-pair run cannot", () => {
+  const card = (rank, suit) => ({ rank, suit, id: String(rank) + suit });
+  const pairOfTwos = engine.analyzeCombo([card(15, "b"), card(15, "c")]);
+  const threePairs = engine.analyzeCombo(pairRunHand([3, 4, 5]));
+  const fourPairs = engine.analyzeCombo(pairRunHand([3, 4, 5, 6]));
+  assert.equal(engine.canBeat(threePairs, pairOfTwos), false);
+  assert.equal(engine.canBeat(fourPairs, pairOfTwos), true);
+});
