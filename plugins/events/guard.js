@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const { Reactions } = require("zalo-client");
 const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
+const { runThreadQueue } = require("../../core/runtime/threadQueue");
 
 const BADWORDS_FILE = path.join(__dirname, "..", "..", "assets", "spam", "badwords.txt");
 const WARN_LIMIT = 3; // số cảnh cáo trước khi kick
@@ -71,62 +72,59 @@ module.exports.run = async function ({ api, event, Threads, isSelf }) {
 
   const { data, threadId } = event;
   const content = String(data?.content || "");
-  if (!content) return;
+  const uid = String(data?.uidFrom || "");
+  if (!threadId || !uid || !content) return;
 
-  const uid = String(data.uidFrom || "");
-  if (!uid) return;
-
-  // Event flags can be absent on some Zalo frames. Skip moderation unless
-  // the live group profile confirms the sender is not an admin.
   const hasAdminFlag = data?.isGroupAdmin === true || data?.isAdmin === true || data?.isGroupAdmin === 1;
   if (hasAdminFlag || await getGroupAdminState(api, threadId, uid) !== false) return;
 
-  const thread = (await Threads.getData(threadId)).data || {};
-  if (!thread.event_guard) return;
+  return runThreadQueue(threadId, async () => {
+    const record = await Threads.getData(threadId);
+    const thread = { ...(record?.data || {}) };
+    if (!thread.event_guard) return;
 
-  const allowed = defaultAllowedHosts().concat(Array.isArray(thread.guard_allowed_hosts) ? thread.guard_allowed_hosts : []);
-  const link = content.match(LINK_RE)?.[1];
-  const hasBadLink = containsLink(content) && !isAllowedLink(link, allowed);
-  const badword = badwordHit(content);
+    const allowed = defaultAllowedHosts().concat(Array.isArray(thread.guard_allowed_hosts) ? thread.guard_allowed_hosts : []);
+    const link = content.match(LINK_RE)?.[1];
+    const hasBadLink = containsLink(content) && !isAllowedLink(link, allowed);
+    const badword = badwordHit(content);
+    if (!hasBadLink && !badword) return;
 
-  if (!hasBadLink && !badword) return;
+    const warnKey = `guardWarn_${uid}`;
+    const warns = (Number(thread[warnKey]) || 0) + 1;
+    thread[warnKey] = warns;
+    const reason = hasBadLink
+      ? `🔗 Link không nằm trong danh sách cho phép (${link?.slice(0, 40)})`
+      : `🚫 Tin chứa từ cấm "${badword}"`;
 
-  // Cộng cảnh cáo, đủ limit thì kick
-  const warnKey = `guardWarn_${uid}`;
-  const warns = (Number(thread[warnKey]) || 0) + 1;
-  thread[warnKey] = warns;
+    const save = Threads.setDataAndWait || Threads.setData;
+    await save.call(Threads, threadId, thread);
 
-  const reason = hasBadLink
-    ? `🔗 Link không nằm trong danh sách cho phép (${link?.slice(0, 40)})`
-    : `🚫 Tin chứa từ cấm "${badword}"`;
+    if (warns >= WARN_LIMIT) {
+      try {
+        await api.removeUserFromGroup(uid, threadId);
+      } catch (error) {
+        console.error("Không kick được thành viên:", error.message);
+        return api.sendMessage({
+          msg: `🚫 ${reason}\\n⚠️ Cảnh cáo ${warns}/${WARN_LIMIT} (không kick được: ${error.message})`
+        }, threadId, event.type);
+      }
 
-  if (warns >= WARN_LIMIT) {
-    thread[warnKey] = 0;
-    await Threads.setData(threadId, thread);
-    try {
-      await api.removeUserFromGroup(uid, threadId);
-    } catch (error) {
-      console.error("Không kick được thành viên:", error.message);
-      await api.sendMessage({
-        msg: `🚫 ${reason}\n⚠️ Cảnh cáo ${warns}/${WARN_LIMIT} (không kick được: ${error.message})`
+      thread[warnKey] = 0;
+      await save.call(Threads, threadId, thread);
+      return api.sendMessage({
+        msg: `⛔ Đã kick thành viên vi phạm ${WARN_LIMIT} lần.\\nLý do: ${reason}`
       }, threadId, event.type);
-      return;
     }
-    await api.sendMessage({
-      msg: `⛔ Đã kick thành viên vi phạm ${WARN_LIMIT} lần.\nLý do: ${reason}`
-    }, threadId, event.type);
-    return;
-  }
 
-  await Threads.setData(threadId, thread);
-  try {
-    await api.addReaction(Reactions.LIKE, {
-      data: { msgId: data.msgId, cliMsgId: data.cliMsgId },
-      threadId,
-      type: event.type
-    });
-  } catch { /* bỏ qua */ }
-  await api.sendMessage({
-    msg: `🚨 ${reason}\n⚠️ Cảnh cáo ${warns}/${WARN_LIMIT} — đủ ${WARN_LIMIT} lần sẽ bị kick.`
-  }, threadId, event.type);
+    try {
+      await api.addReaction(Reactions.LIKE, {
+        data: { msgId: data.msgId, cliMsgId: data.cliMsgId },
+        threadId,
+        type: event.type
+      });
+    } catch { /* bỏ qua */ }
+    return api.sendMessage({
+      msg: `🚨 ${reason}\\n⚠️ Cảnh cáo ${warns}/${WARN_LIMIT} — đủ ${WARN_LIMIT} lần sẽ bị kick.`
+    }, threadId, event.type);
+  });
 };

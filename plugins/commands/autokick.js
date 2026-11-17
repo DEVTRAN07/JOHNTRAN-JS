@@ -1,5 +1,6 @@
 // Tự động kick thành viên vi phạm từ cấm (lưu theo nhóm trong DB)
 const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
+const { runThreadQueue } = require("../../core/runtime/threadQueue");
 
 module.exports.config = {
   name: "autokick",
@@ -85,42 +86,56 @@ module.exports.run = async function ({ api, event, args }) {
 
 module.exports.handleEvent = async function ({ api, event, Threads }) {
   const { threadId, type, data } = event;
-  if (!data?.content || typeof data.content !== "string") return;
+  const content = String(data?.content || "").toLowerCase();
+  const uid = String(data?.uidFrom || "");
+  if (!threadId || !uid || !content) return;
 
-  const uid = data.uidFrom;
-  const thread = await Threads.getData(threadId);
-  const autoKick = getAutoKick(thread.data || {});
-  if (!autoKick.enabled || autoKick.words.length === 0) return;
-
-  const isAdmin = global.users?.admin?.includes(uid) || global.users?.support?.includes(uid);
-  if (isAdmin) return;
-
-  // Never apply an automatic kick unless Zalo confirms the sender is not
-  // a group admin. Missing role metadata or API errors are treated as unknown.
+  const botAdmins = (global.users?.admin || []).map(String);
+  const supports = (global.users?.support || []).map(String);
+  if (botAdmins.includes(uid) || supports.includes(uid)) return;
   if (await getGroupAdminState(api, threadId, uid) !== false) return;
 
-  const content = data.content.toLowerCase();
-  const found = autoKick.words.find((w) => new RegExp(`(^|\\s)${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`, "i").test(content));
-  if (!found) return;
+  return runThreadQueue(threadId, async () => {
+    const record = await Threads.getData(threadId);
+    const groupData = { ...(record?.data || {}) };
+    const autoKick = {
+      ...(groupData.auto_kick || {}),
+      words: Array.isArray(groupData.auto_kick?.words) ? [...groupData.auto_kick.words] : [],
+      violations: { ...(groupData.auto_kick?.violations || {}) }
+    };
+    if (!autoKick.enabled || autoKick.words.length === 0) return;
 
-  const violations = (autoKick.violations[uid] || 0) + 1;
-  autoKick.violations[uid] = violations;
-  await Threads.setData(threadId, thread.data);
+    const found = autoKick.words.find(word =>
+      new RegExp(`(^|\\s)${String(word).replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}(\\s|$)`, "i").test(content)
+    );
+    if (!found) return;
 
-  if (violations >= 3) {
-    try {
-      const name = data.dName || uid;
-      await api.removeUserFromGroup(uid, threadId);
+    const violations = (Number(autoKick.violations[uid]) || 0) + 1;
+    autoKick.violations[uid] = violations;
+    groupData.auto_kick = autoKick;
+    const save = Threads.setDataAndWait || Threads.setData;
+    await save.call(Threads, threadId, groupData);
+
+    if (violations >= 3) {
+      try {
+        await api.removeUserFromGroup(uid, threadId);
+      } catch (error) {
+        console.error("Lỗi kick:", error.message);
+        return api.sendMessage({
+          msg: `⚠️ Không thể kick ${data.dName || uid} (thiếu quyền quản trị). Cảnh cáo đã đạt ${violations}/3.`
+        }, threadId, type);
+      }
+
       delete autoKick.violations[uid];
-      await Threads.setData(threadId, thread.data);
-      return api.sendMessage({ msg: `🚫 Đã kick ${name} do vi phạm từ cấm "${found}" ${violations} lần.` }, threadId, type);
-    } catch (error) {
-      console.error("Lỗi kick:", error.message);
-      return api.sendMessage({ msg: "⚠️ Không thể kick thành viên này (thiếu quyền quản trị)." }, threadId, type);
+      groupData.auto_kick = autoKick;
+      await save.call(Threads, threadId, groupData);
+      return api.sendMessage({
+        msg: `🚫 Đã kick ${data.dName || uid} do vi phạm từ cấm "${found}" ${violations} lần.`
+      }, threadId, type);
     }
-  }
 
-  return api.sendMessage({
-    msg: `⚠️ Cảnh báo ${data.dName || uid}: dùng từ cấm "${found}" (lần ${violations}/3). Lần thứ 3 sẽ bị kick!`
-  }, threadId, type);
+    return api.sendMessage({
+      msg: `⚠️ Cảnh báo ${data.dName || uid}: dùng từ cấm "${found}" (lần ${violations}/3). Lần thứ 3 sẽ bị kick!`
+    }, threadId, type);
+  });
 };
