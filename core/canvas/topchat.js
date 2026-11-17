@@ -45,7 +45,7 @@ function drawRankCard(ctx, item, rank, x, y, width, height, featured = false) {
   const S = theme.S;
   const palette = theme.PALETTE;
   theme.panel(ctx, x, y, width, height, S(featured ? 13 : 10),
-    rank === 0 ? palette.accent : "rgba(85,214,232,.34));
+    rank === 0 ? palette.accent : "rgba(85,214,232,.34)");
 
   if (featured) {
     theme.label(ctx, "TOP " + String(rank + 1).padStart(2, "0"), x + S(13), y + S(19), {
