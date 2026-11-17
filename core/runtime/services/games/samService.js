@@ -446,7 +446,8 @@ function leave(threadId, uid) {
     clearTimer(threadId);
     return { ok: true, cancelled: true, room: snapshot(room), state: room };
   }
-  room.hands[actor] = [];
+  // Keep the departing player's remaining cards for end-of-game penalties.
+  // Removing the hand here would let a player evade leftover/cóng charges.
   room.passed.delete(actor);
   const wasLeader = room.lastPlayerUid === actor;
   const wasTurn = room.turnUid === actor;
