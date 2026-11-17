@@ -65,10 +65,10 @@ test("Sâm only allows higher same-size combinations, with four-kind cutting one
   const pair3 = engine.analyzeCombo([card(3), card(3, "r")]);
   const pair4 = engine.analyzeCombo([card(4), card(4, "r")]);
   assert.equal(engine.canBeat(pair4, pair3), true);
-  assert.equal(engine.canBeat(pair4, engine.analyzeCombo([card(2)])), false);
+  assert.equal(engine.canBeat(pair4, engine.analyzeCombo([card(15)])), false);
 
   const quad = engine.analyzeCombo([card(7), card(7, "ch"), card(7, "r"), card(7, "c")]);
-  assert.equal(engine.canBeat(quad, engine.analyzeCombo([card(2, "c")])), true);
+  assert.equal(engine.canBeat(quad, engine.analyzeCombo([card(15, "c")])), true);
   assert.equal(engine.canBeat(quad, pair3), false);
 });
 
@@ -133,7 +133,7 @@ test("Sâm marks a failed Báo Sâm as lủng when another player beats the call
   assert.equal(started.ok, true);
 
   const room = started.state;
-  room.hands = { a: [card(3)], b: [card(4), card(5)] };
+  room.hands = { a: [card(3), card(6)], b: [card(4), card(5)] };
   room.firstPlayerUid = "a";
   room.turnUid = "a";
   room.playedCount = 0;
