@@ -223,6 +223,28 @@ test("TLMN engine: cardCode returns parsable face/high-card codes", () => {
   }
 });
 
+test("TLMN engine: numbered hand selection maps left-to-right indexes to cards", () => {
+  const hand = engine.sortHand(engine.createDeck());
+  const selected = engine.parsePlayText(hand, "chon 1,2");
+  assert.equal(selected.ok, true);
+  assert.deepEqual(selected.cards.map(card => card.id), ["3b", "3ch"]);
+  const selectedBySpaces = engine.parsePlayText(hand, "chon 1 2");
+  assert.equal(selectedBySpaces.ok, true);
+  assert.deepEqual(selectedBySpaces.cards.map(card => card.id), ["3b", "3ch"]);
+  assert.equal(engine.parsePlayText(hand, "chon 0,99").code, "INVALID_SELECTION");
+  assert.equal(engine.parsePlayText(hand, "chon 1,1").code, "INVALID_SELECTION");
+});
+
+test("TLMN command: invalid move replies are throttled per player and group", () => {
+  const allow = command._test.shouldSendMoveError;
+  assert.equal(allow("throttle-group", "p1", "INVALID_COMBINATION", 1000), true);
+  assert.equal(allow("throttle-group", "p1", "INVALID_COMBINATION", 1001), false);
+  assert.equal(allow("throttle-group", "p2", "INVALID_COMBINATION", 2000), false);
+  assert.equal(allow("throttle-group", "p2", "INVALID_COMBINATION", 3600), true);
+  assert.equal(allow("throttle-group", "p2", "UNRECOGNIZED_PLAY", 16000), false);
+  assert.equal(allow("throttle-group", "p2", "UNRECOGNIZED_PLAY", 22000), true);
+});
+
 test("TLMN event plugin registers ordinary group messages", () => {
   const tlmnEvent = require("../plugins/events/tlmn");
   assert.ok(tlmnEvent.config.event_type.includes("message"));
