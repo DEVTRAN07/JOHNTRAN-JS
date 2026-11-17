@@ -173,6 +173,57 @@ test("TLMN practice gives Admin a strong hand without a white-hand pattern", () 
   game.removeRoom(groupId);
 });
 
+test("TLMN recognizes white hands and immediately finishes the dealt round", () => {
+  const sixPairs = [3,4,5,6,7,8].flatMap(rank => [
+    { rank, suit: "b", id: String(rank) + "b" },
+    { rank, suit: "c", id: String(rank) + "c" }
+  ]).concat([{ rank: 9, suit: "b", id: "9b" }]);
+  assert.equal(engine.detectWhiteHand(sixPairs), "sixPairs");
+
+  const dragon = Array.from({ length: 12 }, (_, index) => {
+    const rank = index + 3;
+    return { rank, suit: "b", id: String(rank) + "b" };
+  }).concat([{ rank: 3, suit: "c", id: "3c" }]);
+  assert.equal(engine.detectWhiteHand(dragon), "dragonStraight");
+
+  const fourTwos = [
+    { rank: 15, suit: "b", id: "15b" },
+    { rank: 15, suit: "ch", id: "15ch" },
+    { rank: 15, suit: "r", id: "15r" },
+    { rank: 15, suit: "c", id: "15c" },
+    ...[3,4,5,6,7,8,9,10,11].map(rank => ({
+      rank, suit: "b", id: String(rank) + "b"
+    }))
+  ];
+  assert.equal(engine.detectWhiteHand(fourTwos), "fourTwos");
+
+  const groupId = "tlmn-instant-white-hand";
+  const created = game.create(groupId, { uid: "owner", name: "Owner" });
+  assert.equal(created.ok, true);
+  game.joinWaiting(groupId, { uid: "guest", name: "Guest" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = hand => hand.some(card => card.id === "3b") ? "sixPairs" : null;
+  try {
+    const started = game.start(groupId, "owner", () => 0.23);
+    assert.equal(started.ok, true);
+    assert.equal(started.finished, true);
+    assert.equal(started.state.status, "finished");
+    assert.equal(started.state.whiteHand.type, "sixPairs");
+    assert.equal(started.state.results[0].uid, started.state.whiteHand.uid);
+
+    const saved = game.serialize(groupId);
+    game.removeRoom(groupId);
+    const restored = game.restore(saved);
+    assert.ok(restored);
+    assert.equal(restored.whiteHand.type, "sixPairs");
+    assert.equal(restored.status, "finished");
+    game.removeRoom(groupId);
+  } finally {
+    engine.detectWhiteHand = originalDetector;
+    game.removeRoom(groupId);
+  }
+});
+
 test("TLMN human tables always keep the fair shuffled deal, including with an Admin seated", () => {
   const groupId = "tlmn-real-room-fair-admin-deal";
   const created = game.create(groupId, { uid: "host", name: "Chủ bàn" }, {
