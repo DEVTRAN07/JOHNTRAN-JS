@@ -2,6 +2,7 @@
 
 const theme = require("./theme");
 const avatarCache = require("./avatarCache");
+const { drawPlayingCard } = require("./playingCards");
 
 function drawText(ctx, text, x, y, scale, options = {}) {
   const size = Math.max(9, Math.round((options.size || 18) * scale));
@@ -41,56 +42,19 @@ function rankText(rank) {
 }
 
 function drawPlayingCard(ctx, card, x, y, w, h, scale, options = {}) {
-  const suit = suitInfo(card.suit);
-  const rank = rankText(card.rank);
-  const premium = Boolean(options.premium);
-  ctx.save();
-  if (premium) {
-    ctx.shadowColor = "rgba(255, 211, 98, .72)";
-    ctx.shadowBlur = 10 * scale;
-  }
-  theme.roundRect(ctx, x + 2 * scale, y + 4 * scale, w, h, 10 * scale);
-  ctx.fillStyle = "rgba(0,0,0,.38)";
-  ctx.fill();
-  theme.roundRect(ctx, x, y, w, h, 10 * scale);
-  ctx.fillStyle = premium ? "#fff5d9" : "#fff9e9";
-  ctx.fill();
-  ctx.strokeStyle = options.selected ? "#16e6a1" : premium ? "#d79b28" : "#d6c9a7";
-  ctx.lineWidth = options.selected ? 3 * scale : premium ? 2.8 * scale : 1 * scale;
-  ctx.stroke();
-  drawText(ctx, rank, x + 9 * scale, y + 26 * scale, scale, {
-    size: options.small ? 15 : 19, weight: 900, color: suit.color
-  });
-  drawText(ctx, suit.symbol, x + 10 * scale, y + 47 * scale, scale, {
-    size: options.small ? 16 : 20, weight: 800, color: suit.color
-  });
-  drawText(ctx, suit.symbol, x + w / 2, y + h * .70, scale, {
-    size: options.small ? 30 : 37, weight: 800, color: suit.color, align: "center"
-  });
-  drawText(ctx, rank, x + w - 8 * scale, y + h - 8 * scale, scale, {
-    size: options.small ? 15 : 18, weight: 900, color: suit.color, align: "right"
-  });
-  if (Number.isInteger(options.index) && options.index > 0) {
-    roundPanel(ctx, x + w - 34 * scale, y + 5 * scale,
-      18 * scale, 18 * scale, 6 * scale,
-      premium ? "#8c5b0c" : "#07574f",
-      premium ? "#ffd875" : "#55e5c4");
-    drawText(ctx, String(options.index), x + w - 25 * scale,
-      y + 18 * scale, scale, {
-        size: 10, weight: 900, color: "#fff9e9", align: "center"
-      });
-  }
-  ctx.restore();
+  return require("./playingCards").drawPlayingCard(ctx, card, x, y, w, h, scale, options);
 }
+
+function unusedCardRendererPlaceholder() {}
 
 function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
   const px = value => Math.round(value * scale);
   const active = Boolean(item && isTurn);
   roundPanel(ctx, x, y, w, h, px(16),
-    active ? "rgba(73,7,16,.97)" : "rgba(24,2,8,.88)",
-    active ? "#34e6b0" : "rgba(255,205,92,.52)");
+    active ? "rgba(12,91,65,.97)" : "rgba(7,29,22,.94)",
+    active ? "#61e7b2" : "rgba(212,181,111,.48)");
 
-  const avatarX = x + px(42);
+  const avatarX = x + px(40);
   const avatarY = y + h / 2;
   const avatarRadius = px(25);
   const avatarImage = item && !item.ai ? avatarCache.getAvatar(item.avatarUrl) : null;
@@ -102,7 +66,7 @@ function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
     ctx.drawImage(avatarImage, avatarX - avatarRadius, avatarY - avatarRadius,
       avatarRadius * 2, avatarRadius * 2);
   } else {
-    ctx.fillStyle = active ? "#164d3c" : "#3e1a20";
+    ctx.fillStyle = active ? "#147755" : "#153d30";
     ctx.fillRect(avatarX - avatarRadius, avatarY - avatarRadius,
       avatarRadius * 2, avatarRadius * 2);
   }
@@ -111,57 +75,60 @@ function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
   ctx.beginPath();
   ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
   ctx.lineWidth = px(active ? 3.5 : 2);
-  ctx.strokeStyle = active ? "#44edba" : "#d5b66e";
+  ctx.strokeStyle = active ? "#74f0bd" : "#b99a5a";
   ctx.stroke();
   ctx.restore();
+
   if (!avatarImage || item?.ai) {
     drawText(ctx, item
       ? (item.ai ? "AI" : String(item.name || "P").trim().slice(0, 1).toUpperCase())
       : "+",
       avatarX, avatarY + px(8), scale, {
-        size: 22, weight: 900, color: "#fff1ce", align: "center"
+        size: 22, weight: 900, color: "#fff9e9", align: "center"
       });
   }
 
   if (!item) {
     drawText(ctx, "GHẾ TRỐNG", x + px(78), y + h / 2 + px(5), scale, {
-      size: 13, weight: 900, color: "#91a49a"
+      size: 13, weight: 900, color: "#a6b9ad"
     });
     drawText(ctx, "ĐANG MỞ", x + w - px(16), y + h / 2 + px(5), scale, {
-      size: 10, weight: 800, color: "#c6a76d", align: "right"
+      size: 10, weight: 800, color: "#cbb47f", align: "right"
     });
     return;
   }
 
-  const name = String(item.name || "Người chơi");
+  const name = String(item.name || "Người chơi").replace(/[\r\n\t]+/g, " ");
   const compact = w < px(260);
-  const nameWidth = Math.max(px(68), w - px(compact ? 108 : 150));
+  const nameWidth = Math.max(px(68), w - px(compact ? 104 : 142));
   drawText(ctx, name.length > 22 ? name.slice(0, 20) + "…" : name,
-    x + px(80), y + px(37), scale, {
-      size: 15, weight: 900, color: "#fff3dc", maxWidth: nameWidth
+    x + px(78), y + px(36), scale, {
+      size: 16, weight: 900, color: "#fff9e9", maxWidth: nameWidth
     });
   const count = item.handCount == null ? "ĐANG CHỜ" : item.handCount + " LÁ";
-  drawText(ctx, count, x + px(80), y + px(68), scale, {
-    size: 11, weight: 800, color: active ? "#ffe17d" : "#b7c7bd"
+  drawText(ctx, count, x + px(79), y + px(68), scale, {
+    size: 12, weight: 900, color: active ? "#ffe09a" : "#b9d1c5"
   });
+
   if (active && compact) {
-    drawText(ctx, "▶ ĐẾN LƯỢT", x + w - px(14), y + px(68), scale, {
-      size: 11, weight: 900, color: "#43e8b5", align: "right"
+    drawText(ctx, "▶ LƯỢT", x + w - px(12), y + px(68), scale, {
+      size: 10, weight: 900, color: "#78f0bd", align: "right"
     });
   } else if (active) {
-    roundPanel(ctx, x + w - px(102), y + px(22), px(84), px(34), px(10),
-      "#08764f", "#43e8b5");
-    drawText(ctx, "LƯỢT", x + w - px(60), y + px(45), scale, {
-      size: 10, weight: 900, color: "#fff6dc", align: "center"
+    roundPanel(ctx, x + w - px(94), y + px(22), px(76), px(34), px(10),
+      "#0e7655", "#71e9b8");
+    drawText(ctx, "LƯỢT", x + w - px(56), y + px(45), scale, {
+      size: 11, weight: 900, color: "#fffdf3", align: "center"
     });
   } else if (item.place > 0) {
-    drawText(ctx, "HẠNG " + item.place, x + w - px(16), y + px(48), scale, {
-      size: 10, weight: 900, color: "#d9bc79", align: "right"
+    drawText(ctx, "HẠNG " + item.place, x + w - px(15), y + px(48), scale, {
+      size: 10, weight: 900, color: "#e1c486", align: "right"
     });
   } else {
-    drawText(ctx, "NGƯỜI CHƠI " + (index + 1), x + w - px(16), y + px(48), scale, {
-      size: 9, weight: 800, color: "#9eaa9e", align: "right"
-    });
+    drawText(ctx, item.ai ? "ĐỐI THỦ AI" : "NGƯỜI CHƠI " + (index + 1),
+      x + w - px(15), y + px(48), scale, {
+        size: 9, weight: 800, color: "#9eb7aa", align: "right"
+      });
   }
 }
 
@@ -192,114 +159,143 @@ function renderTable(ctx, width, height, scale, data) {
   const players = Array.isArray(room.players) ? room.players : [];
   const px = value => Math.round(value * scale);
 
-  drawText(ctx, "JOHNTRAN  /  ROYAL GAME ROOM", px(58), px(52), scale, {
-    size: 12, weight: 900, color: "#ffd34f"
+  drawText(ctx, "JOHNTRAN  /  GAME TABLE", px(58), px(52), scale, {
+    size: 12, weight: 900, color: "#edc979"
   });
-  drawText(ctx, "TIẾN LÊN MIỀN NAM", width / 2, px(108), scale, {
-    size: 37, weight: 900, color: "#fff3d8", align: "center"
+  drawText(ctx, "TIẾN LÊN MIỀN NAM", width / 2, px(107), scale, {
+    size: 36, weight: 900, color: "#fff9e9", align: "center"
   });
   drawText(ctx, "BÀN #" + String(room.id || "-----") + "   •   CƯỢC " +
     String(room.bet || 5000).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "$   •   " +
     (room.practice ? "LUYỆN TẬP VS 3 AI" :
       room.mode === "demla" ? "ĐẾM LÁ" : "NHẤT NHÌ BA BÉT"),
     width / 2, px(145), scale, {
-      size: 13, weight: 800, color: "#c4dbc9", align: "center"
+      size: 13, weight: 800, color: "#c6ded1", align: "center"
     });
 
   const positions = seatLayout(players.length);
-
   positions.forEach((position, index) => {
     const item = players[index] || null;
     drawSeat(ctx, item, px(position.x), px(position.y), px(position.w),
       px(position.h), scale, index, Boolean(item && item.uid === room.turnUid));
   });
 
-  const tableX = players.length >= 4 ? px(260) : px(180);
-  const tableY = px(306);
+  const tableX = players.length >= 4 ? px(254) : px(174);
+  const tableY = px(304);
   const tableW = width - tableX * 2;
-  const tableH = px(244);
+  const tableH = px(246);
 
-  // Raised oval felt table with a distinct gold rail and soft inner highlight.
   ctx.save();
   ctx.beginPath();
-  ctx.ellipse(width / 2, tableY + tableH / 2, tableW * .49, tableH * .50, 0, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(10,0,4,.35)";
+  ctx.ellipse(width / 2, tableY + tableH / 2 + px(5),
+    tableW * .49, tableH * .50, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,.34)";
   ctx.fill();
-  ctx.lineWidth = px(5);
-  ctx.strokeStyle = "rgba(235,190,93,.78)";
+  ctx.strokeStyle = "#a9803b";
+  ctx.lineWidth = px(7);
   ctx.stroke();
   ctx.beginPath();
-  ctx.ellipse(width / 2, tableY + tableH / 2, tableW * .47, tableH * .465, 0, 0, Math.PI * 2);
-  ctx.lineWidth = px(1.5);
-  ctx.strokeStyle = "rgba(255,231,164,.35)";
+  ctx.ellipse(width / 2, tableY + tableH / 2 + px(5),
+    tableW * .47, tableH * .465, 0, 0, Math.PI * 2);
+  const felt = ctx.createRadialGradient(width / 2, tableY + px(42), px(20),
+    width / 2, tableY + tableH / 2, tableW * .60);
+  felt.addColorStop(0, "#176d4d");
+  felt.addColorStop(.58, "#0d5139");
+  felt.addColorStop(1, "#073321");
+  ctx.fillStyle = felt;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(232,199,126,.58)";
+  ctx.lineWidth = px(1.6);
   ctx.stroke();
   ctx.restore();
 
-  drawText(ctx, "BÀI TRÊN BÀN", width / 2, tableY + px(43), scale, {
-    size: 14, weight: 900, color: "#ffe19b", align: "center"
+  roundPanel(ctx, width / 2 - px(75), tableY + px(13), px(150), px(28),
+    px(10), "rgba(2,28,19,.54)", "rgba(228,197,130,.25)");
+  drawText(ctx, "BÀI TRÊN BÀN", width / 2, tableY + px(33), scale, {
+    size: 12, weight: 900, color: "#f7dfaa", align: "center"
   });
 
   const lastPlay = room.lastPlay;
   if (lastPlay && Array.isArray(lastPlay.cards) && lastPlay.cards.length) {
     drawText(ctx, (lastPlay.name || "Người chơi") + " VỪA ĐÁNH",
-      width / 2, tableY + px(72), scale, {
-        size: 12, weight: 900, color: "#f8ead0", align: "center"
+      width / 2, tableY + px(65), scale, {
+        size: 12, weight: 900, color: "#f7f7e9", align: "center"
       });
     const cards = lastPlay.cards.slice(0, 13);
+    const twoRows = cards.length > 8;
+    const columns = twoRows ? Math.ceil(cards.length / 2) : cards.length;
     const cardGap = px(5);
-    const available = tableW - px(54);
-    const cardW = Math.min(px(60), Math.floor((available - cardGap * (cards.length - 1)) / cards.length));
-    const cardH = px(100);
-    const total = cards.length * cardW + (cards.length - 1) * cardGap;
+    const available = tableW - px(62);
+    const cardW = Math.min(px(twoRows ? 58 : 66),
+      Math.floor((available - cardGap * Math.max(0, columns - 1)) / Math.max(1, columns)));
+    const cardH = px(twoRows ? 68 : 105);
+    const total = columns * cardW + Math.max(0, columns - 1) * cardGap;
     const startX = (width - total) / 2;
-    cards.forEach((card, index) => drawPlayingCard(ctx, card,
-      startX + index * (cardW + cardGap), tableY + px(88),
-      cardW, cardH, scale, { small: true }));
+    cards.forEach((card, index) => {
+      const row = twoRows && index >= columns ? 1 : 0;
+      const column = twoRows ? index % columns : index;
+      const rowCount = twoRows && row === 1 ? cards.length - columns : columns;
+      const rowTotal = rowCount * cardW + Math.max(0, rowCount - 1) * cardGap;
+      const rowStart = (width - rowTotal) / 2;
+      drawPlayingCard(ctx, card,
+        rowStart + column * (cardW + cardGap),
+        tableY + px(twoRows ? 77 + row * 74 : 80),
+        cardW, cardH, scale, { small: true });
+    });
     const combo = room.currentCombo;
     if (combo) {
-      const label = String(combo.type || "BÀI").toUpperCase().replace("PAIRRUN", "ĐÔI THÔNG")
-        .replace("FOURKIND", "TỨ QUÝ").replace("STRAIGHT", "SẢNH")
-        .replace("SINGLE", "LẺ").replace("PAIR", "ĐÔI").replace("TRIPLE", "SÁM CÔ");
+      const label = String(combo.type || "BÀI").toUpperCase()
+        .replace("PAIRRUN", "ĐÔI THÔNG")
+        .replace("FOURKIND", "TỨ QUÝ")
+        .replace("STRAIGHT", "SẢNH")
+        .replace("SINGLE", "LẺ")
+        .replace("PAIR", "ĐÔI")
+        .replace("TRIPLE", "SÁM CÔ");
       drawText(ctx, label + (combo.type === "pairRun" ? " " + combo.length + " ĐÔI" : ""),
-        width / 2, tableY + tableH - px(17), scale, {
-          size: 10, weight: 900, color: "#ffda7e", align: "center"
+        width / 2, tableY + tableH - px(10), scale, {
+          size: 11, weight: 900, color: "#ffe09a", align: "center"
         });
     }
   } else {
     const title = room.status === "waiting"
       ? "MỜI NGƯỜI CHƠI THAM GIA"
-      : room.playedCount === 0 ? (room.previousWinnerUid ? "NGƯỜI THẮNG VÁN TRƯỚC ĐI ĐẦU" : "NGƯỜI MỞ ĐẦU NGẪU NHIÊN") : "CHƯA CÓ BÀI TRÊN BÀN";
-    drawText(ctx, title, width / 2, tableY + px(133), scale, {
-      size: 17, weight: 900, color: "#f4dfb0", align: "center"
+      : room.playedCount === 0
+        ? (room.previousWinnerUid ? "NGƯỜI THẮNG VÁN TRƯỚC ĐI ĐẦU" : "CHỜ NƯỚC ĐÁNH ĐẦU TIÊN")
+        : "VÒNG ĐÁNH ĐÃ ĐƯỢC DỌN";
+    drawText(ctx, title, width / 2, tableY + px(123), scale, {
+      size: 16, weight: 900, color: "#fff3d1", align: "center"
     });
     drawText(ctx, room.status === "waiting"
-      ? "GỬI: join " + String(room.id || "-----")
-      : "ĐÁNH BỘ ĐẦU TIÊN ĐỂ MỞ VÒNG",
-      width / 2, tableY + px(164), scale, {
-        size: 11, weight: 800, color: "#a8d2bc", align: "center"
+      ? "NHẬP JOIN " + String(room.id || "-----") + " ĐỂ VÀO BÀN"
+      : "NGƯỜI ĐẾN LƯỢT SẼ MỞ VÒNG MỚI",
+      width / 2, tableY + px(155), scale, {
+        size: 11, weight: 800, color: "#bce5d1", align: "center"
       });
   }
 
   if (room.status === "waiting") {
-    roundPanel(ctx, width - px(170), px(28), px(112), px(42), px(12), "#087a3d", "#e7d77a");
-    drawText(ctx, "◷ 60s", width - px(114), px(56), scale, {
-      size: 15, weight: 900, color: "#fff6d4", align: "center"
+    roundPanel(ctx, width - px(172), px(28), px(112), px(40),
+      px(12), "#0c6847", "#d7bc78");
+    drawText(ctx, "●  PHÒNG CHỜ", width - px(116), px(54), scale, {
+      size: 10, weight: 900, color: "#fff8e5", align: "center"
     });
   } else if (room.turnUid) {
     const current = players.find(item => item.uid === room.turnUid);
-    drawText(ctx, "⏳ LƯỢT CỦA " + String(current?.name || "NGƯỜI CHƠI").toUpperCase() + "  •  60 GIÂY",
-      width / 2, px(700), scale, {
-        size: 13, weight: 900, color: "#fff0bc", align: "center"
+    roundPanel(ctx, width / 2 - px(235), px(684), px(470), px(38),
+      px(12), "rgba(6,49,35,.92)", "rgba(103,223,174,.42)");
+    drawText(ctx, "ĐẾN LƯỢT: " + String(current?.name || "NGƯỜI CHƠI").toUpperCase() + "  •  60 GIÂY",
+      width / 2, px(709), scale, {
+        size: 13, weight: 900, color: "#e7f8ec", align: "center"
       });
   }
 
   const footer = room.practice
-    ? "LUYỆN TẬP VS 3 AI  •  KHÔNG CƯỢC XU  •  BÀI RIÊNG KHÔNG LỘ TRONG NHÓM"
+    ? "LUYỆN TẬP VS 3 AI  •  KHÔNG CƯỢC XU  •  BÀI RIÊNG ĐƯỢC GỬI QUA TIN NHẮN"
     : room.status === "waiting"
-      ? "CHỦ PHÒNG BẤM START KHI CÓ TỪ 2 ĐẾN 4 NGƯỜI"
-      : "BÀI RIÊNG QUA INBOX  •  NHÓM CHỈ HIỆN LÁ BÀI ĐƯỢC ĐÁNH";
-  drawText(ctx, footer, width / 2, px(744), scale, {
-    size: 10, weight: 900, color: "#e5c780", align: "center"
+      ? "CHỦ PHÒNG GÕ START KHI ĐỦ NGƯỜI  •  TỪ 2 ĐẾN 4 NGƯỜI"
+      : "BÀI RIÊNG QUA INBOX  •  NHÓM CHỈ HIỆN LÁ BÀI VỪA ĐÁNH";
+  drawText(ctx, footer, width / 2, px(752), scale, {
+    size: 10, weight: 900, color: "#c5aa72", align: "center"
   });
 }
 
@@ -309,67 +305,70 @@ function renderHand(ctx, width, height, scale, data) {
   const hand = Array.isArray(data.hand) ? data.hand : [];
   const px = value => Math.round(value * scale);
   const premium = Boolean(data.isAdmin);
-  drawText(ctx, premium ? "JOHNTRAN  /  ADMIN ROYAL HAND" : "JOHNTRAN  /  PRIVATE HAND", px(58), px(52), scale, {
-    size: 12, weight: 900, color: premium ? "#ffe08a" : "#ffd34f"
-  });
-  drawText(ctx, premium ? "👑 BÀI HOÀNG GIA CỦA ADMIN" : "BÀI RIÊNG CỦA BẠN", width / 2, px(112), scale, {
-    size: premium ? 31 : 34, weight: 900, color: premium ? "#ffe08a" : "#fff1ce", align: "center"
-  });
-  drawText(ctx, (player.name || "Người chơi") + "   •   BÀN #" + String(room.id || "-----") +
-    "   •   CÒN " + hand.length + " LÁ",
-    width / 2, px(151), scale, {
-      size: 14, weight: 800, color: "#a9d5c1", align: "center"
+
+  drawText(ctx, premium ? "JOHNTRAN  /  ADMIN ROYAL HAND" : "JOHNTRAN  /  PRIVATE HAND",
+    px(58), px(52), scale, {
+      size: 12, weight: 900, color: premium ? "#f5d58b" : "#edc979"
     });
-  roundPanel(ctx, px(48), px(190), width - px(96), px(270), px(20),
-    premium ? "rgba(83,43,4,.92)" : "rgba(62,2,12,.88)",
-    premium ? "rgba(255,220,126,.98)" : "rgba(255,203,54,.72)");
+  drawText(ctx, premium ? "BÀI HOÀNG GIA" : "BÀI CỦA BẠN",
+    width / 2, px(108), scale, {
+      size: 35, weight: 900, color: premium ? "#ffe4a0" : "#fff9e9", align: "center"
+    });
+  drawText(ctx, (player.name || "Người chơi") + "   •   BÀN #" +
+    String(room.id || "-----") + "   •   CÒN " + hand.length + " LÁ",
+    width / 2, px(146), scale, {
+      size: 14, weight: 800, color: "#c4ded0", align: "center"
+    });
+
+  roundPanel(ctx, px(36), px(177), width - px(72), px(309),
+    px(21), "rgba(5,30,22,.94)",
+    premium ? "rgba(238,195,103,.95)" : "rgba(122,205,164,.56)");
+
   if (!hand.length) {
     drawText(ctx, "BẠN ĐÃ HẾT BÀI!", width / 2, px(337), scale, {
-      size: 30, weight: 900, color: "#2ce8ae", align: "center"
+      size: 30, weight: 900, color: "#70efb8", align: "center"
     });
   } else {
-    // Larger hand cards use a slight overlap for 11–13 cards so rank,
-    // suit and the numbered selection badge remain easy to read on mobile.
-    const cardW = px(hand.length > 10 ? 72 : 82);
-    const cardH = px(148);
-    const gap = px(hand.length > 10 ? -8 : 8);
+    const cardW = px(82);
+    const cardH = px(170);
+    const gap = hand.length > 10 ? px(-12) : hand.length > 7 ? px(-4) : px(5);
     const total = hand.length * cardW + Math.max(0, hand.length - 1) * gap;
-    const startX = Math.max(px(58), (width - total) / 2);
-    const y = hand.length > 10 ? px(242) : px(250);
+    const startX = Math.max(px(49), (width - total) / 2);
+    const y = px(235);
     hand.forEach((card, index) => drawPlayingCard(ctx, card,
       startX + index * (cardW + gap), y, cardW, cardH, scale, {
-        small: true, premium, index: index + 1
+        small: false, premium, index: index + 1
       }));
   }
 
-  const commandY = px(514);
-  roundPanel(ctx, px(48), px(492), width - px(96), px(170), px(16),
-    "rgba(27,0,7,.58)", "rgba(205,175,110,.30)");
-  drawText(ctx, data.isTurn ? "🎯 ĐẾN LƯỢT BẠN" : "🔒 BÀI CỦA RIÊNG BẠN",
-    px(78), commandY + px(18), scale, {
-      size: 16, weight: 900, color: data.isTurn ? "#ffd34f" : "#e7d4a9"
+  roundPanel(ctx, px(42), px(511), width - px(84), px(178),
+    px(18), "rgba(5,25,19,.94)", "rgba(213,184,121,.36)");
+  const activeColor = data.isTurn ? "#7df0bd" : "#edcf8a";
+  drawText(ctx, data.isTurn ? "●  ĐẾN LƯỢT BẠN" : "🔒  BÀI RIÊNG CỦA BẠN",
+    px(70), px(548), scale, {
+      size: 17, weight: 900, color: activeColor
     });
-  drawText(ctx, "Lẻ: 4r  •  Đôi: doi 4  •  Sám: sam 7  •  Sảnh: sanh 345",
-    px(78), commandY + px(55), scale, {
-      size: 12, weight: 900, color: "#fff0cf"
+  drawText(ctx, "ĐÁNH  •  Lẻ: 4r   |   Đôi: doi 4   |   Sám: sam 7   |   Sảnh: sanh 345",
+    px(70), px(582), scale, {
+      size: 13, weight: 900, color: "#fff8e8"
     });
-  drawText(ctx, "Chọn số: chon 1,2  •  Gợi ý: goiy  •  Tự đánh: auto",
-    px(78), commandY + px(88), scale, {
-      size: 12, weight: 900, color: "#76f0cd"
+  drawText(ctx, "CHỌN  •  chon 1,2   |   Gợi ý: goiy   |   Tự đánh: auto",
+    px(70), px(616), scale, {
+      size: 13, weight: 900, color: "#8ee5c0"
     });
-  drawText(ctx, "Tứ quý: tuquy 4  •  Đôi thông: 3dt / 4dt  •  Bỏ: bo",
-    px(78), commandY + px(120), scale, {
-      size: 11, weight: 800, color: "#c0d9ca"
+  drawText(ctx, "HÀNG  •  tuquy 4   |   Đôi thông: 3dt / 4dt   |   Bỏ lượt: bo",
+    px(70), px(649), scale, {
+      size: 12, weight: 800, color: "#d7e7dc"
     });
-  drawText(ctx, "Thứ tự từ trái sang phải  •  b Bích  •  ch Chuồn  •  r Rô  •  c Cơ",
-    px(78), commandY + px(145), scale, {
-      size: 10, weight: 900, color: "#ffd34f"
+  drawText(ctx, "SỐ TRÊN LÁ = THỨ TỰ CHỌN  •  BÍCH (b)  CHUỒN (ch)  RÔ (r)  CƠ (c)",
+    width / 2, px(676), scale, {
+      size: 10, weight: 900, color: "#e3c783", align: "center"
     });
   drawText(ctx, room.practice
     ? "LUYỆN TẬP VS AI  •  KHÔNG TRỪ XU"
-    : "CƯỢC " + String(room.bet || 5000) + "$  •  NHẤT NHÌ BA BÉT",
-    width / 2, px(710), scale, {
-      size: 10, weight: 900, color: premium ? "#ffe08a" : "#8ba79a", align: "center"
+    : "CƯỢC " + String(room.bet || 5000) + "$  •  " + (room.mode === "demla" ? "ĐẾM LÁ" : "NHẤT NHÌ BA BÉT"),
+    width / 2, px(744), scale, {
+      size: 10, weight: 900, color: premium ? "#ffe2a0" : "#9db9aa", align: "center"
     });
 }
 
@@ -383,29 +382,29 @@ function renderTlmn(data = {}) {
   const { canvas, ctx } = theme.newCanvas(width, height);
   theme.paintBackground(ctx, width, height);
 
-  // Royal red felt table with a dark burgundy vignette, matching the supplied
-  // Tiến Lên reference artwork rather than the bot's default green theme.
-  const felt = ctx.createRadialGradient(width / 2, px(350), px(35), width / 2, px(390), px(620));
-  felt.addColorStop(0, "#a30d16");
-  felt.addColorStop(0.48, "#78060d");
-  felt.addColorStop(0.82, "#43030a");
-  felt.addColorStop(1, "#120208");
-  ctx.fillStyle = felt;
+  const background = ctx.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, "#061b14");
+  background.addColorStop(.48, "#0a3828");
+  background.addColorStop(1, "#03120d");
+  ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
-  const goldGlow = ctx.createRadialGradient(width / 2, px(370), px(20), width / 2, px(390), px(440));
-  goldGlow.addColorStop(0, "rgba(255,190,45,.10)");
-  goldGlow.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = goldGlow;
+  const glow = ctx.createRadialGradient(width / 2, px(365), px(30),
+    width / 2, px(390), px(640));
+  glow.addColorStop(0, "rgba(50,160,105,.18)");
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "rgba(255,205,65,.42)";
-  ctx.lineWidth = px(3);
-  theme.roundRect(ctx, px(22), px(22), width - px(44), height - px(44), px(24));
+  theme.roundRect(ctx, px(20), px(20), width - px(40), height - px(40), px(24));
+  ctx.strokeStyle = "rgba(211,177,108,.46)";
+  ctx.lineWidth = px(2);
   ctx.stroke();
 
   if (data.view === "hand") renderHand(ctx, width, height, scale, data);
   else renderTable(ctx, width, height, scale, data);
-
   return theme.save(canvas, "tlmn");
 }
 
-module.exports = { renderTlmn, _test: { suitInfo, rankText, seatLayout } };
+module.exports = {
+  renderTlmn,
+  _test: { suitInfo, rankText, seatLayout, drawPlayingCard }
+};
