@@ -489,8 +489,8 @@ test("Sâm multi-chop chain pays the accumulated 15-stake amount to the final cu
   const room = started.state;
   room.hands = {
     a: [card(15), card(9)],
-    b: [card(7), card(7, "ch"), card(7, "r"), card(7, "c"), card(10)],
-    c: [card(8), card(8, "ch"), card(8, "r"), card(8, "c"), card(11)]
+    b: [card(7), card(7, "ch"), card(7, "r"), card(7, "c"), card(6)],
+    c: [card(8), card(8, "ch"), card(8, "r"), card(8, "c"), card(6, "r")]
   };
   room.turnUid = "a";
   room.currentCombo = null;
