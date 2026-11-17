@@ -149,6 +149,30 @@ test("Sâm marks an uninterrupted Báo Sâm as successful", () => {
   game.removeRoom(threadId);
 });
 
+test("Sâm call does not steal the 3♠ opening turn from another player", () => {
+  const threadId = "sam-call-turn-test";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81525" });
+  assert.equal(created.ok, true);
+  game.join(threadId, "81525", { uid: "b", name: "B" });
+  const started = game.start(threadId, "a", () => 0.19);
+  assert.equal(started.ok, true);
+
+  const room = started.state;
+  const caller = room.players.find(item => item.uid !== room.firstPlayerUid);
+  room.hands[caller.uid] = [card(3), card(4), card(5)];
+  room.hands[room.firstPlayerUid] = [card(3), card(6)];
+  room.turnUid = room.firstPlayerUid;
+  assert.equal(game.callSam(threadId, caller.uid).ok, true);
+  assert.equal(room.turnUid, room.firstPlayerUid);
+  assert.equal(room.samStatus, "called");
+  assert.equal(room.samCallerHasPlayed, false);
+  const opening = game.play(threadId, room.firstPlayerUid, [room.hands[room.firstPlayerUid].find(item => item.id === "3b")]);
+  assert.equal(opening.ok, true);
+  assert.equal(opening.samLung, false);
+  assert.equal(room.samStatus, "called");
+  game.removeRoom(threadId);
+});
+
 test("Sâm serializes and restores a live room with pass state", () => {
   const threadId = "sam-restore-test";
   const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81524" });
