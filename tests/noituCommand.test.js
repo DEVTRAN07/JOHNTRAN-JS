@@ -221,7 +221,7 @@ const { Reactions } = require("zalo-client");
 
 test("Solo tagged messages use a real newline and preserve player names", () => {
   const payload = command._test.playerMentionPayload("user-1", "Trần N", "⏱️ Hết giờ!");
-  assert.equal(payload.msg, "@Trần N\\n⏱️ Hết giờ!");
+  assert.equal(payload.msg, "@Trần N\n⏱️ Hết giờ!");
   assert.deepEqual(payload.mentions, [{ pos: 0, uid: "user-1", len: "@Trần N".length }]);
 });
 

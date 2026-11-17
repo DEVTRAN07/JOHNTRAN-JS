@@ -87,7 +87,7 @@ async function recallSoloLastPrompt(api, session) {
 
 function playerMentionPayload(uid, name, msg) {
   const safeName = String(name || "Người chơi")
-    .replace(/[\\r\n\\t]+/g, " ")
+    .replace(/[\r\n\t]+/g, " ")
     .replace(/\s+/g, " ")
     .replace(/^@+/, "")
     .trim() || "Người chơi";
