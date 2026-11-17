@@ -379,6 +379,101 @@ test("GameVH TLMN successful kết 3 bích pays 26 bets per opponent without lef
     -settlement.houseFee);
 });
 
+test("GameVH TLMN Thối 3 Bích scales to 2, 3 and 4 players with the documented 5 percent fee", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const bet = 1000;
+  for (const count of [2, 3, 4]) {
+    const players = Array.from({ length: count }, (_, index) => ({
+      uid: "player-" + index
+    }));
+    const room = {
+      bet,
+      players,
+      finishOrder: ["rescuer"],
+      threeSpadesThoiUid: "thoi",
+      threeSpadesRescuerUid: "rescuer",
+      hands: Object.fromEntries(players.map(item => [item.uid, []])),
+      chopEvents: [],
+      threeSpadesBlockEvents: []
+    };
+    room.hands.thoi = [{ rank: 3, suit: "b", id: "3b" }];
+
+    const settlement = game.calculateSettlement(room);
+    const gross = 26 * bet * (count - 1);
+    const fee = Math.floor(gross * 0.05);
+    assert.equal(settlement.winnerUid, "rescuer");
+    assert.deepEqual(settlement.transfers, [{
+      from: "thoi",
+      to: "rescuer",
+      amount: gross,
+      reason: "thoi-ba-bich",
+      receivedAmount: gross - fee,
+      fee
+    }]);
+    assert.equal(settlement.net.thoi, -gross);
+    assert.equal(settlement.net.rescuer, gross - fee);
+    assert.equal(settlement.houseFee, fee);
+    assert.equal(
+      Object.values(settlement.net).reduce((sum, value) => sum + value, 0),
+      -fee
+    );
+  }
+});
+
+test("GameVH TLMN successful Kết 3 Bích scales base 26 plus dead weapons across 2–4 players", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const bet = 1000;
+  for (const count of [2, 3, 4]) {
+    const players = Array.from({ length: count }, (_, index) => ({
+      uid: "k-" + index
+    }));
+    const hands = Object.fromEntries(players.map(item => [item.uid, []]));
+    if (count > 1) hands["k-1"] = [
+      { rank: 15, suit: "c", id: "15c" },
+      { rank: 7, suit: "b", id: "7b" }
+    ];
+    if (count > 2) hands["k-2"] = [
+      { rank: 15, suit: "b", id: "15b" },
+      { rank: 15, suit: "ch", id: "15ch" },
+      { rank: 8, suit: "b", id: "8b" }
+    ];
+    if (count > 3) hands["k-3"] = [
+      { rank: 9, suit: "b", id: "9b" }
+    ];
+    const room = {
+      bet,
+      players,
+      finishOrder: ["k-0"],
+      threeSpadesFinisherUid: "k-0",
+      threeSpadesBlockedByUid: null,
+      hands,
+      chopEvents: [],
+      threeSpadesBlockEvents: []
+    };
+    const settlement = game.calculateSettlement(room);
+    const expectedGross = players.slice(1).map((item, index) =>
+      26 * bet + (index === 0 ? 4 * bet : index === 1 ? 6 * bet : 0)
+    );
+    assert.equal(settlement.winnerUid, "k-0");
+    assert.deepEqual(
+      settlement.transfers.map(item => item.amount),
+      expectedGross
+    );
+    assert.deepEqual(
+      settlement.transfers.map(item => item.receivedAmount),
+      expectedGross.map(amount => amount - Math.floor(amount * 0.05))
+    );
+    assert.equal(
+      settlement.houseFee,
+      expectedGross.reduce((sum, amount) => sum + Math.floor(amount * 0.05), 0)
+    );
+    assert.equal(
+      Object.values(settlement.net).reduce((sum, value) => sum + value, 0),
+      -settlement.houseFee
+    );
+  }
+});
+
 test("GameVH TLMN blocked kết 3 bích charges only players who joined the final trick", () => {
   const game = require("../core/runtime/services/games/tlmnService");
   const room = {
