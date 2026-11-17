@@ -927,3 +927,80 @@ test("Sâm settlement retry after restart reuses the same transaction IDs", asyn
   assert.equal(Users.records.get("b").tlmn.games, 1);
   game.removeRoom(threadId);
 });
+
+
+test("Sâm startup recovers a pending escrow from a waiting room before scheduling lobby cleanup", async () => {
+  const threadId = "sam-onload-waiting-escrow";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81613", stake: 100 });
+  game.join(threadId, "81613", { uid: "b", name: "B" });
+  const room = created.state;
+  room.lockTransactionId = "startup-waiting";
+  const reserveId = "reserve:81613:startup-waiting:a";
+  room.locked = {};
+  room.lockPending = { a: { amount: 25000, transactionId: reserveId } };
+
+  const Users = makeMemoryUsers({ a: 75000, b: 100000 });
+  const record = Users.records.get("a");
+  record.tlmn.transactions.push(reserveId);
+  Users.records.set("a", record);
+  const Threads = makeMemoryThreads();
+  Threads.records.set(threadId, { sam_room: game.serialize(room) });
+  game.removeRoom(threadId);
+
+  const api = { async sendMessage() { return true; } };
+  await command.onLoad({ api, Users, Threads });
+
+  const restored = game.get(threadId);
+  assert.ok(restored);
+  assert.equal(restored.status, "waiting");
+  assert.equal(Users.records.get("a").tlmn.coins, 100000);
+  assert.deepEqual(restored.locked, {});
+  assert.deepEqual(restored.lockPending, {});
+  assert.equal(game.timers.has(threadId), true);
+  game.removeRoom(threadId);
+});
+
+test("Sâm startup restores a valid playing room, re-sends private hands and resumes its turn timer", async () => {
+  const threadId = "sam-onload-playing-room";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81614", stake: 100 });
+  game.join(threadId, "81614", { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.32); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.lockTransactionId = room.gameToken;
+  room.locked = { a: 25000, b: 25000 };
+  room.lockPending = {};
+  const Threads = makeMemoryThreads();
+  Threads.records.set(threadId, { sam_room: game.serialize(room) });
+  game.removeRoom(threadId);
+
+  const Users = makeMemoryUsers({ a: 75000, b: 75000 });
+  let sent = 0;
+  const api = {
+    getOwnId() { return "bot-uid"; },
+    getContext() { return { loginInfo: { send2me_id: "my-documents" } }; },
+    async sendMessage() {
+      sent += 1;
+      return {
+        message: { msgId: "restore-" + sent, cliMsgId: "restore-client-" + sent },
+        attachment: []
+      };
+    },
+    async undo() { return true; }
+  };
+
+  await command.onLoad({ api, Users, Threads });
+
+  const restored = game.get(threadId);
+  assert.ok(restored);
+  assert.equal(restored.status, "playing");
+  assert.equal(restored.locked.a, 25000);
+  assert.equal(restored.locked.b, 25000);
+  assert.equal(game.timers.has(threadId), true);
+  assert.ok(sent >= 3, "both private hands and the group board should be re-sent");
+  game.removeRoom(threadId);
+});
