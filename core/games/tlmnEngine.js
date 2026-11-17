@@ -280,7 +280,8 @@ function analyzeCombo(inputCards) {
     cards,
     length,
     mainRank,
-    highSuit: Math.max(...cards.map(card => SUIT_WEIGHT[card.suit])),
+    // TLMN compares the suit of the highest card in the combo, not any lower card.
+    highSuit: SUIT_WEIGHT[top.suit],
     cardCount: cards.length
   };
 }
