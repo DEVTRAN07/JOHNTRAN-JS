@@ -1232,6 +1232,13 @@ async function endGame(api, event, Users, roomState, Threads) {
     await sendText(api, event, "⚠️ Chưa thể lưu kết quả ván bài vào database; xu chưa được chốt để tránh sai lệch số dư.");
     return;
   }
+  const thoiThreeSpadesNotice = room.threeSpadesThoiUid && room.threeSpadesRescuerUid
+    ? "🛟 THỐI 3 BÍCH: " +
+      (room.players.find(item => item.uid === room.threeSpadesThoiUid)?.name || "Người chơi") +
+      " bị chặn khi chỉ còn 3♠. " +
+      (room.players.find(item => item.uid === room.threeSpadesRescuerUid)?.name || "Người chặn") +
+      " đã cứu làng và thắng ván."
+    : null;
   if (room.practice) {
     room.settled = true;
     await persistRoom(Threads, room.threadId);
@@ -1246,6 +1253,7 @@ async function endGame(api, event, Users, roomState, Threads) {
           " — " + (engine.WHITE_HAND_LABEL[room.whiteHand.type] || room.whiteHand.type),
         ""
       ] : []),
+      ...(thoiThreeSpadesNotice ? [thoiThreeSpadesNotice, ""] : []),
       ...rows.map(row => row.place === 1
         ? "👑 THẮNG • " + row.name + " — còn " + row.cardsLeft + " lá"
         : "❌ THUA • " + row.name + " — còn " + row.cardsLeft + " lá"),
@@ -1277,6 +1285,7 @@ async function endGame(api, event, Users, roomState, Threads) {
       ""
     );
   }
+  if (thoiThreeSpadesNotice) lines.push(thoiThreeSpadesNotice, "");
   for (const result of payoutLines) {
     const sign = result.change > 0 ? "+" : "";
     lines.push(
