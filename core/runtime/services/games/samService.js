@@ -193,7 +193,7 @@ function calculateSettlement(room) {
     if (from && to && from !== to && value) transfers.push({ from, to, amount: value, reason });
   };
 
-  // Tiền chặt được trả trực tiếp cho người vừa bị chặt.
+  // Chặt chồng: người có hàng bị chặt cuối cùng trả toàn bộ số lần chặt cho người chặt cuối.
   for (const chop of Array.isArray(room.chopEvents) ? room.chopEvents : []) {
     add(chop.from, chop.to, chop.amount, chop.reason || "chop");
   }
@@ -297,9 +297,11 @@ function play(threadId, uid, input) {
       const chain = room.activeChopChain;
       chain.count += 1;
       const event = room.chopEvents[chain.eventIndex];
+      event.from = room.lastPlayerUid;
       event.to = actor;
       event.amount = 15 * stake * chain.count;
       event.reason = "chop-chain";
+      chain.from = room.lastPlayerUid;
     } else {
       const event = {
         from: room.lastPlayerUid,
