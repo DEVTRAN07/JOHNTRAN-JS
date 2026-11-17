@@ -42,15 +42,20 @@ function rankText(rank) {
 function drawPlayingCard(ctx, card, x, y, w, h, scale, options = {}) {
   const suit = suitInfo(card.suit);
   const rank = rankText(card.rank);
+  const premium = Boolean(options.premium);
   ctx.save();
+  if (premium) {
+    ctx.shadowColor = "rgba(255, 211, 98, .72)";
+    ctx.shadowBlur = 10 * scale;
+  }
   theme.roundRect(ctx, x + 2 * scale, y + 4 * scale, w, h, 10 * scale);
   ctx.fillStyle = "rgba(0,0,0,.38)";
   ctx.fill();
   theme.roundRect(ctx, x, y, w, h, 10 * scale);
-  ctx.fillStyle = "#fff9e9";
+  ctx.fillStyle = premium ? "#fff5d9" : "#fff9e9";
   ctx.fill();
-  ctx.strokeStyle = options.selected ? "#16e6a1" : "#d6c9a7";
-  ctx.lineWidth = options.selected ? 3 * scale : 1 * scale;
+  ctx.strokeStyle = options.selected ? "#16e6a1" : premium ? "#d79b28" : "#d6c9a7";
+  ctx.lineWidth = options.selected ? 3 * scale : premium ? 2.8 * scale : 1 * scale;
   ctx.stroke();
   drawText(ctx, rank, x + 9 * scale, y + 26 * scale, scale, {
     size: options.small ? 15 : 19, weight: 900, color: suit.color
@@ -85,7 +90,7 @@ function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
   ctx.strokeStyle = active ? "#44edba" : "#b88c50";
   ctx.stroke();
   drawText(ctx, item
-    ? String(item.name || "P").trim().slice(0, 1).toUpperCase()
+    ? (item.ai ? "AI" : String(item.name || "P").trim().slice(0, 1).toUpperCase())
     : "+",
     avatarX, avatarY + px(8), scale, {
       size: 22, weight: 900, color: "#fff1ce", align: "center"
@@ -169,7 +174,8 @@ function renderTable(ctx, width, height, scale, data) {
   });
   drawText(ctx, "BÀN #" + String(room.id || "-----") + "   •   CƯỢC " +
     String(room.bet || 5000).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "$   •   " +
-    (room.mode === "demla" ? "ĐẾM LÁ" : "NHẤT NHÌ BA BÉT"),
+    (room.practice ? "LUYỆN TẬP VS 3 AI" :
+      room.mode === "demla" ? "ĐẾM LÁ" : "NHẤT NHÌ BA BÉT"),
     width / 2, px(145), scale, {
       size: 13, weight: 800, color: "#c4dbc9", align: "center"
     });
@@ -261,9 +267,11 @@ function renderTable(ctx, width, height, scale, data) {
       });
   }
 
-  const footer = room.status === "waiting"
-    ? "CHỦ PHÒNG BẤM START KHI CÓ TỪ 2 ĐẾN 4 NGƯỜI"
-    : "BÀI RIÊNG QUA INBOX  •  NHÓM CHỈ HIỆN LÁ BÀI ĐƯỢC ĐÁNH";
+  const footer = room.practice
+    ? "LUYỆN TẬP VS 3 AI  •  KHÔNG CƯỢC XU  •  BÀI RIÊNG KHÔNG LỘ TRONG NHÓM"
+    : room.status === "waiting"
+      ? "CHỦ PHÒNG BẤM START KHI CÓ TỪ 2 ĐẾN 4 NGƯỜI"
+      : "BÀI RIÊNG QUA INBOX  •  NHÓM CHỈ HIỆN LÁ BÀI ĐƯỢC ĐÁNH";
   drawText(ctx, footer, width / 2, px(744), scale, {
     size: 10, weight: 900, color: "#e5c780", align: "center"
   });
@@ -274,11 +282,12 @@ function renderHand(ctx, width, height, scale, data) {
   const player = data.player || {};
   const hand = Array.isArray(data.hand) ? data.hand : [];
   const px = value => Math.round(value * scale);
-  drawText(ctx, "JOHNTRAN  /  PRIVATE HAND", px(58), px(52), scale, {
-    size: 12, weight: 900, color: "#ffd34f"
+  const premium = Boolean(data.isAdmin);
+  drawText(ctx, premium ? "JOHNTRAN  /  ADMIN ROYAL HAND" : "JOHNTRAN  /  PRIVATE HAND", px(58), px(52), scale, {
+    size: 12, weight: 900, color: premium ? "#ffe08a" : "#ffd34f"
   });
-  drawText(ctx, "BÀI RIÊNG CỦA BẠN", width / 2, px(112), scale, {
-    size: 34, weight: 900, color: "#fff1ce", align: "center"
+  drawText(ctx, premium ? "👑 BÀI HOÀNG GIA CỦA ADMIN" : "BÀI RIÊNG CỦA BẠN", width / 2, px(112), scale, {
+    size: premium ? 31 : 34, weight: 900, color: premium ? "#ffe08a" : "#fff1ce", align: "center"
   });
   drawText(ctx, (player.name || "Người chơi") + "   •   BÀN #" + String(room.id || "-----") +
     "   •   CÒN " + hand.length + " LÁ",
@@ -286,7 +295,8 @@ function renderHand(ctx, width, height, scale, data) {
       size: 14, weight: 800, color: "#a9d5c1", align: "center"
     });
   roundPanel(ctx, px(48), px(190), width - px(96), px(270), px(20),
-    "rgba(62,2,12,.88)", "rgba(255,203,54,.72)");
+    premium ? "rgba(83,43,4,.92)" : "rgba(62,2,12,.88)",
+    premium ? "rgba(255,220,126,.98)" : "rgba(255,203,54,.72)");
   if (!hand.length) {
     drawText(ctx, "BẠN ĐÃ HẾT BÀI!", width / 2, px(337), scale, {
       size: 30, weight: 900, color: "#2ce8ae", align: "center"
@@ -299,7 +309,9 @@ function renderHand(ctx, width, height, scale, data) {
     const startX = Math.max(px(58), (width - total) / 2);
     const y = hand.length > 10 ? px(248) : px(260);
     hand.forEach((card, index) => drawPlayingCard(ctx, card,
-      startX + index * (cardW + gap), y, cardW, cardH, scale, { small: true }));
+      startX + index * (cardW + gap), y, cardW, cardH, scale, {
+        small: true, premium
+      }));
   }
 
   const commandY = px(514);
@@ -321,9 +333,11 @@ function renderHand(ctx, width, height, scale, data) {
     px(78), commandY + px(128), scale, {
       size: 11, weight: 900, color: "#ffd34f"
     });
-  drawText(ctx, "CƯỢC " + String(room.bet || 5000) + "$  •  NHẤT NHÌ BA BÉT",
+  drawText(ctx, room.practice
+    ? "LUYỆN TẬP VS AI  •  KHÔNG TRỪ XU"
+    : "CƯỢC " + String(room.bet || 5000) + "$  •  NHẤT NHÌ BA BÉT",
     width / 2, px(710), scale, {
-      size: 10, weight: 900, color: "#8ba79a", align: "center"
+      size: 10, weight: 900, color: premium ? "#ffe08a" : "#8ba79a", align: "center"
     });
 }
 
