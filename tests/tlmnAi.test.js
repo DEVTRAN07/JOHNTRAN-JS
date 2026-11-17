@@ -124,8 +124,8 @@ test("TLMN AI passes when it cannot beat the current single", () => {
   assert.equal(command._test.chooseAiMove(room, "cpu"), null);
 });
 
-test("TLMN admin practice guarantees the Admin opens and AI yields every Admin-led trick", () => {
-  const groupId = "tlmn-ai-admin-guaranteed-win";
+test("TLMN practice deals Admin a strong hand while AI still answers normally", () => {
+  const groupId = "tlmn-ai-admin-strong-hand";
   const created = game.create(groupId, { uid: "admin", name: "Admin" }, {
     practice: true,
     practiceWinnerUid: "admin"
@@ -141,31 +141,32 @@ test("TLMN admin practice guarantees the Admin opens and AI yields every Admin-l
   assert.equal(room.hands.admin.filter(card => card.rank === 15).length, 4);
   assert.equal(room.hands.admin.filter(card => card.rank === 14).length, 4);
   assert.equal(room.hands.admin.filter(card => card.rank === 13).length, 4);
-  for (const player of room.players.filter(item => item.ai)) {
-    assert.equal(room.hands[player.uid].length, 13);
-    assert.equal(room.hands[player.uid].some(card => card.rank >= 13), false);
-  }
 
-  // Admin can clear the whole hand one card at a time. Each AI must legally
-  // pass the Admin-led trick; this mode is only for a private practice room.
-  let safety = 20;
-  while (room.hands.admin.length && safety-- > 0) {
-    const card = room.hands.admin[0];
-    const played = game.play(groupId, "admin", engine.cardCode(card));
-    assert.equal(played.ok, true, "Admin card must be playable: " + card.id);
+  const aiUid = room.players.find(player => player.ai).uid;
+  const aiHand = [
+    { rank: 3, suit: "b", id: "3b" },
+    { rank: 4, suit: "r", id: "4r" },
+    { rank: 8, suit: "c", id: "8c" }
+  ];
+  const responseRoom = {
+    practice: true,
+    practiceWinnerUid: "admin",
+    playedCount: 1,
+    lastPlayerUid: "admin",
+    currentCombo: {
+      type: "single",
+      length: 1,
+      mainRank: 3,
+      highSuit: 0,
+      cards: [{ rank: 3, suit: "b", id: "3b" }]
+    },
+    hands: { [aiUid]: aiHand }
+  };
+  const response = command._test.chooseAiMove(responseRoom, aiUid);
+  assert.ok(response, "AI must not automatically yield to Admin");
+  assert.equal(engine.validatePlay(aiHand, response.cards, responseRoom.currentCombo).ok, true);
+  assert.ok(response.cards.some(card => card.rank > 3));
 
-    for (let passIndex = 0; passIndex < 3 && room.status === "playing"; passIndex += 1) {
-      const aiUid = room.turnUid;
-      assert.ok(String(aiUid).startsWith("tlmn-ai:"));
-      assert.equal(command._test.chooseAiMove(room, aiUid), null);
-      const passed = game.pass(groupId, aiUid);
-      assert.equal(passed.ok, true);
-    }
-    if (room.finishOrder.includes("admin")) break;
-  }
-
-  assert.ok(safety > -1, "practice game loop should finish without exceeding guard");
-  assert.equal(room.finishOrder[0], "admin");
   game.removeRoom(groupId);
 });
 
