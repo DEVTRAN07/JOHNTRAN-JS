@@ -61,6 +61,99 @@ async function isAdmin(api, userId, threadId) {
 }
 
 
+const nudeModerationInFlight = new Set();
+const OPENAI_MODERATION_URL = "https://api.openai.com/v1/moderations";
+
+function extractMessageUrls(data) {
+  const content = data?.content;
+  const candidates = [];
+  if (data?.msgType === "chat.recommended" && content?.action === "recommended.link" && content.href) {
+    candidates.push(String(content.href));
+  }
+  if (typeof content === "string") {
+    const matches = content.match(/https?:\/\/[^\s<>"']+/gi) || [];
+    candidates.push(...matches);
+  } else if (content && typeof content.href === "string") {
+    candidates.push(content.href);
+  }
+  return [...new Set(candidates.map(url => url.replace(/[),.!?;:]+$/, "")).filter(Boolean))];
+}
+
+function isGroupInviteUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === "https:" &&
+      parsed.hostname.toLowerCase() === "zalo.me" &&
+      /^\/g\/[a-z0-9_-]+\/?$/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+async function isUnsafeLink(rawUrl, api) {
+  if (isGroupInviteUrl(rawUrl)) return true;
+  if (typeof api?.scanURL !== "function") return false;
+  try {
+    const result = await api.scanURL(rawUrl);
+    return result?.isSafe === false;
+  } catch (error) {
+    console.warn("[antilink] Không kiểm tra được URL:", error?.message || error);
+    return false;
+  }
+}
+
+function isExplicitAdultImage(result, threshold = 0.9) {
+  const appliedTypes = result?.category_applied_input_types?.sexual;
+  if (Array.isArray(appliedTypes) && !appliedTypes.includes("image")) return false;
+  const score = Number(result?.category_scores?.sexual);
+  return Number.isFinite(score) && score >= threshold;
+}
+
+async function moderateImage(imageUrl) {
+  const apiKey = process.env.OPENAI_API_KEY || process.env.JT_ANTINUDE_OPENAI_API_KEY;
+  if (!apiKey) throw new Error("Thiếu OPENAI_API_KEY");
+  const parsedUrl = new URL(imageUrl);
+  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+    throw new Error("URL ảnh không hợp lệ");
+  }
+
+  const response = await http.request(OPENAI_MODERATION_URL, {
+    method: "POST",
+    timeout: 8000,
+    retries: 0,
+    headers: {
+      "Authorization": "Bearer " + apiKey,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "omni-moderation-latest",
+      input: [{
+        type: "image_url",
+        image_url: { url: imageUrl }
+      }]
+    })
+  });
+
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error("OpenAI Moderation trả về HTTP " + response.status);
+  }
+  const payload = response.json();
+  const result = payload?.results?.[0];
+  if (!result) throw new Error("Phản hồi AI không có kết quả phân loại");
+
+  const configuredThreshold = Number(process.env.JT_ANTINUDE_SEXUAL_THRESHOLD || 0.9);
+  const threshold = Number.isFinite(configuredThreshold)
+    ? Math.min(0.99, Math.max(0.5, configuredThreshold))
+    : 0.9;
+  return {
+    explicit: isExplicitAdultImage(result, threshold),
+    score: Number(result?.category_scores?.sexual) || 0,
+    threshold
+  };
+}
+
+
+
 module.exports.handleEvent = async function ({ event, api, Threads, eventType, isSelf }) {
   const { threadId, isGroup, data, type } = event;
   const typeUndo = isGroup ? 1 : 0;
@@ -85,6 +178,126 @@ module.exports.handleEvent = async function ({ event, api, Threads, eventType, i
   };
 
   try {
+    // === Anti Link nguy hiểm / link mời nhóm khác ===
+    if (threadData.anti_danger_link && eventType === "message") {
+      const urls = extractMessageUrls(data);
+      if (urls.length && !(await isAdminOrUnknown())) {
+        let blockedUrl = null;
+        for (const url of urls) {
+          if (await isUnsafeLink(url, api)) {
+            blockedUrl = url;
+            break;
+          }
+        }
+        if (blockedUrl) {
+          try {
+            await api.deleteMessage({
+              threadId,
+              type,
+              data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
+            }, false);
+          } catch (error) {
+            console.warn("[antilink] Không xóa được tin nhắn:", error?.message || error);
+          }
+          return api.sendMessage({
+            msg: "🚫 @" + name + ", link mời nhóm khác hoặc URL không an toàn đã bị chặn.",
+            mentions: [{ pos: 3, uid: userId, len: name.length + 1 }]
+          }, threadId, type);
+        }
+      }
+    }
+
+    // === AI Anti Nude: chỉ xử lý ảnh trong nhóm, bỏ qua admin và quyền không xác định ===
+    if (threadData.anti_nude && eventType === "message" && data.msgType === "chat.photo") {
+      const imageUrl = data.content?.href;
+      if (imageUrl && !(await isAdminOrUnknown())) {
+        const checkId = String(threadId) + ":" + String(data.cliMsgId || data.msgId || "");
+        if (!nudeModerationInFlight.has(checkId)) {
+          nudeModerationInFlight.add(checkId);
+          try {
+            const moderation = await moderateImage(imageUrl);
+            if (moderation.explicit) {
+              let deleteError = null;
+              let kickError = null;
+              try {
+                await api.deleteMessage({
+                  threadId,
+                  type,
+                  data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
+                }, false);
+              } catch (error) {
+                deleteError = error;
+              }
+              try {
+                if (typeof api.removeUserFromGroup !== "function") {
+                  throw new Error("API kick thành viên không khả dụng");
+                }
+                await api.removeUserFromGroup(userId, threadId);
+              } catch (error) {
+                kickError = error;
+              }
+              const actions = [];
+              actions.push(deleteError ? "không xóa được ảnh" : "đã xóa ảnh");
+              actions.push(kickError ? "không kick được thành viên" : "đã kick thành viên");
+              return api.sendMessage({
+                msg: "⛔ AI phát hiện ảnh khỏa thân/khiêu dâm (độ tin cậy " +
+                  Math.round(moderation.score * 100) + "%). @" + name + ": " +
+                  actions.join(", ") + "." +
+                  (kickError ? "\n⚠️ " + kickError.message : "") +
+                  (deleteError ? "\n⚠️ " + deleteError.message : ""),
+                mentions: [{ pos: 0, uid: userId, len: name.length + 1 }]
+              }, threadId, type);
+            }
+          } catch (error) {
+            console.error("[antinude] AI moderation thất bại:", error?.message || error);
+          } finally {
+            nudeModerationInFlight.delete(checkId);
+          }
+        }
+      }
+    }
+
+    // === Chống dội bom sticker: hơn 5 sticker/4 giây từ cùng một thành viên ===
+    if (threadData.anti_sticker_spam && eventType === "message" && data.msgType === "chat.sticker") {
+      if (!(await isAdminOrUnknown())) {
+        const now = Date.now();
+        const cache = global.antiStickerSpamCache instanceof Map
+          ? global.antiStickerSpamCache
+          : (global.antiStickerSpamCache = new Map());
+        const cacheKey = String(threadId) + ":" + String(userId);
+        const history = (cache.get(cacheKey) || []).filter(item => now - item.at <= 4000);
+        history.push({
+          at: now,
+          data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
+        });
+
+        if (history.length > 5) {
+          cache.delete(cacheKey);
+          const burst = history.slice(-8);
+          await Promise.allSettled(burst.map(item => api.deleteMessage({
+            threadId,
+            type,
+            data: item.data
+          }, false)));
+
+          const warnings = global.antiStickerSpamWarnings instanceof Map
+            ? global.antiStickerSpamWarnings
+            : (global.antiStickerSpamWarnings = new Map());
+          const lastWarning = warnings.get(cacheKey) || 0;
+          if (now - lastWarning >= 10000) {
+            warnings.set(cacheKey, now);
+            return api.sendMessage({
+              msg: "🚫 @" + name + ", không được dội bom sticker! Bot đã xóa loạt sticker spam.",
+              mentions: [{ pos: 3, uid: userId, len: name.length + 1 }]
+            }, threadId, type);
+          }
+          return;
+        }
+        cache.set(cacheKey, history);
+        if (cache.size > 10000) cache.delete(cache.keys().next().value);
+      }
+    }
+
     // === Anti Link ===
     if (threadData.anti_link) {
       if ((data.msgType == "chat.recommended" && data.content.action == "recommended.link") || (data.msgType == "webchat" && String(data.content).match(/https?:\/\/[^\s]+/))) {
@@ -252,6 +465,13 @@ module.exports.handleEvent = async function ({ event, api, Threads, eventType, i
       }
     }
   }
+};
+
+module.exports._test = {
+  extractMessageUrls,
+  isGroupInviteUrl,
+  isUnsafeLink,
+  isExplicitAdultImage
 };
 
 module.exports.run = async function ({ api, event, args, Threads }) {
