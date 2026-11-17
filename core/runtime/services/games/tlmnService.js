@@ -261,7 +261,9 @@ function resolveWhiteHand(room) {
   if (!whiteHands.length) return null;
 
   whiteHands.sort((a, b) =>
-    engine.WHITE_HAND_PRIORITY.indexOf(a.type) - engine.WHITE_HAND_PRIORITY.indexOf(b.type) ||
+    engine.compareWhiteHands(
+      room.hands[a.uid], a.type, room.hands[b.uid], b.type
+    ) ||
     room.players.findIndex(item => item.uid === a.uid) -
       room.players.findIndex(item => item.uid === b.uid)
   );
