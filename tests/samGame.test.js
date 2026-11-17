@@ -375,3 +375,52 @@ test("Sâm computes card-left, thối heo and cóng charges in the shared stake 
     from: "b", to: "a", amount: 160000, reason: "cards-left-and-penalties"
   });
 });
+
+
+test("Sâm báo một forces opponents to include their highest card", () => {
+  const threadId = "sam-bao-one-highest";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81602" });
+  game.join(threadId, "81602", { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.24); }
+  finally { engine.detectWhiteHand = originalDetector; }
+  const room = started.state;
+  room.hands = { a: [card(4), card(9)], b: [card(7)] };
+  room.turnUid = "a";
+  room.playedCount = 1;
+  assert.equal(game.play(threadId, "a", "4b").code, "MUST_PLAY_HIGHEST_ON_BAO_ONE");
+  assert.equal(game.play(threadId, "a", "9b").ok, true);
+  game.removeRoom(threadId);
+});
+
+test("Sâm records a 15-stake transfer when a four-of-a-kind chops a two", () => {
+  const threadId = "sam-chop-money";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81603", stake: 5000 });
+  game.join(threadId, "81603", { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.27); }
+  finally { engine.detectWhiteHand = originalDetector; }
+  const room = started.state;
+  room.hands = {
+    a: [card(8), card(8, "ch"), card(8, "r"), card(8, "c")],
+    b: [card(15), card(3)]
+  };
+  room.playedByUid = { b: 1 };
+  room.turnUid = "a";
+  room.currentCombo = engine.analyzeCombo([card(15)]);
+  room.lastPlayerUid = "b";
+  const result = game.play(threadId, "a", "tuquy 8");
+  assert.equal(result.ok, true);
+  assert.equal(result.finished, true);
+  assert.deepEqual(room.chopEvents[0], {
+    from: "b", to: "a", amount: 75000, reason: "chop-two"
+  });
+  assert.ok(room.settlement.transfers.some(item =>
+    item.from === "b" && item.to === "a" && item.amount === 75000 && item.reason === "chop-two"
+  ));
+  game.removeRoom(threadId);
+});
