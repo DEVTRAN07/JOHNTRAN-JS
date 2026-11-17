@@ -790,6 +790,64 @@ test("TLMN blocked kết 3 bích charges every player who joined the final trick
   game.removeRoom(groupId);
 });
 
+test("TLMN GameVH Thối 3 Bích: the player who covers the penultimate play rescues and wins", () => {
+  const groupId = "tlmn-gamevh-thoi-three-spades";
+  const created = game.create(groupId, { uid: "a", name: "A" });
+  game.join(groupId, created.room.id, { uid: "b", name: "B" });
+  game.join(groupId, created.room.id, { uid: "c", name: "C" });
+  game.start(groupId, "a", () => 0.41);
+  const room = created.state;
+
+  // A starts with 2♥ + 3♠ and plays 2♥, leaving only 3♠.
+  // B covers the 2♥ with three consecutive pairs (3 đôi thông).
+  room.status = "playing";
+  room.hands = {
+    a: [{ rank: 15, suit: "c", id: "15c" }, { rank: 3, suit: "b", id: "3b" }],
+    b: [3, 4, 5].flatMap(rank => [
+      { rank, suit: "b", id: String(rank) + "b" },
+      { rank, suit: "ch", id: String(rank) + "ch" }
+    ]).concat([{ rank: 8, suit: "b", id: "8b" }]),
+    c: [{ rank: 9, suit: "b", id: "9b" }]
+  };
+  room.activeUids = ["a", "b", "c"];
+  room.finishOrder = [];
+  room.forfeitUids = [];
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.playedCount = 0;
+  room.trickParticipants = [];
+  room.chopEvents = [];
+
+  const secondLast = game.play(groupId, "a", "2c");
+  assert.equal(secondLast.ok, true);
+  assert.deepEqual(room.hands.a.map(item => item.id), ["3b"]);
+  assert.equal(room.status, "playing");
+
+  const rescue = game.play(groupId, "b", "3dt");
+  assert.equal(rescue.ok, true);
+  assert.equal(rescue.finished, true);
+  assert.equal(rescue.threeSpadesThoi, true);
+  assert.equal(room.status, "finished");
+  assert.equal(room.winnerUid, "b");
+  assert.equal(room.results[0].uid, "b");
+  assert.equal(room.results.at(-1).uid, "a");
+  assert.equal(room.threeSpadesThoiUid, "a");
+  assert.equal(room.threeSpadesRescuerUid, "b");
+
+  assert.deepEqual(room.settlement.transfers, [{
+    from: "a",
+    to: "b",
+    amount: 26 * room.bet * 2,
+    reason: "thoi-ba-bich"
+  }]);
+  assert.equal(room.settlement.winnerUid, "b");
+  assert.equal(Object.values(room.settlement.net).reduce((sum, value) => sum + value, 0), 0);
+  assert.equal(room.chopEvents.length, 0, "the special 3♠ rescue is not charged again as an ordinary chop");
+  game.removeRoom(groupId);
+});
+
 test("TLMN chặt 2 đen pays 3 stakes and 2 đỏ pays 6 stakes", () => {
   const groupId = "tlmn-heo-chop-rates";
   const created = game.create(groupId, { uid: "chopper", name: "Chopper" });
