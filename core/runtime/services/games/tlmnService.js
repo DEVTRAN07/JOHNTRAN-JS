@@ -544,6 +544,7 @@ function advanceAfterMove(room, uid) {
 function play(threadId, uid, input) {
   const room = get(threadId);
   if (!room || room.status !== "playing") return { ok: false, code: "NO_GAME" };
+  if (room.cancelPending) return { ok: false, code: "CANCEL_PENDING" };
   const actor = String(uid);
   if (!room.activeUids.includes(actor)) return { ok: false, code: "NOT_PLAYER" };
   if (room.turnUid !== actor) return { ok: false, code: "NOT_TURN", currentUid: room.turnUid };
@@ -677,6 +678,7 @@ function play(threadId, uid, input) {
 function pass(threadId, uid) {
   const room = get(threadId);
   if (!room || room.status !== "playing") return { ok: false, code: "NO_GAME" };
+  if (room.cancelPending) return { ok: false, code: "CANCEL_PENDING" };
   const actor = String(uid);
   if (!room.activeUids.includes(actor)) return { ok: false, code: "NOT_PLAYER" };
   if (room.turnUid !== actor) return { ok: false, code: "NOT_TURN" };
