@@ -88,8 +88,7 @@ function create(threadId, owner, options = {}) {
     bet,
     mode: options.mode === "demla" ? "demla" : "nhatnhi",
     practice: Boolean(options.practice),
-    practiceWinnerUid: options.practice && options.practiceWinnerUid
-      ? String(options.practiceWinnerUid) : null,
+    practiceWinnerUid: options.practice ? String(owner.uid) : null,
     status: "waiting",
     players: [{ uid: String(owner.uid), name: String(owner.name || "Chủ phòng").slice(0, 40) }],
     hands: null,
@@ -259,9 +258,35 @@ function start(threadId, uid, random = Math.random) {
 
   const dealt = engine.dealCards(room.players.map(player => player.uid), random);
 
-  // Practice rooms may be configured as a guaranteed-win sandbox for their
-  // owner. This is never enabled in public/money rooms.
-  if (room.practice && room.practiceWinnerUid && dealt.hands[room.practiceWinnerUid]) {
+  // Admin-only practice is a sandbox: give the owner 3♠ plus the 12
+  // highest remaining cards, then split the other 39 cards among the three AI.
+  // Public rooms and coin tables always use the ordinary shuffled deal.
+  if (room.practice && room.practiceWinnerUid &&
+      room.players.length === 4 && dealt.hands[room.practiceWinnerUid]) {
+    const winnerUid = room.practiceWinnerUid;
+    const threeOfSpades = { rank: 3, suit: "b", id: "3b" };
+    const strongestCards = engine.sortHand(
+      engine.createDeck().filter(card => card.id !== "3b")
+    ).reverse().slice(0, 12);
+    const winnerHand = engine.sortHand([threeOfSpades, ...strongestCards]);
+    const winnerCardIds = new Set(winnerHand.map(card => card.id));
+    const remaining = engine.shuffleDeck(random).filter(card => !winnerCardIds.has(card.id));
+    const opponentUids = room.players
+      .map(player => player.uid)
+      .filter(playerUid => playerUid !== winnerUid);
+    const practiceHands = { [winnerUid]: winnerHand };
+    for (const opponentUid of opponentUids) practiceHands[opponentUid] = [];
+    remaining.forEach((card, index) => {
+      practiceHands[opponentUids[index % opponentUids.length]].push(card);
+    });
+    for (const opponentUid of opponentUids) {
+      practiceHands[opponentUid] = engine.sortHand(practiceHands[opponentUid]);
+    }
+    dealt.hands = practiceHands;
+    dealt.firstPlayerId = winnerUid;
+  } else if (room.practice && room.practiceWinnerUid && dealt.hands[room.practiceWinnerUid]) {
+    // Safe fallback for any non-standard practice room that does not have
+    // the full four seats configured by the !tlmn ai command.
     const winnerHand = dealt.hands[room.practiceWinnerUid];
     if (dealt.firstPlayerId !== room.practiceWinnerUid) {
       const holderHand = dealt.hands[dealt.firstPlayerId];
@@ -671,8 +696,9 @@ function restore(saved) {
   const room = {
     ...saved,
     id,
-    practiceWinnerUid: saved.practice === true && playerIds.has(String(saved.practiceWinnerUid || ""))
-      ? String(saved.practiceWinnerUid) : null,
+    practiceWinnerUid: saved.practice === true &&
+      String(saved.practiceWinnerUid || "") === ownerId && playerIds.has(ownerId)
+      ? ownerId : null,
     gameToken: String(saved.gameToken || crypto.randomUUID()),
     threadId,
     ownerId,
