@@ -517,6 +517,8 @@ function play(threadId, uid, input) {
   const chops = previousCombo && previousLeader && (
     (previousCombo.type === "single" && previousCombo.mainRank === 15 &&
       (combo.type === "pairRun" && combo.length >= 3 || combo.type === "fourKind")) ||
+    (previousCombo.type === "pair" && previousCombo.mainRank === 15 &&
+      combo.type === "pairRun" && combo.length >= 4) ||
     (previousCombo.type === "pairRun" && previousCombo.length === 3 &&
       (combo.type === "pairRun" && combo.length >= 4 || combo.type === "fourKind")) ||
     (previousCombo.type === "fourKind" && combo.type === "pairRun" && combo.length >= 4) ||
@@ -529,6 +531,10 @@ function play(threadId, uid, input) {
     if (previousCombo.type === "single" && previousCombo.mainRank === 15) {
       const targetCard = previousCombo.cards?.[0];
       chopUnits = targetCard && (targetCard.suit === "b" || targetCard.suit === "ch") ? 3 : 6;
+    } else if (previousCombo.type === "pair" && previousCombo.mainRank === 15) {
+      const redCount = (previousCombo.cards || []).filter(card =>
+        card.suit === "r" || card.suit === "c").length;
+      chopUnits = redCount === 0 ? 6 : redCount === 2 ? 12 : 9;
     }
     room.chopEvents ||= [];
     room.chopEvents.push({
