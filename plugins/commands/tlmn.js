@@ -116,6 +116,29 @@ function isAiUid(uid) {
   return String(uid || "").startsWith(AI_UID_PREFIX);
 }
 
+function privateDestination(api, uid) {
+  const targetUid = String(uid || "");
+  const ownUid = String(api?.getOwnId?.() || "");
+  if (ownUid && targetUid === ownUid) {
+    const context = api?.getContext?.();
+    const myDocumentsId = String(context?.loginInfo?.send2me_id || "").trim();
+    if (!myDocumentsId) {
+      throw new Error("Không lấy được send2me_id của My Documents từ phiên Zalo.");
+    }
+    return {
+      threadId: myDocumentsId,
+      type: ThreadType.User,
+      myDocuments: true
+    };
+  }
+  if (!targetUid) throw new Error("Thiếu UID người nhận bài.");
+  return {
+    threadId: targetUid,
+    type: ThreadType.User,
+    myDocuments: false
+  };
+}
+
 function recallTargets(response) {
   const items = [
     ...(response?.message ? [response.message] : []),
@@ -202,7 +225,14 @@ async function recallRoomCards(api, room) {
   for (const item of room.players || []) {
     const key = "hand:" + room.id + ":" + item.uid;
     const targets = privateCards.get(key) || room.messageCards?.private?.[item.uid] || [];
-    const failed = await recallMessages(rawApi, item.uid, ThreadType.User, targets);
+    let failed;
+    try {
+      const destination = privateDestination(api, item.uid);
+      failed = await recallMessages(rawApi, destination.threadId, destination.type, targets);
+    } catch (error) {
+      console.warn("[TLMN_RECALL]", error?.message || error);
+      failed = targets;
+    }
     if (failed.length) {
       privateCards.set(key, failed);
       if (room.messageCards?.private) room.messageCards.private[item.uid] = failed;
@@ -683,7 +713,14 @@ async function recallOrphanPrivateCards(api, uid, currentRoomId) {
         ? oldRoom.players.some(item => item.uid === playerId)
         : oldRoom.activeUids.includes(playerId));
     if (stillInOldGame) continue;
-    const failed = await recallMessages(rawApi, playerId, ThreadType.User, targets);
+    let failed;
+    try {
+      const destination = privateDestination(api, playerId);
+      failed = await recallMessages(rawApi, destination.threadId, destination.type, targets);
+    } catch (error) {
+      console.warn("[TLMN_RECALL]", error?.message || error);
+      failed = targets;
+    }
     if (failed.length) privateCards.set(key, failed);
     else privateCards.delete(key);
   }
@@ -693,7 +730,8 @@ async function recallPrivateHand(api, room, uid) {
   const playerId = String(uid);
   const key = "hand:" + room.id + ":" + playerId;
   const targets = privateCards.get(key) || room.messageCards?.private?.[playerId] || [];
-  const failed = await recallMessages(getRawApi(api), playerId, ThreadType.User, targets);
+  const destination = privateDestination(api, playerId);
+  const failed = await recallMessages(getRawApi(api), destination.threadId, destination.type, targets);
   if (failed.length) {
     privateCards.set(key, failed);
     if (room.messageCards?.private) room.messageCards.private[playerId] = failed;
@@ -707,6 +745,7 @@ async function recallPrivateHand(api, room, uid) {
 async function sendPrivateHand(api, room, item, hand, turn = false) {
   if (item?.ai || isAiUid(item?.uid)) return true;
   await recallOrphanPrivateCards(api, item.uid, room.id);
+  const destination = privateDestination(api, item.uid);
   const key = "hand:" + room.id + ":" + item.uid;
   const suitNames = { b: "Bích", ch: "Chuồn", r: "Rô", c: "Cơ" };
   const suitCodes = { b: "b", ch: "ch", r: "r", c: "c" };
@@ -721,6 +760,7 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
     adminHand
       ? "👑 BÀI HOÀNG GIA CỦA ADMIN (" + hand.length + " lá):"
       : "🃏 BÀI TRÊN TAY CỦA BẠN (" + hand.length + " lá):",
+    ...(destination.myDocuments ? ["📁 Đã lưu vào My Documents của tài khoản bot."] : []),
     "👑 " + String(item.name || "Người chơi").toUpperCase(),
     "",
     "👉 " + codeCards,
@@ -753,23 +793,23 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
       isTurn: turn,
       isAdmin: adminHand
     }, { timeout: 20000, poolSize: 1 });
-    const response = await sendReplacement(api, key, item.uid, ThreadType.User, rawApiInstance =>
+    const response = await sendReplacement(api, key, destination.threadId, destination.type, rawApiInstance =>
       rawApiInstance.sendMessage({ msg: caption, attachments: [imagePath], recallAfterMs: 0, ttlKind: "card" },
-        item.uid, ThreadType.User));
+        destination.threadId, destination.type));
     if (recallTargets(response).length) {
       delivered = true;
     } else {
       // A successful-looking API call without message IDs cannot be safely
       // recalled later. Send a text-only hand so the player is not left blind.
       const fallbackResponse = await rawApi.sendMessage(
-        { msg: fallback }, item.uid, ThreadType.User
+        { msg: fallback }, destination.threadId, destination.type
       );
       delivered = Boolean(fallbackResponse);
     }
   } catch (error) {
     console.error("[TLMN_PRIVATE_HAND]", error?.stack || error);
     try {
-      await rawApi.sendMessage({ msg: fallback }, item.uid, ThreadType.User);
+      await rawApi.sendMessage({ msg: fallback }, destination.threadId, destination.type);
       delivered = true;
     } catch {}
   } finally {
@@ -1707,7 +1747,7 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
 
 module.exports._test = {
   parseAmount, formatMoney, normalizeWallet, tierForCoins,
-  isAiUid, chooseAiMove, scheduleAiTurn,
+  isAiUid, privateDestination, chooseAiMove, scheduleAiTurn,
   tableCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,
