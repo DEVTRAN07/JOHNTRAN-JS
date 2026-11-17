@@ -55,10 +55,6 @@ function dealCards(playerIds, random = Math.random) {
   }
   const deck = shuffleDeck(random);
   const dealtCount = ids.length * 10;
-  const threeSpadesIndex = deck.findIndex(card => card.id === "3b");
-  if (threeSpadesIndex >= dealtCount) {
-    [deck[0], deck[threeSpadesIndex]] = [deck[threeSpadesIndex], deck[0]];
-  }
   const hands = Object.fromEntries(ids.map(uid => [uid, []]));
   for (let index = 0; index < dealtCount; index += 1) {
     hands[ids[index % ids.length]].push(deck[index]);
@@ -66,7 +62,7 @@ function dealCards(playerIds, random = Math.random) {
   for (const uid of ids) hands[uid] = sortHand(hands[uid]);
   return {
     hands,
-    firstPlayerId: ids.find(uid => hands[uid].some(card => card.id === "3b")) || ids[0],
+    firstPlayerId: ids[Math.max(0, Math.min(ids.length - 1, Math.floor(random() * ids.length)))],
     remainingDeck: deck.slice(dealtCount)
   };
 }
@@ -243,6 +239,22 @@ function detectWhiteHand(hand) {
   return WHITE_HAND_PRIORITY.find(type => priorities.includes(type)) || null;
 }
 
+function compareWhiteHands(handA, typeA, handB, typeB) {
+  const priority = WHITE_HAND_PRIORITY.indexOf(typeA) - WHITE_HAND_PRIORITY.indexOf(typeB);
+  if (priority) return priority;
+  const score = (hand, type) => {
+    const cards = sortHand(hand);
+    const qualifying = cards.filter(card => {
+      const count = cards.filter(other => other.rank === card.rank).length;
+      if (type === "threeTriples") return count === 3;
+      if (type === "fivePairs") return count >= 2;
+      return true;
+    });
+    return qualifying.length ? Math.max(...qualifying.map(card => card.rank)) : 0;
+  };
+  return score(handB, typeB) - score(handA, typeA);
+}
+
 function cardLabel(card) {
   const suit = SUITS.find(item => item.code === card.suit);
   return (RANK_LABEL[card.rank] || card.rank) + (suit?.symbol || card.suit);
@@ -256,5 +268,5 @@ module.exports = {
   SUITS, SUIT_WEIGHT, RANK_LABEL, WHITE_HAND_PRIORITY, WHITE_HAND_LABEL,
   createDeck, sortHand, shuffleDeck, dealCards, normalizeText, parseCardCode,
   parsePlayText, analyzeCombo, canBeat, validatePlay, removeCards,
-  detectWhiteHand, cardLabel, formatCards
+  detectWhiteHand, compareWhiteHands, cardLabel, formatCards
 };
