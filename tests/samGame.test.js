@@ -146,7 +146,7 @@ test("Sâm marks a failed Báo Sâm as lủng when another player beats the call
   room.lastPlayerUid = null;
   assert.equal(game.callSam(threadId, "a").ok, true);
   assert.equal(game.play(threadId, "a", "3b").ok, true);
-  const blocked = game.play(threadId, "b", "4b");
+  const blocked = game.play(threadId, "b", "5b");
   assert.equal(blocked.ok, true);
   assert.equal(blocked.samLung, true);
   assert.equal(blocked.state.samStatus, "failed");
@@ -214,7 +214,7 @@ test("Sâm caller takes the opening lead and may open without the 3♠", () => {
   assert.equal(opening.state.samCallerHasPlayed, true);
   assert.equal(opening.state.turnUid, blocker.uid);
 
-  const blocked = game.play(threadId, blocker.uid, "5b");
+  const blocked = game.play(threadId, blocker.uid, "8b");
   assert.equal(blocked.ok, true);
   assert.equal(blocked.samLung, true);
   assert.equal(blocked.state.samStatus, "failed");
@@ -411,6 +411,7 @@ test("Sâm records a 15-stake transfer when a four-of-a-kind chops a two", () =>
   };
   room.playedByUid = { b: 1 };
   room.turnUid = "a";
+  room.playedCount = 1;
   room.currentCombo = engine.analyzeCombo([card(15)]);
   room.lastPlayerUid = "b";
   const result = game.play(threadId, "a", "tuquy 8");
