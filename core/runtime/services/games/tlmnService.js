@@ -89,6 +89,7 @@ function create(threadId, owner, options = {}) {
     threadId: groupId,
     ownerId: String(owner.uid),
     ownerName: String(owner.name || "Chủ phòng").slice(0, 40),
+    previousWinnerUid: String(options.previousWinnerUid || previousWinners.get(groupId) || ""),
     bet,
     mode: options.mode === "demla" ? "demla" : "nhatnhi",
     practice: Boolean(options.practice),
@@ -292,10 +293,12 @@ function start(threadId, uid, random = Math.random) {
   if (room.players.length > MAX_PLAYERS) return { ok: false, code: "FULL" };
 
   const dealt = engine.dealCards(room.players.map(player => player.uid), random);
-  const previousWinner = previousWinners.get(String(threadId));
+  const previousWinner = String(room.previousWinnerUid || previousWinners.get(String(threadId)) || "");
   if (previousWinner && room.players.some(item => item.uid === previousWinner)) {
     dealt.firstPlayerId = previousWinner;
   }
+  room.previousWinnerUid = previousWinner && room.players.some(item => item.uid === previousWinner)
+    ? previousWinner : null;
 
   // Only the explicitly requested, no-coin Admin practice room receives a
   // curated training hand. Every human table always keeps the fair shuffled deal.
