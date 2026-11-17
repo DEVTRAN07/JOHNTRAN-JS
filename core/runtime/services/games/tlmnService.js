@@ -612,7 +612,7 @@ function play(threadId, uid, input) {
     room.chopChainEventIndex = room.chopEvents.length - 1;
   }
 
-  if (previousCombo?.type === "single" && previousCombo.mainRank === 3 &&
+  if (previousCombo?.cards?.some(card => card.id === "3b") &&
       room.threeSpadesFinisherUid && previousLeader === room.threeSpadesFinisherUid) {
     room.threeSpadesBlockedByUid = actor;
     room.threeSpadesAttemptUid = room.threeSpadesFinisherUid;
