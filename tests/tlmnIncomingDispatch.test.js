@@ -17,6 +17,7 @@ function mockModule(filename, exports) {
   require.cache[filename] = mocked;
 }
 
+const originalConfig = global.config;
 const calls = { noitu: [], tlmn: [] };
 mockModule(noituPath, {
   async handleEvent(context) {
@@ -132,5 +133,6 @@ test.after(() => {
   else delete require.cache[noituPath];
   if (tlmnOriginal) require.cache[tlmnPath] = tlmnOriginal;
   else delete require.cache[tlmnPath];
-  delete global.config;
+  if (originalConfig === undefined) delete global.config;
+  else global.config = originalConfig;
 });
