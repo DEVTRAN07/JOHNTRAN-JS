@@ -199,3 +199,159 @@ test("GameVH TLMN chop chain charges the last player whose hàng is cut with the
   assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
   game.removeRoom(groupId);
 });
+
+
+test("GameVH TLMN six-pair tie break includes a pair of 2s", () => {
+  const a = [
+    { rank: 15, suit: "b", id: "15b" },
+    { rank: 15, suit: "ch", id: "15ch" },
+    { rank: 15, suit: "r", id: "15r" },
+    ...pairRunHand([3, 4, 6, 8, 10])
+  ];
+  const b = [
+    ...pairRunHand([3, 4, 6, 8, 10, 12]),
+    { rank: 14, suit: "b", id: "14b" }
+  ];
+  assert.equal(a.length, 13);
+  assert.equal(b.length, 13);
+  assert.equal(engine.detectWhiteHand(a), "sixPairs");
+  assert.equal(engine.detectWhiteHand(b), "sixPairs");
+  assert.ok(
+    engine.compareWhiteHands(a, "sixPairs", b, "sixPairs") < 0,
+    "a six-pair hand containing a pair of 2s must compare that pair as its highest pair"
+  );
+});
+
+test("GameVH TLMN leftover penalty recognizes a four-pair run using two cards from a triple", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const card = (rank, suit) => ({ rank, suit, id: String(rank) + suit });
+  const hand = [
+    card(3, "b"), card(3, "ch"), card(3, "r"),
+    card(4, "b"), card(4, "ch"),
+    card(5, "b"), card(5, "ch"),
+    card(6, "b"), card(6, "ch"),
+    card(8, "b"), card(9, "b"), card(10, "b"), card(11, "b")
+  ];
+  assert.equal(hand.length, 13);
+  assert.equal(game.calculateLeftoverPenalty(hand, 1000), 17000);
+});
+
+test("GameVH TLMN four 2s followed by three-pair and four-pair runs settle a 27-bet chop chain", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const groupId = "tlmn-four-twos-27-chain";
+  const created = game.create(groupId, { uid: "a", name: "A" }, { code: "83760", bet: 1000 });
+  assert.equal(created.ok, true);
+  game.join(groupId, created.room.id, { uid: "b", name: "B" });
+  game.join(groupId, created.room.id, { uid: "c", name: "C" });
+
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(groupId, "a", () => 0.41); }
+  finally { engine.detectWhiteHand = originalDetector; }
+  const room = started.state;
+  const card = (rank, suit) => ({ rank, suit, id: String(rank) + suit });
+
+  room.bet = 1000;
+  room.activeUids = ["a", "b", "c"];
+  room.finishOrder = [];
+  room.forfeitUids = [];
+  room.hands = {
+    a: [card(15, "b"), card(15, "c"), card(9, "b")],
+    b: [
+      card(15, "ch"),
+      card(3, "b"), card(3, "ch"),
+      card(4, "b"), card(4, "ch"),
+      card(5, "b"), card(5, "ch"), card(11, "b")
+    ],
+    c: [
+      card(15, "r"),
+      card(3, "r"), card(3, "c"),
+      card(4, "r"), card(4, "c"),
+      card(5, "r"), card(5, "c"),
+      card(6, "r"), card(6, "c"), card(12, "c")
+    ]
+  };
+  room.turnUid = "a";
+  room.currentCombo = null;
+  room.lastPlayerUid = null;
+  room.lastPlay = null;
+  room.passed = new Set();
+  room.playedCount = 0;
+  room.trickParticipants = [];
+  room.chopEvents = [];
+  room.chopChainUnits = 0;
+  room.chopChainTwoUnits = 0;
+  room.chopChainEventIndex = null;
+  room.trickTwoUnits = 0;
+
+  assert.equal(game.play(groupId, "a", "2b").ok, true);
+  assert.equal(game.play(groupId, "b", "2ch").ok, true);
+  assert.equal(game.play(groupId, "c", "2r").ok, true);
+  assert.equal(game.play(groupId, "a", "2c").ok, true);
+  assert.equal(game.play(groupId, "b", "doithong 345").ok, true);
+  assert.equal(game.play(groupId, "c", "doithong 3456").ok, true);
+
+  assert.deepEqual(room.chopEvents, [{
+    from: "b", to: "c", amount: 27000, reason: "chop-chain"
+  }]);
+  game.removeRoom(groupId);
+});
+
+test("GameVH TLMN successful kết 3 bích pays 26 bets per opponent without leftover penalties", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const room = {
+    bet: 1000,
+    players: [{ uid: "a" }, { uid: "b" }, { uid: "c" }],
+    finishOrder: ["a", "b", "c"],
+    threeSpadesFinisherUid: "a",
+    threeSpadesBlockedByUid: null,
+    hands: {
+      a: [],
+      b: [{ rank: 15, suit: "c", id: "15c" }],
+      c: [{ rank: 15, suit: "b", id: "15b" }, { rank: 3, suit: "b", id: "3b" }]
+    },
+    chopEvents: [],
+    threeSpadesBlockEvents: []
+  };
+  const settlement = game.calculateSettlement(room);
+  assert.deepEqual(settlement.transfers, [
+    { from: "b", to: "a", amount: 26000, reason: "ket-ba-bich" },
+    { from: "c", to: "a", amount: 26000, reason: "ket-ba-bich" }
+  ]);
+  assert.deepEqual(settlement.net, { a: 52000, b: -26000, c: -26000 });
+});
+
+test("GameVH TLMN blocked kết 3 bích charges only players who joined the final trick", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  const room = {
+    bet: 1000,
+    players: [{ uid: "a" }, { uid: "b" }, { uid: "c" }, { uid: "d" }],
+    finishOrder: ["b", "c", "d", "a"],
+    threeSpadesFinisherUid: null,
+    threeSpadesBlockedByUid: "b",
+    hands: {
+      a: [],
+      b: [],
+      c: [{ rank: 3, suit: "b", id: "3b" }],
+      d: [{ rank: 4, suit: "b", id: "4b" }]
+    },
+    chopEvents: [],
+    threeSpadesBlockEvents: [
+      { from: "a", to: "b", amount: 26000 },
+      { from: "a", to: "c", amount: 26000 }
+    ]
+  };
+  const settlement = game.calculateSettlement(room);
+  assert.ok(settlement.transfers.some(item =>
+    item.from === "a" && item.to === "b" && item.amount === 26000 &&
+    item.reason === "chan-ket-ba-bich"
+  ));
+  assert.ok(settlement.transfers.some(item =>
+    item.from === "a" && item.to === "c" && item.amount === 26000 &&
+    item.reason === "chan-ket-ba-bich"
+  ));
+  assert.equal(settlement.transfers.some(item =>
+    item.from === "a" && item.to === "d" && item.reason === "chan-ket-ba-bich"
+  ), false);
+});
