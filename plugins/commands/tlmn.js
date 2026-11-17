@@ -656,7 +656,7 @@ function help(prefix) {
     "🕹️ LỆNH",
     prefix + "tlmn go — Mở/tham gia bàn",
     prefix + "tlmn ai — Luyện tập với AI (không cược)",
-    prefix + "tlmn cuoc <số> — Đặt cược, ví dụ 10k",
+    prefix + "tlmn cuoc <số> — Đặt cược (mặc định 1K), ví dụ 10k",
     "join <mã> • start • leave • stop • pass/bo • goiy • auto • chon 1,2",
     "Đánh: 3b • doi 4 • sam 7 • sanh 345 • tuquy 4 • 3dt • 4dt",
     prefix + "tlmn info • bxh • pay @user <số> • nap @user <số>",
@@ -1370,7 +1370,7 @@ async function createOrJoin({ api, event, Users, Threads }) {
 
   const savedThread = await Threads.getData(String(threadId)).catch(() => null);
   const previousWinnerUid = String(savedThread?.data?.tlmn_previous_winner || "");
-  const result = game.create(threadId, { uid, name }, { bet: 5000, previousWinnerUid });
+  const result = game.create(threadId, { uid, name }, { bet: 1000, previousWinnerUid });
   if (!result.ok) return sendText(api, event, "⚠️ Nhóm đã có bàn Tiến Lên đang hoạt động.");
   const room = result.state;
   game.watchLobby(threadId, async () => {
