@@ -379,6 +379,7 @@ function calculateLeftoverPenalty(hand, bet) {
   const used = new Set();
   let amount = 0;
   const twos = cards.filter(card => card.rank === 15);
+  if (twos.length === 4) amount += 8 * bet; // Thối tứ quý 2 ngoài tiền thối đôi 2
   const black = twos.filter(card => card.suit === "b" || card.suit === "ch");
   const red = twos.filter(card => card.suit === "r" || card.suit === "c");
   let blackPairs = Math.floor(black.length / 2);
