@@ -66,7 +66,7 @@ test("Sâm detects its five common instant-win hand types in priority order", ()
     card(3),card(4),card(5),card(6),card(7),card(8)];
   assert.equal(engine.detectWhiteHand(fourTwos), "fourTwos");
 
-  const sameColor = [3,4,5,6,7,8,9,10,11,12].map((rank,index) =>
+  const sameColor = [3,5,7,9,11,13,14,4,6,8].map((rank,index) =>
     card(rank, index % 2 ? "ch" : "b"));
   assert.equal(engine.detectWhiteHand(sameColor), "sameColor");
 
@@ -88,11 +88,19 @@ test("Sâm start ends immediately for an ăn trắng hand", () => {
   const created = game.create(threadId, { uid: "host", name: "Host" }, { id: "81521" });
   assert.equal(created.ok, true);
   game.join(threadId, "81521", { uid: "guest", name: "Guest" });
-  const started = game.start(threadId, "host", () => 0.31);
-  assert.equal(started.ok, true);
-  assert.equal(started.state.status, "playing");
-  assert.equal(started.state.players.length, 2);
-  game.removeRoom(threadId);
+  const originalDetect = engine.detectWhiteHand;
+  engine.detectWhiteHand = hand => hand.some(item => item.id === "3b") ? "fivePairs" : null;
+  try {
+    const started = game.start(threadId, "host", () => 0.31);
+    assert.equal(started.ok, true);
+    assert.equal(started.finished, true);
+    assert.equal(started.state.status, "finished");
+    assert.equal(started.state.whiteHand.type, "fivePairs");
+    assert.equal(started.state.winnerUid, started.state.whiteHand.uid);
+  } finally {
+    engine.detectWhiteHand = originalDetect;
+    game.removeRoom(threadId);
+  }
 });
 
 test("Sâm marks a failed Báo Sâm as lủng when another player beats the caller", () => {
