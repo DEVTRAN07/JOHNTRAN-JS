@@ -208,38 +208,14 @@ function roomCaption(room, notice = "") {
 
 async function sendGroupRoom(api, event, room, notice = "") {
   const textCaption = roomCaption(room, notice);
-  const lastPlay = room.lastPlay?.cards?.length
-    ? engine.formatCards(room.lastPlay.cards) : "Chưa có bộ bài nào được đánh";
-  const players = room.players.map(item => {
-    const turn = item.uid === room.turnUid ? "  ◀ ĐẾN LƯỢT" : "";
-    const count = item.handCount == null ? "Đang chờ" : item.handCount + " lá";
-    return item.name + " • " + count + turn;
-  });
-  const sections = [
-    { title: "NGƯỜI CHƠI", lines: players },
-    { title: "TRÊN BÀN", lines: [lastPlay] }
-  ];
-  if (room.samStatus) {
-    const caller = room.players.find(p => p.uid === room.samCallerUid)?.name || "Người chơi";
-    sections.push({
-      title: "BÁO SÂM",
-      lines: [room.samStatus === "called" ? caller + " đã báo Sâm" :
-        room.samStatus === "success" ? caller + " báo Sâm thành công" :
-          caller + " đã bị chặn — lủng Sâm"]
-    });
-  }
   const destination = { threadId: String(event.threadId), type: event.type };
   const key = "sam-group:" + room.threadId;
   let imagePath = null;
   try {
-    imagePath = await renderCanvas("card", {
-      chip: "JOHNTRAN  /  CARD GAME",
-      brand: "SÂM LỐC",
-      title: "BÀN SÂM LỐC #" + room.id,
-      subtitle: room.status === "waiting" ? "Phòng chờ  •  " + room.playerCount + "/4 người" :
-        "Đang chơi  •  " + room.playerCount + " người",
-      sections,
-      footer: "Lẻ • Đôi • Sám • Tứ quý • Sảnh • Báo Sâm"
+    imagePath = await renderCanvas("sam", {
+      view: "table",
+      room,
+      notice: String(notice || "")
     }, { timeout: 20000, poolSize: 1 });
     return await sendReplacement(api, key, destination, sender =>
       sender.sendMessage(withRequesterMention(event, {
