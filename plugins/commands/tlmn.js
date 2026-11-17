@@ -22,6 +22,9 @@ const messageLocks = new Map();
 const cleanupTimers = new Map();
 const AI_UID_PREFIX = "tlmn-ai:";
 const aiTimers = new Map();
+const START_COUNTDOWN_MS = 10_000;
+const startCountdownTimers = new Map();
+const COUNTDOWN_CLOCKS = ["🕙", "🕘", "🕗", "🕖", "🕕", "🕔", "🕓", "🕒", "🕑", "🕐", "⏰"];
 const moveErrorNotices = new Map();
 const groupMoveErrorNotices = new Map();
 const MOVE_ERROR_USER_COOLDOWN_MS = 12000;
@@ -695,6 +698,8 @@ function buildTurnMentionCaption(room, caption) {
 }
 
 function tableCaption(room, notice = "") {
+  const countdownSeconds = Number(room.startCountdownAt) > 0
+    ? Math.max(0, Math.ceil((Number(room.startCountdownAt) - Date.now()) / 1000)) : 0;
   const players = (room.players || []).map((item, index) => {
     const active = item.uid === room.turnUid;
     const handCount = item.handCount == null ? "đang chờ" : (item.handCount + " lá");
@@ -704,9 +709,11 @@ function tableCaption(room, notice = "") {
     ? "🃏 Vừa đánh: " + room.lastPlay.name + " — " +
       engine.formatCards(room.lastPlay.cards)
     : "🃏 Chưa có lượt đánh.";
-  const turn = room.status === "waiting"
-    ? "⏳ Đang chờ người chơi tham gia (" + room.playerCount + "/4 người)..."
-    : room.turnUid
+  const turn = countdownSeconds > 0
+    ? "⏱️ Trận đấu bắt đầu sau " + countdownSeconds + " giây..."
+    : room.status === "waiting"
+      ? "⏳ Đang chờ người chơi tham gia (" + room.playerCount + "/4 người)..."
+      : room.turnUid
       ? "🎯 Đến lượt: " + (room.players.find(item => item.uid === room.turnUid)?.name || "Người chơi") + " (60s)"
       : "🏁 Ván đã kết thúc.";
   return [
@@ -717,15 +724,18 @@ function tableCaption(room, notice = "") {
       ? "🧠 Luyện tập với 3 AI • Không cược xu"
       : "💰 Mức cược: " + formatMoney(room.bet) + " • 📜 Chế độ: " + modeLabel(room.mode),
     turn,
-    ...(room.status === "waiting" ? ["⏱️ Bàn tự hủy sau 60 giây nếu chưa đủ người."] : []),
+    ...(room.status === "waiting" && countdownSeconds === 0 ? ["⏱️ Bàn tự hủy sau 60 giây nếu chưa đủ người."] : []),
+    ...(countdownSeconds > 0 ? ["⏱️ Chủ phòng đã xác nhận bắt đầu. Không thể vào/rời bàn trong lúc đếm ngược."] : []),
     "",
     ...players,
     "",
     current,
     notice,
-    room.status === "waiting"
+    room.status === "waiting" && countdownSeconds === 0
       ? "👉 Nhắn join " + room.id + " để vào bàn ngay!"
-      : "💡 Gửi lá bài trong nhóm để đánh • chon 1,2 chọn theo số trên ảnh • goiy/auto hỗ trợ đánh nhanh • bo để bỏ lượt."
+      : countdownSeconds > 0
+        ? "🕒 Hãy chuẩn bị nhận bài riêng. Trận đấu tự động bắt đầu khi đồng hồ về 0."
+        : "💡 Gửi lá bài trong nhóm để đánh • chon 1,2 chọn theo số trên ảnh • goiy/auto hỗ trợ đánh nhanh • bo để bỏ lượt."
   ].filter(Boolean).join("\n");
 }
 
@@ -1430,6 +1440,7 @@ async function joinRoom({ api, event, Users, Threads }, code) {
       ROOM_NOT_FOUND: "⚠️ Không tìm thấy mã bàn " + code + ".",
       WRONG_GROUP: "⚠️ Mã bàn này thuộc nhóm khác.",
       NOT_WAITING: "⚠️ Bàn đã bắt đầu hoặc đã đóng.",
+      STARTING: "⏱️ Bàn đang đếm ngược, không thể tham gia giữa chừng.",
       FULL: "⚠️ Bàn đã đủ 4 người."
     };
     return sendText(api, event, messages[result.code] || "⚠️ Không thể tham gia bàn.");
@@ -1440,13 +1451,147 @@ async function joinRoom({ api, event, Users, Threads }, code) {
   await persistRoom(Threads, threadId);
 }
 
+function clearStartCountdownTimer(threadId) {
+  const key = String(threadId || "");
+  const timer = startCountdownTimers.get(key);
+  if (timer) clearTimeout(timer);
+  startCountdownTimers.delete(key);
+}
+
+function countdownReactionIcon(remainingSeconds) {
+  const index = Math.max(0, Math.min(10, 10 - Number(remainingSeconds || 0)));
+  return COUNTDOWN_CLOCKS[index];
+}
+
+async function reactStartCountdown(api, room, remainingSeconds) {
+  const target = room?.startCountdownMessage;
+  const rawApi = getRawApi(api);
+  if (!target?.msgId || !target?.cliMsgId || typeof rawApi?.addReaction !== "function") return false;
+  try {
+    await rawApi.addReaction(
+      { rType: 0, source: 6, icon: countdownReactionIcon(remainingSeconds) },
+      {
+        data: { msgId: String(target.msgId), cliMsgId: String(target.cliMsgId) },
+        threadId: String(room.threadId),
+        type: ThreadType.Group
+      }
+    );
+    return true;
+  } catch (error) {
+    console.warn("[TLMN_START_REACTION]", error?.message || error);
+    return false;
+  }
+}
+
+async function completeStartCountdown(api, event, Users, Threads, room) {
+  const threadId = String(room?.threadId || event?.threadId || "");
+  const current = game.get(threadId);
+  if (!current || current !== room || current.status !== "waiting" ||
+      Number(current.startCountdownAt) > 0) return false;
+  const starterUid = String(current.startCountdownBy || current.ownerId);
+  const result = game.start(threadId, starterUid);
+  if (!result.ok) {
+    const refunded = current.practice ? true :
+      await refundRoomWallets(Users, current, () => persistRoom(Threads, threadId));
+    await persistRoom(Threads, threadId);
+    await sendText(api, event, refunded
+      ? "⚠️ Không thể bắt đầu bàn; xu ký quỹ đã được hoàn."
+      : "⚠️ Không thể bắt đầu bàn và khoản hoàn cược vẫn đang đồng bộ. Bàn được giữ lại để khôi phục.");
+    return false;
+  }
+
+  const roomState = result.state;
+  if (!await persistRoom(Threads, threadId)) {
+    game.resetToWaiting(threadId);
+    const refunded = roomState.practice ? true :
+      await refundRoomWallets(Users, roomState, () => persistRoom(Threads, threadId));
+    await persistRoom(Threads, threadId);
+    await sendText(api, event, refunded
+      ? "⚠️ Database chưa lưu được ván mới. Bàn quay lại trạng thái chờ và xu đã được hoàn."
+      : "⚠️ Database chưa xác nhận ván mới. Trạng thái giữ lại để đối soát cược.");
+    return false;
+  }
+
+  const failedPrivate = await distributeHands(api, roomState);
+  if (failedPrivate.length) {
+    await recallRoomCards(api, roomState);
+    game.resetToWaiting(threadId);
+    const refunded = roomState.practice ? true :
+      await refundRoomWallets(Users, roomState, () => persistRoom(Threads, threadId));
+    await persistRoom(Threads, threadId);
+    await sendGroupRoom(api, event, game.snapshot(roomState),
+      "🚫 Không gửi được bài riêng cho " + failedPrivate.join(", ") +
+      ". Ván đã hủy để bảo vệ bài; " +
+      (roomState.practice ? "đây là ván luyện tập nên không có xu cược." :
+        refunded ? "xu cược đã hoàn." : "khoản hoàn cược đang được đồng bộ.") +
+      " Người chơi hãy mở chat riêng với bot và bật nhận tin nhắn người lạ, sau đó chủ phòng có thể start lại.");
+    return false;
+  }
+  if (roomState.status === "finished" && roomState.whiteHand) {
+    await endGame(api, event, Users, roomState, Threads);
+    return true;
+  }
+  await sendGroupRoom(api, event, result.room,
+    roomState.practice
+      ? "🎮 Đã chia bài luyện tập cho Admin. AI sẽ tự tìm nước đánh hợp lệ, không tự động nhường lượt."
+      : "🎮 Đã chia bài cho từng người. Người mở đầu được chọn ngẫu nhiên hoặc là người thắng ván trước.");
+  await persistRoom(Threads, threadId);
+  scheduleRoomTurn(api, Users, Threads, roomState);
+  scheduleAiTurn(api, Users, Threads, roomState);
+  return true;
+}
+
+function scheduleStartCountdown(api, event, Users, Threads, room) {
+  const threadId = String(room?.threadId || "");
+  const deadline = Number(room?.startCountdownAt);
+  if (!threadId || !Number.isFinite(deadline) || deadline <= 0) return false;
+  clearStartCountdownTimer(threadId);
+  let lastRemaining = -1;
+
+  const tick = () => {
+    const current = game.get(threadId);
+    if (!current || current !== room || current.status !== "waiting" ||
+        Number(current.startCountdownAt) !== deadline) {
+      clearStartCountdownTimer(threadId);
+      return;
+    }
+    const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    if (remaining !== lastRemaining) {
+      lastRemaining = remaining;
+      void reactStartCountdown(api, current, remaining);
+    }
+    if (remaining <= 0) {
+      startCountdownTimers.delete(threadId);
+      withRoomActionLock(threadId, async () => {
+        const latest = game.get(threadId);
+        if (!latest || latest !== room || latest.status !== "waiting" ||
+            Number(latest.startCountdownAt) !== deadline) return;
+        latest.startCountdownAt = null;
+        latest.startCountdownBy = null;
+        latest.startCountdownMessage = null;
+        await completeStartCountdown(api, event, Users, Threads, latest);
+      }).catch(error => console.error("[TLMN_START_COUNTDOWN]", error?.stack || error));
+      return;
+    }
+    const nextBoundary = deadline - (remaining - 1) * 1000;
+    const timer = setTimeout(tick, Math.max(50, Math.min(1000, nextBoundary - Date.now())));
+    timer.unref?.();
+    startCountdownTimers.set(threadId, timer);
+  };
+
+  tick();
+  return true;
+}
+
 async function startRoom({ api, event, Users, Threads }) {
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
   const state = game.get(threadId);
   if (!state || state.status !== "waiting") return sendText(api, event, "⚠️ Không có bàn đang chờ trong nhóm.");
   if (state.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ phòng mới được bắt đầu.");
+  if (Number(state.startCountdownAt) > 0) return sendText(api, event, "⏱️ Bàn đang đếm ngược. Vui lòng đợi đồng hồ về 0.");
   if (state.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi mới bắt đầu được.");
+
   if (state.practice) {
     await sendText(api, event,
       "🧠 CHẾ ĐỘ LUYỆN TẬP: Không cược xu. Admin được chia bộ bài mạnh để thử chiến thuật; AI vẫn đánh chặn theo luật bình thường.");
@@ -1458,6 +1603,7 @@ async function startRoom({ api, event, Users, Threads }) {
       "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước."
     ].join("\n"));
   }
+
   state.reservePerPlayer = state.practice ? 0 : 100 * Number(state.bet);
   const reserved = state.practice
     ? { ok: true, reserve: 0 }
@@ -1467,51 +1613,35 @@ async function startRoom({ api, event, Users, Threads }) {
       ? "⚠️ Không thể xác nhận hoặc hoàn khoản giữ cược an toàn. Bàn chưa bắt đầu; dữ liệu đối soát được giữ lại."
       : "💸 " + reserved.player.name + " chưa đủ xu. Cần giữ trước " + formatMoney(reserved.required) + " (hiện có " + formatMoney(reserved.coins) + ").");
   }
-  const result = game.start(threadId, uid);
-  if (!result.ok) {
-    const refunded = await refundRoomWallets(Users, state, () => persistRoom(Threads, threadId));
-    await persistRoom(Threads, threadId);
-    return sendText(api, event, refunded
-      ? "⚠️ Không thể bắt đầu bàn; xu cược đã được hoàn."
-      : "⚠️ Không thể bắt đầu bàn và việc hoàn cược vẫn đang đồng bộ. Bàn được giữ lại để khôi phục.");
-  }
 
-  const room = result.state;
+  game.clearTimer?.(threadId);
+  state.startCountdownAt = Date.now() + START_COUNTDOWN_MS;
+  state.startCountdownBy = uid;
+  state.startCountdownMessage = null;
   if (!await persistRoom(Threads, threadId)) {
-    game.resetToWaiting(threadId);
-    const refunded = await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId));
+    clearStartCountdownTimer(threadId);
+    state.startCountdownAt = null;
+    state.startCountdownBy = null;
+    const refunded = state.practice ? true :
+      await refundRoomWallets(Users, state, () => persistRoom(Threads, threadId));
     await persistRoom(Threads, threadId);
     return sendText(api, event, refunded
-      ? "⚠️ Database chưa lưu được ván mới. Bàn quay lại trạng thái chờ và xu đã được hoàn."
-      : "⚠️ Database chưa xác nhận ván mới. Trạng thái giữ lại để đối soát cược.");
+      ? "⚠️ Database chưa lưu được đồng hồ bắt đầu. Ván chưa chạy và xu ký quỹ đã được hoàn."
+      : "⚠️ Database chưa lưu được đồng hồ bắt đầu; khoản hoàn cược đang chờ đối soát.");
   }
-  const failedPrivate = await distributeHands(api, room);
-  if (failedPrivate.length) {
-    await recallRoomCards(api, room);
-    game.resetToWaiting(threadId);
-    const refunded = await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId));
-    await persistRoom(Threads, threadId);
-    await sendGroupRoom(api, event, game.snapshot(room),
-      "🚫 Không gửi được bài riêng cho " + failedPrivate.join(", ") +
-      ". Ván đã hủy để bảo vệ bài; " +
-      (room.practice ? "đây là ván luyện tập nên không có xu cược." :
-        refunded ? "xu cược đã hoàn." : "khoản hoàn cược đang được đồng bộ.") +
-      " Người chơi hãy mở chat riêng với bot và bật nhận tin nhắn người lạ, sau đó chủ phòng có thể start lại.");
-    return;
-  }
-  if (room.status === "finished" && room.whiteHand) {
-    await endGame(api, event, Users, room, Threads);
-    return;
-  }
-  await sendGroupRoom(api, event, result.room,
-    room.practice
-      ? "🎮 Đã chia bài luyện tập cho Admin. AI sẽ tự tìm nước đánh hợp lệ, không tự động nhường lượt."
-      : "🎮 Đã chia bài cho từng người. Người mở đầu được chọn ngẫu nhiên hoặc là người thắng ván trước.");
-  await persistRoom(Threads, threadId);
-  scheduleRoomTurn(api, Users, Threads, room);
-  scheduleAiTurn(api, Users, Threads, room);
-}
 
+  let response = null;
+  try {
+    response = await sendGroupRoom(api, event, game.snapshot(state),
+      "⏱️ CHỦ PHÒNG ĐÃ BẤM START! Bàn đã mở, trận đấu bắt đầu sau 10 giây. Đồng hồ reaction sẽ đếm ngược; hãy chuẩn bị nhận bài.");
+  } catch (error) {
+    console.error("[TLMN_START_COUNTDOWN_CARD]", error?.message || error);
+  }
+  state.startCountdownMessage = recallTargets(response)[0] || null;
+  await persistRoom(Threads, threadId);
+  scheduleStartCountdown(api, event, Users, Threads, state);
+  return true;
+}
 async function doPlay(context, input) {
   const { api, event, Users, Threads } = context;
   const threadId = String(event?.threadId || "");
@@ -1617,6 +1747,9 @@ async function doLeave(context) {
   const uid = String(event?.data?.uidFrom || "");
   const state = game.get(threadId);
   if (!state) return sendText(api, event, "⚠️ Bạn chưa ở trong bàn Tiến Lên.");
+  if (Number(state.startCountdownAt) > 0) {
+    return sendText(api, event, "⏱️ Bàn Tiến Lên đang đếm ngược. Không thể rời bàn lúc này; chủ phòng có thể dùng !tlmn stop để hủy.");
+  }
   if (!state.players.some(item => String(item.uid) === uid)) {
     return sendText(api, event, "⚠️ Bạn không có trong bàn Tiến Lên này.");
   }
@@ -1664,6 +1797,9 @@ async function runCommand(context) {
   const action = String(args[0] || "help").toLowerCase();
   const rest = args.slice(1).map(value => String(value));
   const activeRoom = game.get(threadId);
+  if (Number(activeRoom?.startCountdownAt) > 0 && !["stop", "info", "help"].includes(action)) {
+    return sendText(api, event, "⏱️ Bàn Tiến Lên đang đếm ngược. Chỉ chủ phòng có thể dùng !tlmn stop để hủy.");
+  }
   if (activeRoom?.cancelPending && !["stop", "info", "help"].includes(action)) {
     return sendText(api, event, "⏳ Bàn Tiến Lên đang hoàn cược/đối soát an toàn. Tạm khóa nước đi và thử lại sau.");
   }
@@ -1679,6 +1815,10 @@ async function runCommand(context) {
     if (!room) return sendText(api, event, "⚠️ Không có bàn Tiến Lên.");
     if (room.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ phòng mới được hủy bàn.");
 
+    clearStartCountdownTimer(threadId);
+    room.startCountdownAt = null;
+    room.startCountdownBy = null;
+    room.startCountdownMessage = null;
     if (room.status === "playing") {
       room.cancelPending = true;
       if (!await persistRoom(Threads, threadId)) {
@@ -1954,6 +2094,45 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
     }
     restoreRoomCards(room);
 
+    if (room.status === "waiting" && Number(room.startCountdownAt) > 0) {
+      const requiredLock = 100 * Number(room.bet);
+      const reconciled = await reconcilePendingReservations(
+        Users, room, () => persistRoom(Threads, threadId)
+      );
+      const escrowValid = room.practice
+        ? reconciled && Object.keys(room.lockPending || {}).length === 0 && Object.keys(room.locked || {}).length === 0
+        : reconciled &&
+          Object.keys(room.lockPending || {}).length === 0 &&
+          Object.keys(room.locked || {}).length === room.players.length &&
+          room.players.every(player => Number(room.locked[player.uid]) === requiredLock);
+      if (!escrowValid) {
+        clearStartCountdownTimer(threadId);
+        room.startCountdownAt = null;
+        room.startCountdownBy = null;
+        room.startCountdownMessage = null;
+        const refunded = room.practice ? true :
+          await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId));
+        await persistRoom(Threads, threadId);
+        const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
+        await sendText(api, syntheticEvent, refunded
+          ? "⚠️ Đếm ngược Tiến Lên bị hủy sau khi bot khởi động lại vì ký quỹ không khớp. Xu đã được hoàn."
+          : "⚠️ Ký quỹ Tiến Lên chưa khớp sau restart. Bàn được giữ để đối soát tiếp.");
+        if (!refunded) scheduleLobbyCleanup({ api, Users, Threads, event: syntheticEvent }, room, 60 * 1000);
+        else scheduleLobbyCleanup({ api, Users, Threads, event: syntheticEvent }, room);
+        continue;
+      }
+      if (!room.startCountdownMessage) {
+        const syntheticEvent = { threadId, type: ThreadType.Group, data: {} };
+        const response = await sendGroupRoom(api, syntheticEvent, game.snapshot(room),
+          "🔄 Bot đã khôi phục đồng hồ Tiến Lên. Trận đấu sẽ bắt đầu sau " +
+          Math.max(0, Math.ceil((Number(room.startCountdownAt) - Date.now()) / 1000)) + " giây.");
+        room.startCountdownMessage = recallTargets(response)[0] || null;
+        await persistRoom(Threads, threadId);
+      }
+      scheduleStartCountdown(api, { threadId, type: ThreadType.Group, data: {} }, Users, Threads, room);
+      continue;
+    }
+
     if (room.status === "waiting") {
       const refunded = await refundRoomWallets(Users, room, () => persistRoom(Threads, threadId));
       if (!refunded || !await persistRoom(Threads, threadId)) {
@@ -2014,5 +2193,7 @@ module.exports._test = {
   shouldSendMoveError, sendMoveHint, scheduleAiTurn, tableCaption, buildTurnMentionCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
   reconcilePendingReservations, reconcilePendingTransfers,
   settleRoomWallets, readWallet, changeWallet, getRawApi,
-  finalizeRoomCleanup, recallRoomCards, recallPrivateHand, withRoomActionLock, doLeave
+  finalizeRoomCleanup, recallRoomCards, recallPrivateHand, withRoomActionLock, doLeave,
+  clearStartCountdownTimer, scheduleStartCountdown, completeStartCountdown,
+  countdownReactionIcon, reactStartCountdown
 };
