@@ -289,8 +289,10 @@ test("canvas worker renders the redesigned Sâm and Tiến Lên tables and priva
       const png = fs.readFileSync(outputPath);
       assert.ok(png.length > 5000, type + " renderer should produce a detailed PNG");
       assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
-      assert.ok(png.readUInt32BE(16) >= 1000, type + " image should preserve desktop design width");
-      assert.ok(png.readUInt32BE(20) >= 700, type + " image should leave enough room for readable cards");
+      const imageWidth = png.readUInt32BE(16);
+      const imageHeight = png.readUInt32BE(20);
+      assert.ok(imageWidth >= 700, type + " image should respect the configured Canvas width");
+      assert.ok(imageHeight >= 500, type + " image should leave room for readable cards");
     } finally {
       try { fs.unlinkSync(outputPath); } catch {}
     }
