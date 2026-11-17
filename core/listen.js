@@ -13,6 +13,7 @@ const {
 } = require("./runtime/groupBotState");
 
 const Threads = require("./controller/controllerThreads");
+const Users = require("./runtime/services/userService");
 const panelBridge = require("./panelBridge");
 const { getRequesterProfile } = require("./runtime/requesterProfile");
 const { vietnamDateKey, isGroupMessage } = require("./topchat/stats");
@@ -62,6 +63,46 @@ function shouldReplayOldMessage(message, reconnectSince) {
   if (!Number.isFinite(rawTimestamp) || rawTimestamp <= 0) return false;
   const timestamp = rawTimestamp < 1e12 ? rawTimestamp * 1000 : rawTimestamp;
   return timestamp >= reconnectSince - 5000;
+}
+
+
+async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = false } = {}) {
+  const selfMessage = isSelf === true || event?.isSelf === true;
+  if (selfMessage && global.config?.allow_self_command !== true) return false;
+
+  // Preserve Nối Từ priority: a message consumed by it must not reach another game.
+  try {
+    const noituCommand = require("../plugins/commands/noitu");
+    if (typeof noituCommand?.handleEvent === "function") {
+      const consumed = await noituCommand.handleEvent({
+        api, event, eventType: "message", isSelf: false, Users, Threads
+      });
+      if (consumed === true) return true;
+    }
+  } catch (error) {
+    logger.log(`Lỗi xử lý tin nhắn game Nối Từ: ${error?.message || error}`, "error", {
+      source: "listener-active-game-noitu",
+      groupId: event?.threadId
+    });
+  }
+
+  // TLMN receives plain-text card plays here, before passive message plugins.
+  try {
+    const tlmnCommand = require("../plugins/commands/tlmn");
+    if (typeof tlmnCommand?.handleIncoming === "function") {
+      const consumed = await tlmnCommand.handleIncoming({
+        api, event, eventType: "message", isSelf: selfMessage, Users, Threads
+      });
+      if (consumed === true) return true;
+    }
+  } catch (error) {
+    logger.log(`Lỗi xử lý nước đánh Tiến Lên: ${error?.message || error}`, "error", {
+      source: "listener-active-game-tlmn",
+      groupId: event?.threadId
+    });
+  }
+
+  return false;
 }
 
 function startListening(api) {
@@ -174,28 +215,12 @@ function startListening(api) {
       return;
     }
 
-    // Plain-text answers for nt go / nt gc are consumed here, directly in
-    // the live listener path, before general message events can reply to them.
-    // The game handler returns true only for a player in an active session.
-    if ((!event.isSelf && !event?.isSelf) || global.config.allow_self_command === true) {
-      try {
-        const noituCommand = require("../plugins/commands/noitu");
-        if (typeof noituCommand?.handleEvent === "function") {
-          const consumed = await noituCommand.handleEvent({
-            api,
-            event,
-            eventType: "message",
-            isSelf: false
-          });
-          if (consumed === true) return;
-        }
-      } catch (error) {
-        logger.log(`Lỗi xử lý tin nhắn game Nối Từ: ${error?.message || error}`, "error", {
-          source: "listener-active-game",
-          groupId: event?.threadId
-        });
-      }
-    }
+    // Plain-text moves for active games are consumed directly in the live
+    // listener path before passive message plugins can treat them as chat.
+    const consumedByGame = await dispatchActiveGameMessage({
+      api, event, Users, Threads, isSelf: event?.isSelf === true
+    });
+    if (consumedByGame) return;
 
     dispatchMessageEvents();
 
@@ -620,6 +645,7 @@ function startListening(api) {
 }
 
 module.exports = startListening;
+module.exports.dispatchActiveGameMessage = dispatchActiveGameMessage;
 module.exports.shouldReplayOldMessage = shouldReplayOldMessage;
 module.exports.claimListenerRegistration = claimListenerRegistration;
 module.exports.shouldExecuteMessageCommand = shouldExecuteMessageCommand;
