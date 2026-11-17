@@ -816,7 +816,7 @@ test("TLMN GameVH: four-pair run can cut after a prior pass and settles the full
     p2: [4,5,6,7].flatMap(rank => [
       { rank, suit: "b", id: String(rank) + "b" },
       { rank, suit: "c", id: String(rank) + "c" }
-    ]),
+    ]).concat([{ rank: 13, suit: "c", id: "13c" }]),
     p3: [{ rank: 15, suit: "ch", id: "15ch" }, { rank: 11, suit: "b", id: "11b" }],
     p4: [8,9,10].flatMap(rank => [
       { rank, suit: "b", id: String(rank) + "b" },
@@ -832,6 +832,8 @@ test("TLMN GameVH: four-pair run can cut after a prior pass and settles the full
   assert.equal(room.turnUid, "p1");
   assert.equal(game.pass(groupId, "p1").ok, true);
   assert.equal(room.turnUid, "p2");
+  assert.equal(room.passed.has("p2"), true, "the earlier pass remains active");
+  assert.equal(game.play(groupId, "p2", "kc").code, "ALREADY_PASSED");
 
   const finalCut = game.play(groupId, "p2", "4dt");
   assert.equal(finalCut.ok, true, "the player who passed earlier can use four pair runs to cut");
