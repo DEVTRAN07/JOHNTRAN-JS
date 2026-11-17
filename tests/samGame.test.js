@@ -331,6 +331,8 @@ test("Sâm command help stays short; full rules are in the private guide", () =>
   assert.doesNotMatch(command._test.help("!"), /LỦNG SÂM/i);
   assert.match(command._test.gameGuide("!"), /BÁO SÂM/i);
   assert.match(command._test.gameGuide("!"), /LỦNG SÂM/i);
+  assert.match(command._test.gameGuide("!"), /ngược chiều kim đồng hồ/i);
+  assert.match(command._test.gameGuide("!"), /không được chen lại dù người khác vừa chặn/i);
   const api = {
     getOwnId() { return "bot-uid"; },
     getContext() { return { loginInfo: { send2me_id: "my-docs-id" } }; }
