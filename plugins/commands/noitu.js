@@ -87,13 +87,13 @@ async function recallSoloLastPrompt(api, session) {
 
 function playerMentionPayload(uid, name, msg) {
   const safeName = String(name || "Người chơi")
-    .replace(/[\\r\\n\\t]+/g, " ")
-    .replace(/\\s+/g, " ")
+    .replace(/[\\r\n\\t]+/g, " ")
+    .replace(/\s+/g, " ")
     .replace(/^@+/, "")
     .trim() || "Người chơi";
   const label = "@" + safeName;
   return {
-    msg: label + "\\n" + String(msg || ""),
+    msg: label + "\n" + String(msg || ""),
     mentions: [{ pos: 0, uid: String(uid), len: label.length }],
     recallAfterMs: 0
   };
@@ -198,8 +198,8 @@ async function finishSoloTimeout(api, event, session) {
   game.stop(session.threadId);
   await recallSoloLastPrompt(api, session);
   await sendSoloTaggedResult(api, event, session,
-    "⏱️ Hết giờ! **-0⭐** phạt.\\n" +
-    "🏁 Ván Nối Từ Solo đã kết thúc.\\n" +
+    "⏱️ Hết giờ! **-0⭐** phạt.\n" +
+    "🏁 Ván Nối Từ Solo đã kết thúc.\n" +
     "⭐ Ván này bạn được **" + score + "⭐**."
   );
   return true;
@@ -213,8 +213,8 @@ async function finishSoloLoss(api, event, session, reason = "Bạn đã sai 3 l�
   game.stop(session.threadId);
   await recallSoloLastPrompt(api, session);
   await sendSoloTaggedResult(api, event, session,
-    "❌ " + reason + "\\n" +
-    "🏁 Bạn đã thua ván Nối Từ Solo.\\n" +
+    "❌ " + reason + "\n" +
+    "🏁 Bạn đã thua ván Nối Từ Solo.\n" +
     "⭐ Ván này bạn được **" + score + "⭐**."
   );
   return true;
@@ -586,12 +586,12 @@ async function startSoloBotGame({ api, event }) {
   }
   session.currentMeaning = openingMeaning.definition;
   return sendSoloPrompt(api, event, session,
-    "🎮 VÁN MỚI NỐI TỪ CÙNG BOT!\\n\\n" +
-    "🔤 Từ khởi đầu: **" + session.currentPhrase.display + "**\\n" +
-    "📖 Ý nghĩa: " + openingMeaning.definition + "\\n\\n" +
-    "👉 Bạn ghép tiếp từ bắt đầu bằng **" + session.currentPhrase.last + "** nhé!\\n" +
-    "⏱️ Bạn có **60 giây** cho mỗi lượt.\\n" +
-    "✅ Đúng **+1⭐** | ❌ Sai **3 lần thì thua**.\\n" +
+    "🎮 VÁN MỚI NỐI TỪ CÙNG BOT!\n\n" +
+    "🔤 Từ khởi đầu: **" + session.currentPhrase.display + "**\n" +
+    "📖 Ý nghĩa: " + openingMeaning.definition + "\n\n" +
+    "👉 Bạn ghép tiếp từ bắt đầu bằng **" + session.currentPhrase.last + "** nhé!\n" +
+    "⏱️ Bạn có **60 giây** cho mỗi lượt.\n" +
+    "✅ Đúng **+1⭐** | ❌ Sai **3 lần thì thua**.\n" +
     "🏳️ Gõ **lose** để chịu thua bất cứ lúc nào."
   );
 }
@@ -617,9 +617,9 @@ async function playSoloBotTurn({ api, event, session, Users }) {
       : "⚠️ Bạn thắng, nhưng chưa lưu được điểm. Hãy kiểm tra database rồi thử lại với Admin.";
     await recallSoloLastPrompt(api, session);
     await sendSoloTaggedResult(api, event, session,
-      "🏆 BẠN ĐÃ THẮNG JOHNTRAN AI!\\n" +
-      "🤖 AI không tìm được cụm từ có nghĩa bắt đầu bằng tiếng **" + session.currentPhrase.last + "**.\\n" +
-      "⭐ Thưởng: +5⭐.\\n" + rewardLine
+      "🏆 BẠN ĐÃ THẮNG JOHNTRAN AI!\n" +
+      "🤖 AI không tìm được cụm từ có nghĩa bắt đầu bằng tiếng **" + session.currentPhrase.last + "**.\n" +
+      "⭐ Thưởng: +5⭐.\n" + rewardLine
     );
     return true;
   }
@@ -636,10 +636,10 @@ async function playSoloBotTurn({ api, event, session, Users }) {
 
   session.currentMeaning = meaning.definition;
   await sendSoloPrompt(api, event, session,
-    "🤖 JOHNTRAN AI: **" + botResult.phrase.display + "**\\n" +
-    "📖 Ý nghĩa: " + meaning.definition + "\\n\\n" +
-    "👉 Đến lượt bạn, hãy nối từ bắt đầu bằng **" + botResult.phrase.last + "**.\\n" +
-    "⏱️ Còn **60 giây**.\\n" +
+    "🤖 JOHNTRAN AI: **" + botResult.phrase.display + "**\n" +
+    "📖 Ý nghĩa: " + meaning.definition + "\n\n" +
+    "👉 Đến lượt bạn, hãy nối từ bắt đầu bằng **" + botResult.phrase.last + "**.\n" +
+    "⏱️ Còn **60 giây**.\n" +
     "✅ Đúng **+1⭐** | ❌ Sai **3 lần thì thua**. Gõ **lose** để chịu thua."
   );
   return true;
