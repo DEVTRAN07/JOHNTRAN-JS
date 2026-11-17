@@ -24,7 +24,10 @@ async function main() {
     const api = {
       async sendMessage(message) {
         messages.push(message);
-        assert.ok(Array.isArray(message.attachments));
+        if (!Array.isArray(message.attachments)) {
+          assert.strictEqual(message.msg, "⏳ Đang tìm và tải ảnh...", "only the loading notice may omit attachments");
+          return;
+        }
         assert.strictEqual(message.attachments.length, 1);
         const filePath = message.attachments[0];
         sentPaths.push(filePath);
@@ -42,8 +45,11 @@ async function main() {
     Math.random = originalRandom;
   }
 
-  assert.strictEqual(messages.length, 2);
-  assert.strictEqual(messages[0].msg, "📷 Ảnh ngẫu nhiên");
+  const imageMessages = messages.filter(message => Array.isArray(message.attachments));
+  const progressMessages = messages.filter(message => message?.msg === "⏳ Đang tìm và tải ảnh...");
+  assert.strictEqual(imageMessages.length, 2);
+  assert.strictEqual(progressMessages.length, 2);
+  assert.strictEqual(imageMessages[0].msg, "📷 Ảnh ngẫu nhiên");
   assert.strictEqual(downloadCalls, 1, "second call should reuse the bounded memory cache");
   for (const filePath of sentPaths) {
     assert.strictEqual(fs.existsSync(path.dirname(filePath)), false, "temporary image directory must be removed after send");
