@@ -670,6 +670,25 @@ function modeLabel(mode) {
   return mode === "demla" ? "Đếm Lá" : "Nhất Nhì Ba Bét";
 }
 
+function buildTurnMentionCaption(room, caption) {
+  const activePlayer = (room?.players || []).find(item =>
+    String(item.uid) === String(room?.turnUid)
+  );
+  if (room?.status !== "playing" || !activePlayer ||
+      activePlayer.ai || isAiUid(activePlayer.uid)) {
+    return { caption: String(caption || ""), mentions: [] };
+  }
+  const cleanName = String(activePlayer.name || "Người chơi")
+    .replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim() || "Người chơi";
+  const tag = "@" + cleanName;
+  const line = "\n\n🎯 " + tag + " — tới lượt bạn, hãy đánh bài!";
+  const message = String(caption || "") + line;
+  return {
+    caption: message,
+    mentions: [{ uid: String(activePlayer.uid), pos: String(caption || "").length + line.indexOf(tag), len: tag.length }]
+  };
+}
+
 function tableCaption(room, notice = "") {
   const players = (room.players || []).map((item, index) => {
     const active = item.uid === room.turnUid;
@@ -753,23 +772,12 @@ async function sendGroupRoom(api, event, room, notice = "") {
     return { ...item, avatarUrl: profile?.requesterAvatarUrl || "" };
   }));
   const displayRoom = { ...room, players };
-  let caption = tableCaption(displayRoom, notice);
-  const activePlayer = players.find(item => String(item.uid) === String(room.turnUid));
-  const mentions = [];
-  if (room.status === "playing" && activePlayer && !activePlayer.ai && !isAiUid(activePlayer.uid)) {
-    const cleanName = String(activePlayer.name || "Người chơi")
-      .replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim() || "Người chơi";
-    const tag = "@" + cleanName;
-    const line = "\n\n🎯 " + tag + " — tới lượt bạn, hãy đánh bài!";
-    const position = caption.length + line.indexOf(tag);
-    caption += line;
-    mentions.push({ uid: String(activePlayer.uid), pos: position, len: tag.length });
-  }
+  const turnTag = buildTurnMentionCaption(displayRoom, tableCaption(displayRoom, notice));
   return renderImage(
     api, "group", "group:" + room.threadId, room.threadId, event.type,
-    { view: "table", room: displayRoom, event, mentions },
-    caption,
-    caption
+    { view: "table", room: displayRoom, event, mentions: turnTag.mentions },
+    turnTag.caption,
+    turnTag.caption
   );
 }
 
@@ -1396,7 +1404,7 @@ async function startRoom({ api, event, Users, Threads }) {
   if (state.players.length < 2) return sendText(api, event, "⚠️ Cần ít nhất 2 người chơi mới bắt đầu được.");
   if (state.practice) {
     await sendText(api, event,
-      "🧠 CHẾ ĐỘ LUYỆN TẬP: Không cược xu. Bot sẽ gửi bài của Admin riêng và tự điều khiển 3 AI.");
+      "🧠 CHẾ ĐỘ LUYỆN TẬP: Không cược xu. Admin luôn được 3♠ đi đầu; 3 AI sẽ nhường khi Admin ra bài.");
   } else {
     await sendText(api, event, [
       "**JOHNTRAN** ❗",
