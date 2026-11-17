@@ -2,6 +2,20 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const rendererPath = require.resolve("../core/canvas/workerRender");
+const canvasCalls = [];
+require.cache[rendererPath] = {
+  id: rendererPath,
+  filename: rendererPath,
+  loaded: true,
+  exports: {
+    renderCanvas: async (...args) => {
+      canvasCalls.push(args);
+      return "/tmp/sam-test-canvas.png";
+    }
+  }
+};
+
 const engine = require("../core/games/samEngine");
 const game = require("../core/runtime/services/games/samService");
 const command = require("../plugins/commands/sam");
@@ -193,6 +207,58 @@ test("Sâm serializes and restores a live room with pass state", () => {
   assert.equal(game.get(threadId).status, "playing");
   assert.equal(game.get(threadId).players.length, 2);
   game.removeRoom(threadId);
+});
+
+test("Sâm private hand sends a canvas to My Documents and replaces the previous card", async () => {
+  const previousUsers = global.users;
+  const sent = [];
+  const undos = [];
+  let id = 0;
+  const api = {
+    getOwnId() { return "bot-account"; },
+    getContext() { return { loginInfo: { send2me_id: "my-documents" } }; },
+    async sendMessage(payload, threadId, type) {
+      sent.push({ payload, threadId: String(threadId), type });
+      id += 1;
+      return {
+        message: { msgId: "sam-" + id, cliMsgId: "sam-client-" + id },
+        attachment: []
+      };
+    },
+    async undo(target, threadId, type) {
+      undos.push({ target, threadId: String(threadId), type });
+      return true;
+    }
+  };
+  const room = { id: "81526" };
+  const hand = Array.from({ length: 10 }, (_, index) => card(index + 3));
+  try {
+    const first = await command._test.sendPrivateHand(
+      api, room, { uid: "bot-account", name: "Admin" }, hand, true
+    );
+    assert.equal(first, true);
+    assert.equal(sent[0].threadId, "my-documents");
+    assert.equal(sent[0].payload.attachments[0], "/tmp/sam-test-canvas.png");
+    assert.equal(canvasCalls[0][0], "sam");
+    assert.equal(canvasCalls[0][1].view, "hand");
+    assert.equal(canvasCalls[0][1].hand.length, 10);
+    assert.equal(canvasCalls[0][1].isTurn, true);
+
+    const second = await command._test.sendPrivateHand(
+      api, room, { uid: "bot-account", name: "Admin" }, hand, false
+    );
+    assert.equal(second, true);
+    assert.equal(undos.length, 1);
+    assert.equal(undos[0].threadId, "my-documents");
+
+    const other = await command._test.sendPrivateHand(
+      api, room, { uid: "other-player", name: "Người chơi" }, hand, false
+    );
+    assert.equal(other, true);
+    assert.equal(sent[2].threadId, "other-player");
+  } finally {
+    global.users = previousUsers;
+  }
 });
 
 test("Sâm help documents rules and My Documents destination is reserved for the bot owner", () => {
