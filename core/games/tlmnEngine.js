@@ -378,8 +378,8 @@ function detectWhiteHand(hand) {
   if (hasRun(6)) priorities.push("sixPairRun");
   if ([...counts.values()].filter(count => count >= 3).length >= 4) priorities.push("fourTriples");
   if ([...counts.values()].filter(count => count === 4).length >= 2) priorities.push("twoFourKinds");
-  if (cards.some(card => card.suit === "b") &&
-      ["b", "ch", "r", "c"].some(suit => cards.filter(card => card.suit === suit).length >= 12)) {
+  if (["b", "ch", "r", "c"].some(suit =>
+    cards.filter(card => card.suit === suit).length >= 12)) {
     priorities.push("twelveSameSuit");
   }
   if (hasRun(5)) priorities.push("fivePairRun");
