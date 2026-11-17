@@ -36,7 +36,7 @@ module.exports.config = {
   author: "JOHNTRAN",
   description: "Tiến Lên Miền Nam 2–4 người, bàn bài riêng và xu ảo",
   category: "Game",
-  usage: "tlmn [go|join|leave|cuoc|mode|info|bxh|pay|on|off|nap]",
+  usage: "tlmn [go|join|leave|cuoc|info|bxh|pay|on|off|nap]",
   cooldowns: 0,
   dependencies: {}
 };
@@ -1379,7 +1379,7 @@ async function createOrJoin({ api, event, Users, Threads }) {
     await persistRoom(Threads, threadId);
     await sendText(api, event, "⌛ Bàn Tiến Lên #" + room.id + " tự hủy sau 60 giây vì không đủ người chơi.");
   });
-  await sendGroupRoom(api, event, result.room, "💡 Chủ phòng có thể đổi cược/chế độ trước khi bấm start.");
+  await sendGroupRoom(api, event, result.room, "💡 Chủ phòng có thể đổi mức cược trước khi bấm start.");
   await persistRoom(Threads, threadId);
 }
 
@@ -1663,14 +1663,7 @@ async function runCommand(context) {
     return;
   }
   if (action === "mode") {
-    const mode = String(rest[0] || "").toLowerCase();
-    const result = game.updateMode(threadId, uid, mode);
-    if (!result.ok) return sendText(api, event, result.code === "NOT_OWNER"
-      ? "⛔ Chỉ chủ phòng được đổi chế độ."
-      : "⚠️ Chế độ hợp lệ: nhatnhi hoặc demla.");
-    await sendGroupRoom(api, event, result.room, "📜 Chế độ đã chuyển sang " + modeLabel(mode) + ".");
-    await persistRoom(Threads, threadId);
-    return;
+    return sendText(api, event, "ℹ️ Luật mới kết thúc ván khi người đầu tiên đánh hết bài; chế độ xếp hạng cũ đã được bỏ.");
   }
   if (action === "on" || action === "off") {
     if (!isAdmin(uid)) return sendText(api, event, "⛔ Chỉ Spadmin/Admin bot mới được bật hoặc tắt game.");
