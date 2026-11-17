@@ -330,3 +330,48 @@ test("Sâm help documents rules and My Documents destination is reserved for the
     threadId: "other-uid", type: 0, myDocuments: false
   });
 });
+
+
+test("Sâm tứ quý chặt được tứ quý nhỏ hơn theo thứ hạng", () => {
+  const lower = engine.analyzeCombo([card(8), card(8, "ch"), card(8, "r"), card(8, "c")]);
+  const higher = engine.analyzeCombo([card(9), card(9, "ch"), card(9, "r"), card(9, "c")]);
+  assert.equal(engine.canBeat(higher, lower), true);
+  assert.equal(engine.canBeat(lower, higher), false);
+});
+
+test("Sâm does not allow finishing the hand with a 2", () => {
+  const threadId = "sam-no-finish-two";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81601" });
+  assert.equal(created.ok, true);
+  game.join(threadId, "81601", { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.22); }
+  finally { engine.detectWhiteHand = originalDetector; }
+  const room = started.state;
+  room.hands = { a: [card(15)], b: [card(3)] };
+  room.turnUid = "a";
+  room.playedCount = 1;
+  const result = game.play(threadId, "a", "2b");
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "CANNOT_FINISH_WITH_TWO");
+  assert.equal(room.hands.a.length, 1);
+  game.removeRoom(threadId);
+});
+
+test("Sâm computes card-left, thối heo and cóng charges in the shared stake unit", () => {
+  const room = {
+    stake: 5000,
+    winnerUid: "a",
+    players: [{ uid: "a", name: "A" }, { uid: "b", name: "B" }],
+    hands: { a: [], b: [card(3), card(15)] },
+    playedByUid: { a: 1 }
+  };
+  const settlement = game.calculateSettlement(room);
+  assert.equal(settlement.net.a, 160000);
+  assert.equal(settlement.net.b, -160000);
+  assert.deepEqual(settlement.transfers[0], {
+    from: "b", to: "a", amount: 160000, reason: "cards-left-and-penalties"
+  });
+});
