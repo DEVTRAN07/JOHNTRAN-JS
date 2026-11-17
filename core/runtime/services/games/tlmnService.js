@@ -374,6 +374,23 @@ function nextActive(room, uid) {
   return null;
 }
 
+function chopTargetUnits(combo) {
+  if (!combo) return 0;
+  if (combo.type === "single" && combo.mainRank === 15) {
+    const card = combo.cards?.[0];
+    return card && (card.suit === "b" || card.suit === "ch") ? 3 : 6;
+  }
+  if (combo.type === "pair" && combo.mainRank === 15) {
+    const redCount = (combo.cards || []).filter(card =>
+      card.suit === "r" || card.suit === "c").length;
+    return redCount === 0 ? 6 : redCount === 2 ? 12 : 9;
+  }
+  if (combo.type === "pairRun" && combo.length === 3) return 6;
+  if (combo.type === "fourKind") return 8;
+  if (combo.type === "pairRun" && combo.length >= 4) return 12;
+  return 0;
+}
+
 function calculateLeftoverPenalty(hand, bet) {
   const cards = engine.sortHand(hand || []);
   const used = new Set();
@@ -531,7 +548,11 @@ function play(threadId, uid, input) {
 
   const previousCombo = room.currentCombo;
   const previousLeader = room.lastPlayerUid;
-  if (!room.currentCombo) room.trickParticipants = [];
+  if (!room.currentCombo) {
+    room.trickParticipants = [];
+    room.chopChainUnits = 0;
+    room.chopChainEventIndex = null;
+  }
   if (!room.trickParticipants.includes(actor)) room.trickParticipants.push(actor);
   addThreeSpadesBlockParticipant(room, actor);
 
@@ -549,22 +570,24 @@ function play(threadId, uid, input) {
       combo.type === "pairRun" && combo.length >= 4)
   );
   if (chops) {
-    let chopUnits = combo.type === "pairRun" && combo.length >= 4 ? 12 :
-      combo.type === "fourKind" ? 8 : 6;
-    if (previousCombo.type === "single" && previousCombo.mainRank === 15) {
-      const targetCard = previousCombo.cards?.[0];
-      chopUnits = targetCard && (targetCard.suit === "b" || targetCard.suit === "ch") ? 3 : 6;
-    } else if (previousCombo.type === "pair" && previousCombo.mainRank === 15) {
-      const redCount = (previousCombo.cards || []).filter(card =>
-        card.suit === "r" || card.suit === "c").length;
-      chopUnits = redCount === 0 ? 6 : redCount === 2 ? 12 : 9;
-    }
+    const targetUnits = chopTargetUnits(previousCombo);
+    const previousChainUnits = Math.max(0, Number(room.chopChainUnits) || 0);
+    const totalUnits = previousChainUnits + targetUnits;
+    const bet = Math.max(1, Number(room.bet) || 5000);
     room.chopEvents ||= [];
+    if (Number.isInteger(room.chopChainEventIndex) &&
+        room.chopChainEventIndex >= 0 &&
+        room.chopChainEventIndex < room.chopEvents.length) {
+      room.chopEvents.splice(room.chopChainEventIndex, 1);
+    }
     room.chopEvents.push({
-      from: previousLeader, to: actor,
-      amount: chopUnits * Math.max(1, Number(room.bet) || 5000),
-      reason: "chop-" + combo.type + "-" + (combo.length || 1)
+      from: previousLeader,
+      to: actor,
+      amount: totalUnits * bet,
+      reason: "chop-chain"
     });
+    room.chopChainUnits = totalUnits;
+    room.chopChainEventIndex = room.chopEvents.length - 1;
   }
 
   if (previousCombo?.type === "single" && previousCombo.mainRank === 3 &&
@@ -645,6 +668,8 @@ function pass(threadId, uid) {
     }
     room.currentCombo = null;
     room.trickParticipants = [];
+    room.chopChainUnits = 0;
+    room.chopChainEventIndex = null;
     if (room.threeSpadesBlockedByUid) {
       room.threeSpadesBlockedByUid = null;
       room.threeSpadesAttemptUid = null;
@@ -723,6 +748,8 @@ function leave(threadId, uid) {
       room.currentCombo = null;
       room.lastPlay = null;
       room.passed.clear();
+      room.chopChainUnits = 0;
+      room.chopChainEventIndex = null;
       room.turnUid = leaderStillPlaying ? previousLeader : nextActive(room, previousLeader);
     } else if (room.turnUid === actor) {
       room.turnUid = nextActive(room, actor);
