@@ -70,6 +70,9 @@ test("Tiến Lên: hướng dẫn được gửi riêng một lần, bài riêng
     assert.equal(privateGuides.length, 2, "each real player gets a separate first-time guide");
     assert.ok(privateGuides.every(row => row.threadId !== group.threadId));
     assert.ok(privateGuides.every(row => String(row.payload.msg).includes("tất cả nhà còn lại đều thua")));
+    assert.ok(privateGuides.every(row => String(row.payload.msg).includes("THỐI 3 BÍCH")));
+    assert.ok(privateGuides.every(row => String(row.payload.msg).includes("heo/hàng thối còn trên tay")));
+    assert.ok(privateGuides.every(row => String(row.payload.msg).includes("CỨU LÀNG")));
     const privateImages = sent.filter(row => row.type === ThreadType.User && Array.isArray(row.payload.attachments));
     assert.equal(privateImages.length, 2, "one private hand image per player");
     assert.ok(privateImages.every(row => row.threadId !== group.threadId));
