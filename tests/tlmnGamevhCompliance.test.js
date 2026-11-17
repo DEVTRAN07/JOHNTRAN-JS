@@ -444,3 +444,53 @@ test("GameVH TLMN four-pair run can cut a pair of 2s, while three-pair run canno
   assert.equal(engine.canBeat(threePairs, pairOfTwos), false);
   assert.equal(engine.canBeat(fourPairs, pairOfTwos), true);
 });
+
+
+test("GameVH TLMN white-hand priority and payouts match all eight official categories", () => {
+  const game = require("../core/runtime/services/games/tlmnService");
+  assert.deepEqual(engine.WHITE_HAND_PRIORITY, [
+    "dragonStraight", "sixPairRun", "fourTriples", "twoFourKinds",
+    "twelveSameSuit", "fivePairRun", "fourTwos", "sixPairs"
+  ]);
+
+  const payouts = [
+    ["dragonStraight", 9],
+    ["sixPairRun", 8],
+    ["fourTriples", 7],
+    ["twoFourKinds", 6],
+    ["twelveSameSuit", 5],
+    ["fivePairRun", 4],
+    ["fourTwos", 3],
+    ["sixPairs", 2]
+  ];
+  for (const [type, multiplier] of payouts) {
+    const room = {
+      bet: 1000,
+      whiteHand: { uid: "winner", type },
+      players: [{ uid: "winner" }, { uid: "a" }, { uid: "b" }],
+      finishOrder: ["winner", "a", "b"],
+      hands: {
+        winner: [],
+        a: [{ rank: 15, suit: "c", id: "15c" }],
+        b: [
+          { rank: 15, suit: "b", id: "15b" },
+          { rank: 3, suit: "b", id: "3b" }
+        ]
+      },
+      chopEvents: [],
+      threeSpadesBlockEvents: []
+    };
+    const settlement = game.calculateSettlement(room);
+    assert.deepEqual(settlement.transfers, [
+      {
+        from: "a", to: "winner", amount: multiplier * 1000,
+        reason: "white-hand-" + type
+      },
+      {
+        from: "b", to: "winner", amount: multiplier * 1000,
+        reason: "white-hand-" + type
+      }
+    ], type + " must pay its official white-hand multiplier only");
+    assert.equal(Object.values(settlement.net).reduce((sum, value) => sum + value, 0), 0);
+  }
+});
