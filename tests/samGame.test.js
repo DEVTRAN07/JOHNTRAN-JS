@@ -504,13 +504,20 @@ test("Sâm multi-chop chain pays the accumulated 15-stake amount to the final cu
 
   assert.equal(game.play(threadId, "a", "2b").ok, true);
   assert.equal(game.play(threadId, "b", "tuquy 7").ok, true);
+
+  const saved = game.serialize(threadId);
+  game.removeRoom(threadId);
+  const restored = game.restore(saved);
+  assert.ok(restored);
+  assert.equal(restored.activeChopChain.count, 1);
   assert.equal(game.play(threadId, "c", "tuquy 8").ok, true);
 
-  assert.equal(room.chopEvents.length, 1);
-  assert.deepEqual(room.chopEvents[0], {
+  const finalRoom = game.get(threadId);
+  assert.equal(finalRoom.chopEvents.length, 1);
+  assert.deepEqual(finalRoom.chopEvents[0], {
     from: "b", to: "c", amount: 30000, reason: "chop-chain"
   });
-  const settlement = game.calculateSettlement(room);
+  const settlement = game.calculateSettlement(finalRoom);
   assert.ok(settlement.transfers.some(item =>
     item.from === "b" && item.to === "c" && item.amount === 30000 && item.reason === "chop-chain"
   ));
