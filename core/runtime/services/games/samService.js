@@ -483,6 +483,8 @@ function restore(saved) {
       Number.isSafeInteger(Number(item?.amount)) && Number(item.amount) > 0
     ).map(item => ({ ...item })) : [],
     activeChopChain: saved.activeChopChain &&
+      saved.currentCombo?.type === "fourKind" &&
+      String(saved.lastPlayerUid || "") === String(saved.chopEvents?.[saved.activeChopChain.eventIndex]?.to || "") &&
       Number.isInteger(saved.activeChopChain.eventIndex) &&
       saved.activeChopChain.eventIndex >= 0 &&
       saved.activeChopChain.eventIndex < (Array.isArray(saved.chopEvents) ? saved.chopEvents.length : 0) &&
