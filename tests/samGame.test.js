@@ -1004,3 +1004,60 @@ test("Sâm startup restores a valid playing room, re-sends private hands and res
   assert.ok(sent >= 3, "both private hands and the group board should be re-sent");
   game.removeRoom(threadId);
 });
+
+
+test("Sâm service rejects play, pass and Báo Sâm while cancellation is refunding escrow", () => {
+  const threadId = "sam-cancel-pending-guards";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81615" });
+  game.join(threadId, "81615", { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.36); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  const handBefore = JSON.stringify(room.hands);
+  const turnBefore = room.turnUid;
+  room.cancelPending = true;
+
+  assert.equal(game.play(threadId, room.turnUid, "3b").code, "CANCEL_PENDING");
+  assert.equal(game.pass(threadId, room.turnUid).code, "CANCEL_PENDING");
+  assert.equal(game.callSam(threadId, room.turnUid).code, "CANCEL_PENDING");
+  assert.equal(JSON.stringify(room.hands), handBefore);
+  assert.equal(room.turnUid, turnBefore);
+  game.removeRoom(threadId);
+});
+
+test("Sâm startup completes a saved cancelPending refund instead of resuming the game", async () => {
+  const threadId = "sam-onload-cancel-pending";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81616", stake: 100 });
+  game.join(threadId, "81616", { uid: "b", name: "B" });
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.38); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  const reserveId = "reserve:81616:cancel-pending:a";
+  room.lockTransactionId = "cancel-pending";
+  room.locked = {};
+  room.lockPending = { a: { amount: 25000, transactionId: reserveId } };
+  room.cancelPending = true;
+
+  const Users = makeMemoryUsers({ a: 75000, b: 75000 });
+  const owner = Users.records.get("a");
+  owner.tlmn.transactions.push(reserveId);
+  Users.records.set("a", owner);
+  const Threads = makeMemoryThreads();
+  Threads.records.set(threadId, { sam_room: game.serialize(room) });
+  game.removeRoom(threadId);
+  const api = { async sendMessage() { return true; }, async undo() { return true; } };
+
+  await command.onLoad({ api, Users, Threads });
+
+  assert.equal(Users.records.get("a").tlmn.coins, 100000);
+  assert.equal(game.get(threadId), null);
+  assert.equal(Threads.records.get(threadId)?.sam_room, undefined);
+});
