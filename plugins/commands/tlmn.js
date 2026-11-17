@@ -490,57 +490,46 @@ async function reserveRoomWallets(Users, room, onChange = null) {
 }
 
 async function settleRoomWallets(Users, room, results) {
-  if (room.settled) return [];
-  if (!Array.isArray(results) || !Array.isArray(room.players) ||
-      results.length !== room.players.length || results.length < 2 || results.length > 4) {
-    throw new Error("Bảng xếp hạng không hợp lệ; không chốt xu.");
+  if (room.settled) return room.settlementRows || [];
+  const settlement = room.settlement || game.calculateSettlement(room);
+  if (!settlement || !settlement.net || !Array.isArray(settlement.transfers)) {
+    throw new Error("Thiếu sổ quyết toán thối/chặt; không chốt xu.");
   }
-  const rankedUids = results.map(row => String(row?.uid || ""));
-  const playerUids = room.players.map(row => String(row?.uid || ""));
-  if (new Set(rankedUids).size !== results.length ||
-      new Set(playerUids).size !== playerUids.length ||
-      rankedUids.some(uid => !playerUids.includes(uid)) ||
-      results.some((row, index) => !Number.isInteger(Number(row.place)) ||
-        Number(row.place) !== index + 1)) {
-    throw new Error("Thứ hạng người chơi không hợp lệ; không chốt xu.");
+  const netTotal = Object.values(settlement.net).reduce((sum, value) => sum + Number(value), 0);
+  if (!Number.isSafeInteger(netTotal) || netTotal !== 0) {
+    throw new Error("Sổ thối/chặt không cân bằng; không chốt xu.");
   }
-  const count = results.length;
-  const requiredLock = room.bet * (count - 1);
+  const requiredLock = 26 * Number(room.bet);
   if (!Number.isSafeInteger(requiredLock) || requiredLock <= 0 ||
-      results.some(row => Number(room.locked?.[row.uid]) !== requiredLock)) {
-    throw new Error("Thiếu khoản giữ cược của một hoặc nhiều người; giữ nguyên bàn để đối soát, không phát xu.");
+      room.players.some(item => Number(room.locked?.[item.uid]) !== requiredLock)) {
+    throw new Error("Thiếu khoản ký quỹ 26 cược/người; giữ nguyên bàn để đối soát.");
   }
   const lines = [];
-  for (const result of results) {
-    const locked = Number(room.locked?.[result.uid]) || 0;
-    const net = (count + 1 - 2 * result.place) * room.bet;
-    const credit = Math.max(0, locked + net);
-    const outcome = await changeWallet(
-      Users,
-      result.uid,
-      credit,
-      "settle:" + String(room.gameToken || room.id) + ":" + result.uid,
-      {
-        mutateData(data, wallet) {
-          wallet.games += 1;
-          if (result.place === 1) wallet.wins += 1;
-          else wallet.losses += 1;
-          if (result.name) wallet.name = String(result.name).slice(0, 40);
-          data.tlmn = wallet;
-        }
-      }
-    );
-    if (!outcome.ok) {
-      room.settlementError = "Không thể chốt xu cho " + result.uid;
-      throw new Error(room.settlementError);
+  for (const player of room.players) {
+    const uid = String(player.uid);
+    const locked = Number(room.locked[uid]);
+    const net = Number(settlement.net[uid]);
+    if (!Number.isSafeInteger(net) || locked + net < 0) {
+      throw new Error("Số tiền quyết toán không hợp lệ cho " + uid);
     }
-    const labels = ["Nhất", "Nhì", "Ba", "Bét"];
+    const outcome = await changeWallet(
+      Users, uid, locked + net,
+      "tlmn-settle-rules-v2:" + String(room.gameToken || room.id) + ":" + uid,
+      { mutateData(data, wallet) {
+        wallet.games += 1;
+        if (uid === settlement.winnerUid) wallet.wins += 1;
+        else wallet.losses += 1;
+        wallet.name = String(player.name || uid).slice(0, 40);
+        data.tlmn = wallet;
+      }}
+    );
+    if (!outcome.ok) throw new Error("Không thể chốt xu cho " + uid);
     lines.push({
-      ...result,
-      label: labels[result.place - 1] || ("Hạng " + result.place),
-      change: net,
-      coins: outcome.coins
+      uid, name: player.name, place: uid === settlement.winnerUid ? 1 : 2,
+      label: uid === settlement.winnerUid ? "Thắng" : "Thua",
+      change: net, coins: outcome.coins
     });
+    room.settlementRows = lines.slice();
   }
   room.settled = true;
   room.settlementError = null;
@@ -631,42 +620,46 @@ async function setEnabled(Threads, threadId, enabled) {
 
 function help(prefix) {
   return [
-    "🃏 TIẾN LÊN MIỀN NAM — SÒNG BÀI HOÀNG GIA",
+    "🃏 HƯỚNG DẪN TIẾN LÊN MIỀN NAM",
     "",
-    "🕹️ BÀN CHƠI",
-    prefix + "tlmn go — Mở bàn mới hoặc vào bàn đang chờ",
-    prefix + "tlmn ai — Chơi luyện tập với 3 AI (Admin)",
-    prefix + "tlmn leave — Rời bàn",
-    prefix + "tlmn cuoc <tiền> — Đổi cược, ví dụ cuoc 10k",
-    prefix + "tlmn mode <nhatnhi|demla> — Chọn cách xếp hạng",
+    "52 lá • 2–4 người • mỗi người 13 lá.",
+    "Thứ tự số: 2 > A > K > Q > J > 10 > ... > 3.",
+    "Thứ tự chất khi cùng số: ♥ > ♦ > ♣ > ♠.",
     "",
-    "👥 LỆNH TRONG BÀN (không cần prefix)",
-    "join <mã 5 số> — Vào bàn trong nhóm",
-    "start — Chủ phòng bắt đầu (2–4 người)",
-    "stop — Chủ phòng hủy bàn",
-    "bo / pass — Bỏ lượt khi có người đánh trước",
-    "Gửi lá bài: 3b, 10r, 2c hoặc nhiều lá liền nhau",
-    "chon 1,2 — Chọn bài theo số thứ tự trên ảnh (từ trái sang phải)",
-    "goiy — Gửi gợi ý riêng • auto — Tự đánh bộ hợp lệ nhanh nhất",
-    "doi 4 — Chọn đôi 4  •  sanh 4567 — Chọn sảnh",
-    "tuquy 4 — Chọn tứ quý  •  3dt / 4dt — chọn đôi thông",
-    "Mở ván cần 3♠; không ghép 2 vào sảnh.",
-    "Luật chặt: 3 đôi thông chặt heo; tứ quý chặt heo/đôi heo/3 đôi thông; 4 đôi thông chặt cả tứ quý và các bộ nhỏ hơn.",
+    "🧩 BỘ BÀI",
+    "Lá lẻ • đôi • ba lá • sảnh liên tiếp (không có 2) • 3 đôi thông • tứ quý • 4 đôi thông.",
+    "4 đôi thông > tứ quý > 3 đôi thông.",
     "",
-    "♠️ KÝ HIỆU CHẤT",
-    SUIT_HELP,
+    "🎮 CÁCH CHƠI",
+    "Ván đầu người đánh trước được chọn ngẫu nhiên; ván sau người thắng ván trước đi đầu nếu còn trong bàn.",
+    "Đánh theo vòng; người sau phải cùng loại và lớn hơn hoặc dùng hàng chặt. Bỏ lượt là bỏ hết vòng; người đánh cuối được mở vòng mới.",
+    "Người đầu tiên hết bài thắng ván.",
     "",
-    "💰 TÀI CHÍNH",
-    prefix + "tlmn info — Ví, VIP và danh hiệu",
-    prefix + "tlmn bxh [all] — Top đại gia",
-    prefix + "tlmn pay @user <tiền> — Chuyển xu",
+    "✨ TỚI TRẮNG (ăn từ mỗi nhà theo cược):",
+    "Sảnh rồng 9x • 6 đôi thông 8x • 4 bộ ba 7x • 2 tứ quý 6x.",
+    "12 lá đồng chất 5x • 5 đôi thông 4x • tứ quý 2 3x • 6 đôi 2x.",
+    "Cùng loại: so lá cao nhất của bộ; ưu tiên số rồi đến chất. Tới trắng không tính thối/chặt.",
     "",
-    "🖥️ QUẢN TRỊ",
-    prefix + "tlmn on / off — Bật/tắt game trong nhóm",
-    prefix + "tlmn nap @user <tiền> — Nạp xu (Spadmin)",
+    "⚔️ CHẶT",
+    "3 đôi thông chặt 2 và 3 đôi thông nhỏ hơn.",
+    "Tứ quý chặt 2, 3 đôi thông và tứ quý nhỏ hơn.",
+    "4 đôi thông chặt 2, 3 đôi thông, tứ quý và 4 đôi thông nhỏ hơn.",
     "",
-    "⚠️ Đây là xu ảo chỉ dùng trong game, không phải tiền thật.",
-    "👉 Gõ " + prefix + "tlmn go để mở bàn."
+    "💰 THỐI / CHẶT (đơn vị cược)",
+    "Rác 1 • 2 đen thối 2 / chặt 3 • 2 đỏ thối 4 / chặt 6.",
+    "Đôi 2 đen thối 4 / chặt 6 • đôi 2 khác màu thối 6 / chặt 9 • đôi 2 đỏ thối 8 / chặt 12.",
+    "3 đôi thông 6 • tứ quý 8 • 4 đôi thông 12.",
+    "Kết 3♠: mỗi nhà thua trả 26 cược. Chặn kết 3♠: người bị chặn trả 26 cược cho từng người đã tham gia vòng cuối.",
+    "",
+    "🕹️ LỆNH",
+    prefix + "tlmn go — Mở/tham gia bàn",
+    prefix + "tlmn ai — Luyện tập với AI (không cược)",
+    prefix + "tlmn cuoc <số> — Đặt cược, ví dụ 10k",
+    "join <mã> • start • leave • stop • pass/bo • goiy • auto • chon 1,2",
+    "Đánh: 3b • doi 4 • sam 7 • sanh 345 • tuquy 4 • 3dt • 4dt",
+    prefix + "tlmn info • bxh • pay @user <số> • nap @user <số>",
+    "",
+    "Xu là đơn vị ảo trong game. Bot giữ tối đa 26 cược/người làm ký quỹ và tự quyết toán theo sổ thối/chặt."
   ].join("\n");
 }
 
@@ -1430,6 +1423,7 @@ async function startRoom({ api, event, Users, Threads }) {
       "📩 Nếu chưa nhận được bài, hãy mở chat riêng với Bot và nhắn tin cho Bot trước."
     ].join("\n"));
   }
+  state.reservePerPlayer = state.practice ? 0 : 26 * Number(state.bet);
   const reserved = state.practice
     ? { ok: true, reserve: 0 }
     : await reserveRoomWallets(Users, state, () => persistRoom(Threads, threadId));
