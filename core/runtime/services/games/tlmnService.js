@@ -385,7 +385,7 @@ function chopTargetUnits(combo) {
       card.suit === "r" || card.suit === "c").length;
     return redCount === 0 ? 6 : redCount === 2 ? 12 : 9;
   }
-  if (combo.type === "pairRun" && combo.length === 3) return 6;
+  if (combo.type === "pairRun" && combo.length === 3) return 9;
   if (combo.type === "fourKind") return 8;
   if (combo.type === "pairRun" && combo.length >= 4) return 12;
   return 0;
@@ -550,6 +550,8 @@ function play(threadId, uid, input) {
   const previousLeader = room.lastPlayerUid;
   if (!room.currentCombo) {
     room.trickParticipants = [];
+    room.trickTwoUnits = 0;
+    room.trickTwoUnits = 0;
     room.chopChainUnits = 0;
     room.chopChainEventIndex = null;
   }
@@ -557,6 +559,9 @@ function play(threadId, uid, input) {
   addThreeSpadesBlockParticipant(room, actor);
 
   const combo = validation.combo;
+  const playedTwoUnits = combo.cards.reduce((sum, card) => sum + (card.rank === 15
+    ? (card.suit === "b" || card.suit === "ch" ? 3 : 6) : 0), 0);
+  room.trickTwoUnits = Math.max(0, Number(room.trickTwoUnits) || 0) + playedTwoUnits;
   const chops = previousCombo && previousLeader && (
     (previousCombo.type === "single" && previousCombo.mainRank === 15 &&
       (combo.type === "pairRun" && combo.length >= 3 || combo.type === "fourKind")) ||
@@ -570,8 +575,11 @@ function play(threadId, uid, input) {
       combo.type === "pairRun" && combo.length >= 4)
   );
   if (chops) {
-    const targetUnits = chopTargetUnits(previousCombo);
     const previousChainUnits = Math.max(0, Number(room.chopChainUnits) || 0);
+    const targetHasTwo = (previousCombo.cards || []).some(card => card.rank === 15);
+    const targetUnits = targetHasTwo && previousChainUnits === 0
+      ? Math.max(chopTargetUnits(previousCombo), Number(room.trickTwoUnits) || 0)
+      : chopTargetUnits(previousCombo);
     const totalUnits = previousChainUnits + targetUnits;
     const bet = Math.max(1, Number(room.bet) || 5000);
     room.chopEvents ||= [];
