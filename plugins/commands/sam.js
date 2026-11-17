@@ -582,7 +582,7 @@ async function handleIncomingImpl(context = {}) {
   }
   const hasCardSyntax =
     /(10|[3-9]|[jqka2])(ch|b|r|c|t)/i.test(lower) ||
-    /^(doi|pair|sam|samco|tuquy|tu\s*quy|four|triple|chon|select|vitri|vi\s*tri)\b/.test(lower);
+    /^(doi|pair|sam|samco|tuquy|tu\s*quy|four|triple|sanh|straight|chon|select|vitri|vi\s*tri)\b/.test(lower);
   if (hasCardSyntax) {
     await doPlay(context, content);
     return true;
