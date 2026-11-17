@@ -44,7 +44,7 @@ test("menu color themes stay isolated from non-menu Canvas cards", t => {
   assert.ok(!topchat.includes("BG_IMAGE"));
 });
 
-test("/theme changes menu frames but leaves other Canvas frames unchanged", async t => {
+test("/menu stays frameless while other Canvas outputs keep their frame", async t => {
   const originalGetPalette = menuPalette.getPalette;
   const fakePalette = {
     background: ["#123456", "#123456", "#123456", "#123456"],
@@ -63,12 +63,18 @@ test("/theme changes menu frames but leaves other Canvas frames unchanged", asyn
     const surface = createCanvas(image.width, image.height);
     const ctx = surface.getContext("2d");
     ctx.drawImage(image, 0, 0);
-    return Array.from(ctx.getImageData(Math.floor(image.width / 2), 5, 1, 1).data).slice(0, 3);
+    return Array.from(ctx.getImageData(Math.floor(image.width / 2), 5, 1, 1).data);
   }
 
   try {
-    assert.deepEqual(await readTopPixel(menuPath), [18, 52, 86]);
-    assert.notDeepEqual(await readTopPixel(statusPath), [18, 52, 86]);
+    const menuPixel = await readTopPixel(menuPath);
+    const statusPixel = await readTopPixel(statusPath);
+    assert.equal(menuPixel[3], 0, "raw /menu output must not add an opaque Mac toolbar");
+    assert.equal(statusPixel[3], 255, "other Canvas output keeps its opaque shared frame");
+    const menuImage = await loadImage(fs.readFileSync(menuPath));
+    const statusImage = await loadImage(fs.readFileSync(statusPath));
+    assert.equal(menuImage.height, canvas.height);
+    assert.ok(statusImage.height > canvas.height);
   } finally {
     menuPalette.getPalette = originalGetPalette;
     try { fs.unlinkSync(statusPath); } catch {}
