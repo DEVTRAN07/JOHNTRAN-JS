@@ -1393,7 +1393,9 @@ async function createOrJoin({ api, event, Users, Threads }) {
 
   if (existing?.status === "waiting") {
     const joined = game.joinWaiting(threadId, { uid, name });
-    if (!joined.ok) return sendText(api, event, "⚠️ Không thể vào bàn đang chờ.");
+    if (!joined.ok) return sendText(api, event, joined.code === "STARTING"
+      ? "⏱️ Bàn Tiến Lên đang đếm ngược, không thể vào giữa chừng."
+      : "⚠️ Không thể vào bàn đang chờ.");
     await sendGroupRoom(api, event, joined.room, joined.alreadyJoined ? "✅ Bạn đã có tên trong bàn." : "✅ " + name + " đã tham gia bàn.");
     await persistRoom(Threads, threadId);
     return;
