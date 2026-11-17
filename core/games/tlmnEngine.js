@@ -420,13 +420,55 @@ function whiteHandHighCard(hand, type) {
   return cards[cards.length - 1] || null;
 }
 
+function whiteHandCompareCards(hand, type) {
+  const cards = sortHand(hand);
+  const counts = new Map();
+  for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
+  const reps = rank => cards.filter(card => card.rank === rank).slice(-1)[0];
+  if (type === "dragonStraight") return [reps(14)].filter(Boolean);
+  if (type === "fourTwos") return [reps(15)].filter(Boolean);
+  if (type === "twelveSameSuit") {
+    const suit = ["b", "ch", "r", "c"].find(code =>
+      cards.filter(card => card.suit === code).length >= 12);
+    return cards.filter(card => card.suit === suit).slice(-1);
+  }
+  if (type === "fourTriples" || type === "twoFourKinds") {
+    const minimum = type === "fourTriples" ? 3 : 4;
+    return [...counts.entries()].filter(([, count]) => count >= minimum)
+      .map(([rank]) => reps(rank)).filter(Boolean).sort((a, b) => compareCards(b, a));
+  }
+  const pairRanks = [...counts.entries()].filter(([rank, count]) =>
+    rank !== 15 && count >= 2).map(([rank]) => rank).sort((a, b) => a - b);
+  if (type === "sixPairRun" || type === "fivePairRun") {
+    const length = type === "sixPairRun" ? 6 : 5;
+    let best = [];
+    for (let i = 0; i <= pairRanks.length - length; i += 1) {
+      const run = pairRanks.slice(i, i + length);
+      if (!run.every((rank, index) => index === 0 || rank === run[index - 1] + 1)) continue;
+      const tuple = run.slice().reverse().map(reps).filter(Boolean);
+      if (!best.length || tuple.some((card, index) =>
+        compareCards(card, best[index]) > 0 &&
+        tuple.slice(0, index).every((item, prior) => compareCards(item, best[prior]) === 0))) best = tuple;
+    }
+    return best;
+  }
+  if (type === "sixPairs") return pairRanks.slice().reverse().map(reps).filter(Boolean);
+  return [cards[cards.length - 1]].filter(Boolean);
+}
+
 function compareWhiteHands(handA, typeA, handB, typeB) {
   const priority = WHITE_HAND_PRIORITY.indexOf(typeA) - WHITE_HAND_PRIORITY.indexOf(typeB);
   if (priority) return priority;
-  const a = whiteHandHighCard(handA, typeA);
-  const b = whiteHandHighCard(handB, typeB);
-  if (!a || !b) return 0;
-  return compareCards(b, a);
+  const a = whiteHandCompareCards(handA, typeA);
+  const b = whiteHandCompareCards(handB, typeB);
+  const length = Math.max(a.length, b.length);
+  for (let i = 0; i < length; i += 1) {
+    if (!a[i]) return 1;
+    if (!b[i]) return -1;
+    const comparison = compareCards(b[i], a[i]);
+    if (comparison) return comparison;
+  }
+  return 0;
 }
 
 function rankLabel(rank) {
