@@ -40,44 +40,20 @@ test("TLMN practice room persists its practice flag and AI seat metadata", () =>
   game.removeRoom(groupId);
 });
 
-test("TLMN AI opening selection is legal and contains 3 of spades", () => {
+test("TLMN AI opening selection is legal without forcing 3 of spades", () => {
   const groupId = "tlmn-ai-opening-test";
-  const created = game.create(groupId, { uid: "human", name: "Admin" }, {
-    practice: true
-  });
+  const created = game.create(groupId, { uid: "human", name: "Admin" }, { practice: true });
   addPracticeBots(groupId, created.room);
   const started = game.start(groupId, "human", () => 0.37);
   assert.equal(started.ok, true);
-
   const room = game.get(groupId);
-  const aiWithThreeSpades = room.players.find(player =>
-    player.ai && room.hands[player.uid].some(card => card.id === "3b")
-  );
-  // The 3♠ holder may be the human; the AI helper is still checked against a
-  // valid opening hand by using a deterministic synthetic hand for the AI.
-  const uid = aiWithThreeSpades?.uid || room.players.find(player => player.ai).uid;
+  const uid = room.players.find(player => player.ai).uid;
   const hand = room.hands[uid];
-  const hasThreeSpades = hand.some(card => card.id === "3b");
-  const syntheticRoom = {
-    ...room,
-    playedCount: 0,
-    currentCombo: null,
-    hands: {
-      ...room.hands,
-      [uid]: hasThreeSpades ? hand : [
-        ...hand.slice(0, 12),
-        { rank: 3, suit: "b", id: "3b" }
-      ]
-    }
-  };
-  const move = command._test.chooseAiMove(syntheticRoom, uid);
+  const move = command._test.chooseAiMove({ ...room, playedCount: 0, currentCombo: null }, uid);
   assert.ok(move);
-  assert.ok(move.cards.some(card => card.id === "3b"));
-  const parsed = engine.parsePlayText(syntheticRoom.hands[uid], move.input);
+  const parsed = engine.parsePlayText(hand, move.input);
   assert.equal(parsed.ok, true);
-  assert.equal(engine.validatePlay(syntheticRoom.hands[uid], parsed.cards, null, {
-    mustContainThreeOfSpades: true
-  }).ok, true);
+  assert.equal(engine.validatePlay(hand, parsed.cards, null).ok, true);
   game.removeRoom(groupId);
 });
 
@@ -272,7 +248,7 @@ test("TLMN table without Admin also keeps the ordinary shuffled deal", () => {
   game.removeRoom(groupId);
 });
 
-test("TLMN quick play finds the largest legal play and respects the 3♠ opener", () => {
+test("TLMN quick play finds the largest legal play without a 3♠ opener restriction", () => {
   const groupId = "tlmn-ai-quick-play";
   const created = game.create(groupId, { uid: "human", name: "Admin" }, {
     practice: true,
@@ -283,9 +259,6 @@ test("TLMN quick play finds the largest legal play and respects the 3♠ opener"
   const room = game.get(groupId);
   const move = command._test.chooseQuickMove(room, "human");
   assert.ok(move);
-  assert.ok(move.cards.some(card => card.id === "3b"));
-  assert.equal(engine.validatePlay(room.hands.human, move.cards, null, {
-    mustContainThreeOfSpades: true
-  }).ok, true);
+  assert.equal(engine.validatePlay(room.hands.human, move.cards, null).ok, true);
   game.removeRoom(groupId);
 });
