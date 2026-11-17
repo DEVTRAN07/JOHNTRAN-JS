@@ -699,3 +699,38 @@ test("Sâm resolves multiple white hands once, choosing the higher five-pair han
     game.removeRoom(threadId);
   }
 });
+
+
+test("Sâm uses white-hand type priority before comparing same-type high cards", () => {
+  const threadId = "sam-white-hand-priority";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81607", stake: 1000 });
+  assert.equal(created.ok, true);
+  game.join(threadId, "81607", { uid: "b", name: "B" });
+
+  const longStraight = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    .map(rank => card(rank, "b"));
+  const fourTwos = [
+    card(15, "b"), card(15, "ch"), card(15, "r"), card(15, "c"),
+    card(3, "r"), card(4, "r"), card(5, "r"),
+    card(6, "r"), card(7, "r"), card(8, "r")
+  ];
+  assert.equal(engine.detectWhiteHand(longStraight), "longStraight");
+  assert.equal(engine.detectWhiteHand(fourTwos), "fourTwos");
+
+  const originalDeal = engine.dealCards;
+  engine.dealCards = () => ({
+    hands: { a: longStraight, b: fourTwos },
+    firstPlayerId: "a",
+    remainingDeck: []
+  });
+  try {
+    const started = game.start(threadId, "a");
+    assert.equal(started.ok, true);
+    assert.equal(started.finished, true);
+    assert.deepEqual(started.state.whiteHand, { uid: "a", type: "longStraight" });
+    assert.deepEqual(started.state.settlement.net, { a: 20000, b: -20000 });
+  } finally {
+    engine.dealCards = originalDeal;
+    game.removeRoom(threadId);
+  }
+});
