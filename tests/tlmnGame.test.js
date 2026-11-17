@@ -742,6 +742,7 @@ test("TLMN blocked kết 3 bích charges every player who joined the final trick
   const started = game.start(groupId, "a", () => 0.31);
   assert.equal(started.ok, true);
   const room = started.state;
+  room.status = "playing";
   room.hands = {
     a: [{ rank: 3, suit: "b", id: "3b" }],
     b: [{ rank: 4, suit: "b", id: "4b" }, { rank: 7, suit: "b", id: "7b" }],
@@ -774,6 +775,7 @@ test("TLMN chặt 2 đen pays 3 stakes and 2 đỏ pays 6 stakes", () => {
   const started = game.start(groupId, "chopper", () => 0.33);
   assert.equal(started.ok, true);
   const room = started.state;
+  room.status = "playing";
   room.hands = {
     chopper: [3,4,5].flatMap(rank => [
       { rank, suit: "b", id: String(rank) + "b" },
