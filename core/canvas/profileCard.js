@@ -5,8 +5,8 @@ const Jimp = require("jimp");
 const { loadImage } = require("canvas");
 const theme = require("./theme");
 
-const CYAN = "#55d6e8";
-const GREEN = "#59d9a8";
+const CYAN = "#61d8f2";
+const GREEN = "#54d6a0";
 const W = 750;
 
 async function circle(buffer) {
@@ -17,91 +17,73 @@ async function circle(buffer) {
 
 async function render(options = {}) {
   theme.initFonts();
-  const S = theme.S;
-  const width = theme.WIDTH;
+  const S = theme.S, width = theme.WIDTH, p = theme.PALETTE;
   const rows = Array.isArray(options.rows) ? options.rows.slice(0, 8) : [];
-  const pad = S(28);
-  const gap = S(10);
-  const columns = 2;
-  const rowHeight = S(62);
-  const rowCount = Math.ceil(rows.length / columns);
-  const identityY = S(104);
-  const identityHeight = S(156);
-  const detailsY = identityY + identityHeight + S(24);
-  const height = detailsY + rowCount * (rowHeight + gap) + S(74);
+  const pad = S(28), gap = S(11), cardGap = S(9);
+  const columns = 2, cardW = (width - pad * 2 - gap) / columns;
+  const cardH = S(72), rowCount = Math.ceil(rows.length / columns);
+  const titleY = S(39), heroY = S(82), heroH = S(180), detailsY = S(296);
+  const height = detailsY + rowCount * (cardH + cardGap) + S(53);
   const { ctx, canvas } = theme.newCanvas(width, height);
-
   await theme.paintBackground(ctx, width, height);
-  const palette = theme.PALETTE;
 
-  theme.label(ctx, "JOHN TRAN  /  MEMBER PROFILE", pad, S(35), { size: 11 });
-  theme.text(ctx, "HỒ SƠ THÀNH VIÊN", pad, S(72), {
-    size: 28, family: "JT-Display-Bold", color: palette.ink
+  theme.label(ctx, "JOHNTRAN  /  MEMBER IDENTITY", pad, titleY, { size: 10 });
+  theme.text(ctx, "HỒ SƠ THÀNH VIÊN", pad, titleY + S(37), {
+    size: 28, family: "JT-Display-Bold", color: p.ink
   });
-  theme.foil(ctx, pad, S(84), S(112));
+  theme.panel(ctx, pad, heroY, width - pad * 2, heroH, S(18), p.accent);
 
-  theme.panel(ctx, pad, identityY, width - pad * 2, identityHeight, S(14), palette.accent);
-  const avatarSize = S(118);
-  const avatarX = pad + S(18);
-  const avatarY = identityY + S(19);
+  const avatarSize = S(132), avatarX = pad + S(22), avatarY = heroY + S(24);
   if (options.avatarBuffer) {
     const avatar = await loadImage(await circle(options.avatarBuffer));
-    ctx.save();
-    ctx.beginPath();
+    ctx.save(); ctx.beginPath();
     ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(avatar, avatarX, avatarY, avatarSize, avatarSize);
-    ctx.restore();
+    ctx.clip(); ctx.drawImage(avatar, avatarX, avatarY, avatarSize, avatarSize); ctx.restore();
   } else {
-    ctx.fillStyle = "rgba(85,214,232,.16)";
-    ctx.beginPath();
+    const g = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
+    g.addColorStop(0, "#1c6a85"); g.addColorStop(1, "#243454");
+    ctx.fillStyle = g; ctx.beginPath();
     ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.font = theme.font(34, "JT-Bold");
-    ctx.fillStyle = palette.accent;
-    ctx.textAlign = "center";
-    ctx.fillText(String(options.name || "?").trim().charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2 + S(12));
-    ctx.textAlign = "left";
+    ctx.font = theme.font(48, "JT-Display-Bold"); ctx.fillStyle = "#d9f8ff";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(String(options.name || "?").trim().charAt(0).toUpperCase(),
+      avatarX + avatarSize / 2, avatarY + avatarSize / 2);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
   }
   ctx.beginPath();
-  ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2 + S(2), 0, Math.PI * 2);
-  ctx.strokeStyle = palette.accent;
-  ctx.lineWidth = S(2);
-  ctx.stroke();
+  ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2 + S(3), 0, Math.PI * 2);
+  ctx.strokeStyle = p.accent; ctx.lineWidth = S(3); ctx.stroke();
 
-  const textX = avatarX + avatarSize + S(20);
-  const textWidth = width - textX - pad - S(18);
-  theme.label(ctx, "ZALO MEMBER", textX, identityY + S(42), { size: 10 });
-  theme.text(ctx, options.name || "Người dùng", textX, identityY + S(77), {
-    size: 22, family: "JT-Display-Bold", color: palette.ink, maxWidth: textWidth
+  const textX = avatarX + avatarSize + S(25), textW = width - textX - pad - S(22);
+  theme.label(ctx, "ZALO ACCOUNT", textX, heroY + S(45), { size: 9, color: p.mute });
+  theme.text(ctx, options.name || "Người dùng", textX, heroY + S(84), {
+    size: 28, family: "JT-Display-Bold", color: p.ink, maxWidth: textW
   });
-  theme.text(ctx, options.link ? "@" + String(options.link).replace(/^@/, "") : "Tài khoản Zalo", textX, identityY + S(106), {
-    size: 12, family: "JT-Mono", color: palette.ink2, maxWidth: textWidth
+  theme.text(ctx, options.link ? "@" + String(options.link).replace(/^@/, "") : "Tài khoản Zalo",
+    textX, heroY + S(111), { size: 14, family: "JT-Mono", color: p.ink2, maxWidth: textW });
+  theme.roundRect(ctx, textX, heroY + S(130), S(132), S(27), S(13));
+  ctx.fillStyle = "rgba(97,216,242,.13)"; ctx.fill();
+  theme.text(ctx, "THÀNH VIÊN", textX + S(66), heroY + S(148), {
+    size: 8.5, family: "JT-Bold", color: p.accent, align: "center"
   });
-  theme.text(ctx, "THÔNG TIN TÀI KHOẢN", textX, identityY + S(135), {
-    size: 10, family: "JT-Bold", color: palette.accent, maxWidth: textWidth
+  theme.text(ctx, "Thông tin tài khoản Zalo", textX, heroY + S(166), {
+    size: 10, color: p.mute, maxWidth: textW
   });
 
-  theme.label(ctx, "CHI TIẾT", pad, detailsY - S(8), { size: 11 });
-  const cardWidth = (width - pad * 2 - gap) / 2;
+  theme.label(ctx, "THÔNG TIN CHI TIẾT", pad, detailsY - S(13), { size: 10 });
   rows.forEach((entry, index) => {
     const pair = Array.isArray(entry) ? entry : [entry?.label || "Thông tin", entry?.value || "—"];
-    const col = index % columns;
-    const row = Math.floor(index / columns);
-    const x = pad + col * (cardWidth + gap);
-    const y = detailsY + row * (rowHeight + gap);
-    theme.panel(ctx, x, y, cardWidth, rowHeight, S(10), "rgba(85,214,232,.30)");
-    theme.label(ctx, String(pair[0] || "THÔNG TIN"), x + S(12), y + S(23), {
-      size: 9, color: palette.mute
-    });
-    theme.text(ctx, String(pair[1] ?? "—"), x + S(12), y + S(46), {
-      size: 13, family: "JT-Bold", color: palette.ink, maxWidth: cardWidth - S(24)
+    const col = index % columns, row = Math.floor(index / columns);
+    const x = pad + col * (cardW + gap), y = detailsY + row * (cardH + cardGap);
+    theme.panel(ctx, x, y, cardW, cardH, S(12), p.accent);
+    theme.label(ctx, String(pair[0] || "THÔNG TIN"), x + S(14), y + S(25), { size: 8.5, color: p.mute });
+    theme.text(ctx, String(pair[1] ?? "—"), x + S(14), y + S(51), {
+      size: 14, family: "JT-Bold", color: p.ink, maxWidth: cardW - S(28)
     });
   });
-
-  const footerY = detailsY + rowCount * (rowHeight + gap) + S(20);
-  theme.text(ctx, "JOHNTRAN  •  PROFILE CARD", width - pad, footerY, {
-    size: 10, family: "JT-Mono", color: palette.mute, align: "right"
+  theme.text(ctx, "JOHNTRAN  •  PROFILE", width - pad, height - S(20), {
+    size: 9, family: "JT-Mono", color: p.mute, align: "right"
   });
 
   const filePath = theme.save(canvas, "profile_card");
@@ -123,13 +105,10 @@ async function loadImg(url, depth = 0) {
         if (response.statusCode >= 300 && response.statusCode < 400 && location) {
           response.resume();
           const target = /^https?:\/\//i.test(location) ? location : new URL(location, value).href;
-          resolve(loadImg(target, depth + 1));
-          return;
+          resolve(loadImg(target, depth + 1)); return;
         }
         if (response.statusCode < 200 || response.statusCode >= 300) {
-          response.resume();
-          reject(new Error("Avatar request returned HTTP " + response.statusCode));
-          return;
+          response.resume(); reject(new Error("Avatar request returned HTTP " + response.statusCode)); return;
         }
         const chunks = [];
         response.on("data", chunk => chunks.push(chunk));
@@ -139,9 +118,7 @@ async function loadImg(url, depth = 0) {
       request.on("error", reject);
     });
     return await loadImage(buffer);
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 module.exports = { render, circle, loadImg, CYAN, GREEN, WIDTH: W, HEIGHT: 520 };

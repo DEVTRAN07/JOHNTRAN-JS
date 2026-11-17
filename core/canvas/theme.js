@@ -9,22 +9,22 @@ const PALETTE = {};
 const THEME_STYLE = {};
 
 const BASE_PALETTE = {
-  // Match the approved JOHNTRAN menu: deep ocean navy with a crisp cyan accent.
-  bg0: "#06131f", bg1: "#0b2b40", bg2: "#124d5d",
-  ink: "#f7faff", ink2: "#cbd9e8", mute: "#8aa7bd",
-  accent: "#55d6e8", accent2: "#a4eff7",
-  green: "#59d9a8", red: "#ff8297", gold: "#efc76d"
+  // Premium graphite / midnight blue; accents are reserved for important data.
+  bg0: "#08111f", bg1: "#0d1b2d", bg2: "#142941",
+  ink: "#f5f8ff", ink2: "#c4d1e2", mute: "#8ea2bb",
+  accent: "#61d8f2", accent2: "#a5edfa",
+  green: "#54d6a0", red: "#ff7188", gold: "#f3c46b"
 };
 
 const BASE_STYLE = {
-  panelBg: "rgba(7, 27, 43, 0.90)",
-  panelBorderAlpha: 0.52,
-  panelLineWidth: 1.15,
-  panelRadius: 16,
+  panelBg: "rgba(14, 28, 45, 0.97)",
+  panelBorderAlpha: 0.24,
+  panelLineWidth: 1,
+  panelRadius: 17,
   btnRadius: 11,
-  frame: true,
-  glowCorners: ["rgba(85, 214, 232, .15)", "rgba(57, 137, 211, .09)"],
-  shade: "rgba(3, 12, 24, .72)",
+  frame: false,
+  glowCorners: ["rgba(46, 119, 190, .10)", "rgba(48, 183, 204, .045)"],
+  shade: "rgba(3, 9, 18, .72)",
   foil: true
 };
 
@@ -239,12 +239,12 @@ async function paintBackground(ctx, width, height) {
 
 function panel(ctx, x, y, width, height, radius = THEME_STYLE.panelRadius, accent = PALETTE.accent) {
   ensureTheme();
-  roundRect(ctx, x, y, width, height, radius);
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,.30)";
-  ctx.shadowBlur = S(16);
-  ctx.shadowOffsetY = S(6);
-  const gradient = ctx.createLinearGradient(x, y, x + width * 0.8, y + height);
+  roundRect(ctx, x, y, width, height, radius);
+  ctx.shadowColor = "rgba(0,0,0,.24)";
+  ctx.shadowBlur = S(10);
+  ctx.shadowOffsetY = S(4);
+  const gradient = ctx.createLinearGradient(x, y, x, y + height);
   gradient.addColorStop(0, "rgba(255,255,255,.055)");
   gradient.addColorStop(1, THEME_STYLE.panelBg);
   ctx.fillStyle = gradient;
@@ -252,17 +252,17 @@ function panel(ctx, x, y, width, height, radius = THEME_STYLE.panelRadius, accen
   ctx.restore();
 
   roundRect(ctx, x, y, width, height, radius);
-  ctx.strokeStyle = accent;
-  ctx.globalAlpha = THEME_STYLE.panelBorderAlpha;
-  ctx.lineWidth = THEME_STYLE.panelLineWidth;
+  ctx.strokeStyle = "rgba(164,190,218,.20)";
+  ctx.lineWidth = Math.max(1, S(.8));
   ctx.stroke();
 
-  // A low-contrast inner edge gives glass panels definition without a heavy frame.
-  roundRect(ctx, x + S(1), y + S(1), width - S(2), height - S(2), Math.max(0, radius - S(1)));
-  ctx.strokeStyle = "rgba(218, 245, 255, .09)";
-  ctx.lineWidth = Math.max(1, S(0.7));
-  ctx.stroke();
-  ctx.globalAlpha = 1;
+  // A short accent rail replaces the old bright outline around every tile.
+  ctx.save();
+  roundRect(ctx, x + S(12), y + S(1), Math.max(S(30), Math.min(width * .22, S(112))), S(2), S(1));
+  ctx.fillStyle = accent || PALETTE.accent;
+  ctx.globalAlpha = .48;
+  ctx.fill();
+  ctx.restore();
 }
 
 function button(ctx, x, y, width, height, value, color) {

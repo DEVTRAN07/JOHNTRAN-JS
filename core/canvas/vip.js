@@ -1,147 +1,113 @@
-// ===== Thẻ VIP (reply.card / reply.text / reply.error...) — dùng theme chung =====
-// Mọi ảnh bot gửi ra đều CÙNG một kiểu: nền, font, bo góc, bóng (xem theme.js).
-// Kích thước viết theo cỡ 750 rồi scale theo theme.WIDTH (config canvas.width).
+"use strict";
+
 const theme = require("./theme");
-
 const WIDTH = theme.WIDTH;
-const PADDING = theme.S(30);
 const S = theme.S;
-
-// Emoji → ký tự an toàn khi máy không có font emoji (Linux minimal)
+const PADDING = theme.S(30);
 const EMOJI_FALLBACK = {
-  "🎵": "♪", "🎧": "♫", "❤️": "❤", "✅": "✔", "❌": "✘", "⚠️": "!",
-  "⏳": "...", "🚫": "×", "💡": "i", "🔎": "?", "📡": "#", "🎯": ">",
-  "🤖": "AI", "🖼️": "[img]", "⏱": "⏱", "🔍": "?", "📺": "▶", "🌐": "@",
-  "👉": ">", "📎": "♦", "💬": "☰", "⏰": "◷", "🏆": "★", "💰": "$",
-  "🎲": "?", "🎮": ">", "⭐": "*", "💎": "◆", "🧩": "▤", "📌": "•",
-  "🛠️": "+", "📊": "▥", "🔧": "+", "🧠": "◔", "📥": "↓", "🎬": "▶",
-  "🚀": ">", "🔥": "^", "😉": "‿", "😁": "^", "😋": "~", "😴": "z",
-  "🎉": "*", "🚿": "~", "🍚": "=", "📴": "×", "🛌": "_", "🌙": ")", "💤": "z",
-  "👋": ">", "🚪": "→", "🏆": "★", "😍": "♥", "⌨️": "#", "📄": "▤", "⬅": "<", "➡": ">"
+  "🎵":"♪","🎧":"♫","❤️":"♥","✅":"✓","❌":"×","⚠️":"!","⏳":"…",
+  "🚫":"×","💡":"i","🔎":"?","📡":"#","🎯":">","🤖":"AI","🖼️":"▣",
+  "🌐":"@","👉":">","📎":"♦","💬":"◌","⏰":"◷","🏆":"★","💰":"$",
+  "🎲":"?","🎮":">","⭐":"★","💎":"◆","🧩":"▤","📌":"•","🛠️":"+",
+  "📊":"▥","🔧":"+","🧠":"✦","📥":"↓","🎬":"▶","🚀":">","🔥":"*"
 };
-
-let emojiReady = false;
-let hasEmojiFont = false;
-
-function sanitizeEmoji(text) {
-  if (emojiReady) return text;
-  let out = "";
-  for (const ch of String(text)) out += hasEmojiFont ? ch : (EMOJI_FALLBACK[ch] || ch);
-  return out;
+function sanitizeEmoji(value) {
+  let out = String(value ?? "");
+  for (const [emoji, fallback] of Object.entries(EMOJI_FALLBACK)) out = out.split(emoji).join(fallback);
+  return theme.sanitizeGlyphs(out);
 }
-
-// Đo chiều cao thẻ theo nội dung (mỗi ảnh cao vừa đủ — không dư khoảng trắng)
-function measure(spec) {
-  const { ctx } = theme.newCanvas(100, 100);
-  ctx.font = theme.font(16);
-  let height = S(120) /* header */ + (spec.subtitle ? S(52) : 0) + S(22);
-
-  const rows = Array.isArray(spec.rows) ? spec.rows : [];
-  for (const row of rows) {
-    const lines = Array.isArray(row.lines) ? row.lines : [String(row.lines || "")];
-    let rowH = S(34);
-    for (const line of lines) {
-      const wrapped = Math.max(1, Math.ceil(ctx.measureText(sanitizeEmoji(line)).width / (WIDTH - PADDING * 2 - S(46))));
-      rowH += wrapped * S(26) + S(6);
-    }
-    height += rowH + S(18);
+function wrap(ctx, value, maxWidth) {
+  const words = sanitizeEmoji(value).split(/\s+/).filter(Boolean);
+  const lines = []; let current = "";
+  for (const word of words) {
+    const next = current ? current + " " + word : word;
+    if (current && ctx.measureText(next).width > maxWidth) { lines.push(current); current = word; }
+    else current = next;
   }
-  return { height: Math.max(height + S(96), S(260)) };
+  if (current) lines.push(current);
+  return lines.length ? lines : [""];
 }
-
+function measure(spec = {}) {
+  theme.initFonts();
+  const { ctx } = theme.newCanvas(WIDTH, 100);
+  const maxWidth = WIDTH - PADDING * 2 - S(84);
+  ctx.font = theme.font(15, "JT");
+  const rows = (Array.isArray(spec.rows) ? spec.rows : []).map(row => {
+    const source = Array.isArray(row?.lines) ? row.lines : [String(row?.lines || "")];
+    const lines = source.flatMap(line => wrap(ctx, line, maxWidth));
+    return { row, lines, height: S(42 + Math.max(1, lines.length) * 24) };
+  });
+  const subtitleHeight = spec.subtitle ? S(42) : 0;
+  const height = S(116) + subtitleHeight +
+    rows.reduce((sum, item) => sum + item.height + S(12), 0) + S(52);
+  return { height: Math.max(S(230), height), rows };
+}
 async function renderVipCard(spec = {}) {
-  theme.ensureTheme();
-  const palette = theme.PALETTE;
-  // Use the same selected accent as /menu; semantic states retain their meaning.
-  const accent = spec.theme === "success" ? palette.green
-    : spec.theme === "error" ? palette.red
-      : spec.theme === "warn" ? palette.gold
-        : palette.accent;
-  const accent2 = palette.accent2 || accent;
-
-  const { height } = measure(spec);
+  theme.initFonts();
+  const p = theme.PALETTE;
+  const accent = spec.theme === "success" ? p.green :
+    spec.theme === "error" ? p.red :
+      spec.theme === "warn" ? p.gold : p.accent;
+  const measured = measure(spec), height = measured.height;
   const { ctx, canvas } = theme.newCanvas(WIDTH, height);
-
   await theme.paintBackground(ctx, WIDTH, height);
+  ctx.fillStyle = accent; ctx.fillRect(0, 0, S(7), height);
 
-  // Nền ảnh riêng (avatar người dùng...) — phủ lên, giữ overlay để chữ rõ
-  if (spec.background) {
-    try {
-      const { buffer } = await require("../http").getBuffer(spec.background, { timeout: 10000, retries: 1 });
-      const bg = await require("canvas").loadImage(buffer);
-      const scale = Math.max(WIDTH / bg.width, height / bg.height);
-      const dw = bg.width * scale;
-      const dh = bg.height * scale;
-      ctx.save();
-      ctx.globalAlpha = 0.55;
-      ctx.drawImage(bg, (WIDTH - dw) / 2, (height - dh) / 2, dw, dh);
-      ctx.restore();
-      // overlay tối cho chữ luôn đọc được
-      const shade = ctx.createLinearGradient(0, 0, 0, height);
-      shade.addColorStop(0, "rgba(7, 10, 20, .6)");
-      shade.addColorStop(1, "rgba(7, 10, 20, .9)");
-      ctx.fillStyle = shade;
-      ctx.fillRect(0, 0, WIDTH, height);
-    } catch { /* hỏng ảnh nền thì thôi, vẫn có nền mặc định */ }
-  }
-
-  let y = S(74);
-
-  // ===== Kicker + Tiêu đề + vệt nhũ =====
-  const icon = spec.icon || (spec.theme === "error" ? "❌" : spec.theme === "success" ? "✅" : spec.theme === "music" ? "🎵" : spec.theme === "info" ? "💡" : "⚡");
-  theme.label(ctx, "JOHN TRAN", PADDING, y - S(28), { size: 13, color: accent });
-  theme.text(ctx, sanitizeEmoji(icon), PADDING, y, { size: 34, color: accent });
-  theme.text(ctx, String(spec.title || "").toUpperCase(), PADDING + S(52), y, {
-    size: 33, family: "JT-Display-Bold", color: palette.ink, maxWidth: WIDTH - PADDING * 2 - S(110)
+  const icon = sanitizeEmoji(spec.icon || (spec.theme === "success" ? "✓" :
+    spec.theme === "error" ? "×" : spec.theme === "warn" ? "!" : "i"));
+  const iconX = PADDING, iconY = S(34), iconSize = S(55);
+  theme.roundRect(ctx, iconX, iconY, iconSize, iconSize, S(15));
+  ctx.fillStyle = accent + "22"; ctx.fill();
+  ctx.strokeStyle = accent; ctx.lineWidth = S(1.2); ctx.stroke();
+  theme.text(ctx, icon, iconX + iconSize / 2, iconY + S(37), {
+    size: 25, family: "JT-Bold", color: accent, align: "center"
   });
-  theme.foil(ctx, PADDING, y + S(14), S(90));
-
-  y += S(42);
-
-  // ===== Mô tả ngắn =====
+  const titleX = PADDING + S(72), titleW = WIDTH - titleX - PADDING;
+  theme.label(ctx, "JOHNTRAN  /  " + String(spec.theme || "NOTICE").toUpperCase(),
+    titleX, S(42), { size: 9, color: accent });
+  theme.text(ctx, String(spec.title || "THÔNG BÁO").toUpperCase(), titleX, S(78), {
+    size: 28, family: "JT-Display-Bold", color: p.ink, maxWidth: titleW
+  });
+  let y = S(106);
   if (spec.subtitle) {
-    theme.text(ctx, sanitizeEmoji(String(spec.subtitle)), PADDING, y + S(4), {
-      size: 18, color: palette.ink2, maxWidth: WIDTH - PADDING * 2
+    theme.text(ctx, sanitizeEmoji(spec.subtitle), titleX, y, {
+      size: 13, color: p.ink2, maxWidth: titleW
     });
-    y += S(50);
-  }
+    y += S(48);
+  } else y += S(16);
 
-  // ===== Các khối nội dung =====
-  const rows = Array.isArray(spec.rows) ? spec.rows : [];
-  for (const row of rows) {
-    if (!row) continue;
-    const lines = Array.isArray(row.lines) ? row.lines : [String(row.lines || "")];
-    theme.panel(ctx, PADDING, y - S(18), WIDTH - PADDING * 2, S(32) + lines.length * S(26), S(12), row.tone === "error" ? palette.red : accent);
-    y += S(2);
-
-    if (row.label) {
-      theme.text(ctx, sanitizeEmoji(row.label), WIDTH - PADDING - S(170), y, {
-        size: 14, color: palette.mute, maxWidth: S(150)
+  measured.rows.forEach(({ row, lines, height: rowHeight }) => {
+    const x = PADDING, w = WIDTH - PADDING * 2;
+    theme.panel(ctx, x, y, w, rowHeight, S(13), row?.tone === "error" ? p.red : accent);
+    const railX = x + S(14), railY = y + S(13);
+    theme.roundRect(ctx, railX, railY, S(4), rowHeight - S(26), S(2));
+    ctx.fillStyle = row?.tone === "error" ? p.red : accent; ctx.fill();
+    if (row?.icon) {
+      theme.roundRect(ctx, x + S(27), y + S(14), S(28), S(28), S(9));
+      ctx.fillStyle = "rgba(255,255,255,.07)"; ctx.fill();
+      theme.text(ctx, sanitizeEmoji(row.icon), x + S(41), y + S(33), {
+        size: 12, family: "JT-Bold", color: accent, align: "center"
       });
     }
-    if (row.icon) {
-      theme.text(ctx, sanitizeEmoji(row.icon), PADDING + S(16), y + S(4), { size: 20, color: row.tone === "error" ? palette.red : accent2 });
-    }
-
-    let ly = y;
-    for (const line of lines) {
-      ly += S(26);
-      theme.text(ctx, sanitizeEmoji(String(line)), PADDING + S(44), ly, {
-        size: row.strong ? 17 : 16,
-        family: row.strong ? "JT-Bold" : "JT",
-        color: row.strong ? palette.ink : palette.ink2,
-        maxWidth: WIDTH - PADDING * 2 - S(62)
+    const contentX = x + S(row?.icon ? 68 : 29);
+    if (row?.label) theme.label(ctx, sanitizeEmoji(row.label), contentX, y + S(24), {
+      size: 8, color: p.mute
+    });
+    const lineStart = y + S(row?.label ? 49 : 30);
+    lines.forEach((line, index) => {
+      theme.text(ctx, line, contentX, lineStart + index * S(24), {
+        size: row?.strong ? 15 : 13,
+        family: row?.strong ? "JT-Bold" : "JT",
+        color: row?.strong ? p.ink : p.ink2,
+        maxWidth: WIDTH - contentX - PADDING - S(10)
       });
-    }
-    y = ly + S(26);
-  }
-
-  // ===== Footer thương hiệu =====
-  theme.text(ctx, String(spec.footer || "JOHN TRAN"), WIDTH / 2, height - S(30), {
-    size: 15, family: "JT-Bold", color: palette.mute, align: "center"
+    });
+    y += rowHeight + S(12);
   });
-
+  theme.text(ctx, String(spec.footer || "JOHNTRAN").toUpperCase(),
+    WIDTH - PADDING, height - S(18), {
+      size: 8.5, family: "JT-Mono", color: p.mute, align: "right"
+    });
   return theme.save(canvas, "card");
 }
-
-module.exports = { renderVipCard, WIDTH, EMOJI_FALLBACK };
+module.exports = { renderVipCard, WIDTH, EMOJI_FALLBACK, _test: { measure, wrap } };

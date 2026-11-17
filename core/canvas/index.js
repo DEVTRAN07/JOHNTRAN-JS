@@ -6,165 +6,122 @@ const os = require("os");
 const { createCanvas } = require("canvas");
 const theme = require("./theme");
 
-// Kept for backwards compatibility with older callers that import THEMES.
 const THEMES = {
-  brand: { accent: "#d4af37" },
-  success: { accent: "#8fbf9f" },
-  error: { accent: "#c4594e" },
-  warn: { accent: "#d4af37" },
-  music: { accent: "#d4af37" },
-  ai: { accent: "#d4af37" }
+  brand: { accent: "#61d8f2" },
+  success: { accent: "#54d6a0" },
+  error: { accent: "#ff7188" },
+  warn: { accent: "#f3c46b" },
+  music: { accent: "#b69cff" },
+  ai: { accent: "#8cc7ff" }
 };
-
-function sanitize(value) {
-  return theme.sanitizeGlyphs(value);
-}
-
+function sanitize(value) { return theme.sanitizeGlyphs(value); }
 function wrapText(ctx, value, maxWidth) {
   const lines = [];
   for (const paragraph of String(value ?? "").split("\n")) {
     const words = paragraph.split(/\s+/).filter(Boolean);
-    if (!words.length) {
-      lines.push("");
-      continue;
-    }
+    if (!words.length) { lines.push(""); continue; }
     let current = "";
     for (const word of words) {
       const next = current ? current + " " + word : word;
-      if (current && ctx.measureText(next).width > maxWidth) {
-        lines.push(current);
-        current = word;
-      } else {
-        current = next;
-      }
+      if (current && ctx.measureText(next).width > maxWidth) { lines.push(current); current = word; }
+      else current = next;
     }
     if (current) lines.push(current);
   }
   return lines;
 }
-
 function measureContent(spec = {}) {
-  theme.initFonts();
-  theme.ensureTheme();
-  const S = theme.S;
-  const width = theme.WIDTH;
-  const padding = S(32);
+  theme.initFonts(); theme.ensureTheme();
+  const S = theme.S, width = theme.WIDTH, padding = S(30);
   const contentWidth = width - padding * 2;
   const ctx = createCanvas(width, 8).getContext("2d");
-  let height = S(115);
-
-  ctx.font = theme.font(31, "JT-Display-Bold");
-  const titleLines = wrapText(ctx, sanitize(spec.title || "Thông báo"), contentWidth);
-  height += Math.max(1, titleLines.length) * S(39);
-
+  ctx.font = theme.font(16, "JT");
+  const title = wrapText(ctx, sanitize(spec.title || "Thông báo"), contentWidth - S(26));
+  let height = S(120) + Math.max(1, title.length) * S(38);
   if (spec.subtitle) {
-    ctx.font = theme.font(16, "JT");
-    height += wrapText(ctx, sanitize(spec.subtitle), contentWidth).length * S(25) + S(12);
+    ctx.font = theme.font(14, "JT");
+    height += wrapText(ctx, sanitize(spec.subtitle), contentWidth - S(28)).length * S(22) + S(10);
   }
-
-  const sections = Array.isArray(spec.sections) ? spec.sections : [];
-  for (const section of sections) {
-    height += S(22);
-    if (section.title) height += S(30);
-    ctx.font = theme.font(15, "JT");
-    const lines = (Array.isArray(section.lines) ? section.lines : [])
-      .flatMap(line => wrapText(ctx, sanitize(line), contentWidth - S(28)));
-    height += Math.max(1, lines.length) * S(23) + S(20);
-  }
-  if (spec.footer) height += S(42);
-  return { width, height: Math.max(height + S(28), S(240)), padding, contentWidth };
-}
-
-function renderCard(spec = {}) {
-  const { width, height, padding, contentWidth } = measureContent(spec);
-  const S = theme.S;
-  const palette = theme.PALETTE;
-  const { ctx, canvas } = theme.newCanvas(width, height);
-
-  const background = ctx.createLinearGradient(0, 0, width, height);
-  background.addColorStop(0, palette.bg0);
-  background.addColorStop(0.52, palette.bg1);
-  background.addColorStop(1, palette.bg0);
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, width, height);
-
-  const faceX = padding;
-  const faceY = S(18);
-  const faceWidth = contentWidth;
-  const faceHeight = height - S(36);
-  theme.roundRect(ctx, faceX, faceY, faceWidth, faceHeight, S(14));
-  const faceFill = ctx.createLinearGradient(faceX, faceY, faceX + faceWidth, faceY + faceHeight);
-  faceFill.addColorStop(0, palette.bg0);
-  faceFill.addColorStop(0.52, palette.bg1);
-  faceFill.addColorStop(1, palette.bg0);
-  ctx.fillStyle = faceFill;
-  ctx.fill();
-  theme.roundRect(ctx, faceX, faceY, faceWidth, faceHeight, S(14));
-  ctx.strokeStyle = palette.accent;
-  ctx.globalAlpha = 0.58;
-  ctx.lineWidth = Math.max(1, S(1));
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-  let y = S(60);
-
-  theme.label(ctx, String(spec.chip || "JOHN TRAN") + "  /  " + String(spec.brand || global.config?.name_bot || "JOHN TRAN"), padding + S(20), y, {
-    size: 11,
-    color: palette.accent
-  });
-  y += S(44);
-
-  ctx.font = theme.font(31, "JT-Display-Bold");
-  const titleLines = wrapText(ctx, sanitize(spec.title || "Thông báo"), contentWidth - S(40));
-  for (const line of titleLines) {
-    theme.text(ctx, line, padding + S(20), y, {
-      size: 31, family: "JT-Display-Bold", color: palette.ink, maxWidth: contentWidth - S(40)
-    });
-    y += S(39);
-  }
-
-  if (spec.subtitle) {
-    y += S(4);
-    ctx.font = theme.font(16, "JT");
-    for (const line of wrapText(ctx, sanitize(spec.subtitle), contentWidth - S(40))) {
-      theme.text(ctx, line, padding + S(20), y, {
-        size: 16, color: palette.ink2, maxWidth: contentWidth - S(40)
-      });
-      y += S(25);
-    }
-  }
-
-  const sections = Array.isArray(spec.sections) ? spec.sections : [];
-  for (const section of sections) {
-    y += S(14);
-    theme.panel(ctx, padding + S(16), y - S(12), contentWidth - S(32), S(35), S(8), "rgba(212,175,55,.32)");
-    if (section.title) {
-      theme.label(ctx, String(section.title), padding + S(29), y + S(10), { size: 10 });
-      y += S(32);
-    }
+  for (const section of (Array.isArray(spec.sections) ? spec.sections : [])) {
     const lines = (Array.isArray(section.lines) ? section.lines : [])
       .flatMap(line => wrapText(ctx, sanitize(line), contentWidth - S(70)));
-    for (const line of lines) {
-      theme.text(ctx, line, padding + S(32), y + S(17), {
-        size: 14, color: palette.ink2, maxWidth: contentWidth - S(64)
-      });
-      y += S(23);
-    }
-    y += S(7);
+    height += S(64) + Math.max(1, lines.length) * S(27);
   }
+  if (spec.footer) height += S(40);
+  return { width, height: Math.max(height + S(24), S(230)), padding, contentWidth };
+}
+function renderCard(spec = {}) {
+  const { width, height, padding, contentWidth } = measureContent(spec);
+  const S = theme.S, p = theme.PALETTE;
+  const accent = THEMES[spec.theme]?.accent || p.accent;
+  const { ctx, canvas } = theme.newCanvas(width, height);
+  const bg = ctx.createLinearGradient(0, 0, width, height);
+  bg.addColorStop(0, p.bg0); bg.addColorStop(.6, p.bg1); bg.addColorStop(1, "#091626");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, width, height);
+  const glow = ctx.createRadialGradient(width * .82, height * .08, 0,
+    width * .82, height * .08, width * .6);
+  glow.addColorStop(0, accent + "26"); glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, width, height);
 
-  if (spec.footer) {
-    theme.text(ctx, sanitize(spec.footer), width - padding - S(18), height - S(28), {
-      size: 10, family: "JT-Mono", color: palette.mute, align: "right", maxWidth: contentWidth - S(36)
+  const faceX = padding, faceY = S(16), faceW = contentWidth, faceH = height - S(32);
+  theme.roundRect(ctx, faceX, faceY, faceW, faceH, S(18));
+  ctx.fillStyle = "rgba(11,24,40,.82)"; ctx.fill();
+  ctx.strokeStyle = "rgba(180,204,228,.18)"; ctx.lineWidth = S(1); ctx.stroke();
+  ctx.fillStyle = accent; ctx.fillRect(faceX, faceY + S(17), S(4), S(55));
+
+  let y = S(51);
+  theme.label(ctx, String(spec.chip || "JOHNTRAN") + "  /  " +
+    String(spec.brand || global.config?.name_bot || "JOHN TRAN"),
+    padding + S(22), y, { size: 9, color: accent });
+  y += S(42);
+  wrapText(ctx, sanitize(spec.title || "Thông báo"), contentWidth - S(46)).forEach(line => {
+    theme.text(ctx, line, padding + S(22), y, {
+      size: 29, family: "JT-Display-Bold", color: p.ink, maxWidth: contentWidth - S(46)
+    });
+    y += S(37);
+  });
+  if (spec.subtitle) {
+    y += S(2);
+    wrapText(ctx, sanitize(spec.subtitle), contentWidth - S(46)).forEach(line => {
+      theme.text(ctx, line, padding + S(22), y, {
+        size: 14, color: p.ink2, maxWidth: contentWidth - S(46)
+      });
+      y += S(22);
     });
   }
+
+  (Array.isArray(spec.sections) ? spec.sections : []).forEach((section, index) => {
+    y += S(16);
+    const lines = (Array.isArray(section.lines) ? section.lines : [])
+      .flatMap(line => wrapText(ctx, sanitize(line), contentWidth - S(78)));
+    const h = S(54 + Math.max(1, lines.length) * 26);
+    const x = padding + S(16), w = contentWidth - S(32);
+    theme.panel(ctx, x, y, w, h, S(13), accent);
+    theme.text(ctx, String(index + 1).padStart(2, "0"), x + S(15), y + S(24), {
+      size: 11, family: "JT-Mono-Bold", color: accent
+    });
+    if (section.title) theme.label(ctx, section.title, x + S(48), y + S(24), {
+      size: 9, color: p.ink2
+    });
+    lines.forEach((line, lineIndex) => {
+      theme.text(ctx, line, x + S(48), y + S(49 + lineIndex * 25), {
+        size: 13, color: p.ink, maxWidth: w - S(64)
+      });
+    });
+    y += h;
+  });
+  if (spec.footer) theme.text(ctx, sanitize(spec.footer), width - padding - S(18),
+    height - S(24), {
+      size: 9, family: "JT-Mono", color: p.mute, align: "right",
+      maxWidth: contentWidth - S(36)
+    });
   return canvas;
 }
-
 function renderCardToFile(spec = {}, filePath) {
   const canvas = renderCard(spec);
-  const outputPath = filePath || path.join(os.tmpdir(), "jt_card_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
+  const outputPath = filePath || path.join(os.tmpdir(),
+    "jt_card_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
   fs.writeFileSync(outputPath, canvas.toBuffer("image/png"));
   return outputPath;
 }
-
 module.exports = { renderCard, renderCardToFile, sanitize, THEMES, _test: { measureContent, wrapText } };

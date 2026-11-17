@@ -1,191 +1,175 @@
-// ===== Thẻ nhạc — dùng theme chung (core/canvas/theme.js) =====
-// Kích thước viết theo cỡ 750 rồi scale theo theme.WIDTH (config canvas.width).
+"use strict";
+
 const theme = require("./theme");
 
-// Số lượt nghe gọn: 12345 → 12K, 1234567 → 1.2M
 function shortPlays(n) {
   const value = Number(n) || 0;
-  if (value >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
-  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
-  if (value >= 1e3) return `${(value / 1e3).toFixed(0)}K`;
+  if (value >= 1e9) return (value / 1e9).toFixed(1) + "B";
+  if (value >= 1e6) return (value / 1e6).toFixed(1) + "M";
+  if (value >= 1e3) return (value / 1e3).toFixed(0) + "K";
   return String(value);
 }
-
 function formatDuration(seconds) {
   const total = Number(seconds) || 0;
-  return `${Math.floor(total / 60)}:${String(Math.floor(total % 60)).padStart(2, "0")}`;
+  return Math.floor(total / 60) + ":" + String(Math.floor(total % 60)).padStart(2, "0");
 }
-
 async function fetchThumb(url) {
   if (!url) return null;
   try {
     const { buffer } = await require("../http").getBuffer(url, { timeout: 10000, retries: 1 });
     return await require("canvas").loadImage(buffer);
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
-// ===== Lưới kết quả tìm kiếm (lưới thẻ 3 cột như menu) =====
-// ===== Lưới kết quả tìm kiếm (thẻ: artwork lớn + tiêu đề + tag) =====
-async function renderSearchGrid(query, tracks, { page = 1, totalPages = 1, source }) {
-  theme.initFonts();
+function drawFallbackCover(ctx, x, y, size, index) {
   const S = theme.S;
-  const W = theme.WIDTH;
-  const { PALETTE, panel, button, text, label, foil } = theme;
+  const colors = [
+    ["#163e68", "#356b9d", "#61d8f2"],
+    ["#32275d", "#67489a", "#d6a7ff"],
+    ["#13534f", "#1f887d", "#7ce0b5"],
+    ["#633b31", "#ad6545", "#ffd18c"],
+    ["#47294d", "#965078", "#ff9fc5"],
+    ["#173e51", "#286e80", "#a4eff7"]
+  ];
+  const set = colors[index % colors.length];
+  ctx.save();
+  theme.roundRect(ctx, x, y, size, size, S(15)); ctx.clip();
+  const g = ctx.createLinearGradient(x, y, x + size, y + size);
+  g.addColorStop(0, set[0]); g.addColorStop(.55, set[1]); g.addColorStop(1, "#0a1829");
+  ctx.fillStyle = g; ctx.fillRect(x, y, size, size);
+  const glow = ctx.createRadialGradient(x + size * .72, y + size * .25, S(3),
+    x + size * .72, y + size * .25, size * .72);
+  glow.addColorStop(0, set[2] + "88"); glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow; ctx.fillRect(x, y, size, size);
 
-  // ===== Bố cục: 9 bài/trang, 3 cột =====
-  const perPage = 9;
-  const cols = 3;
-  const shown = tracks.slice(0, perPage);
+  const cx = x + size * .68, cy = y + size * .52, radius = size * .36;
+  ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(5,12,24,.62)"; ctx.fill();
+  [0.78, 0.57, 0.35].forEach(r => {
+    ctx.beginPath(); ctx.arc(cx, cy, radius * r, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,.20)"; ctx.lineWidth = S(1); ctx.stroke();
+  });
+  ctx.beginPath(); ctx.arc(cx, cy, radius * .16, 0, Math.PI * 2);
+  ctx.fillStyle = set[2]; ctx.fill();
+  ctx.font = theme.font(42, "JT-Display-Bold"); ctx.fillStyle = "rgba(255,255,255,.92)";
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("♫", x + S(18), y + size * .72);
+  ctx.font = theme.font(8, "JT-Mono-Bold"); ctx.fillStyle = "rgba(255,255,255,.72)";
+  ctx.fillText("JOHNTRAN  /  MUSIC", x + S(18), y + size - S(18));
+  ctx.restore();
+}
+
+async function renderSearchGrid(query, tracks, { page = 1, totalPages = 1, source } = {}) {
+  theme.initFonts();
+  const S = theme.S, W = theme.WIDTH, p = theme.PALETTE;
+  const perPage = 9, cols = 3;
+  const shown = (Array.isArray(tracks) ? tracks : []).slice(0, perPage);
   const rows = Math.ceil(Math.max(1, shown.length) / cols);
-  const gapX = S(22);
-  const gapY = S(16);
-  const cardW = (W - S(50) - gapX * (cols - 1)) / cols;
-  const art = S(190);              // artwork lớn ở trên
-  const cardH = art + S(114);      // art + title, artist, and separated statistics tag
-  const headerH = S(104);
-  const footerH = S(126);
+  const gapX = S(16), gapY = S(14), pad = S(24);
+  const cardW = (W - pad * 2 - gapX * (cols - 1)) / cols;
+  const art = S(176), cardH = S(292), headerH = S(112), footerH = S(106);
   const H = headerH + rows * cardH + Math.max(0, rows - 1) * gapY + footerH;
-
   const { ctx, canvas } = theme.newCanvas(W, H);
   await theme.paintBackground(ctx, W, H);
 
-  // ===== Header =====
-  label(ctx, `TÌM NHẠC • ${source || "SOUNDCLOUD"}`, W / 2, S(34), { align: "center", size: 13 });
-  text(ctx, theme.truncate(ctx, query, W - S(130)), W / 2, S(68), {
-    size: 28, family: "JT-Display-Bold", color: PALETTE.ink, align: "center", maxWidth: W - S(130)
+  theme.label(ctx, "JOHNTRAN MUSIC  /  SEARCH", pad, S(28), { size: 10 });
+  theme.text(ctx, theme.truncate(ctx, query || "Kết quả tìm kiếm", W - pad * 2), pad, S(67), {
+    size: 27, family: "JT-Display-Bold", color: p.ink, maxWidth: W - pad * 2
   });
-  foil(ctx, W / 2 - S(70), S(80), S(140));
-  text(
-    ctx,
-    `🎵 ${shown.length} bài  •  📡 ${source || "SoundCloud"}  •  🔥 nghe nhiều nhất`,
-    W / 2, S(96),
-    { size: 15, family: "JT-Mono", color: PALETTE.ink2, align: "center" }
-  );
+  theme.text(ctx, shown.length + " BÀI HÁT  ·  " + (source || "SOUNDCLOUD") +
+    "  ·  TRANG " + page + "/" + totalPages, pad, S(91), {
+      size: 10, family: "JT-Mono", color: p.ink2
+    });
 
   const covers = [];
   for (const track of shown) covers.push(await fetchThumb(track.thumbnail));
-
   shown.forEach((track, index) => {
-    const col = index % cols;
-    const row = Math.floor(index / cols);
-    const x = S(25) + col * (cardW + gapX);
-    const y = headerH + row * (cardH + gapY);
-    panel(ctx, x, y, cardW, cardH, S(16));
-
-    const artX = x + (cardW - art) / 2;
-    const artY = y + S(10);
+    const col = index % cols, row = Math.floor(index / cols);
+    const x = pad + col * (cardW + gapX), y = headerH + row * (cardH + gapY);
+    theme.panel(ctx, x, y, cardW, cardH, S(16), p.accent);
+    const artX = x + (cardW - art) / 2, artY = y + S(10);
     if (covers[index]) {
-      ctx.save();
-      theme.roundRect(ctx, artX, artY, art, art, S(16));
-      ctx.clip();
-      ctx.drawImage(covers[index], artX, artY, art, art);
-      ctx.restore();
-    } else {
-      ctx.fillStyle = "rgba(56, 189, 248, .14)";
-      theme.roundRect(ctx, artX, artY, art, art, S(16));
-      ctx.fill();
-      text(ctx, "🎵", artX + art / 2, artY + art / 2 + S(22), { size: 54, color: PALETTE.accent, align: "center" });
-    }
-    ctx.fillStyle = "rgba(7, 10, 20, .82)";
-    theme.roundRect(ctx, artX + S(8), artY + S(8), S(34), S(26), S(8));
-    ctx.fill();
-    text(ctx, String(index + 1), artX + S(25), artY + S(26), { size: 16, family: "JT-Bold", color: PALETTE.accent, align: "center" });
-
-    const titleY = artY + art + S(26);
-    text(ctx, theme.truncate(ctx, track.title, cardW - S(22)), x + cardW / 2, titleY, {
-      size: 16, family: "JT-Round-Bold", color: PALETTE.ink, align: "center", maxWidth: cardW - S(22)
+      ctx.save(); theme.roundRect(ctx, artX, artY, art, art, S(15)); ctx.clip();
+      ctx.drawImage(covers[index], artX, artY, art, art); ctx.restore();
+    } else drawFallbackCover(ctx, artX, artY, art, index);
+    theme.roundRect(ctx, x + S(11), y + S(11), S(30), S(25), S(8));
+    ctx.fillStyle = "rgba(3,10,22,.72)"; ctx.fill();
+    theme.text(ctx, String(index + 1).padStart(2, "0"), x + S(26), y + S(28), {
+      size: 10, family: "JT-Mono-Bold", color: "#ffffff", align: "center"
     });
-    text(ctx, theme.truncate(ctx, track.artist || "", cardW - S(22)), x + cardW / 2, titleY + S(20), {
-      size: 12, family: "JT-Mono", color: PALETTE.ink2, align: "center", maxWidth: cardW - S(22)
-    });
-
-    const tagY = y + cardH - S(30);
-    const tagH = S(22);
-    const plays = Number(track.plays) || 0;
-    const likes = Number(track.likes) || 0;
-    const tagLabel = plays >= likes
-      ? `👤 ${shortPlays(plays)} lượt nghe`
-      : `❤️ ${shortPlays(likes)} thích`;
-    const tagColor = plays >= likes ? "rgba(34, 197, 94, .18)" : "rgba(239, 68, 68, .18)";
-    const tagStroke = plays >= likes ? PALETTE.green : PALETTE.red;
-    ctx.save();
-    ctx.font = theme.font(S(12), "JT-Bold");
-    const tagW = Math.min(cardW - S(16), ctx.measureText(tagLabel).width + S(18));
-    ctx.restore();
-    const tagX = x + (cardW - tagW) / 2;
-    ctx.fillStyle = tagColor;
-    theme.roundRect(ctx, tagX, tagY - tagH / 2 - S(4), tagW, tagH, S(11));
-    ctx.fill();
-    ctx.strokeStyle = tagStroke;
-    ctx.lineWidth = S(1.5);
-    theme.roundRect(ctx, tagX, tagY - tagH / 2 - S(4), tagW, tagH, S(11));
-    ctx.stroke();
-    text(ctx, tagLabel, x + cardW / 2, tagY + S(2), {
-      size: 12, family: "JT-Bold", color: tagStroke, align: "center", maxWidth: tagW - S(8)
+    theme.text(ctx, String(track.title || "Không rõ tên bài hát"),
+      x + cardW / 2, artY + art + S(30), {
+        size: 15, family: "JT-Bold", color: p.ink, align: "center", maxWidth: cardW - S(18)
+      });
+    theme.text(ctx, String(track.artist || "Nghệ sĩ chưa rõ"),
+      x + cardW / 2, artY + art + S(52), {
+        size: 11, color: p.ink2, align: "center", maxWidth: cardW - S(18)
+      });
+    const duration = track.duration ? formatDuration(track.duration) : "";
+    const stats = duration + (duration ? "   ·   " : "") + shortPlays(track.plays || track.likes || 0) + " lượt nghe";
+    const tagY = y + cardH - S(28);
+    theme.roundRect(ctx, x + S(12), tagY - S(15), cardW - S(24), S(24), S(10));
+    ctx.fillStyle = "rgba(97,216,242,.10)"; ctx.fill();
+    theme.text(ctx, stats, x + cardW / 2, tagY + S(1), {
+      size: 9, family: "JT-Mono-Bold", color: p.accent, align: "center",
+      maxWidth: cardW - S(40)
     });
   });
 
-  const footY = H - footerH + S(4);
-  const btnW = (W - S(50) - S(20)) / 3;
-  const navColors = { prev: PALETTE.accent, out: PALETTE.ink2, next: PALETTE.accent2 };
-  text(ctx, `Trang ${page}/${totalPages}`, W / 2, footY + S(24), { size: 20, family: "JT-Bold", color: PALETTE.ink, align: "center" });
-  const btnY = footY + S(38);
-  button(ctx, S(25), btnY, btnW, S(42), "◀ PREV", navColors.prev);
-  button(ctx, S(25) + btnW + S(10), btnY, btnW - S(10), S(42), "✕ OUT", navColors.out);
-  button(ctx, S(25) + btnW * 2 + S(20), btnY, btnW, S(42), "NEXT ▶", navColors.next);
-  text(
-    ctx,
-    `» ${global.config.prefix}scl <số> để tải bài  •  gõ trần next / prev / out`,
-    W / 2, footY + S(92),
-    { size: 14, family: "JT-Mono", color: PALETTE.ink2, align: "center" }
-  );
+  const footY = H - footerH;
+  theme.text(ctx, "TRANG " + page + " / " + totalPages, W / 2, footY + S(24), {
+    size: 16, family: "JT-Bold", color: p.ink, align: "center"
+  });
+  const btnW = (W - pad * 2 - S(20)) / 3;
+  theme.button(ctx, pad, footY + S(37), btnW, S(37), "◀ PREV", p.accent);
+  theme.button(ctx, pad + btnW + S(10), footY + S(37), btnW, S(37), "✕ OUT", p.mute);
+  theme.button(ctx, pad + (btnW + S(10)) * 2, footY + S(37), btnW, S(37), "NEXT ▶", p.accent2);
+  theme.text(ctx, "Dùng " + String(global.config?.prefix || "/") + "scl <số> để tải bài hát",
+    W / 2, footY + S(91), { size: 10, color: p.ink2, align: "center" });
   return theme.save(canvas, "music_grid");
 }
 
-// ===== Thẻ ĐANG PHÁT =====
-async function renderNowPlaying(track, sourceLabel) {
+async function renderNowPlaying(track = {}, sourceLabel) {
   theme.initFonts();
-  const S = theme.S;
-  const W = theme.WIDTH;
-  const { PALETTE, panel, text } = theme;
-
-  const coverSize = S(300);
-  const H = S(590);
+  const S = theme.S, W = theme.WIDTH, p = theme.PALETTE;
+  const coverSize = S(280), H = S(570);
   const { ctx, canvas } = theme.newCanvas(W, H);
   await theme.paintBackground(ctx, W, H);
-
-  text(ctx, "🎶", S(24), S(56), { size: 34, color: PALETTE.accent });
-  text(ctx, "ĐANG PHÁT", W / 2, S(56), { size: 32, family: "JT-Display-Bold", color: PALETTE.ink, align: "center" });
-
+  theme.label(ctx, "JOHNTRAN MUSIC  /  PLAYER", S(28), S(30), { size: 10 });
+  theme.text(ctx, "ĐANG PHÁT", W / 2, S(68), {
+    size: 30, family: "JT-Display-Bold", color: p.ink, align: "center"
+  });
   const cover = await fetchThumb(track.thumbnail);
-  const cx = (W - coverSize) / 2;
-  const cy = S(74);
+  const x = (W - coverSize) / 2, y = S(92);
   if (cover) {
-    ctx.save();
-    theme.roundRect(ctx, cx, cy, coverSize, coverSize, S(20));
-    ctx.clip();
-    ctx.drawImage(cover, cx, cy, coverSize, coverSize);
-    ctx.restore();
-    ctx.strokeStyle = PALETTE.accent;
-    ctx.lineWidth = S(3);
-    theme.roundRect(ctx, cx, cy, coverSize, coverSize, S(20));
-    ctx.stroke();
-  } else {
-    panel(ctx, cx, cy, coverSize, coverSize, S(20));
-    text(ctx, "🎵", cx + coverSize / 2, cy + coverSize / 2 + S(22), { size: 70, color: PALETTE.accent, align: "center" });
-  }
+    ctx.save(); theme.roundRect(ctx, x, y, coverSize, coverSize, S(20)); ctx.clip();
+    ctx.drawImage(cover, x, y, coverSize, coverSize); ctx.restore();
+  } else drawFallbackCover(ctx, x, y, coverSize, 1);
+  theme.roundRect(ctx, x, y, coverSize, coverSize, S(20));
+  ctx.strokeStyle = "rgba(255,255,255,.24)"; ctx.lineWidth = S(1.2); ctx.stroke();
 
-  text(ctx, track.title, W / 2, cy + coverSize + S(52), { size: 26, family: "JT-Display-Bold", color: PALETTE.ink, align: "center", maxWidth: W - S(60) });
-  text(ctx, `♫ ${track.artist}  •  ⏱ ${formatDuration(track.duration)}`, W / 2, cy + coverSize + S(84), {
-    size: 18, family: "JT-Mono", color: PALETTE.ink2, align: "center", maxWidth: W - S(60)
+  theme.text(ctx, String(track.title || "Đang tải bài hát"), W / 2, y + coverSize + S(42), {
+    size: 26, family: "JT-Display-Bold", color: p.ink, align: "center",
+    maxWidth: W - S(60)
   });
-  text(ctx, `📡 ${sourceLabel || track.source}${track.plays ? `  •  👤 ${shortPlays(track.plays)} lượt nghe` : ""}`, W / 2, cy + coverSize + S(114), {
-    size: 16, family: "JT-Bold", color: PALETTE.accent, align: "center", maxWidth: W - S(60)
+  theme.text(ctx, String(track.artist || "Nghệ sĩ chưa rõ"), W / 2,
+    y + coverSize + S(69), {
+      size: 15, color: p.ink2, align: "center", maxWidth: W - S(60)
+    });
+  const duration = formatDuration(track.duration);
+  const meta = (sourceLabel || track.source || "Music").toUpperCase() +
+    (duration !== "0:00" ? "  ·  " + duration : "") +
+    (track.plays ? "  ·  " + shortPlays(track.plays) + " lượt nghe" : "");
+  theme.roundRect(ctx, S(80), y + coverSize + S(91), W - S(160), S(36), S(18));
+  ctx.fillStyle = "rgba(97,216,242,.11)"; ctx.fill();
+  theme.text(ctx, meta, W / 2, y + coverSize + S(114), {
+    size: 10, family: "JT-Mono-Bold", color: p.accent, align: "center",
+    maxWidth: W - S(190)
   });
-  text(ctx, "➜ Đang tải file nhạc, vui lòng chờ...", W / 2, H - S(34), { size: 15, color: PALETTE.ink2, align: "center" });
-
+  theme.panel(ctx, S(38), H - S(58), W - S(76), S(34), S(12), p.accent);
+  theme.text(ctx, "Đang chuẩn bị tệp âm thanh...", W / 2, H - S(36), {
+    size: 11, family: "JT-Bold", color: p.ink2, align: "center"
+  });
   return theme.save(canvas, "music_now");
 }
 

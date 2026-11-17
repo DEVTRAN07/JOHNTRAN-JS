@@ -2,81 +2,74 @@
 
 const avatarCache = require("./avatarCache");
 const theme = require("./theme");
+const PODIUM = ["#f0c86d", "#b9c7d8", "#d89a72"];
 
-function drawAvatar(ctx, item, x, y, size) {
-  const S = theme.S;
-  const palette = theme.PALETTE;
+function drawAvatar(ctx, item, x, y, size, accent) {
+  const S = theme.S, p = theme.PALETTE;
   const image = avatarCache.getAvatar(item?.avatar);
   ctx.save();
-  ctx.beginPath();
-  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
-  ctx.clip();
-
+  ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2); ctx.clip();
   if (image) {
     const scale = Math.max(size / image.width, size / image.height);
-    const width = image.width * scale;
-    const height = image.height * scale;
-    ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height);
+    const w = image.width * scale, h = image.height * scale;
+    ctx.drawImage(image, x + (size - w) / 2, y + (size - h) / 2, w, h);
   } else {
-    const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
-    gradient.addColorStop(0, "#123d55");
-    gradient.addColorStop(1, "#0b2638");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x, y, size, size);
-    ctx.font = theme.font(Math.max(14, size / S(2.7)), "JT-Bold");
-    ctx.fillStyle = palette.accent;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    const g = ctx.createLinearGradient(x, y, x + size, y + size);
+    g.addColorStop(0, "#244864"); g.addColorStop(1, "#14283d");
+    ctx.fillStyle = g; ctx.fillRect(x, y, size, size);
+    ctx.font = theme.font(Math.max(14, size / S(2.5)), "JT-Bold");
+    ctx.fillStyle = accent || p.accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     const initial = Array.from(String(item?.name || "?").trim())[0] || "?";
     ctx.fillText(theme.sanitizeGlyphs(initial.toUpperCase()), x + size / 2, y + size / 2);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
   }
   ctx.restore();
-
-  ctx.beginPath();
-  ctx.arc(x + size / 2, y + size / 2, size / 2 + S(1), 0, Math.PI * 2);
-  ctx.strokeStyle = palette.accent;
-  ctx.lineWidth = S(1.2);
-  ctx.stroke();
+  ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 + S(2), 0, Math.PI * 2);
+  ctx.strokeStyle = accent || p.accent; ctx.lineWidth = S(2); ctx.stroke();
 }
 
 function drawRankCard(ctx, item, rank, x, y, width, height, featured = false) {
-  const S = theme.S;
-  const palette = theme.PALETTE;
-  theme.panel(ctx, x, y, width, height, S(featured ? 13 : 10),
-    rank === 0 ? palette.accent : "rgba(85,214,232,.34)");
-
+  const S = theme.S, p = theme.PALETTE;
+  const accent = featured ? PODIUM[rank] : (rank === 0 ? PODIUM[0] : p.accent);
+  theme.panel(ctx, x, y, width, height, S(featured ? 16 : 13), accent);
   if (featured) {
-    theme.label(ctx, "TOP " + String(rank + 1).padStart(2, "0"), x + S(13), y + S(19), {
-      size: 9, color: rank === 0 ? palette.accent : palette.mute
+    theme.label(ctx, rank === 0 ? "DẪN ĐẦU" : rank === 1 ? "Á QUÂN" : "TOP 3",
+      x + S(16), y + S(23), { size: 9, color: accent });
+    theme.text(ctx, String(rank + 1).padStart(2, "0"), x + width - S(14), y + S(35), {
+      size: 28, family: "JT-Display-Bold", color: accent, align: "right"
     });
-    const avatarSize = S(43);
-    drawAvatar(ctx, item, x + S(12), y + S(29), avatarSize);
-    const textX = x + S(64);
-    const textWidth = width - S(77);
-    theme.text(ctx, item.name || "Thành viên", textX, y + S(49), {
-      size: 13, family: "JT-Bold", color: palette.ink, maxWidth: textWidth
+    const avatarSize = S(52);
+    drawAvatar(ctx, item, x + S(15), y + S(38), avatarSize, accent);
+    theme.text(ctx, item.name || "Thành viên", x + S(79), y + S(61), {
+      size: 14, family: "JT-Bold", color: p.ink, maxWidth: width - S(96)
     });
-    theme.text(ctx, Number(item.count || 0).toLocaleString("vi-VN") + " tin nhắn", textX, y + S(70), {
-      size: 10, family: "JT-Mono", color: palette.accent, maxWidth: textWidth
-    });
+    theme.text(ctx, Number(item.count || 0).toLocaleString("vi-VN") + " tin nhắn",
+      x + S(79), y + S(84), {
+        size: 11, family: "JT-Mono", color: p.ink2, maxWidth: width - S(96)
+      });
+    ctx.fillStyle = accent; ctx.globalAlpha = .16;
+    theme.roundRect(ctx, x + S(15), y + height - S(18), width - S(30), S(4), S(2));
+    ctx.fill(); ctx.globalAlpha = 1;
     return;
   }
-
-  theme.text(ctx, String(rank + 1).padStart(2, "0"), x + S(11), y + S(36), {
-    size: 14, family: "JT-Mono-Bold", color: palette.accent
+  const badge = S(35);
+  theme.roundRect(ctx, x + S(12), y + (height - badge) / 2, badge, badge, S(10));
+  ctx.fillStyle = "rgba(97,216,242,.13)"; ctx.fill();
+  theme.text(ctx, String(rank + 1).padStart(2, "0"), x + S(12) + badge / 2,
+    y + height / 2 + S(5), {
+      size: 12, family: "JT-Mono-Bold", color: accent, align: "center"
+    });
+  const avatarSize = S(39);
+  drawAvatar(ctx, item, x + S(60), y + (height - avatarSize) / 2, avatarSize, p.accent);
+  const textX = x + S(111);
+  theme.text(ctx, item.name || "Thành viên", textX, y + S(30), {
+    size: 13, family: "JT-Bold", color: p.ink, maxWidth: width - S(195)
   });
-  const avatarSize = S(34);
-  drawAvatar(ctx, item, x + S(42), y + (height - avatarSize) / 2, avatarSize);
-  const textX = x + S(86);
-  const rightWidth = S(54);
-  theme.text(ctx, item.name || "Thành viên", textX, y + S(27), {
-    size: 12, family: "JT-Bold", color: palette.ink,
-    maxWidth: width - (textX - x) - rightWidth - S(8)
-  });
-  theme.text(ctx, Number(item.count || 0).toLocaleString("vi-VN") + " tin", textX, y + S(45), {
-    size: 9, family: "JT-Mono", color: palette.mute
+  theme.text(ctx, Number(item.count || 0).toLocaleString("vi-VN") + " tin",
+    textX, y + S(49), {
+      size: 10, family: "JT-Mono", color: p.mute, maxWidth: width - S(195)
+    });
+  theme.text(ctx, "#" + String(rank + 1), x + width - S(14), y + S(38), {
+    size: 10, family: "JT-Mono-Bold", color: accent, align: "right"
   });
 }
 
@@ -87,11 +80,8 @@ function wrapText(ctx, value, maxWidth) {
   for (const word of words) {
     const next = current ? current + " " + word : word;
     if (current && ctx.measureText(next).width > maxWidth) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = next;
-    }
+      lines.push(current); current = word;
+    } else current = next;
   }
   if (current) lines.push(current);
   return lines;
@@ -99,96 +89,71 @@ function wrapText(ctx, value, maxWidth) {
 
 async function renderTopChat(options = {}) {
   theme.initFonts();
-  const S = theme.S;
-  const W = theme.WIDTH;
+  const S = theme.S, W = theme.WIDTH, p = theme.PALETTE;
   const rows = Array.isArray(options.ranking) ? options.ranking.slice(0, 10) : [];
-  const featured = rows.slice(0, 3);
-  const remaining = rows.slice(3);
-  const pad = S(25);
-  const gap = S(9);
-  const headerHeight = S(145);
-  const featuredHeight = S(91);
-  const compactHeight = S(56);
-  const compactGap = S(8);
-  const columns = 2;
-  const cardWidth = (W - pad * 2 - gap * (columns - 1)) / columns;
-  const compactRows = Math.ceil(remaining.length / columns);
-  const listHeight = rows.length
-    ? featuredHeight + (remaining.length ? S(34) + compactRows * (compactHeight + compactGap) : 0)
-    : S(152);
-  const height = Math.max(S(355), headerHeight + listHeight + S(57));
+  const featured = rows.slice(0, 3), remaining = rows.slice(3);
+  const pad = S(26), gap = S(10), headH = S(132), podiumH = S(126);
+  const itemH = S(67), itemGap = S(9), columns = 2;
+  const colW = (W - pad * 2 - gap) / columns;
+  const listRows = Math.ceil(remaining.length / columns);
+  const emptyH = rows.length ? 0 : S(140);
+  const listH = remaining.length ? S(31) + listRows * (itemH + itemGap) : 0;
+  const height = headH + (rows.length ? podiumH + S(20) + listH : emptyH) + S(48);
   const { ctx, canvas } = theme.newCanvas(W, height);
   await theme.paintBackground(ctx, W, height);
-  const palette = theme.PALETTE;
 
-  theme.label(ctx, "JOHN TRAN  /  GROUP INSIGHTS", pad, S(34), { size: 11 });
-  theme.text(ctx, "TOP CHAT HÔM NAY", pad, S(76), {
-    size: 29, family: "JT-Display-Bold", color: palette.ink,
-    maxWidth: W - pad * 2
+  theme.label(ctx, "JOHNTRAN  /  GROUP LEADERBOARD", pad, S(30), { size: 10 });
+  theme.text(ctx, "TOP CHAT HÔM NAY", pad, S(72), {
+    size: 31, family: "JT-Display-Bold", color: p.ink, maxWidth: W - pad * 2
   });
-  theme.foil(ctx, pad, S(88), S(126));
-  theme.text(ctx, options.subtitle || "BẢNG XẾP HẠNG TIN NHẮN TRONG NGÀY", pad, S(111), {
-    size: 11, family: "JT-Mono", color: palette.ink2,
-    maxWidth: W - pad * 2
-  });
+  theme.text(ctx, options.subtitle || "BẢNG XẾP HẠNG HOẠT ĐỘNG TRONG NHÓM",
+    pad, S(98), { size: 11, color: p.ink2, maxWidth: W - pad * 2 });
+  const total = Number(options.totalMessages) ||
+    rows.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+  const badgeW = S(145);
+  theme.roundRect(ctx, W - pad - badgeW, S(110), badgeW, S(25), S(12));
+  ctx.fillStyle = "rgba(97,216,242,.12)"; ctx.fill();
+  theme.text(ctx, rows.length + " THÀNH VIÊN  ·  " + total.toLocaleString("vi-VN") + " TIN",
+    W - pad - badgeW / 2, S(127), {
+      size: 8.5, family: "JT-Bold", color: p.accent, align: "center", maxWidth: badgeW - S(10)
+    });
 
-  theme.panel(ctx, pad, S(123), W - pad * 2, S(28), S(8), palette.accent);
-  const total = Number(options.totalMessages) || rows.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
-  theme.label(ctx,
-    rows.length
-      ? rows.length + " THÀNH VIÊN ĐƯỢC XẾP HẠNG  ·  " + total.toLocaleString("vi-VN") + " TIN"
-      : "CHƯA CÓ DỮ LIỆU XẾP HẠNG",
-    pad + S(12), S(141), { size: 9, color: palette.accent });
-
-  if (rows.length) {
-    const startY = headerHeight;
-    if (featured.length) {
-      const featuredWidth = (W - pad * 2 - gap * (featured.length - 1)) / featured.length;
-      featured.forEach((item, index) => {
-        drawRankCard(ctx, item, index, pad + index * (featuredWidth + gap), startY, featuredWidth, featuredHeight, true);
-      });
-    }
-
-    if (remaining.length) {
-      const labelY = startY + featuredHeight + S(25);
-      theme.label(ctx, "BẢNG XẾP HẠNG TIẾP THEO", pad, labelY, { size: 10, color: palette.mute });
-      const listY = labelY + S(13);
-      remaining.forEach((item, index) => {
-        const column = index % columns;
-        const row = Math.floor(index / columns);
-        drawRankCard(ctx, item, index + 3,
-          pad + column * (cardWidth + gap),
-          listY + row * (compactHeight + compactGap),
-          cardWidth, compactHeight, false);
-      });
-    }
+  if (featured.length) {
+    const cols = featured.length;
+    const cardW = cols === 1 ? Math.min(W - pad * 2, S(390)) :
+      (W - pad * 2 - gap * (cols - 1)) / cols;
+    const totalW = cols * cardW + (cols - 1) * gap;
+    const startX = (W - totalW) / 2;
+    featured.forEach((item, i) => {
+      drawRankCard(ctx, item, i, startX + i * (cardW + gap), headH, cardW, podiumH, true);
+    });
   } else {
-    const emptyY = headerHeight;
-    theme.panel(ctx, pad, emptyY, W - pad * 2, S(132), S(12), palette.mute);
-    theme.label(ctx, "TRẠNG THÁI THỐNG KÊ", pad + S(15), emptyY + S(25), { size: 9, color: palette.mute });
-    ctx.save();
-    ctx.font = theme.font(10, "JT");
-    const lines = wrapText(ctx,
-      options.emptyMessage || "Chưa có tin nhắn đủ điều kiện để xếp hạng.",
-      W - pad * 2 - S(36)
-    );
-    ctx.restore();
-    lines.slice(0, 5).forEach((line, index) => {
-      theme.text(ctx, line, pad + S(15), emptyY + S(52) + index * S(15), {
-        size: 10, color: palette.ink2,
-        maxWidth: W - pad * 2 - S(30)
+    theme.panel(ctx, pad, headH, W - pad * 2, emptyH, S(16), p.muted);
+    theme.label(ctx, "CHƯA CÓ DỮ LIỆU", pad + S(18), headH + S(32), { size: 10, color: p.mute });
+    theme.text(ctx, options.emptyMessage || "Nhóm chưa có tin nhắn đủ điều kiện để xếp hạng.",
+      pad + S(18), headH + S(68), {
+        size: 17, family: "JT-Bold", color: p.ink, maxWidth: W - pad * 2 - S(36)
       });
+    theme.text(ctx, "Bảng xếp hạng sẽ tự cập nhật khi có hoạt động mới.",
+      pad + S(18), headH + S(96), {
+        size: 11, color: p.ink2, maxWidth: W - pad * 2 - S(36)
+      });
+  }
+
+  if (remaining.length) {
+    const labelY = headH + podiumH + S(20);
+    theme.label(ctx, "CÁC VỊ TRÍ TIẾP THEO", pad, labelY + S(15), { size: 10, color: p.mute });
+    remaining.forEach((item, index) => {
+      const col = index % columns, row = Math.floor(index / columns);
+      drawRankCard(ctx, item, index + 3, pad + col * (colW + gap),
+        labelY + S(30) + row * (itemH + itemGap), colW, itemH, false);
     });
   }
 
-  const footerY = height - S(24);
-  theme.label(ctx, "JOHNTRAN  •  TOP CHAT DAILY", W - pad, footerY, {
-    size: 9, color: palette.mute, align: "right"
+  theme.text(ctx, "JOHNTRAN  •  TOP CHAT DAILY", W - pad, height - S(19), {
+    size: 9, family: "JT-Mono", color: p.mute, align: "right"
   });
   return theme.save(canvas, "topchat");
 }
 
-module.exports = {
-  renderTopChat,
-  _test: { drawAvatar, drawRankCard, wrapText }
-};
+module.exports = { renderTopChat, _test: { drawAvatar, drawRankCard, wrapText } };
