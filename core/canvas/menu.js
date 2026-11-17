@@ -292,6 +292,20 @@ function drawMenuPill(ctx, x, y, w, h, text, palette) {
   ctx.restore();
 }
 
+const MAIN_MENU_SUBTITLES = Object.freeze({
+  info: "Tài khoản & hướng dẫn",
+  public: "Tiện ích dùng chung",
+  music: "Nghe nhạc trực tuyến",
+  game: "Trò chơi giải trí",
+  tools: "Tự động hóa tác vụ",
+  test: "Lệnh thử nghiệm",
+  anti: "Bảo vệ nhóm",
+  manager: "Quản lý thành viên",
+  admin: "Quản trị bot",
+  mybot: "Theo dõi bot",
+  hidden: "Lệnh đặc biệt"
+});
+
 function drawMainMenuTile(ctx, item, x, y, w, h, palette) {
   ctx.save();
   rounded(ctx, x, y, w, h, theme.S(12));
@@ -333,7 +347,9 @@ function drawMainMenuTile(ctx, item, x, y, w, h, palette) {
   if (usage) drawMenuPill(ctx, x + w - pillW - theme.S(10), y + theme.S(10), pillW, theme.S(19), usage, palette);
 
   drawText(ctx, String(item.name || "Danh mục").toUpperCase(), textX, centerY - theme.S(2), 19, palette.text, true, "left", w - theme.S(100));
-  drawText(ctx, item.category || "Các chức năng khả dụng", textX, centerY + theme.S(16), 11.5, palette.muted, false, "left", w - theme.S(91));
+  const subtitleKey = resolveFolderIconSlug(item.slug, item.name);
+  const subtitle = MAIN_MENU_SUBTITLES[subtitleKey] || item.category || "Chức năng khả dụng";
+  drawText(ctx, subtitle, textX, centerY + theme.S(16), 11.5, palette.muted, false, "left", w - theme.S(91));
 
   drawChevron(ctx, x + w - theme.S(16), centerY + theme.S(1), theme.S(4), palette.accent);
 }
