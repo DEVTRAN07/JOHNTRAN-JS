@@ -122,7 +122,7 @@ test("profile and generic cards render with the shared Mac window frame", async 
 });
 
 
-test("menu and folder cards use the shared macOS card frame", async () => {
+test("main menu omits the Mac frame while folder cards retain it", async () => {
   const previousConfig = global.config;
   global.config = {
     ...(previousConfig || {}),
@@ -152,16 +152,35 @@ test("menu and folder cards use the shared macOS card frame", async () => {
 
   try {
     const scale = theme.WIDTH / 750;
-    for (const filePath of [menuPath, folderPath]) {
-      const image = await loadImage(fs.readFileSync(filePath));
-      const rendered = createCanvas(image.width, image.height);
-      const ctx = rendered.getContext("2d");
-      ctx.drawImage(image, 0, 0);
-      assert.equal(image.width, theme.WIDTH);
-      assert.ok(image.height > Math.round(200 * scale));
-      const dot = ctx.getImageData(Math.round(21 * scale), Math.round(22 * scale), 1, 1).data;
-      assert.deepEqual(Array.from(dot).slice(0, 3), [255, 95, 87]);
-    }
+    const menuImage = await loadImage(fs.readFileSync(menuPath));
+    const menuSurface = createCanvas(menuImage.width, menuImage.height);
+    const menuContext = menuSurface.getContext("2d");
+    menuContext.drawImage(menuImage, 0, 0);
+    assert.equal(menuImage.width, theme.WIDTH);
+    assert.ok(menuImage.height > Math.round(200 * scale));
+    const menuToolbarDot = menuContext.getImageData(
+      Math.round(21 * scale), Math.round(22 * scale), 1, 1
+    ).data;
+    assert.notDeepEqual(
+      Array.from(menuToolbarDot).slice(0, 3),
+      [255, 95, 87],
+      "main /menu must not contain the Mac window traffic-light dots"
+    );
+
+    const folderImage = await loadImage(fs.readFileSync(folderPath));
+    const folderSurface = createCanvas(folderImage.width, folderImage.height);
+    const folderContext = folderSurface.getContext("2d");
+    folderContext.drawImage(folderImage, 0, 0);
+    assert.equal(folderImage.width, theme.WIDTH);
+    assert.ok(folderImage.height > Math.round(200 * scale));
+    const folderToolbarDot = folderContext.getImageData(
+      Math.round(21 * scale), Math.round(22 * scale), 1, 1
+    ).data;
+    assert.deepEqual(
+      Array.from(folderToolbarDot).slice(0, 3),
+      [255, 95, 87],
+      "folder cards keep the shared Mac window frame"
+    );
   } finally {
     try { fs.unlinkSync(menuPath); } catch {}
     try { fs.unlinkSync(folderPath); } catch {}
