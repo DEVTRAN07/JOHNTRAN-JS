@@ -46,6 +46,8 @@ test("/spam accepts a numeric UID as the first argument and tags that UID", asyn
 
     assert.equal(scheduled.length, 1, "the first send should be scheduled once");
     await scheduled[0].callback();
+    assert.equal(scheduled.length, 2, "completion is checked after the successful send");
+    await scheduled[1].callback();
 
     const tagged = sent.find(payload => Array.isArray(payload.mentions));
     assert.ok(tagged, "a message with mentions should be sent");
