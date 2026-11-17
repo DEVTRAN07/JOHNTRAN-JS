@@ -567,3 +567,38 @@ test("TLMN non-player cannot trigger escrow refund by issuing leave", async () =
   });
   game.removeRoom(groupId);
 });
+
+
+test("TLMN settlement refuses to pay while any escrow reservation is still pending", async () => {
+  const rendererPath = require.resolve("../core/canvas/workerRender");
+  require.cache[rendererPath] = {
+    id: rendererPath, filename: rendererPath, loaded: true,
+    exports: { renderCanvas: async () => "/tmp/tlmn-wallet-test.png" }
+  };
+  const command = require("../plugins/commands/tlmn");
+  const room = {
+    id: "83764",
+    gameToken: "tlmn-pending-settlement",
+    bet: 1000,
+    players: [{ uid: "a", name: "A" }, { uid: "b", name: "B" }],
+    locked: { a: 100000, b: 100000 },
+    lockPending: { a: { amount: 100000, transactionId: "reserve-pending" } },
+    settlement: {
+      winnerUid: "a",
+      transfers: [],
+      net: { a: 0, b: 0 }
+    },
+    settled: false
+  };
+  let writes = 0;
+  const Users = {
+    async getData() { writes += 1; return { data: { tlmn: { coins: 100000, transactions: [] } } }; },
+    async setDataAndWait() { writes += 1; return true; }
+  };
+
+  await assert.rejects(
+    command._test.settleRoomWallets(Users, room, []),
+    /Còn khoản ký quỹ đang chờ xác minh/
+  );
+  assert.equal(writes, 0);
+});
