@@ -207,7 +207,7 @@ async function sendPrivateGameGuide(api, Users, uid) {
   const result = await sendGameGuideOnce({
     Users,
     uid: userId,
-    gameKey: "tlmn",
+    gameKey: "tlmn_rules_v2",
     send: () => getRawApi(api).sendMessage(
       { msg: gameGuide() },
       destination.threadId,
@@ -714,8 +714,11 @@ function gameGuide(prefix = global.config?.prefix || "!") {
     "4 đôi thông chặt 2, đôi 2, 3 đôi thông, tứ quý và 4 đôi thông nhỏ hơn; kể cả khi đã bỏ lượt.",
     "Chặt chồng: số tiền hàng/heo được cộng dồn; người bị chặt cuối trả chuỗi cho người chặt cuối.",
     "",
-    "♠ KẾT 3 BÍCH",
-    "Chỉ kết khi 3♠ là lá cuối cùng. Nếu không bị chặn, mỗi nhà thua trả 26 cược. Nếu bị chặn, người kết bị chặn trả 26 cược cho từng người tham gia vòng cuối; người không tham gia vòng cuối không bị tính.",
+    "♠ KẾT 3 BÍCH / THỐI 3 BÍCH",
+    "Kết thành công: đánh 3♠ cuối cùng và thắng; mỗi nhà thua trả 26 cược + heo/hàng thối còn trên tay (không tính rác thường), bất kể còn bao nhiêu lá.",
+    "Thối 3♠: nếu nước gần cuối để lại riêng 3♠ nhưng bị chặn, người chặn là CỨU LÀNG và thắng ván. Người thối đền 26 cược × (số người chơi − 1) cho người cứu.",
+    "Chặn Kết 3♠: người kết bị chặn đền 26 cược cho từng người đã tham gia vòng cuối; người không tham gia không trả và cũng không nhận khoản này.",
+    "Hai ví dụ Kết/Thối 3♠ trên GameVH thể hiện người nhận nhận 95% khoản đặc biệt sau phí 5%.",
     "",
     "✨ TỚI TRẮNG",
     "Ưu tiên: sảnh rồng 9x > 6 đôi thông 8x > 4 bộ ba 7x > 2 tứ quý 6x > 12 lá đồng chất 5x > 5 đôi thông 4x > tứ quý 2 3x > 6 đôi 2x.",
