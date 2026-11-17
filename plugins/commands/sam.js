@@ -176,6 +176,7 @@ function roomCaption(room, notice = "") {
   const lines = [
     "🃏 SÂM LỐC  •  JOHNTRAN",
     "Bàn #" + room.id + "  |  " + (room.status === "waiting" ? "ĐANG CHỜ" : room.status === "playing" ? "ĐANG CHƠI" : "KẾT THÚC"),
+    "Cược: " + Number(room.stake || 300).toLocaleString("vi-VN") + " xu/người",
     "Người chơi: " + room.players.map((player, index) => {
       const turn = player.uid === room.turnUid ? " ▶" : "";
       const count = player.handCount == null ? "chờ" : player.handCount + " lá";
