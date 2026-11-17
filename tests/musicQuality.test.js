@@ -3,8 +3,15 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const music = require("../core/music");
-const musicCommand = require("../core/music/command");
 const utils = require("../utils");
+
+// Keep this command-flow test deterministic: the real command schedules an
+// optional decorative Now Playing canvas after the audio has been sent.
+const workerRender = require("../core/canvas/workerRender");
+const originalRenderCanvas = workerRender.renderCanvas;
+workerRender.renderCanvas = async () => __filename;
+const musicCommand = require("../core/music/command");
+workerRender.renderCanvas = originalRenderCanvas;
 
 test("/scl selection preserves the quality chosen during search", async () => {
   const threadId = "scl-quality-test";
