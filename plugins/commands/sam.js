@@ -464,7 +464,9 @@ async function callSam(context) {
   const player = result.state.players.find(item => item.uid === uid);
   await sendGroupRoom(api, event, result.room,
     "🔥 " + (player?.name || "Người chơi") + " đã BÁO SÂM! Đánh hết 10 lá mà không bị chặn để thắng.");
-  if (player) await sendPrivateHand(api, result.state, player, result.state.hands[uid] || [], true);
+  if (player) await sendPrivateHand(
+    api, result.state, player, result.state.hands[uid] || [], result.state.turnUid === uid
+  );
   scheduleTurn(context, result.state);
   return true;
 }
