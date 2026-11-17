@@ -1372,3 +1372,106 @@ test("Sâm settlement rejects pending or malformed escrow ledger before wallet w
   assert.equal(Users.records.get("a").tlmn.coins, 75000);
   assert.equal(Users.records.get("b").tlmn.coins, 75000);
 });
+
+
+test("GameVH Sâm Báo 1 requires a beatable highest card instead of passing", () => {
+  const threadId = "sam-bao-one-force-highest";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81701" });
+  assert.equal(created.ok, true);
+  game.join(threadId, "81701", { uid: "b", name: "B" });
+  game.join(threadId, "81701", { uid: "c", name: "C" });
+
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.23); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = {
+    a: [card(4), card(15)],
+    b: [card(3)],
+    c: [card(6), card(9)]
+  };
+  room.turnUid = "a";
+  room.currentCombo = engine.analyzeCombo([card(5)]);
+  room.lastPlayerUid = "c";
+  room.lastPlay = { uid: "c", name: "C", cards: [card(5)] };
+  room.passed = new Set();
+
+  const beforeTurn = room.turnUid;
+  const rejected = game.pass(threadId, "a");
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.code, "MUST_PLAY_HIGHEST_CARD");
+  assert.equal(rejected.reportedUid, "b");
+  assert.equal(room.passed.size, 0);
+  assert.equal(room.turnUid, beforeTurn);
+  game.removeRoom(threadId);
+});
+
+test("GameVH Sâm Báo 1 still allows passing when the highest card cannot beat", () => {
+  const threadId = "sam-bao-one-cannot-beat";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81702" });
+  assert.equal(created.ok, true);
+  game.join(threadId, "81702", { uid: "b", name: "B" });
+  game.join(threadId, "81702", { uid: "c", name: "C" });
+
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.24); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = {
+    a: [card(3), card(4)],
+    b: [card(3)],
+    c: [card(6), card(9)]
+  };
+  room.turnUid = "a";
+  room.currentCombo = engine.analyzeCombo([card(5)]);
+  room.lastPlayerUid = "c";
+  room.lastPlay = { uid: "c", name: "C", cards: [card(5)] };
+  room.passed = new Set();
+
+  const result = game.pass(threadId, "a");
+  assert.equal(result.ok, true);
+  assert.equal(room.passed.has("a"), true);
+  assert.equal(room.turnUid, "b");
+  game.removeRoom(threadId);
+});
+
+test("GameVH Sâm timeout plays the highest card when Báo 1 requires a response", () => {
+  const threadId = "sam-bao-one-timeout-highest";
+  const created = game.create(threadId, { uid: "a", name: "A" }, { id: "81703" });
+  assert.equal(created.ok, true);
+  game.join(threadId, "81703", { uid: "b", name: "B" });
+  game.join(threadId, "81703", { uid: "c", name: "C" });
+
+  const originalDetector = engine.detectWhiteHand;
+  engine.detectWhiteHand = () => null;
+  let started;
+  try { started = game.start(threadId, "a", () => 0.25); }
+  finally { engine.detectWhiteHand = originalDetector; }
+
+  const room = started.state;
+  room.hands = {
+    a: [card(4), card(15)],
+    b: [card(3)],
+    c: [card(5), card(9)]
+  };
+  room.turnUid = "a";
+  room.currentCombo = engine.analyzeCombo([card(5)]);
+  room.lastPlayerUid = "c";
+  room.lastPlay = { uid: "c", name: "C", cards: [card(5)] };
+  room.passed = new Set();
+
+  const result = game.timeoutTurn(threadId, "a");
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "play");
+  assert.equal(result.forcedByBaoOne, true);
+  assert.equal(room.hands.a.length, 1);
+  assert.equal(room.hands.a[0].rank, 4);
+  assert.equal(room.currentCombo.mainRank, 15);
+  game.removeRoom(threadId);
+});
