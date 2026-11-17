@@ -12,7 +12,7 @@ const cleanupTimers = new Map();
 
 module.exports.config = {
   name: "sam",
-  aliases: ["saml", "samloc", "samloc"],
+  aliases: ["saml", "samloc"],
   version: "1.0.0",
   role: 0,
   author: "JOHNTRAN",
@@ -290,6 +290,7 @@ async function joinRoom(context, code) {
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
   const name = event?.data?.dName || event?.data?.name || "Người chơi";
+  await restoreRoom(Threads, threadId);
   if (!/^\d{5}$/.test(String(code || ""))) return sendText(api, event, "⚠️ Mã bàn Sâm phải có 5 chữ số.");
   const joined = game.join(threadId, code, { uid, name });
   if (!joined.ok) {
