@@ -74,6 +74,21 @@ test("new panel shell has all six views and their required mount points", () => 
   }
 });
 
+test("Anti-Protection view renders only existing anti modes as persisted switches", () => {
+  assert.ok(html.includes('id="antiProtectionPanel"'), "protection panel mount point is required");
+  assert.ok(html.includes('id="antiProtectionGrid"'), "protection switch grid is required");
+  assert.match(js, /data-anti-feature/);
+  assert.match(js, /antiFeatures/);
+  assert.ok(v4css.includes(".anti-protection-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))"), "desktop protection grid should be two columns");
+  assert.ok(v4css.includes(".anti-protection-switch input:checked+span"), "switch must visibly reflect enabled state");
+  for (const feature of ["anti_nude", "anti_undo", "anti_danger_link", "anti_sticker_spam", "anti_link", "anti_spam"]) {
+    assert.ok(js.includes('key:"' + feature + '"'), "missing existing anti feature " + feature);
+  }
+  for (const demo of ["Chặn card", "Chặn doodle", "Chặn ghost", "Chặn mã QR", "Chặn voice"]) {
+    assert.ok(!html.includes(demo) && !js.includes(demo), "demo-only feature should not be added: " + demo);
+  }
+});
+
 test("panel frontend is self-hosted and has no external runtime dependency", () => {
   assert.match(html, /href="panel\.css"/);
   assert.match(html, /src="panel\.js"/);

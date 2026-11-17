@@ -10,6 +10,7 @@ const state = {
   adminGroups: [], selectedThread: null, messages: [],
   threadFilter: "all", chatStyle: { b:false, i:false, u:false, s:false, color:"", font:"" },
   groupFilter: "all", groupSort: "name-asc", groupStatusFlight: false,
+  antiFeatures: {},
   groupBulkFlight: false, selectedGroupIds: new Set(),
   failedGroupAvatarUrls: new Set(),
   timers: { refresh:null, messages:null, threads:null, logs:null, qr:null, groupStatus:null, groupSearch:null },
@@ -24,6 +25,14 @@ const VIEWS = {
   profile: ["Hồ sơ & dữ liệu", "ACCOUNT DATA"],
   system: ["Giám sát hệ thống", "INFRASTRUCTURE"]
 };
+const ANTI_PROTECTION_ITEMS = Object.freeze([
+  { key:"anti_nude", label:"Chặn nội dung nhạy cảm", detail:"AI quét ảnh 18+ / khỏa thân", command:"/antinude", icon:"◉", tone:"pink" },
+  { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục chữ, ảnh, video, voice và sticker", command:"/antirecall · /anti undo", icon:"↶", tone:"purple" },
+  { key:"anti_danger_link", label:"Chặn link nguy hiểm", detail:"Chặn link mời nhóm khác và URL không an toàn", command:"/antilink", icon:"↗", tone:"blue" },
+  { key:"anti_sticker_spam", label:"Chống dội bom sticker", detail:"Phát hiện loạt sticker gửi dồn dập", command:"/antispam", icon:"⚡", tone:"orange" },
+  { key:"anti_link", label:"Chặn tất cả link", detail:"Chế độ chống link cũ của lệnh anti", command:"/anti link", icon:"⌁", tone:"cyan" },
+  { key:"anti_spam", label:"Chống spam tin nhắn", detail:"Chế độ chống spam tin nhắn cũ của lệnh anti", command:"/anti spam", icon:"✳", tone:"yellow" }
+]);
 const STATUS = {
   online:["Đang chạy","online"],offline:["Chưa chạy","offline"],stopped:["Đã dừng","stopped"],
   restarting:["Đang khởi động lại","starting"],starting:["Đang khởi động","starting"],
@@ -672,6 +681,69 @@ function stopGroupStatusPolling() {
   state.timers.groupStatus = null;
 }
 
+function renderAntiProtection(antiFeatures = {}, group = null) {
+  const panel = $("antiProtectionPanel");
+  if (!panel) return;
+  if (!group?.gid) {
+    panel.hidden = true;
+    return;
+  }
+
+  panel.hidden = false;
+  state.antiFeatures = antiFeatures && typeof antiFeatures === "object" ? antiFeatures : {};
+  const groupName = String(group.name || group.gid || "Nhóm Zalo");
+  $("antiProtectionGroupName").textContent = groupName;
+  $("antiProtectionGroupState").textContent = group.botEnabled === true ? "BOT ĐANG HOẠT ĐỘNG" : "BOT ĐANG TẮT";
+
+  const avatarUrl = safeImage(group.avatar || group.avt || "");
+  $("antiProtectionGroupAvatar").innerHTML = (avatarUrl
+    ? '<img src="' + avatarUrl + '" alt="" loading="lazy">'
+    : '<span>' + $escape(initials(groupName)) + '</span>') + '<i id="antiProtectionGroupDot" class="' +
+      (group.botEnabled === true ? "is-online" : "is-offline") + '"></i>';
+
+  const enabledCount = ANTI_PROTECTION_ITEMS.filter(item => state.antiFeatures[item.key] === true).length;
+  $("antiProtectionSummary").textContent = enabledCount + "/" + ANTI_PROTECTION_ITEMS.length + " chế độ đang bật";
+
+  $("antiProtectionGrid").innerHTML = ANTI_PROTECTION_ITEMS.map(item => {
+    const enabled = state.antiFeatures[item.key] === true;
+    return '<article class="anti-protection-card">' +
+      '<div class="anti-protection-card-copy">' +
+        '<span class="anti-protection-icon tone-' + item.tone + '" aria-hidden="true">' + item.icon + '</span>' +
+        '<span class="anti-protection-card-text"><b>' + $escape(item.label) + '</b>' +
+          '<small>' + $escape(item.detail) + '</small><em>' + $escape(item.command) + '</em></span>' +
+      '</div>' +
+      '<label class="anti-protection-switch" aria-label="' + $escape(item.label) + '">' +
+        '<input type="checkbox" role="switch" data-anti-feature="' + item.key + '" ' + (enabled ? "checked" : "") + '>' +
+        '<span aria-hidden="true"></span>' +
+      '</label>' +
+    '</article>';
+  }).join("");
+}
+
+async function setAntiProtectionFeature(feature, enabled, checkbox) {
+  const item = ANTI_PROTECTION_ITEMS.find(entry => entry.key === feature);
+  const bot = $("groupBotSelect").value || state.selectedGroupBot;
+  const gid = $("groupSelect").value || state.activeGroup;
+  if (!item || !bot || !gid) return;
+
+  checkbox.disabled = true;
+  try {
+    const data = await api("/api/chat/" + enc(bot) + "/group-commands?gid=" + enc(gid), {
+      method:"POST",
+      body:jsonBody({ antiFeature:feature, enabled })
+    });
+    state.antiFeatures = data.antiFeatures || { ...state.antiFeatures, [feature]: enabled };
+    const group = state.groupList.find(entry => String(entry.gid) === String(gid)) || { gid, name:gid };
+    renderAntiProtection(state.antiFeatures, group);
+    toast((enabled ? "Đã bật " : "Đã tắt ") + item.label.toLocaleLowerCase("vi") + " cho nhóm.", "success");
+  } catch (error) {
+    checkbox.checked = !enabled;
+    toast(error.message, "error");
+  } finally {
+    if (checkbox.isConnected) checkbox.disabled = false;
+  }
+}
+
 async function loadGroupOptions() {
   const bots = state.bots || [];
   const botSelect = $("groupBotSelect");
@@ -687,6 +759,7 @@ async function loadGroupOptions() {
   botSelect.value = selectedBot;
   if (!selectedBot) {
     state.groupList = [];
+    $("antiProtectionPanel").hidden = true;
     $("groupBotToggleRow").hidden = true;
     groupSelect.innerHTML = '<option value="">Chưa có bot</option>';
     $("groupIdentityGrid").hidden = true;
@@ -695,6 +768,7 @@ async function loadGroupOptions() {
     renderGroupCards("Chưa có bot trong registry.");
     return;
   }
+  $("antiProtectionPanel").hidden = true;
   $("groupBotToggleRow").hidden = true;
   groupSelect.innerHTML = '<option value="">Đang tải nhóm Zalo…</option>';
   $("groupCommandList").innerHTML = '<div class="empty-state">Đang tải danh sách nhóm…</div>';
@@ -715,6 +789,7 @@ async function loadGroupOptions() {
     groupSelect.value = selectedGid;
     renderGroupCards();
     if (!selectedGid) {
+      $("antiProtectionPanel").hidden = true;
       $("groupBotToggleRow").hidden = true;
       renderGroupIdentities(state.groupBotProfile, null);
       $("selectedGroupIdentity").innerHTML = '<div class="empty-state">Tài khoản này chưa có nhóm để cấu hình.</div>';
@@ -725,6 +800,7 @@ async function loadGroupOptions() {
     await loadGroupCommands();
   } catch (error) {
     state.groupList = [];
+    $("antiProtectionPanel").hidden = true;
     groupSelect.innerHTML = '<option value="">Không tải được nhóm</option>';
     $("groupCommandList").innerHTML = '<div class="empty-state">' + $escape(error.message) + '</div>';
     $("groupHint").textContent = "Bot cần đang chạy và đăng nhập Zalo để đọc danh sách nhóm.";
@@ -747,6 +823,7 @@ async function loadGroupCommands() {
     renderGroupCards();
     renderGroupIdentities(state.groupBotProfile || { name: bot }, group || { gid, name: gid });
     updateGroupBotToggle(data.botEnabled === true);
+    renderAntiProtection(data.antiFeatures || {}, group || { gid, name:gid, botEnabled:data.botEnabled === true });
     $("groupHint").textContent = (group?.name || "Nhóm") + " · " + gid + " · " + disabled.size + " lệnh đang tắt.";
     $("groupCommandList").innerHTML = state.commands.map(command =>
       '<div class="group-command"><div><b>/' + $escape(command.name) + '</b><small>' + $escape(command.description || "Chưa có mô tả") + '</small></div><label class="switch"><input type="checkbox" data-action="toggle-command" data-command="' + $escape(command.name) + '" ' + (disabled.has(command.name) ? "" : "checked") + '><span></span></label></div>'
@@ -1448,6 +1525,7 @@ function bindEvents() {
     const el=event.target;
     if (el.matches('[data-action="auto-restart"]')) setAutoRestart(el.dataset.bot,el.checked);
     if (el.matches('[data-action="toggle-command"]')) toggleGroupCommand(el.dataset.command,el.checked,el);
+    if (el.matches("[data-anti-feature]")) setAntiProtectionFeature(el.dataset.antiFeature,el.checked,el);
     if (el.id==="commandRole") renderCommands();
     if (el.id==="profileBotSelect") loadProfileData(el.value);
     if (el.id==="groupBotSelect") {

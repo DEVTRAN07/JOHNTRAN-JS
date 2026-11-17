@@ -142,6 +142,26 @@
       <div><small>TRẠNG THÁI BOT TRONG NHÓM</small><b id="groupBotToggleLabel">BOT ĐANG BẬT</b><span id="groupBotToggleHint">Bot sẽ phản hồi lệnh và xử lý sự kiện tự động.</span></div>
       <label class="switch"><input type="checkbox" id="groupBotEnabled" checked><span></span></label>
     </div>
+    <section class="anti-protection-panel" id="antiProtectionPanel" hidden aria-labelledby="antiProtectionTitle">
+      <header class="anti-protection-banner">
+        <div class="anti-protection-banner-icon" aria-hidden="true">✚</div>
+        <div class="anti-protection-banner-copy">
+          <h3 id="antiProtectionTitle">Bảo vệ nhóm (Anti-Protection)</h3>
+          <p>Bật hoặc tắt từng chế độ bảo vệ cho nhóm đang chọn.</p>
+        </div>
+        <div class="anti-protection-group">
+          <div class="anti-protection-group-avatar" id="antiProtectionGroupAvatar">G<i id="antiProtectionGroupDot"></i></div>
+          <div><b id="antiProtectionGroupName">Nhóm đang chọn</b><small id="antiProtectionGroupState">Đang tải trạng thái</small></div>
+        </div>
+      </header>
+      <div class="anti-protection-grid" id="antiProtectionGrid" aria-live="polite">
+        <div class="empty-state">Đang tải cấu hình bảo vệ…</div>
+      </div>
+      <footer class="anti-protection-footer">
+        <span id="antiProtectionSummary">0/6 chế độ đang bật</span>
+        <small>Thiết lập được lưu riêng cho từng nhóm Zalo.</small>
+      </footer>
+    </section>
     <div class="group-command-list" id="groupCommandList"><div class="empty-state">Chưa chọn nhóm.</div></div>
   </div>
 </section>
