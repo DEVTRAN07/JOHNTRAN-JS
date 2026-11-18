@@ -145,13 +145,18 @@ async function dispatchGroupMessageBeforeGame({
 }
 
 async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = false } = {}) {
+  // Nối Từ and TLMN are group-only. Do not run their async handlers for private chats.
+  if (event?.type !== ThreadType.Group || !event?.threadId) return false;
   const selfMessage = isSelf === true || event?.isSelf === true;
   if (selfMessage && global.config?.allow_self_command !== true) return false;
 
   // Preserve Nối Từ priority: a message consumed by it must not reach another game.
   try {
     const noituCommand = require("../plugins/commands/noitu");
-    if (typeof noituCommand?.handleEvent === "function") {
+    const hasActiveGame = typeof noituCommand?.hasActiveGameForThread === "function"
+      ? noituCommand.hasActiveGameForThread(event.threadId)
+      : true;
+    if (hasActiveGame && typeof noituCommand?.handleEvent === "function") {
       const consumed = await noituCommand.handleEvent({
         api, event, eventType: "message", isSelf: false, Users, Threads
       });
