@@ -46,24 +46,6 @@ async function handlePhoto(messageCache, tempPath, name, timeSend, timeUndo, thr
   return tempFilePath;
 }
 
-async function isAdmin(api, userId, threadId) {
-  if (userId == null || typeof api?.getGroupInfo !== "function") return null;
-
-  const info = await api.getGroupInfo(threadId);
-  const groupInfo = info?.gridInfoMap?.[threadId];
-  // Missing role metadata is "unknown", not proof that the sender is a member.
-  if (!groupInfo || (groupInfo.creatorId == null && !Array.isArray(groupInfo.adminIds))) {
-    return null;
-  }
-
-  const uid = String(userId);
-  const isCreator = groupInfo.creatorId != null && String(groupInfo.creatorId) === uid;
-  const isDeputy = Array.isArray(groupInfo.adminIds) &&
-    groupInfo.adminIds.some(id => String(id) === uid);
-
-  return isCreator || isDeputy;
-}
-
 
 const nudeModerationInFlight = new Set();
 const OPENAI_MODERATION_URL = "https://api.openai.com/v1/moderations";
@@ -71,23 +53,35 @@ const OPENAI_MODERATION_URL = "https://api.openai.com/v1/moderations";
 function extractMessageUrls(data) {
   const content = data?.content;
   const candidates = [];
+  const addText = (value) => {
+    if (typeof value !== "string" || !value) return;
+    candidates.push(...(value.match(/https?:\/\/[^\s<>"']+/gi) || []));
+  };
+
   if (data?.msgType === "chat.recommended" && content?.action === "recommended.link" && content.href) {
     candidates.push(String(content.href));
   }
   if (typeof content === "string") {
-    const matches = content.match(/https?:\/\/[^\s<>"']+/gi) || [];
-    candidates.push(...matches);
-  } else if (content && typeof content.href === "string") {
-    candidates.push(content.href);
+    addText(content);
+  } else if (content && typeof content === "object") {
+    for (const field of ["href", "url", "link"]) {
+      if (typeof content[field] === "string" && /^https?:\/\//i.test(content[field])) {
+        candidates.push(content[field]);
+      }
+    }
+    addText(content.title);
+    addText(content.description);
   }
+  addText(data?.text);
   return [...new Set(candidates.map(url => url.replace(/[),.!?;:]+$/, "")).filter(Boolean))];
 }
 
 function isGroupInviteUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
-    return parsed.protocol === "https:" &&
-      parsed.hostname.toLowerCase() === "zalo.me" &&
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    return ["http:", "https:"].includes(parsed.protocol) &&
+      host === "zalo.me" &&
       /^\/g\/[a-z0-9_-]+\/?$/i.test(parsed.pathname);
   } catch {
     return false;
@@ -101,7 +95,7 @@ async function isUnsafeLink(rawUrl, api) {
     const result = await api.scanURL(rawUrl);
     return result?.isSafe === false;
   } catch (error) {
-    console.warn("[antilink] Không kiểm tra được URL:", error?.message || error);
+    console.warn("[antilink] Zalo scanURL thất bại:", error?.message || error);
     return false;
   }
 }
@@ -131,23 +125,18 @@ async function moderateImage(imageUrl) {
     },
     body: JSON.stringify({
       model: "omni-moderation-latest",
-      input: [{
-        type: "image_url",
-        image_url: { url: imageUrl }
-      }]
+      input: [{ type: "image_url", image_url: { url: imageUrl } }]
     })
   });
 
   if (response.status < 200 || response.status >= 300) {
     throw new Error("OpenAI Moderation trả về HTTP " + response.status);
   }
-  const payload = response.json();
-  const result = payload?.results?.[0];
-  if (!result) throw new Error("Phản hồi AI không có kết quả phân loại");
-
-  const configuredThreshold = Number(process.env.JT_ANTINUDE_SEXUAL_THRESHOLD || 0.9);
-  const threshold = Number.isFinite(configuredThreshold)
-    ? Math.min(0.99, Math.max(0.5, configuredThreshold))
+  const result = response.json()?.results?.[0];
+  if (!result) throw new Error("OpenAI Moderation không trả về kết quả");
+  const configured = Number(process.env.JT_ANTINUDE_SEXUAL_THRESHOLD || 0.9);
+  const threshold = Number.isFinite(configured)
+    ? Math.min(0.99, Math.max(0.5, configured))
     : 0.9;
   return {
     explicit: isExplicitAdultImage(result, threshold),
@@ -156,66 +145,243 @@ async function moderateImage(imageUrl) {
   };
 }
 
+function getImageUrl(data) {
+  const content = data?.content;
+  if (!content || typeof content !== "object") return null;
+  for (const field of ["href", "url", "imageUrl", "image_url", "src"]) {
+    const value = content[field];
+    if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
+  }
+  for (const attachment of (Array.isArray(content.attachments) ? content.attachments : [])) {
+    const value = attachment?.href || attachment?.url || attachment?.imageUrl;
+    if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
+  }
+  return null;
+}
 
+function isPhotoMessage(data) {
+  const type = String(data?.msgType || "").toLowerCase();
+  return type === "chat.photo" || type === "chat.image" || type.includes("photo");
+}
 
-module.exports.handleEvent = async function ({ event, api, Threads, eventType, isSelf }) {
-  const { threadId, isGroup, data, type } = event;
-  const typeUndo = isGroup ? 1 : 0;
-  const userId = data.uidFrom;
+function isStickerMessage(data) {
+  const type = String(data?.msgType || "").toLowerCase();
+  return type === "chat.sticker" || type === "sticker" || type.endsWith(".sticker");
+}
+
+function parseVideoParams(value) {
+  if (value && typeof value === "object") return value;
+  if (typeof value !== "string" || !value) return {};
+  try { return JSON.parse(value); } catch { return {}; }
+}
+
+function buildDeleteDestination(event) {
+  const data = event?.data || {};
+  if (data.cliMsgId == null || data.msgId == null || data.uidFrom == null) {
+    throw new Error("Tin nhắn thiếu cliMsgId/msgId/uidFrom nên không thể xóa");
+  }
+  return {
+    threadId: String(event.threadId),
+    type: ThreadType.Group,
+    data: {
+      cliMsgId: String(data.cliMsgId),
+      msgId: String(data.msgId),
+      uidFrom: String(data.uidFrom)
+    }
+  };
+}
+
+async function deleteGroupMessage(api, event) {
+  if (typeof api?.deleteMessage !== "function") {
+    throw new Error("Zalo API deleteMessage không khả dụng");
+  }
+  return api.deleteMessage(buildDeleteDestination(event), false);
+}
+
+async function kickGroupMember(api, userId, threadId) {
+  if (typeof api?.removeUserFromGroup !== "function") {
+    throw new Error("Zalo API removeUserFromGroup không khả dụng");
+  }
+  const result = await api.removeUserFromGroup(String(userId), String(threadId));
+  const failedMembers = Array.isArray(result?.errorMembers) ? result.errorMembers.map(String) : [];
+  if (failedMembers.includes(String(userId))) {
+    throw new Error("Zalo từ chối kick thành viên (errorMembers)");
+  }
+  return result;
+}
+
+function createMentionMessage(text, name, userId) {
+  const displayName = String(name || "Bạn");
+  const uid = String(userId || "");
+  const marker = "@" + displayName;
+  const pos = text.indexOf("{member}");
+  return {
+    msg: text.replace("{member}", marker),
+    mentions: uid && pos >= 0 ? [{ pos, uid, len: marker.length }] : []
+  };
+}
+
+module.exports.handleEvent = async function (context = {}) {
+  const event = context.event || {};
+  const eventType = context.eventType;
+  const api = context.api;
+  const Threads = context.Threads;
+  const data = event.data || {};
+  const threadId = String(event.threadId || "");
+  const userId = String(data.uidFrom || "");
   const name = data.dName || "Bạn";
+  const isGroup = event.type === ThreadType.Group || event.isGroup === true;
 
-  // Không xử lý hành động của chính bot (tự xoá link/spam của bot, anti_undo tin bot)
-  if (isSelf) return;
+  if (!isGroup || !threadId || !userId) return;
+  if (context.isSelf === true || event.isSelf === true || userId === "0") return;
+  if (typeof Threads?.getData !== "function") return;
 
-  const threadData = (await Threads.getData(threadId)).data || {};
+  let threadData;
+  try {
+    const record = await Threads.getData(threadId);
+    threadData = record?.data || record || {};
+  } catch (error) {
+    console.error("[ANTI] Không đọc được cấu hình nhóm " + threadId + ":", error?.message || error);
+    return;
+  }
+
+  const activeFlags = [
+    "anti_nude", "anti_undo", "anti_danger_link",
+    "anti_sticker_spam", "anti_link", "anti_spam"
+  ];
+  if (!activeFlags.some(key => threadData[key] === true)) return;
+
+  let adminPromise = null;
+  const isAdminOrUnknown = async () => {
+    if (!adminPromise) {
+      adminPromise = getGroupAdminState(api, threadId, userId).catch(() => null);
+    }
+    return (await adminPromise) !== false;
+  };
+  const sendNotice = (message) => api.sendMessage(
+    createMentionMessage(message, name, userId),
+    threadId,
+    ThreadType.Group
+  );
   const tempPath = path.join(__dirname, "temp");
   const tempFiles = [];
-  let groupAdminCheck = null;
-
-  // Reuse one Zalo group-info lookup for every Anti rule on this message.
-  // Unknown role metadata fails safe: do not delete a message that may belong to an admin.
-  const isAdminOrUnknown = () => {
-    if (!groupAdminCheck) {
-      groupAdminCheck = isAdmin(api, userId, threadId).catch(() => null);
-    }
-    return groupAdminCheck.then(result => result !== false);
-  };
 
   try {
-    // === Anti Link nguy hiểm / link mời nhóm khác ===
-    if (threadData.anti_danger_link && eventType === "message") {
-      const urls = extractMessageUrls(data);
-      if (urls.length && !(await isAdminOrUnknown())) {
-        let blockedUrl = null;
-        for (const url of urls) {
-          if (await isUnsafeLink(url, api)) {
-            blockedUrl = url;
-            break;
-          }
+    // Undo payload from zalo-client has isGroup=true and no ThreadType field.
+    if (threadData.anti_undo === true && eventType === "undo") {
+      const undoCliMsgId = data.content?.cliMsgId ?? data.cliMsgId;
+      if (undoCliMsgId == null) return;
+      const cached = getMessageCache()[String(undoCliMsgId)];
+      if (!cached || (cached.threadId && String(cached.threadId) !== threadId)) return;
+
+      const timeSend = cached.timestamp || cached.ts || Date.now();
+      const timeUndo = data.ts || Date.now();
+      const sendUndoMessage = (msg, extra) => api.sendMessage(
+        { msg, ...(extra || {}) }, threadId, ThreadType.Group
+      );
+
+      switch (cached.msgType) {
+        case "chat.photo": {
+          const tempFilePath = await handlePhoto(
+            cached, tempPath, name, timeSend, timeUndo, threadId, api, ThreadType.Group
+          );
+          tempFiles.push(tempFilePath);
+          break;
         }
-        if (blockedUrl) {
-          try {
-            await api.deleteMessage({
-              threadId,
-              type,
-              data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
-            }, false);
-          } catch (error) {
-            console.warn("[antilink] Không xóa được tin nhắn:", error?.message || error);
+        case "chat.video.msg": {
+          const content = cached.content || {};
+          const params = parseVideoParams(content.params);
+          await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
+          if (content.href && typeof api.sendVideo === "function") {
+            await api.sendVideo({
+              videoUrl: content.href,
+              thumbnailUrl: content.thumb,
+              duration: Number(params.duration) || 0,
+              width: Number(params.video_width) || 0,
+              height: Number(params.video_height) || 0
+            }, threadId, ThreadType.Group);
           }
-          return api.sendMessage({
-            msg: "🚫 @" + name + ", link mời nhóm khác hoặc URL không an toàn đã bị chặn.",
-            mentions: [{ pos: 3, uid: userId, len: name.length + 1 }]
-          }, threadId, type);
+          break;
+        }
+        case "chat.sticker": {
+          const content = cached.content || {};
+          await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
+          if (typeof api.sendSticker === "function") {
+            await api.sendSticker({
+              id: content.id,
+              cateId: content.catId ?? content.cateId,
+              type: content.type
+            }, threadId, ThreadType.Group);
+          }
+          break;
+        }
+        case "chat.voice": {
+          const voiceUrl = cached.content?.href;
+          await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
+          if (voiceUrl && typeof api.sendVoice === "function") {
+            await api.sendVoice({ voiceUrl }, threadId, ThreadType.Group);
+          }
+          break;
+        }
+        case "chat.recommended": {
+          const content = cached.content || {};
+          const href = content.href || "";
+          if (content.action === "recommended.link" && typeof api.sendLink === "function") {
+            const title = String(content.title || "").replace(href, "").trim();
+            await api.sendLink({
+              msg: formatUndoMessage(name, timeSend, timeUndo, title),
+              link: href
+            }, threadId, ThreadType.Group);
+          } else if (content.action === "recommended.user" && typeof api.sendCard === "function") {
+            await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
+            await api.sendCard({ userId: content.params }, threadId, ThreadType.Group);
+          }
+          break;
+        }
+        case "chat.gif":
+        case "share.file": {
+          const fileUrl = cached.content?.href;
+          if (!fileUrl) break;
+          await fs.mkdir(tempPath, { recursive: true });
+          const response = await http.request(fileUrl, { timeout: 15000, retries: 1 });
+          let fileName = "anti_undo_" + Date.now() + ".dat";
+          const disposition = response.headers?.["content-disposition"];
+          if (disposition && disposition.includes("filename=")) {
+            const match = disposition.match(/filename="?([^"]+)"?/);
+            if (match?.[1]) fileName = Date.now() + "_" + path.basename(match[1]);
+          }
+          const tempFilePath = path.join(tempPath, fileName);
+          await fs.writeFile(tempFilePath, response.body);
+          await api.sendMessage({
+            msg: formatUndoMessage(name, timeSend, timeUndo, cached.content.title || ""),
+            attachments: [tempFilePath]
+          }, threadId, ThreadType.Group);
+          tempFiles.push(tempFilePath);
+          break;
+        }
+        case "webchat": {
+          await sendUndoMessage(formatUndoMessage(
+            name, timeSend, timeUndo,
+            typeof cached.content === "string" ? cached.content : cached.content?.title || ""
+          ));
+          break;
+        }
+        default: {
+          const text = typeof cached.content === "string"
+            ? cached.content
+            : cached.content?.title || "";
+          if (text) await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo, text));
         }
       }
+      return;
     }
 
-    // === AI Anti Nude: chỉ xử lý ảnh trong nhóm, bỏ qua admin và quyền không xác định ===
-    if (threadData.anti_nude && eventType === "message" && data.msgType === "chat.photo") {
-      const imageUrl = data.content?.href;
+    if (eventType !== "message") return;
+
+    if (threadData.anti_nude === true && isPhotoMessage(data)) {
+      const imageUrl = getImageUrl(data);
       if (imageUrl && !(await isAdminOrUnknown())) {
-        const checkId = String(threadId) + ":" + String(data.cliMsgId || data.msgId || "");
+        const checkId = threadId + ":" + String(data.cliMsgId || data.msgId || imageUrl);
         if (!nudeModerationInFlight.has(checkId)) {
           nudeModerationInFlight.add(checkId);
           try {
@@ -223,37 +389,24 @@ module.exports.handleEvent = async function ({ event, api, Threads, eventType, i
             if (moderation.explicit) {
               let deleteError = null;
               let kickError = null;
-              try {
-                await api.deleteMessage({
-                  threadId,
-                  type,
-                  data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
-                }, false);
-              } catch (error) {
-                deleteError = error;
-              }
-              try {
-                if (typeof api.removeUserFromGroup !== "function") {
-                  throw new Error("API kick thành viên không khả dụng");
-                }
-                await api.removeUserFromGroup(userId, threadId);
-              } catch (error) {
-                kickError = error;
-              }
+              try { await deleteGroupMessage(api, event); }
+              catch (error) { deleteError = error; }
+              try { await kickGroupMember(api, userId, threadId); }
+              catch (error) { kickError = error; }
+
               const actions = [];
-              actions.push(deleteError ? "không xóa được ảnh" : "đã xóa ảnh");
-              actions.push(kickError ? "không kick được thành viên" : "đã kick thành viên");
-              return api.sendMessage({
-                msg: "⛔ AI phát hiện ảnh khỏa thân/khiêu dâm (độ tin cậy " +
-                  Math.round(moderation.score * 100) + "%). @" + name + ": " +
-                  actions.join(", ") + "." +
-                  (kickError ? "\n⚠️ " + kickError.message : "") +
-                  (deleteError ? "\n⚠️ " + deleteError.message : ""),
-                mentions: [{ pos: 0, uid: userId, len: name.length + 1 }]
-              }, threadId, type);
+              actions.push(deleteError ? "chưa xóa được ảnh" : "đã xóa ảnh");
+              actions.push(kickError ? "chưa kick được thành viên" : "đã kick thành viên");
+              return sendNotice(
+                "⛔ AI phát hiện ảnh vi phạm (điểm sexual " +
+                Math.round(moderation.score * 100) + "%). {member}: " +
+                actions.join(", ") + "." +
+                (deleteError ? "\n⚠️ " + deleteError.message : "") +
+                (kickError ? "\n⚠️ " + kickError.message : "")
+              );
             }
           } catch (error) {
-            console.error("[antinude] AI moderation thất bại:", error?.message || error);
+            console.error("[ANTINUDE] Không thể phân loại ảnh tại nhóm " + threadId + ":", error?.stack || error);
           } finally {
             nudeModerationInFlight.delete(checkId);
           }
@@ -261,39 +414,74 @@ module.exports.handleEvent = async function ({ event, api, Threads, eventType, i
       }
     }
 
-    // === Chống dội bom sticker: hơn 5 sticker/4 giây từ cùng một thành viên ===
-    if (threadData.anti_sticker_spam && eventType === "message" && data.msgType === "chat.sticker") {
+    const urls = extractMessageUrls(data);
+
+    if (urls.length && threadData.anti_danger_link === true && !(await isAdminOrUnknown())) {
+      let blockedUrl = null;
+      for (const url of urls) {
+        if (await isUnsafeLink(url, api)) {
+          blockedUrl = url;
+          break;
+        }
+      }
+      if (blockedUrl) {
+        let deleteError = null;
+        try { await deleteGroupMessage(api, event); }
+        catch (error) { deleteError = error; }
+        return sendNotice(
+          deleteError
+            ? "🚫 {member}, phát hiện link nguy hiểm nhưng bot chưa xóa được tin nhắn: " + deleteError.message
+            : "🚫 {member}, link mời nhóm khác hoặc URL không an toàn đã bị chặn."
+        );
+      }
+    }
+
+    if (urls.length && threadData.anti_link === true) {
+      if (await isAdminOrUnknown()) return;
+      let deleteError = null;
+      try { await deleteGroupMessage(api, event); }
+      catch (error) { deleteError = error; }
+      return sendNotice(
+        deleteError
+          ? "🚫 {member}, không được gửi link. Bot chưa xóa được tin nhắn: " + deleteError.message
+          : "🚫 {member}, không được gửi link trong nhóm này!"
+      );
+    }
+
+    if (threadData.anti_sticker_spam === true && isStickerMessage(data)) {
       if (!(await isAdminOrUnknown())) {
         const now = Date.now();
         const cache = global.antiStickerSpamCache instanceof Map
           ? global.antiStickerSpamCache
           : (global.antiStickerSpamCache = new Map());
-        const cacheKey = String(threadId) + ":" + String(userId);
+        const cacheKey = threadId + ":" + userId;
         const history = (cache.get(cacheKey) || []).filter(item => now - item.at <= 4000);
-        history.push({
-          at: now,
-          data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
-        });
+        if (data.cliMsgId != null && data.msgId != null) {
+          history.push({
+            at: now,
+            data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
+          });
+        }
 
         if (history.length > 5) {
           cache.delete(cacheKey);
-          const burst = history.slice(-8);
-          await Promise.allSettled(burst.map(item => api.deleteMessage({
+          const results = await Promise.allSettled(history.map(item => deleteGroupMessage(api, {
             threadId,
-            type,
+            type: ThreadType.Group,
             data: item.data
-          }, false)));
-
+          })));
+          const deleted = results.filter(item => item.status === "fulfilled").length;
           const warnings = global.antiStickerSpamWarnings instanceof Map
             ? global.antiStickerSpamWarnings
             : (global.antiStickerSpamWarnings = new Map());
           const lastWarning = warnings.get(cacheKey) || 0;
           if (now - lastWarning >= 10000) {
             warnings.set(cacheKey, now);
-            return api.sendMessage({
-              msg: "🚫 @" + name + ", không được dội bom sticker! Bot đã xóa loạt sticker spam.",
-              mentions: [{ pos: 3, uid: userId, len: name.length + 1 }]
-            }, threadId, type);
+            return sendNotice(
+              deleted
+                ? "🚫 {member}, không được dội bom sticker! Bot đã xóa " + deleted + "/" + history.length + " sticker."
+                : "🚫 {member}, phát hiện dội bom sticker nhưng Zalo không cho bot xóa sticker."
+            );
           }
           return;
         }
@@ -302,181 +490,51 @@ module.exports.handleEvent = async function ({ event, api, Threads, eventType, i
       }
     }
 
-    // === Anti Link ===
-    if (threadData.anti_link) {
-      if ((data.msgType == "chat.recommended" && data.content.action == "recommended.link") || (data.msgType == "webchat" && String(data.content).match(/https?:\/\/[^\s]+/))) {
-        if (await isAdminOrUnknown()) return;
-        await api.deleteMessage({
-          threadId,
-          type,
-          data: {
-            cliMsgId: data.cliMsgId,
-            msgId: data.msgId,
-            uidFrom: userId
-          }
-        }, false);
-
-        const msg = `🚫 @${name}, không được gửi link trong nhóm này!`;
-        return api.sendMessage({
-          msg,
-          mentions: [{ pos: 3, uid: userId, len: name.length + 1 }]
-        }, threadId, type);
-      }
-    }
-
-    // === Anti Spam ===
-    const SPAM_LIMIT = 5;
-    const SPAM_TIME = 5000;
-    const now = Date.now();
-
-    global.spamCache = global.spamCache || {};
-    const spamCache = global.spamCache;
-
-    if (threadData.anti_spam) {
-      if (!spamCache[threadId]) spamCache[threadId] = {};
-      if (!spamCache[threadId][userId]) spamCache[threadId][userId] = [];
-
+    if (threadData.anti_spam === true) {
       if (await isAdminOrUnknown()) return;
-
-      spamCache[threadId][userId].push(now);
-      spamCache[threadId][userId] = spamCache[threadId][userId].filter(ts => now - ts <= SPAM_TIME);
-
-      if (spamCache[threadId][userId].length > SPAM_LIMIT) {
-        await api.deleteMessage({
-          threadId,
-          type,
-          data: {
-            cliMsgId: data.cliMsgId,
-            msgId: data.msgId,
-            uidFrom: userId
-          }
-        }, false);
-
-        const msg = `🚫 @${name}, vui lòng không spam!`;
-        return api.sendMessage({
-          msg,
-          mentions: [{ pos: 3, uid: userId, len: name.length + 1 }]
-        }, threadId, type);
+      const now = Date.now();
+      const cache = global.spamCache && typeof global.spamCache === "object"
+        ? global.spamCache
+        : (global.spamCache = {});
+      if (!cache[threadId]) cache[threadId] = {};
+      const history = (cache[threadId][userId] || []).filter(ts => now - ts <= 5000);
+      history.push(now);
+      cache[threadId][userId] = history;
+      if (history.length > 5) {
+        let deleteError = null;
+        try { await deleteGroupMessage(api, event); }
+        catch (error) { deleteError = error; }
+        return sendNotice(
+          deleteError
+            ? "🚫 {member}, vui lòng không spam. Bot chưa xóa được tin nhắn: " + deleteError.message
+            : "🚫 {member}, vui lòng không spam!"
+        );
       }
     }
-
-    // === Anti Undo ===
-    if (threadData.anti_undo && eventType === "undo") {
-      const messageCache = getMessageCache()[data.content.cliMsgId];
-      if (!messageCache) return;
-
-      const timeSend = messageCache.timestamp;
-      const timeUndo = data.ts;
-
-      const sendUndoMessage = async (msg, extra) => {
-        await api.sendMessage({ msg, ...(extra || {}) }, threadId, typeUndo);
-      };
-
-      switch (messageCache.msgType) {
-        case "chat.photo": {
-          const filePath = await handlePhoto(messageCache, tempPath, name, timeSend, timeUndo, threadId, api, typeUndo);
-          tempFiles.push(filePath);
-          break;
-        }
-
-        case "chat.video.msg": {
-          const { href: videoUrl, thumb: thumbnailUrl, params } = messageCache.content;
-          const { duration, video_width: width, video_height: height } = JSON.parse(params);
-
-          await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
-          await api.sendVideo({ videoUrl, thumbnailUrl, duration, height, width }, threadId, typeUndo);
-          break;
-        }
-
-        case "chat.sticker": {
-          const { id, catId, type: stickerType } = messageCache.content;
-
-          await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
-          await api.sendSticker({ id, cateId: catId, type: stickerType }, threadId, typeUndo);
-          break;
-        }
-
-        case "chat.voice": {
-          const { href: voiceUrl } = messageCache.content;
-
-          await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
-          await api.sendVoice({ voiceUrl }, threadId, typeUndo);
-          break;
-        }
-
-        case "chat.recommended": {
-          const { action, href, title, params } = messageCache.content;
-
-          if (action === "recommended.link") {
-            const msg = formatUndoMessage(name, timeSend, timeUndo, title.replace(href, ""));
-            await api.sendLink({ msg, link: href }, threadId, typeUndo);
-          } else if (action === "recommended.user") {
-            await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
-            await api.sendCard({ userId: params }, threadId, typeUndo);
-          }
-          break;
-        }
-
-        case "chat.gif":
-        case "share.file": {
-          const fileUrl = messageCache.content?.href;
-          if (!fileUrl) break;
-
-          try {
-            const response = await http.request(fileUrl);
-
-            let fileName = `anti_undo_${Date.now()}.dat`;
-
-            const disposition = response.headers["content-disposition"];
-            if (disposition && disposition.includes("filename=")) {
-              const match = disposition.match(/filename="?([^"]+)"?/);
-              if (match && match[1]) {
-                fileName = `${Date.now()}_${match[1]}`;
-              }
-            }
-
-            const tempFilePath = path.join(tempPath, fileName);
-            await fs.writeFile(tempFilePath, response.body);
-
-            const msgBody = formatUndoMessage(name, timeSend, timeUndo, messageCache.content.title || "");
-
-            await api.sendMessage({
-              msg: msgBody,
-              attachments: [tempFilePath]
-            }, threadId, typeUndo);
-
-            tempFiles.push(tempFilePath);
-          } catch (err) {
-            console.error("[share.file] Download failed:", err.message);
-          }
-          break;
-        }
-
-        case "webchat": {
-          await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo, messageCache.content));
-          break;
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Lỗi khi xử lý anti:", err);
+  } catch (error) {
+    console.error("[ANTI] Lỗi xử lý tại nhóm " + threadId + ":", error?.stack || error);
   } finally {
     for (const file of tempFiles) {
-      try {
-        await fs.unlink(file);
-      } catch (err) {
-        console.error(`Không thể xóa file tạm ${file}:`, err);
-      }
+      try { await fs.unlink(file); }
+      catch (error) { console.error("[ANTI] Không thể xóa file tạm " + file + ":", error?.message || error); }
     }
   }
 };
+
+
 
 module.exports._test = {
   extractMessageUrls,
   isGroupInviteUrl,
   isUnsafeLink,
-  isExplicitAdultImage
+  isExplicitAdultImage,
+  getImageUrl,
+  isPhotoMessage,
+  isStickerMessage,
+  buildDeleteDestination,
+  kickGroupMember
 };
+
 
 const ANTI_MENU_ITEMS = Object.freeze([
   { key:"anti_nude", label:"Chặn nội dung nhạy cảm", detail:"AI quét ảnh 18+ / khỏa thân", command:"/antinude", alias:"", icon:"18+", tone:"#e83f9e" },

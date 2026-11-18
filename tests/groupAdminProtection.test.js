@@ -22,6 +22,9 @@ test("group-admin lookup returns unknown for partial metadata or API failures", 
   assert.equal(await getGroupAdminState({}, "group", "member"), null);
   assert.equal(await getGroupAdminState({
     async getGroupInfo() { return { gridInfoMap: { group: { creatorId: "owner" } } }; }
+  }, "group", "owner"), true, "a confirmed creator does not need adminIds to prove QTV access");
+  assert.equal(await getGroupAdminState({
+    async getGroupInfo() { return { gridInfoMap: { group: { creatorId: "owner" } } }; }
   }, "group", "member"), null);
   assert.equal(await getGroupAdminState({
     async getGroupInfo() { throw new Error("Zalo unavailable"); }

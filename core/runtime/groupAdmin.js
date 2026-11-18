@@ -1,24 +1,29 @@
 "use strict";
 
 /**
- * Three-state group-admin lookup:
- * true  = confirmed creator/admin
+ * true = confirmed creator/deputy
  * false = confirmed ordinary member
- * null  = missing/partial metadata or API failure
+ * null = insufficient metadata or Zalo API failure
  *
- * Moderation features should act only on false; unknown must fail safe.
+ * A matching creatorId or adminIds entry independently proves QTV access.
+ * A negative decision needs both fields to avoid misclassifying an unknown QTV.
  */
 async function getGroupAdminState(api, threadId, userId) {
   if (!threadId || userId == null || String(userId) === "" ||
       typeof api?.getGroupInfo !== "function") return null;
+
   try {
     const response = await api.getGroupInfo(String(threadId));
     const group = response?.gridInfoMap?.[String(threadId)];
-    if (!group || group.creatorId == null || !Array.isArray(group.adminIds)) return null;
+    if (!group) return null;
+
     const uid = String(userId);
-    if (String(group.creatorId) === uid ||
+    if (group.creatorId != null && String(group.creatorId) === uid) return true;
+    if (Array.isArray(group.adminIds) &&
         group.adminIds.some(id => String(id) === uid)) return true;
-    return false;
+
+    if (group.creatorId != null && Array.isArray(group.adminIds)) return false;
+    return null;
   } catch {
     return null;
   }
