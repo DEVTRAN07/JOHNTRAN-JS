@@ -10,15 +10,17 @@ STK dùng catalog nhẹ nằm trong bot và lấy ảnh từ kho công khai:
 
 1. Gửi ảnh, sticker, GIF hoặc video vào Zalo.
 2. Reply đúng tin media đó.
-3. Gõ /stk dis 1 đến /stk dis 200 (prefix thực tế lấy từ cấu hình bot).
-4. Gõ /stk dis để gửi ảnh menu.
+3. Gõ /stk để gửi menu 200 khung.
+4. Reply ảnh/sticker/GIF/video và gõ /stk dis 1 đến /stk dis 200 để ghép khung.
+5. /stk dis không có số vẫn được hỗ trợ như lệnh mở menu cũ.
 
 Khi không reply media, bot thử lấy avatar Zalo của người gửi lệnh. Nếu media reply bị 404, bot thử dùng avatar của chủ tin được reply, tương tự Python.
 
 ## Cơ chế tải ảnh và cache
 
 - Bot không chứa 200 ảnh trong repository.
-- /stk dis chỉ tải menu.jpg.
+- /stk chỉ tải menu.jpg.
+- /stk dis cũng có thể mở menu nếu không có số.
 - /stk dis N chỉ tải file PNG của ID N, không tải toàn bộ kho.
 - Ảnh được lưu ở thư mục stk-discord trong Persistent Disk nếu JT_PERSISTENT_DIR được cấu hình; trên Render hiện khai báo mount /opt/render/project/data nên cache ở /opt/render/project/data/stk-discord.
 - Khi chạy local mà không có JT_PERSISTENT_DIR, cache nằm trong cache/stk-discord/.
