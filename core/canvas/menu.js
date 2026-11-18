@@ -217,38 +217,6 @@ function paintMainMenuBackdrop(ctx, w, h, palette, options) {
   paintBackdrop(ctx, w, h, options);
 }
 
-function drawMainMenuShell(ctx, x, y, w, h, radius, palette) {
-  ctx.save();
-  rounded(ctx, x, y, w, h, radius);
-  ctx.shadowColor = "rgba(0,0,0,.52)";
-  ctx.shadowBlur = theme.S(28);
-  ctx.shadowOffsetY = theme.S(12);
-  const fill = ctx.createLinearGradient(x, y, x + w, y + h);
-  fill.addColorStop(0, theme.rgba(palette.panel[0], 0.075));
-  fill.addColorStop(0.48, "rgba(7,24,44,.09)");
-  fill.addColorStop(1, theme.rgba(palette.panel[1], 0.12));
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.restore();
-
-  rounded(ctx, x, y, w, h, radius);
-  ctx.strokeStyle = palette.border;
-  ctx.lineWidth = Math.max(1, theme.S(1.25));
-  ctx.stroke();
-
-  rounded(ctx, x + theme.S(3), y + theme.S(3), w - theme.S(6), h - theme.S(6), Math.max(0, radius - theme.S(3)));
-  ctx.strokeStyle = "rgba(220,244,255,.10)";
-  ctx.lineWidth = Math.max(1, theme.S(0.8));
-  ctx.stroke();
-
-  const topGlow = ctx.createLinearGradient(x + theme.S(25), y, x + w - theme.S(25), y);
-  topGlow.addColorStop(0, "rgba(98,220,255,0)");
-  topGlow.addColorStop(0.48, "rgba(98,220,255,.42)");
-  topGlow.addColorStop(1, "rgba(98,220,255,0)");
-  ctx.fillStyle = topGlow;
-  ctx.fillRect(x + theme.S(24), y + theme.S(1), w - theme.S(48), Math.max(1, theme.S(1.2)));
-}
-
 function drawMenuPill(ctx, x, y, w, h, text, palette) {
   ctx.save();
   rounded(ctx, x, y, w, h, h / 2);
@@ -340,12 +308,9 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, p
     sharpen: 0.42
   });
 
-  // Layer 2: one inset glass shell sits above the cinematic background.
-  const panelX = S(18);
-  const panelY = S(17);
-  const panelW = W - panelX * 2;
-  const panelH = H - panelY * 2;
-  drawMainMenuShell(ctx, panelX, panelY, panelW, panelH, S(20), palette);
+  // The photo is layer 1. All menu content is the single transparent
+  // layer 2; do not place another full-size shell between them.
+  const contentTop = S(17);
 
   const margin = S(32);
   const brandX = margin + S(38);
@@ -404,7 +369,7 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, p
     W - margin * 2 - S(110)
   );
 
-  // Layer 3: each category is an individually raised module inside the shell.
+  // Layer 2: translucent command modules sit directly over the theme photo.
   const columns = 3;
   const gap = S(10);
   const gridY = S(93);
@@ -425,7 +390,7 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, p
 
   const footerX = margin;
   const footerH = S(52);
-  const footerY = H - panelY - footerH - S(8);
+  const footerY = H - contentTop - footerH - S(8);
   const footerW = W - margin * 2;
 
   ctx.save();
