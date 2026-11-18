@@ -55,7 +55,7 @@ function randomColorStyles(message, options = {}) {
   let previousColor = null;
 
   // match.index / match[0].length đều tính theo UTF-16, khớp với offset API Zalo.
-  for (const match of text.matchAll(/[\\p{L}\\p{N}]+/gu)) {
+  for (const match of text.matchAll(/[\p{L}\p{N}]+/gu)) {
     if (styles.length >= MAX_RANDOM_COLOR_SEGMENTS) break;
 
     const start = match.index ?? 0;
