@@ -24,17 +24,9 @@ const RANDOM_TEXT_COLORS = Object.freeze([
   TextStyle.Green
 ]);
 const RANDOM_TEXT_COLOR_SET = new Set(RANDOM_TEXT_COLORS);
-const MAX_RANDOM_COLOR_SEGMENTS = 240;
 
-function collectRanges(styles, mentions) {
+function collectMentionRanges(mentions) {
   const ranges = [];
-  for (const style of Array.isArray(styles) ? styles : []) {
-    const start = Number(style?.start);
-    const len = Number(style?.len);
-    if (Number.isInteger(start) && start >= 0 && Number.isInteger(len) && len > 0) {
-      ranges.push({ start, end: start + len });
-    }
-  }
   for (const mention of Array.isArray(mentions) ? mentions : []) {
     const start = Number(mention?.pos);
     const len = Number(mention?.len);
@@ -45,26 +37,26 @@ function collectRanges(styles, mentions) {
   return ranges;
 }
 
+function overlapsRange(start, end, ranges) {
+  return ranges.some(range => start < range.end && range.start < end);
+}
+
 function randomColorStyles(message, options = {}) {
   const text = String(message ?? "");
   if (!text) return [];
 
-  const protectedRanges = collectRanges(options.styles, options.mentions);
+  const protectedRanges = collectMentionRanges(options.mentions);
   const random = typeof options.random === "function" ? options.random : Math.random;
   const styles = [];
   let previousColor = null;
 
-  // match.index / match[0].length đều tính theo UTF-16, khớp với offset API Zalo.
-  for (const match of text.matchAll(/[\p{L}\p{N}]+/gu)) {
-    if (styles.length >= MAX_RANDOM_COLOR_SEGMENTS) break;
-
+  // Color every visible token (words, punctuation and emoji), not just letters.
+  // RegExp indices and lengths use UTF-16 offsets, as required by Zalo styles.
+  for (const match of text.matchAll(/\\S+/gu)) {
     const start = match.index ?? 0;
     const len = match[0].length;
     const end = start + len;
-    const overlapsProtectedRange = protectedRanges.some(range =>
-      start < range.end && range.start < end
-    );
-    if (overlapsProtectedRange) continue;
+    if (overlapsRange(start, end, protectedRanges)) continue;
 
     const available = RANDOM_TEXT_COLORS.filter(color => color !== previousColor);
     const sample = Number(random());
@@ -90,22 +82,27 @@ function randomize(messageContent, options = {}) {
   }
 
   const currentStyles = Array.isArray(source.styles) ? source.styles : [];
-  // Màu cũ được thay bằng màu random; Bold/Italic/Underline và mention vẫn giữ nguyên.
-  const preservedStyles = currentStyles.filter(style =>
-    !RANDOM_TEXT_COLOR_SET.has(style?.st)
-  );
   const generatedStyles = randomColorStyles(source.msg, {
-    styles: preservedStyles,
     mentions: source.mentions,
     random: options.random
   });
 
-  return {
-    ...source,
-    styles: [...preservedStyles, ...generatedStyles]
-  };
-}
+  // A Zalo text span can carry one style only. Give color priority for every
+  // visible token, removing old bold/italic/color spans that would cover it.
+  // Keep structural styles that apply only to whitespace or mention ranges.
+  const preservedStyles = currentStyles.filter(style => {
+    const start = Number(style?.start);
+    const len = Number(style?.len);
+    if (!Number.isInteger(start) || start < 0 || !Number.isInteger(len) || len <= 0) return false;
+    if (RANDOM_TEXT_COLOR_SET.has(style?.st)) return false;
+    return !overlapsRange(start, start + len, generatedStyles);
+  });
 
+  const styles = [...preservedStyles, ...generatedStyles]
+    .sort((a, b) => Number(a.start) - Number(b.start) || Number(a.len) - Number(b.len));
+
+  return { ...source, styles };
+}
 
 function pad(label, width) {
   const plain = String(label).replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "");
