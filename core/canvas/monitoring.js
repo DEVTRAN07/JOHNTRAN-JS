@@ -19,7 +19,7 @@ function text(ctx, value, x, y, size, color, bold, align, maxWidth) {
     color,
     align: align || "left",
     maxWidth,
-    multicolor: ![theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(color)
+    multicolor: true
   });
   ctx.restore();
 }
