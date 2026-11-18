@@ -303,28 +303,34 @@ function inputArgs(filePath, extension, animated, fps) {
   return ["-stream_loop", "-1", "-i", filePath];
 }
 
-function buildFilterGraph(fps = DEFAULT_FPS) {
+function buildFilterGraph(fps = DEFAULT_FPS, canvasSize = CANVAS_SIZE) {
   // Composite RGB separately from alpha. FFmpeg's overlay auto format can
   // discard alpha on some builds, so reconstruct an explicit union mask:
   // avatar circle OR the Discord frame's original alpha channel.
-  const center = OFFSET + AVATAR_SIZE / 2;
+  // Smaller fallback canvases keep animated stickers below Zalo's 512 KB cap.
+  const outputSize = Math.max(160, Math.min(CANVAS_SIZE,
+    Math.round((Number(canvasSize) || CANVAS_SIZE) / 2) * 2));
+  const scale = outputSize / CANVAS_SIZE;
+  const avatarSize = Math.max(128, Math.round((AVATAR_SIZE * scale) / 2) * 2);
+  const offset = Math.round((outputSize - avatarSize) / 2);
+  const center = offset + avatarSize / 2;
   const circleMask =
-    "255*max(0\\,min(1\\," + AVATAR_SIZE / 2 + "-hypot(X-" + center +
+    "255*max(0\\,min(1\\," + avatarSize / 2 + "-hypot(X-" + center +
     "\\,Y-" + center + ")))";
   return [
-    "[0:v]scale=" + AVATAR_SIZE + ":" + AVATAR_SIZE +
+    "[0:v]scale=" + avatarSize + ":" + avatarSize +
       ":force_original_aspect_ratio=increase:flags=lanczos," +
-      "crop=" + AVATAR_SIZE + ":" + AVATAR_SIZE +
+      "crop=" + avatarSize + ":" + avatarSize +
       ",setsar=1,format=rgba[avatar]",
-    "[1:v]scale=" + CANVAS_SIZE + ":" + CANVAS_SIZE +
+    "[1:v]scale=" + outputSize + ":" + outputSize +
       ":force_original_aspect_ratio=decrease:flags=lanczos," +
-      "pad=" + CANVAS_SIZE + ":" + CANVAS_SIZE +
+      "pad=" + outputSize + ":" + outputSize +
       ":(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,format=rgba," +
       "split=2[decorColor][decorAlphaSource]",
-    "[2:v]format=rgb24[base]",
-    "[base][avatar]overlay=" + OFFSET + ":" + OFFSET + ":format=auto[stage]",
+    "[2:v]scale=" + outputSize + ":" + outputSize + ",format=rgb24[base]",
+    "[base][avatar]overlay=" + offset + ":" + offset + ":format=auto[stage]",
     "[stage][decorColor]overlay=0:0:format=auto,format=rgb24,fps=" + fps + "[rgb]",
-    "nullsrc=s=" + CANVAS_SIZE + "x" + CANVAS_SIZE + ":r=" + fps +
+    "nullsrc=s=" + outputSize + "x" + outputSize + ":r=" + fps +
       ",format=gray,geq=lum='" + circleMask + "'[circle]",
     "[decorAlphaSource]alphaextract,format=gray[decorAlpha]",
     "[circle][decorAlpha]blend=all_mode=lighten[mask]",
@@ -374,35 +380,52 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
   const sourceAnimated = isAnimatedBuffer(sourceBuffer, sourceExtension);
   const overlayAnimated = isAnimatedBuffer(overlayBuffer, path.extname(decorationPath));
   const animated = sourceAnimated || overlayAnimated;
-  // 288px stickers usually fit on the first encode; only retry once with a
-  // lighter profile instead of spending minutes across five encodes.
-  const profiles = [
-    { fps: 10, quality: 38 },
-    { fps: 7, quality: 26 }
+  // Keep the normal 288px quality first. If complex media still exceeds 512 KB,
+  // progressively lower FPS, duration and canvas dimensions before falling
+  // back to a small first-frame WebP. The final fallback always remains usable.
+  const profiles = animated ? [
+    { size: 288, fps: 10, quality: 38, duration: 5 },
+    { size: 288, fps: 7, quality: 26, duration: 5 },
+    { size: 256, fps: 6, quality: 22, duration: 4 },
+    { size: 224, fps: 5, quality: 18, duration: 3 },
+    { size: 192, fps: 4, quality: 12, duration: 2 },
+    { size: 192, fps: 1, quality: 10, duration: 1, firstFrameOnly: true }
+  ] : [
+    { size: 288, fps: 1, quality: 38, duration: 1 },
+    { size: 256, fps: 1, quality: 24, duration: 1 },
+    { size: 224, fps: 1, quality: 16, duration: 1 },
+    { size: 192, fps: 1, quality: 10, duration: 1 }
   ];
+
+  const totalBudgetMs = 45000;
+  const totalStartedAt = Date.now();
   let lastError = null;
-  for (const profile of profiles) {
+  const attempts = [];
+
+  for (let index = 0; index < profiles.length; index += 1) {
+    const profile = profiles[index];
     const outputPath = makeTempName("stk_dis", ".webp");
-    const filter = buildFilterGraph(profile.fps);
+    const outputAnimated = animated && !profile.firstFrameOnly;
+    const filter = buildFilterGraph(profile.fps, profile.size);
     const args = [
       "-hide_banner", "-loglevel", "error", "-y",
       ...inputArgs(sourcePath, sourceExtension, sourceAnimated, profile.fps),
       ...inputArgs(decorationPath, path.extname(decorationPath), overlayAnimated, profile.fps),
       "-f", "lavfi", "-i",
-      "color=c=black:s=" + CANVAS_SIZE + "x" + CANVAS_SIZE + ":r=" + profile.fps,
+      "color=c=black:s=" + profile.size + "x" + profile.size + ":r=" + profile.fps,
       "-filter_complex", filter,
       "-map", "[out]",
       "-an"
     ];
 
-    if (animated) args.push("-t", String(ANIMATION_SECONDS));
+    if (outputAnimated) args.push("-t", String(profile.duration));
     else args.push("-frames:v", "1");
 
     args.push(
       "-c:v", "libwebp",
       "-lossless", "0",
       "-q:v", String(profile.quality),
-      "-compression_level", "4",
+      "-compression_level", "6",
       "-preset", "picture",
       "-threads", "2",
       "-pix_fmt", "yuva420p",
@@ -410,33 +433,76 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
       outputPath
     );
 
-    try {
-      await runFfmpeg(binary, args);
-      const stat = fs.statSync(outputPath);
-      if (stat.size > 0 && stat.size <= MAX_OUTPUT_BYTES) {
-        return {
-          path: outputPath,
-          width: CANVAS_SIZE,
-          height: CANVAS_SIZE,
-          size: stat.size,
-          animated,
-          format: "webp"
-        };
-      }
-      lastError = new Error("Sticker sau nén vượt giới hạn 512 KB.");
-    } catch (error) {
-      lastError = new Error(
-        "Không thể ghép khung Discord bằng FFmpeg: " +
-        String(error.stderr || error.message || error).slice(-500)
-      );
+    const remainingMs = totalBudgetMs - (Date.now() - totalStartedAt);
+    if (remainingMs <= 0) {
+      lastError = new Error("Hết thời gian tối đa khi nén sticker.");
+      break;
     }
 
-    try { fs.rmSync(outputPath, { force: true }); } catch {}
+    try {
+      await runFfmpeg(binary, args, Math.min(10000, remainingMs));
+      const stat = fs.statSync(outputPath);
+      attempts.push({
+        size: profile.size,
+        fps: profile.fps,
+        quality: profile.quality,
+        duration: outputAnimated ? profile.duration : 0,
+        bytes: stat.size
+      });
+      console.info(
+        "[stk] webpAttempt=" + (index + 1) +
+        " canvas=" + profile.size +
+        " fps=" + profile.fps +
+        " quality=" + profile.quality +
+        " bytes=" + stat.size
+      );
+
+      if (stat.size > 0 && stat.size <= MAX_OUTPUT_BYTES) {
+        const result = {
+          path: outputPath,
+          width: profile.size,
+          height: profile.size,
+          size: stat.size,
+          animated: outputAnimated,
+          format: "webp"
+        };
+        if (profile.firstFrameOnly) result.degradedAnimation = true;
+        if (profile.size < CANVAS_SIZE) result.downscaled = true;
+        return result;
+      }
+      lastError = new Error("Sticker sau nén vẫn vượt giới hạn 512 KB.");
+    } catch (error) {
+      lastError = new Error(
+        "Không thể ghép/nén khung Discord bằng FFmpeg: " +
+        String(error.stderr || error.message || error).slice(-500)
+      );
+      console.warn(
+        "[stk] webpAttempt=" + (index + 1) + " thất bại: " +
+        String(error.message || error)
+      );
+    } finally {
+      if (fs.existsSync(outputPath)) {
+        try {
+          if (!fs.statSync(outputPath).size || fs.statSync(outputPath).size > MAX_OUTPUT_BYTES) {
+            fs.rmSync(outputPath, { force: true });
+          }
+        } catch {
+          try { fs.rmSync(outputPath, { force: true }); } catch {}
+        }
+      }
+    }
   }
 
-  throw lastError || new Error("Không thể tạo sticker Discord.");
+  const details = attempts.length
+    ? " Các mức đã thử: " + attempts.map(a =>
+      a.size + "px/" + a.fps + "fps/" + a.quality + "q=" + Math.round(a.bytes / 1024) + "KB"
+    ).join(", ") + "."
+    : "";
+  throw new Error(
+    "Không thể nén sticker xuống dưới 512 KB sau nhiều mức giảm chất lượng." +
+    details + " Vui lòng thử ảnh khác."
+  );
 }
-
 
 /**
  * Fast path for a static avatar + static PNG decoration.
