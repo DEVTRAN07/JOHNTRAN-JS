@@ -593,7 +593,7 @@ async function sendAntiMenu({ api, event, Threads }) {
     // The image already contains all six live statuses and concise usage
     // guidance. Send one caption with it; do not repeat the same table as text.
     await api.sendMessage({
-      msg:"🛡️ BẢO VỆ NHÓM · TRẠNG THÁI HIỆN TẠI",
+      msg:"🛡️ ANTI-PROTECTION V2",
       attachments:[imagePath],
       ttlKind:"card"
     }, event.threadId, event.type);
