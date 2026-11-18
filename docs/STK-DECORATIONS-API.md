@@ -1,8 +1,12 @@
 # Discord Decorations API for /stk
 
-JOHNTRAN-JS exposes a cached catalog backed by the public
+JOHNTRAN-JS serves a bundled metadata snapshot of the community-maintained
 [uhidontkno/DiscordAvatarDecorations](https://github.com/uhidontkno/DiscordAvatarDecorations)
-asset archive. This is a community-maintained archive, not an official Discord API.
+archive. The catalog contains 136 decoration entries built from 202 PNG/GIF/WebP/APNG source assets at commit
+`804611c782965a2c3a8050e1135c9a91882a8ce7`.
+
+The manifest is included in the application at `core/data/discordDecorations.manifest.json`.
+Normal catalog reads do not call GitHub or jsDelivr metadata APIs; this avoids GitHub API rate limits and HTTP 403 failures.
 
 ## Authentication
 
@@ -24,26 +28,27 @@ Example:
 
     GET /api/stk/decorations?q=anime&limit=15
 
-Response includes total, sourceSha, cachedAt, stale, and decorations. Each decoration has a stable ID, display name, collection, static image URL, optional animated URL, and source link.
+Response includes total, sourceSha, cachedAt, stale, and decorations. Each decoration has a stable ID, display name, collection, CDN image URL, raw GitHub fallback URL, optional animated URL, and source link.
 
 ### Get one decoration
 
     GET /api/stk/decorations/shop-anime-in-love
 
-### Refresh catalog
+### Reload bundled catalog
 
     POST /api/stk/decorations/refresh
 
-Refresh pulls the GitHub repository tree and replaces the local catalog snapshot. Normal reads use a six-hour cache with stale-while-revalidate behavior.
+This endpoint only reloads the local manifest from disk. It does not call GitHub or an external metadata API. To update the source snapshot, update the bundled manifest in a reviewed repository commit.
 
 ## Bot commands
 
 Reply to an image, GIF, or video, then use:
 
-- /stk list [page]: browse the catalog, 15 entries per page.
-- /stk find <keyword>: search by name or collection.
-- /stk <decoration-id>: apply the selected decoration.
-- /stk random: pick a random decoration from the cached catalog.
-- /stk khung or /stk 1 … /stk 5: use the original five built-in frames.
+- `/stk list [page]`: browse the catalog, 15 entries per page.
+- `/stk find <keyword>`: search by name or collection.
+- `/stk <decoration-id>`: apply the selected decoration.
+- `/stk random`: choose a random decoration from the local manifest.
 
-Decoration image files are downloaded only when first selected and then kept in the local sticker asset cache for seven days. GIF/WebP/APNG overlays are kept animated when FFmpeg supports the required codecs. All generated sticker outputs continue to respect the existing 512 KB size cap.
+The five old custom frames (Discord Classic/Nitro/Midnight/Neon/Hologram) have been removed from the command and renderer.
+
+Decoration image files are downloaded only when first selected and then kept in the local sticker asset cache for seven days. The primary asset source is the pinned jsDelivr CDN URL; a pinned raw GitHub URL is used as fallback. GIF/WebP/APNG overlays are kept animated when FFmpeg supports the required codecs. All generated sticker outputs continue to respect the existing 512 KB size cap.
