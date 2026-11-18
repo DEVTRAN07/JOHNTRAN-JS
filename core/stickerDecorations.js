@@ -113,6 +113,7 @@ function buildCatalog(tree, sourceSha = null, generatedAt = Date.now()) {
       category: group.category,
       collection: group.collection,
       animated: Boolean(animatedUrl),
+      staticAvailable: Boolean(group.staticPath),
       staticUrl: staticUrl || animatedUrl,
       animatedUrl,
       sourcePath: group.staticPath || apngFallback || animatedPath,
