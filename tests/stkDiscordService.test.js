@@ -120,7 +120,7 @@ test("Discord STK adaptive WebP encoder compresses complex animation below 512 K
   const output = await service.createWebp(sourcePath, sourceBuffer, ".gif", framePath);
   assert.ok(output.size > 0 && output.size <= service.MAX_OUTPUT_BYTES,
     "adaptive compression must always return a Zalo-sized file");
-  assert.ok([288, 256, 224, 192].includes(output.width));
+  assert.ok([288, 256, 224, 192, 160].includes(output.width));
   assert.equal(output.width, output.height);
   assert.equal(output.format, "webp");
   assert.ok(fs.existsSync(output.path));

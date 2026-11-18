@@ -398,7 +398,10 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
     { size: 288, fps: 1, quality: 38, duration: 1 },
     { size: 256, fps: 1, quality: 24, duration: 1 },
     { size: 224, fps: 1, quality: 16, duration: 1 },
-    { size: 192, fps: 1, quality: 10, duration: 1 }
+    { size: 192, fps: 1, quality: 10, duration: 1 },
+    // Last-resort static profile for high-detail photos that still exceed
+    // Zalo's 512 KB sticker transport limit at the normal 192px fallback.
+    { size: 160, fps: 1, quality: 5, duration: 1 }
   ];
 
   const totalBudgetMs = 45000;
