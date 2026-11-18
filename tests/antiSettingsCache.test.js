@@ -12,7 +12,7 @@ function installConfig() {
 }
 
 function makeApi(threadId) {
-  const calls = { deleted: [], sent: [], ownId: 0, groupInfo: 0 };
+  const calls = { deleted: [], sent: [], kicked: [], ownId: 0, groupInfo: 0 };
   const api = {
     getOwnId() {
       calls.ownId++;
