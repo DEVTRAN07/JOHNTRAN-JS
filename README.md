@@ -213,21 +213,17 @@ flowchart TB
     DISPATCH --> TASK["Task Manager<br/>Timeout · dedupe · cancellation"]
     TASK --> Q["Queue Router<br/>Backpressure · priority"]
     Q --> MQ["Music Lane"]
-    Q --> SQ["Sticker Lane"]
     Q --> VQ["Media Lane"]
     Q --> CQ["Canvas Lane"]
     MQ --> MW["Music Engine / Workers"]
-    SQ --> SW["Sticker Engine / Workers"]
     VQ --> VW["Media Engine / Workers"]
     CQ --> CW["Canvas Engine / Workers"]
     MW --> ZA["Zalo Adapter"]
-    SW --> ZA
     VW --> ZA
     CW --> ZA
     CORE --> SVC["Shared Services"]
     TASK --> SVC
     MW --> SVC
-    SW --> SVC
     VW --> SVC
     CW --> SVC
     SVC --> STORE["Storage / Repositories"]
@@ -241,7 +237,7 @@ flowchart TB
 1. **Gateway** nhận event từ Zalo và chuẩn hoá dữ liệu đúng một lần.
 2. **Core Pipeline** xác định lệnh, kiểm tra quyền, cooldown, chống spam và trạng thái lệnh.
 3. **Dispatcher** chọn fast path cho lệnh nhẹ hoặc chuyển tác vụ nặng sang Task Manager.
-4. **Queue Router** đưa tác vụ vào lane riêng (music, sticker, media, canvas), giới hạn concurrency và hàng đợi.
+4. **Queue Router** đưa tác vụ vào lane riêng (music, media, canvas), giới hạn concurrency và hàng đợi.
 5. **Engine/Worker** xử lý tác vụ; thao tác cần phiên đăng nhập Zalo đi qua Zalo Adapter.
 6. **Response Controller** gửi ACK/progress/kết quả; Metrics ghi nhận thời gian dispatch, queue, xử lý và gửi phản hồi.
 
@@ -254,7 +250,7 @@ flowchart TB
 | `core/loader/*`, `plugins/commands/*`, `plugins/events/*` | Plugin discovery, registry và command handlers |
 | `core/jobQueue.js`, `core/workerPool.js`, `core/workers/*` | Queue router và worker execution |
 | `core/music/*` | Music engine |
-| `core/stickerConvert.js`, `stickerCreate.js`, `stickerFactory.js`, `stickerFrames.js`, `stickerStore.js` | Sticker engine |
+| `core/stickerStore.js` | Kho sticker hiệu ứng có sẵn, dùng riêng cho `/spamsticker` |
 | `core/mediaDownloader.js`, `mediaCache.js`, `mediaReply.js`, `videoMeta.js`, `tiktok.js` | Media engine |
 | `core/canvas/*` | Canvas renderer |
 | `core/storage/*`, `core/controller/*`, `utils/db.js` | Storage và repositories |
@@ -340,8 +336,6 @@ JOHNTRAN-JS/
 | `/getvoice` (reply video) | Trích xuất audio từ video rồi gửi voice |
 | `/getvd` (reply video) | Tải video gốc → upload asyncfile → gửi video gốc (không nén) |
 | `/delmsg <N>` / `/delmsg <N> @tag` | Admin bot hoặc admin nhóm xóa tối đa N tin gần nhất trong cache 24 giờ của chính mình (không tag) hoặc người được tag; chỉ gồm tin bot đã nhận khi đang chạy (Zalo không còn API tải lịch sử nhóm), tối đa 100 tin/lần; tài khoản bot cần quyền xóa tin trong nhóm |
-| `/stk` (reply ảnh/GIF/video/sticker) | Phân tích ảnh → **tìm sticker Zalo thật** trong kho → gõ số để gửi |
-| `/stkvd` (reply GIF/video/sticker động) | Như trên nhưng ưu tiên sticker **động** (type 1) |
 | `/autodown on` / `off` / `status` | Bật tự tải media trong nhóm. Đang bật thì **mọi link gửi vào nhóm** đều được tự tải (không cần prefix). Bot bỏ qua tin do chính mình gửi và tin là lệnh → không bị lặp |
 | `/noi <văn bản>` | Bot đọc thành giọng nói (cần `ai.tts_enabled: true`) |
 | `/events [tên] on\|off` | Bật/tắt **bộ sự kiện tự động** (mặc định tắt) |
@@ -389,10 +383,6 @@ JOHNTRAN-JS/
 | `/spamsticker off` | Dừng spam sticker |
 | `/spamsticker list` / `reload` / `test` | Xem kho / nạy lại / kiểm tra nguồn (không spam) |
 
-> **Lưu ý về sticker:** Zalo API không cho bot **tạo** sticker mới từ ảnh/video.
-> Nên `/stk` và `/stkvd` phân tích màu ảnh reply → gợi ý từ khóa → **tìm sticker
-> CÓ SẴN trong kho Zalo** (qua `searchSticker` + `getStickersDetail`) → bạn gõ
-> số để gửi. Reply đúng sticker gốc thì gửi lại sticker đó.
 
 - Folder ngôn từ spam: `assets/spam/*.txt` — MỖI FILE = MỘT NGÔN NGỮ (`vi`, `en`, `zh`, `ja`, `ko`, `th`, `mix`). Mỗi dòng một câu, dòng `#` là chú thích. Sửa file xong gõ `/spam reload`, **không cần sửa code**.
 - Kho sticker hiệu ứng nạp 1 lần rồi nhớ 30 phút; mỗi lần `reload` xáo trộn và quét 24 bộ sticker mới.
