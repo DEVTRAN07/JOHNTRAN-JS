@@ -126,6 +126,7 @@ function getReplyQuote(event) {
 }
 
 async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationPath) {
+  fs.mkdirSync(TMP_DIR, { recursive: true });
   const binary = stickerService.resolveFfmpegBinary();
   if (!(await stickerService.hasWebpEncoder())) {
     throw new Error("FFmpeg trên máy chủ chưa hỗ trợ libwebp. Hãy cài FFmpeg có encoder libwebp.");
