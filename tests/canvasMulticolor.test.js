@@ -66,10 +66,62 @@ test("Canvas keeps semantic success/error colors when requested", () => {
   const canvas = createCanvas(400, 80);
   const ctx = canvas.getContext("2d");
   const draws = captureTextDraws(ctx);
-  theme.text(ctx, "ONLINE", 10, 35, { size: 18, color: theme.PALETTE.green });
+  theme.text(ctx, "ONLINE", 10, 35, {
+    size: 18, color: theme.PALETTE.green, multicolor: false
+  });
   assert.equal(draws.length, 1);
   assert.equal(draws[0].value, "ONLINE");
   assert.equal(draws[0].color, theme.PALETTE.green);
+});
+
+test("semantic accent text is multicolor by default, with an explicit solid-color opt-out", () => {
+  const ctx = createCanvas(600, 90).getContext("2d");
+  const draws = captureTextDraws(ctx);
+  theme.text(ctx, "ĐANG BẬT HOẠT ĐỘNG", 12, 38, {
+    size: 20,
+    color: theme.PALETTE.green
+  });
+  const words = draws.filter(item => /[\\p{L}\\p{N}]/u.test(item.value));
+  assert.equal(words.length, 3);
+  assert.ok(words.every(item => theme.RANDOM_TEXT_COLORS.includes(item.color)));
+  assert.ok(new Set(words.map(item => item.color)).size > 1);
+});
+
+test("Vietnamese combining marks stay attached and are not lost while coloring", () => {
+  const decomposed = "Tie\\u0302\\u0301ng Vie\\u0323\\u0302t";
+  const graphemes = theme.splitGraphemes(decomposed);
+  assert.ok(graphemes.includes("e\\u0302\\u0301"));
+  assert.ok(graphemes.includes("e\\u0323\\u0302"));
+  assert.equal(graphemes.join(""), decomposed);
+
+  const ctx = createCanvas(700, 90).getContext("2d");
+  const draws = captureTextDraws(ctx);
+  const result = theme.drawMulticolorText(ctx, decomposed, 12, 40, {
+    size: 24, color: "#ffffff", multicolor: true
+  });
+  assert.equal(result.text, decomposed);
+  assert.ok(draws.some(item => item.value.includes("e\\u0302\\u0301")),
+    "the base letter and its combining accents must be drawn together");
+  assert.ok(draws.some(item => item.value.includes("e\\u0323\\u0302")));
+});
+
+test("long unbroken URLs and IDs wrap by grapheme without dropping characters", () => {
+  const ctx = createCanvas(700, 90).getContext("2d");
+  ctx.font = "20px Arial";
+  const source = "https://example.com/ID_" + "a".repeat(46);
+  const lines = theme.wrapText(ctx, source, 95);
+  assert.ok(lines.length > 2);
+  assert.equal(lines.join(""), source);
+  assert.ok(lines.every(line => ctx.measureText(line).width <= 95));
+});
+
+test("letter-spaced Canvas labels preserve each accented Vietnamese grapheme", () => {
+  const ctx = createCanvas(800, 90).getContext("2d");
+  const draws = captureTextDraws(ctx);
+  theme.label(ctx, "Tie\\u0302\\u0301ng Vie\\u0323\\u0302t", 10, 42);
+  assert.ok(draws.length >= 8);
+  assert.ok(draws.some(item => item.value === "e\\u0302\\u0301"));
+  assert.ok(draws.some(item => item.value === "e\\u0323\\u0302"));
 });
 
 test("Custom game and Nối Từ Canvas renderers use word-level multicolor text", () => {
