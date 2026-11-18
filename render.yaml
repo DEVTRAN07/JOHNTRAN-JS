@@ -8,8 +8,6 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22.22.1"
-      - key: FFMPEG_PATH
-        value: /usr/bin/ffmpeg
       - key: JT_ACCOUNT_FILE
         value: /opt/render/project/data/account.json
       - key: JT_DB_FILE
