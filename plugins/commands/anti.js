@@ -6,7 +6,7 @@ const http = require("../../core/http");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
 const fsSync = require("fs");
-const { getBotGroupRole } = require("../../core/runtime/botGroupKey");
+const { getBotGroupRole, getBotId } = require("../../core/runtime/botGroupKey");
 const { ANTI_PROTECTION_KEYS } = require("../../core/runtime/antiProtection");
 const { runThreadQueue } = require("../../core/runtime/threadQueue");
 const { sendAntiToggleNotice } = require("../../core/runtime/antiToggle");
@@ -735,8 +735,10 @@ async function handleAntiEvent(context = {}) {
     if (eventType === "group_event") {
       if (threadData.anti_join === true && String(event.type || "").toLowerCase() === "join") {
         const members = Array.isArray(data.updateMembers) ? data.updateMembers : [];
+        // Reuse the UID already resolved during bot-role validation so a
+        // transient second lookup failure cannot classify the bot as a member.
         let ownId = "";
-        try { ownId = String(await api.getOwnId() || ""); } catch {}
+        try { ownId = String(await getBotId(api) || ""); } catch {}
         const histories = threadData.anti_join_history && typeof threadData.anti_join_history === "object"
           ? { ...threadData.anti_join_history } : {};
         const warningCounts = threadData.anti_join_warnings && typeof threadData.anti_join_warnings === "object"
@@ -1280,20 +1282,29 @@ async function sendAntiMenu({ api, event, Threads }) {
     enabled:data[item.key] === true
   }));
 
+  // Expose the runtime prerequisite beside the persisted ON/OFF flags.
+  let botRole = "unknown";
+  try { botRole = await getBotGroupRole(api, event.threadId); } catch {}
+  const botRoleNotice = botRole === "owner" || botRole === "deputy"
+    ? "✅ TÀI KHOẢN BOT ĐÃ CÓ QTV — Anti đang đủ điều kiện hoạt động."
+    : botRole === "member"
+      ? "⛔ BOT CHƯA CÓ QTV — Anti đang tạm ngừng xử lý. Hãy thêm bot làm phó nhóm."
+      : "⚠️ CHƯA XÁC MINH ĐƯỢC QTV CỦA BOT — Anti đang tạm ngừng xử lý.";
+
   let imagePath = null;
   try {
     imagePath = await renderCanvas("anti-protection-v2", { items, prefix });
     // The image already contains all six live statuses and concise usage
     // guidance. Send one caption with it; do not repeat the same table as text.
     await api.sendMessage({
-      msg:"🛡️ ANTI-PROTECTION V2",
+      msg:"🛡️ ANTI-PROTECTION V2\n" + botRoleNotice,
       attachments:[imagePath],
       ttlKind:"card"
     }, event.threadId, event.type);
   } catch (error) {
     console.error("[ANTI_MENU_V2] Canvas mới không render được:", error?.stack || error);
     return api.sendMessage({
-      msg:buildAntiMenuText(data, prefix) + "\n⚠️ Không tạo được ảnh Anti-Protection, bot đã gửi hướng dẫn dạng chữ."
+      msg:botRoleNotice + "\n\n" + buildAntiMenuText(data, prefix) + "\n⚠️ Không tạo được ảnh Anti-Protection, bot đã gửi hướng dẫn dạng chữ."
     }, event.threadId, event.type);
   } finally {
     if (imagePath) {

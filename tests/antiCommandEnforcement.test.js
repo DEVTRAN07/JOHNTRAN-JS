@@ -206,6 +206,45 @@ test("Anti-Join gives three warnings for rejoining and kicks on the next rejoin"
   assert.match(calls.sent.at(-1).payload.msg, /sau 3 lần cảnh cáo và bị kick/i);
 });
 
+test("Anti-Join never counts the bot as a rejoining member during self-test mode", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_anti: true };
+  const threadId = "anti-join-self-test";
+  const threadData = { anti_join: true };
+  let ownIdCalls = 0;
+  const base = makeApi(threadId);
+  const api = {
+    ...base.api,
+    async getOwnId() {
+      ownIdCalls++;
+      if (ownIdCalls === 1) return "bot-id";
+      throw new Error("simulated transient UID lookup failure");
+    }
+  };
+  const Threads = {
+    async getData() { return { data: threadData }; },
+    async setDataAndWait(_threadId, next) { Object.assign(threadData, next); }
+  };
+  const event = {
+    threadId,
+    type: "join",
+    isSelf: true,
+    data: { updateMembers: [{ id: "bot-id", dName: "JOHNTRAN" }] }
+  };
+
+  try {
+    await anti.handleEvent({ event, eventType: "group_event", isSelf: true, api, Threads });
+    assert.equal(ownIdCalls, 1, "Anti-Join should reuse the bot ID resolved during role validation");
+    assert.equal(base.calls.kicked.length, 0);
+    assert.equal(base.calls.sent.length, 0);
+    assert.equal(threadData.anti_join_history, undefined);
+    assert.equal(threadData.anti_join_warnings, undefined);
+  } finally {
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
+
 test("Anti-Join retains the three warnings when Zalo refuses the kick", async () => {
   const threadId = "anti-rejoin-kick-refused";
   const { api, calls } = makeApi(threadId, {
