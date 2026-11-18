@@ -53,9 +53,8 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
   sendingLock.set(lockKey, true);
   try {
     const provider = music.getProvider(providerName);
-    // The command dispatcher already acknowledges receipt. Never wait for a
-    // redundant Zalo reaction before resolving or starting the audio pipeline.
-    void Promise.resolve(reply.working?.()).catch(() => {});
+    // The dispatcher owns delayed progress feedback; avoid an extra Zalo
+    // reaction request before resolving or starting the audio pipeline.
 
     let filePath = null;
     try {
@@ -70,7 +69,7 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
 
       // Audio is the primary result. Never wait for a decorative card.
       await api.sendVoice({ voiceUrl }, threadId, type);
-      await reply.done();
+      void Promise.resolve(reply.done?.()).catch(() => {});
 
       setImmediate(() => {
         enqueue("canvas", async () => {
@@ -87,8 +86,8 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
       });
     } catch (error) {
       logger.log(`[music:${providerName}] ${error.message}`, "error");
-      await reply.failed();
       await friendlyError(error, reply);
+      void Promise.resolve(reply.failed?.()).catch(() => {});
     } finally {
       if (filePath && fs.existsSync(filePath)) {
         try { fs.unlinkSync(filePath); } catch { /* ignore */ }
@@ -209,8 +208,7 @@ async function runMusic(providerName, { api, event, args, reply, Threads: thread
   }
 
   const query = options.queryArgs.join(" ");
-  // Progress reactions are cosmetic and must not gate SoundCloud discovery/search.
-  void Promise.resolve(reply.working?.()).catch(() => {});
+  // The dispatcher emits progress only if search outlives its grace period.
   let tracks;
   try {
     tracks = await enqueue("music-search", () => music.search(providerName, query), {
