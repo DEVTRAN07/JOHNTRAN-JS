@@ -232,3 +232,10 @@ test("retry timer keeps the job counted while it waits in the runnable queue", a
   assert.equal(await retryPromise, "ok");
   assert.equal(attempts, 2);
 });
+
+
+test("STK worker lane defaults to two concurrent jobs", () => {
+  const { DEFAULT_LANES, STICKER_CONCURRENCY } = require("../core/jobQueue");
+  assert.equal(STICKER_CONCURRENCY, 2);
+  assert.equal(DEFAULT_LANES.sticker.concurrency, 2);
+});
