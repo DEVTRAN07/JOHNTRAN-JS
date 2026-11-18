@@ -42,6 +42,9 @@ test("bare /anti sends one Anti-Protection image with no duplicate plaintext tab
     assert.equal(rendered.length, 1);
     assert.equal(rendered[0].type, "anti-protection-v2");
     assert.equal(rendered[0].data.items.length, 6);
+    assert.deepEqual(rendered[0].data.items.map(item => item.command), [
+      "/antinude", "/antirecall", "/antilink", "/antispam", "/anti link", "/anti spam"
+    ], "the single Anti image must retain each mode's command usage");
     assert.deepEqual(rendered[0].data.items.map(item => item.key), [
       "anti_nude", "anti_undo", "anti_danger_link",
       "anti_sticker_spam", "anti_link", "anti_spam"
