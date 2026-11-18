@@ -120,8 +120,8 @@ test("letter-spaced Canvas labels preserve each accented Vietnamese grapheme", (
   const draws = captureTextDraws(ctx);
   theme.label(ctx, "Tie\u0302\u0301ng Vie\u0323\u0302t", 10, 42);
   assert.ok(draws.length >= 8);
-  assert.ok(draws.some(item => item.value === "e\u0302\u0301"));
-  assert.ok(draws.some(item => item.value === "e\u0323\u0302"));
+  assert.ok(draws.some(item => item.value === "E\u0302\u0301"));
+  assert.ok(draws.some(item => item.value === "E\u0323\u0302"));
 });
 
 test("Custom game and Nối Từ Canvas renderers use word-level multicolor text", () => {
