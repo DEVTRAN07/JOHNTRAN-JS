@@ -1,142 +1,247 @@
-const fs = require("fs");
-const path = require("path");
-const { createCanvas } = require("canvas");
+"use strict";
 
-const FRAME_DIR = path.join(__dirname, "..", "khung-stk");
+const fs = require("node:fs");
+const path = require("node:path");
+const { createCanvas, loadImage } = require("canvas");
+
+const SIZE = 512;
 const CACHE_DIR = path.join(__dirname, "..", "assets", "cache", "sticker");
 
-// Bộ khung premium được vẽ bằng vector/canvas ở độ phân giải gốc.
-// Tâm ảnh luôn trong suốt; chỉ giữ viền mảnh và họa tiết ở vành ngoài.
-const FRAMES = [
-  { id: 1, name: "Mộng Vuốt Rồng", colors: ["#f6d98b", "#a96b25", "#fff0bd"], accent: "#ffe7a3", motif: "dragon" },
-  { id: 2, name: "Nguyệt Quang", colors: ["#d9e8ff", "#6179b8", "#f5f7ff"], accent: "#c9dcff", motif: "moon" },
-  { id: 3, name: "Kim Long", colors: ["#fff0a8", "#b77a19", "#fff8d8"], accent: "#ffe18a", motif: "gold" },
-  { id: 4, name: "Tinh Tú", colors: ["#e4c8ff", "#7652a8", "#f8eaff"], accent: "#e5c6ff", motif: "stars" },
-  { id: 5, name: "Hoa Anh Đào", colors: ["#ffd9e7", "#c36d91", "#fff0f5"], accent: "#ffc5dc", motif: "blossom" }
-];
+const FRAMES = Object.freeze([
+  { id: 1, name: "Discord Classic", tag: "CLASSIC", colors: ["#5865F2", "#8295FF", "#C9D1FF"], accent: "#FFFFFF", glow: "#5865F2", style: "classic" },
+  { id: 2, name: "Discord Nitro", tag: "NITRO", colors: ["#7B4DFF", "#E35BFF", "#FF9ACB"], accent: "#FFE8FF", glow: "#A855F7", style: "nitro" },
+  { id: 3, name: "Midnight Discord", tag: "MIDNIGHT", colors: ["#15264F", "#3478F6", "#65D8FF"], accent: "#B9EFFF", glow: "#287BFF", style: "midnight" },
+  { id: 4, name: "Discord Neon", tag: "NEON", colors: ["#00C2FF", "#6558FF", "#D84DFF"], accent: "#EAFBFF", glow: "#00C2FF", style: "neon" },
+  { id: 5, name: "Discord Hologram", tag: "HOLOGRAM", colors: ["#B8A7FF", "#7F8EFF", "#9EF1FF"], accent: "#FFFFFF", glow: "#A99CFF", style: "hologram" }
+]);
 
-function frameList() {
-  return FRAMES.map(({ id, name }) => ({ id, name }));
+function roundedRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
-function drawStar(ctx, x, y, radius, color) {
+function drawDiscordGlyph(ctx, x, y, color, scale = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(8, 4);
+  ctx.quadraticCurveTo(8, 0, 13, 0);
+  ctx.lineTo(42, 0);
+  ctx.quadraticCurveTo(47, 0, 47, 5);
+  ctx.lineTo(47, 23);
+  ctx.quadraticCurveTo(47, 28, 42, 28);
+  ctx.lineTo(23, 28);
+  ctx.lineTo(13, 36);
+  ctx.lineTo(14, 28);
+  ctx.lineTo(8, 28);
+  ctx.quadraticCurveTo(3, 28, 3, 23);
+  ctx.lineTo(3, 8);
+  ctx.quadraticCurveTo(3, 4, 8, 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#22243D";
+  ctx.beginPath(); ctx.arc(18, 14, 2.6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(33, 14, 2.6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawSparkle(ctx, x, y, radius, color) {
   ctx.save();
   ctx.translate(x, y);
   ctx.fillStyle = color;
   ctx.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const a = -Math.PI / 2 + i * Math.PI / 5;
-    const r = i % 2 ? radius * 0.38 : radius;
-    const px = Math.cos(a) * r;
-    const py = Math.sin(a) * r;
-    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-  }
+  ctx.moveTo(0, -radius);
+  ctx.quadraticCurveTo(radius * 0.17, -radius * 0.17, radius, 0);
+  ctx.quadraticCurveTo(radius * 0.17, radius * 0.17, 0, radius);
+  ctx.quadraticCurveTo(-radius * 0.17, radius * 0.17, -radius, 0);
+  ctx.quadraticCurveTo(-radius * 0.17, -radius * 0.17, 0, -radius);
   ctx.closePath();
   ctx.fill();
   ctx.restore();
 }
 
-function drawMotif(ctx, frame, x, y, scale) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-  ctx.strokeStyle = frame.accent;
-  ctx.fillStyle = frame.accent;
-  ctx.lineWidth = 2.2;
-  ctx.globalAlpha = 0.9;
+function makeGradient(ctx, frame, x1 = 20, y1 = 20, x2 = SIZE - 20, y2 = SIZE - 20) {
+  const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+  gradient.addColorStop(0, frame.colors[2]);
+  gradient.addColorStop(0.48, frame.colors[0]);
+  gradient.addColorStop(1, frame.colors[1]);
+  return gradient;
+}
 
-  if (frame.motif === "blossom") {
-    for (let i = 0; i < 5; i++) {
-      const a = i * Math.PI * 2 / 5;
-      ctx.beginPath();
-      ctx.ellipse(Math.cos(a) * 7, Math.sin(a) * 7, 4.5, 7, a, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
-  } else if (frame.motif === "stars") {
-    drawStar(ctx, 0, 0, 10, frame.accent);
-    drawStar(ctx, 14, -12, 3.5, "#ffffff");
-  } else if (frame.motif === "moon") {
-    ctx.beginPath(); ctx.arc(0, 0, 9, -Math.PI / 2, Math.PI / 2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(5, -1, 8, -Math.PI / 2, Math.PI / 2); ctx.stroke();
-    drawStar(ctx, 15, -12, 3, "#ffffff");
-  } else if (frame.motif === "dragon") {
-    ctx.beginPath();
-    ctx.moveTo(-11, 7); ctx.quadraticCurveTo(-2, -15, 10, -4);
-    ctx.quadraticCurveTo(16, 4, 5, 12); ctx.stroke();
-    ctx.beginPath(); ctx.arc(8, -5, 2.2, 0, Math.PI * 2); ctx.fill();
-  } else {
-    drawStar(ctx, 0, 0, 8, frame.accent);
-    ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.stroke();
-  }
+function drawBadge(ctx, frame) {
+  ctx.save();
+  ctx.shadowColor = frame.glow;
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = "rgba(18, 20, 38, 0.82)";
+  roundedRect(ctx, 163, 452, 186, 39, 19);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = makeGradient(ctx, frame, 163, 452, 349, 491);
+  ctx.lineWidth = 2;
+  roundedRect(ctx, 163, 452, 186, 39, 19);
+  ctx.stroke();
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "bold 15px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("DISCORD  •  " + frame.tag, 256, 472);
   ctx.restore();
 }
 
-function renderFrame(frameId) {
-  const frame = FRAMES.find((item) => item.id === Number(frameId));
-  if (!frame) throw new Error(`Mẫu khung phải từ 1 đến ${FRAMES.length}`);
+function drawFrame(frameId, outputPath) {
+  const frame = FRAMES.find(item => item.id === Number(frameId));
+  if (!frame) throw new RangeError("Mẫu khung Discord phải từ 1 đến " + FRAMES.length);
 
   fs.mkdirSync(CACHE_DIR, { recursive: true });
-  const framePath = path.join(CACHE_DIR, `premium-frame-${frame.id}.png`);
-  const canvas = createCanvas(480, 480);
+  const target = outputPath || path.join(CACHE_DIR, "discord-frame-" + frame.id + ".png");
+  const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext("2d");
-  const cx = 240, cy = 240;
+  ctx.clearRect(0, 0, SIZE, SIZE);
 
-  // Viền kép mảnh ôm sát ảnh, không phủ vào vùng chủ thể.
-  const ring = ctx.createLinearGradient(45, 55, 430, 430);
-  ring.addColorStop(0, frame.colors[2]);
-  ring.addColorStop(0.48, frame.colors[0]);
-  ring.addColorStop(1, frame.colors[1]);
+  // The centre deliberately stays transparent: the user's media remains visible.
   ctx.save();
-  ctx.shadowColor = frame.colors[1];
-  ctx.shadowBlur = 12;
-  ctx.strokeStyle = ring;
-  ctx.lineWidth = 12;
-  ctx.beginPath(); ctx.arc(cx, cy, 207, 0, Math.PI * 2); ctx.stroke();
+  ctx.shadowColor = frame.glow;
+  ctx.shadowBlur = 22;
+  ctx.strokeStyle = makeGradient(ctx, frame, 16, 16, 496, 496);
+  ctx.lineWidth = 20;
+  roundedRect(ctx, 24, 24, 464, 464, 108);
+  ctx.stroke();
   ctx.restore();
 
-  ctx.strokeStyle = frame.colors[2];
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.78)";
+  ctx.lineWidth = 3;
+  roundedRect(ctx, 42, 42, 428, 428, 91);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,0.24)";
   ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(cx, cy, 216, 0, Math.PI * 2); ctx.stroke();
-  ctx.globalAlpha = 0.48;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(cx, cy, 220, 0, Math.PI * 2); ctx.stroke();
-  ctx.globalAlpha = 1;
-  ctx.strokeStyle = frame.colors[1];
-  ctx.globalAlpha = 0.8;
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(cx, cy, 197, 0, Math.PI * 2); ctx.stroke();
-  ctx.globalAlpha = 1;
+  roundedRect(ctx, 12, 12, 488, 488, 122);
+  ctx.stroke();
+  ctx.restore();
 
-  // Bốn điểm nhấn nhỏ, tránh làm khung nặng và rối mắt.
-  for (let i = 0; i < 4; i++) {
-    const a = -Math.PI / 4 + i * Math.PI / 2;
-    const x = cx + Math.cos(a) * 211;
-    const y = cy + Math.sin(a) * 211;
-    ctx.fillStyle = frame.colors[2];
-    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = frame.colors[1];
-    ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.stroke();
-    drawMotif(ctx, frame, cx + Math.cos(a) * 232, cy + Math.sin(a) * 232, 0.72);
+  // Small Discord-inspired identity plate and status accents sit on the edge only.
+  ctx.save();
+  ctx.shadowColor = frame.glow;
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = "rgba(25, 27, 54, 0.88)";
+  roundedRect(ctx, 48, 37, 92, 47, 20);
+  ctx.fill();
+  ctx.restore();
+  drawDiscordGlyph(ctx, 68, 47, frame.colors[2], 0.78);
+
+  ctx.save();
+  ctx.fillStyle = "rgba(24, 26, 48, 0.85)";
+  roundedRect(ctx, 385, 42, 78, 30, 15);
+  ctx.fill();
+  ctx.fillStyle = frame.colors[2];
+  ctx.beginPath(); ctx.arc(402, 57, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "bold 10px Arial";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText("ONLINE", 414, 57);
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = makeGradient(ctx, frame, 50, 440, 462, 440);
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(95, 437); ctx.lineTo(153, 437); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(359, 437); ctx.lineTo(417, 437); ctx.stroke();
+  ctx.restore();
+
+  drawBadge(ctx, frame);
+  drawSparkle(ctx, 63, 119, 8, frame.accent);
+  drawSparkle(ctx, 449, 119, 7, frame.accent);
+  drawSparkle(ctx, 64, 395, 6, frame.colors[2]);
+  drawSparkle(ctx, 448, 395, 6, frame.colors[2]);
+
+  if (frame.style === "nitro" || frame.style === "hologram") {
+    ctx.save();
+    ctx.globalAlpha = 0.82;
+    ctx.strokeStyle = frame.colors[2];
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(256, 26, 12, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(256, 486, 12, 1.15 * Math.PI, 1.85 * Math.PI); ctx.stroke();
+    ctx.restore();
   }
 
-  // Các chấm sáng rất nhỏ tạo cảm giác cao cấp nhưng không gây nhiễu.
-  for (let i = 0; i < 8; i++) {
-    const a = -Math.PI / 2 + i * Math.PI / 4;
-    const x = cx + Math.cos(a) * 230;
-    const y = cy + Math.sin(a) * 230;
-    ctx.fillStyle = frame.accent;
-    ctx.globalAlpha = 0.75;
-    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+  fs.writeFileSync(target, canvas.toBuffer("image/png"));
+  return target;
+}
+
+async function renderSamplePreview(frameId, outputPath) {
+  const frame = FRAMES.find(item => item.id === Number(frameId));
+  if (!frame) throw new RangeError("Mẫu khung Discord phải từ 1 đến " + FRAMES.length);
+  const canvas = createCanvas(SIZE, SIZE);
+  const ctx = canvas.getContext("2d");
+  const bg = ctx.createLinearGradient(0, 0, SIZE, SIZE);
+  bg.addColorStop(0, "#171A35");
+  bg.addColorStop(0.55, "#35417F");
+  bg.addColorStop(1, "#171B29");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  ctx.save();
+  ctx.globalAlpha = 0.65;
+  ctx.fillStyle = frame.colors[1];
+  ctx.beginPath(); ctx.arc(355, 176, 130, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = frame.colors[2];
+  ctx.beginPath(); ctx.arc(164, 330, 112, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.textAlign = "center";
+  ctx.font = "bold 42px Arial";
+  ctx.fillText("JOHNTRAN", 256, 251);
+  ctx.font = "16px Arial";
+  ctx.fillText("DISCORD STICKER PREVIEW", 256, 279);
+
+  const framePath = drawFrame(frameId, outputPath ? outputPath + ".overlay.png" : undefined);
+  try {
+    const overlay = await loadImage(framePath);
+    ctx.drawImage(overlay, 0, 0, SIZE, SIZE);
+    const target = outputPath || path.join(CACHE_DIR, "discord-frame-preview-" + frame.id + ".png");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, canvas.toBuffer("image/png"));
+    return target;
+  } finally {
+    if (outputPath) {
+      try { fs.unlinkSync(framePath); } catch {}
+    }
   }
-  ctx.globalAlpha = 1;
-  fs.writeFileSync(framePath, canvas.toBuffer("image/png"));
-  return framePath;
 }
 
-function resolveFramePath(frameId) {
-  return renderFrame(frameId);
+function frameList() {
+  return FRAMES.map(({ id, name, tag }) => ({ id, name, tag }));
 }
 
-module.exports = { frameList, resolveFramePath };
+function getFrame(frameId) {
+  return FRAMES.find(item => item.id === Number(frameId)) || null;
+}
+
+function normalizeFrameId(value, fallback = 1) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const id = Number(value);
+  return Number.isInteger(id) && FRAMES.some(frame => frame.id === id) ? id : null;
+}
+
+module.exports = {
+  SIZE,
+  frameList,
+  getFrame,
+  normalizeFrameId,
+  renderFrame: drawFrame,
+  renderSamplePreview
+};
