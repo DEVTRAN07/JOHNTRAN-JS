@@ -69,8 +69,8 @@ function scheduleRecallCountdown(api, message, threadId, type, delayMs) {
   if (!message || (typeof message.msgId !== "number" && typeof message.msgId !== "string") ||
       (typeof message.cliMsgId !== "number" && typeof message.cliMsgId !== "string")) return;
 
-  // At most ten updates per message so a busy group does not receive a
-  // reaction request every second for each short-lived bot reply.
+  // Use a small number of clock states so each expiring message does not
+  // create a burst of reaction API calls in busy groups.
   addRecallClock(api, message, threadId, type, RECALL_COUNTDOWN_CLOCKS[0]);
   const ticks = Math.min(DEFAULT_RECALL_CLOCK_TICKS, Math.max(1, Math.floor(delayMs / 1000)));
   for (let step = 1; step <= ticks; step += 1) {
