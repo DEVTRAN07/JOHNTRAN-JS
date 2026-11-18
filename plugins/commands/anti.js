@@ -633,7 +633,7 @@ function createMentionMessage(text, name, userId) {
   };
 }
 
-async function enforceAntiViolation({ api, event, Threads, sendNotice, userId, ensureBotKey, reason, warningKey, deleteEvents, ensureBotKey }) {
+async function enforceAntiViolation({ api, event, Threads, sendNotice, userId, ensureBotKey, reason, warningKey, deleteEvents }) {
   // Verify only after a local rule has positively identified a violation.
   if (typeof ensureBotKey === "function" && !(await ensureBotKey())) {
     return { consumed: false, skipped: true };
