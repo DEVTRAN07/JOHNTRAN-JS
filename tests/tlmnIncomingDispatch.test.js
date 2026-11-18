@@ -59,7 +59,8 @@ test("plain text messages reach TLMN after Nối Từ declines them", async () =
   assert.equal(calls.noitu.length, 1);
   assert.equal(calls.tlmn.length, 1);
   assert.equal(calls.tlmn[0].event, event);
-  assert.equal(calls.tlmn[0].api, api);
+  assert.notEqual(calls.tlmn[0].api, api);
+  assert.equal(Object.getPrototypeOf(calls.tlmn[0].api), api, "game handler receives the timing-enabled API wrapper");
   assert.equal(calls.tlmn[0].Users, Users);
   assert.equal(calls.tlmn[0].Threads, Threads);
   assert.equal(calls.tlmn[0].isSelf, false);
