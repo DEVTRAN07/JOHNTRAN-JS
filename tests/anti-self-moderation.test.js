@@ -107,10 +107,17 @@ test("URL extraction covers plain text, recommended links, and nested Zalo metad
 });
 
 
-async function runLinkModeration({ isSelf = false, senderId = "member", allowSelf = false } = {}) {
+async function runLinkModeration({
+  isSelf = false,
+  senderId = "member",
+  allowSelf = false,
+  featureKey = "anti_link",
+  url = "https://example.com/blocked",
+  isSafe = false
+} = {}) {
   anti._test.clearAntiSelfEchoes();
   global.config = { allow_self_anti: allowSelf };
-  const calls = { deleted: [], sent: [], groupLookups: 0 };
+  const calls = { deleted: [], undone: [], sent: [], scanned: [], groupLookups: 0 };
   const api = {
     getOwnId() { return "bot-account"; },
     async getGroupInfo(threadId) {
@@ -121,9 +128,17 @@ async function runLinkModeration({ isSelf = false, senderId = "member", allowSel
         }
       };
     },
-    async deleteMessage(destination, force) {
-      calls.deleted.push({ destination, force });
-      return { success: true };
+    async scanURL(value) {
+      calls.scanned.push(value);
+      return { isSafe };
+    },
+    async deleteMessage(destination, onlyMe) {
+      calls.deleted.push({ destination, onlyMe });
+      return { status: 0 };
+    },
+    async undo(payload, threadId, type) {
+      calls.undone.push({ payload, threadId, type });
+      return { status: 0 };
     },
     async sendMessage(payload, threadId, type) {
       calls.sent.push({ payload, threadId, type });
@@ -132,7 +147,7 @@ async function runLinkModeration({ isSelf = false, senderId = "member", allowSel
   };
   const Threads = {
     async getData() {
-      return { data: { anti_link: true } };
+      return { data: { [featureKey]: true } };
     }
   };
   const event = {
@@ -144,7 +159,7 @@ async function runLinkModeration({ isSelf = false, senderId = "member", allowSel
       dName: "Tester",
       msgId: "original-msg",
       cliMsgId: "original-cli",
-      content: "https://example.com/blocked"
+      content: url
     }
   };
 
@@ -158,17 +173,25 @@ async function runLinkModeration({ isSelf = false, senderId = "member", allowSel
   return calls;
 }
 
-test("Anti link moderates a self-sent bot test message when explicitly enabled", async () => {
+test("Anti link recalls a bot self-test message with undo instead of deleteMessage", async () => {
   const calls = await runLinkModeration({
     isSelf: true,
     senderId: "bot-account",
-    allowSelf: true
+    allowSelf: true,
+    featureKey: "anti_danger_link"
   });
 
   assert.equal(calls.groupLookups, 1, "the bot QTV key is checked");
-  assert.equal(calls.deleted.length, 1, "the link message is deleted");
+  assert.deepEqual(calls.scanned, ["https://example.com/blocked"], "antilink uses Zalo scanURL");
+  assert.equal(calls.deleted.length, 0, "deleteMessage must not be used for the bot's own message");
+  assert.equal(calls.undone.length, 1, "the bot's own violation must be recalled through undo");
+  assert.deepEqual(calls.undone[0], {
+    payload: { msgId: "original-msg", cliMsgId: "original-cli" },
+    threadId: "anti-e2e-group",
+    type: ThreadType.Group
+  });
   assert.equal(calls.sent.length, 1, "one warning is sent");
-  assert.match(calls.sent[0].payload.msg, /không được gửi link/i);
+  assert.match(calls.sent[0].payload.msg, /link nguy hiểm/i);
 });
 
 test("Anti link continues to moderate ordinary members while self testing is disabled", async () => {
@@ -179,7 +202,8 @@ test("Anti link continues to moderate ordinary members while self testing is dis
   });
 
   assert.equal(calls.groupLookups, 1);
-  assert.equal(calls.deleted.length, 1);
+  assert.equal(calls.deleted.length, 1, "a member's link uses group deleteMessage");
+  assert.equal(calls.undone.length, 0);
   assert.equal(calls.sent.length, 1);
 });
 
@@ -193,6 +217,7 @@ test("Anti link does not exempt a group owner or deputy sender", async () => {
 
   assert.equal(calls.groupLookups, 1, "the bot's QTV key is verified independently");
   assert.equal(calls.deleted.length, 1, "the group owner link is moderated too");
+  assert.equal(calls.undone.length, 0);
   assert.equal(calls.sent.length, 1);
 });
 
