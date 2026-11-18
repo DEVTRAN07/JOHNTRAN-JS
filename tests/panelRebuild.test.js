@@ -28,7 +28,7 @@ test("rebuilt panel JavaScript parses without browser-side dependencies", () => 
 
 test("Panel chat generates randomized multi-color word spans with UTF-16-safe offsets", () => {
   const start = js.indexOf("function buildRandomColorStyles(");
-  const end = js.indexOf("\\n}", start);
+  const end = js.indexOf("\n}", start);
   assert.ok(start >= 0 && end > start, "random color span builder must exist");
   const source = js.slice(start, end + 2);
   const build = vm.runInNewContext("(" + source + ")", {
