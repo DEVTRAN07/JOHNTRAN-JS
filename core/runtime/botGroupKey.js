@@ -35,6 +35,19 @@ async function getBotId(api) {
   return state.botIdPromise;
 }
 
+function getUncachedGroupInfo(api, groupId) {
+  // core/message wraps APIs with Object.create(rawApi) and shadows getGroupInfo
+  // with a five-minute cache. Read through the raw API prototype so an admin
+  // demotion is observed on our short role-cache refresh instead of much later.
+  let rawApi = null;
+  try { rawApi = Object.getPrototypeOf(api); } catch {}
+  const rawMethod = rawApi && typeof rawApi.getGroupInfo === "function"
+    ? rawApi.getGroupInfo
+    : null;
+  if (rawMethod) return rawMethod.call(rawApi, groupId);
+  return api.getGroupInfo(groupId);
+}
+
 function classifyBotGroupRole(groupInfo, botId) {
   const uid = String(botId || "").trim();
   if (!uid || !groupInfo || typeof groupInfo !== "object") return "unknown";
@@ -141,7 +154,7 @@ async function collectBotGroupKeys(api, options = {}) {
     batches,
     GROUP_INFO_CONCURRENCY,
     async batch => {
-      try { return await api.getGroupInfo(batch); }
+      try { return await getUncachedGroupInfo(api, batch); }
       catch { return null; }
     }
   );
