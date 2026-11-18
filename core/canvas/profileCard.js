@@ -4,6 +4,7 @@ const fs = require("fs");
 const Jimp = require("jimp");
 const { loadImage } = require("canvas");
 const theme = require("./theme");
+const themeBackgrounds = require("./themeBackgrounds");
 
 const CYAN = "#61d8f2";
 const GREEN = "#54d6a0";
@@ -16,6 +17,7 @@ async function circle(buffer) {
 }
 
 async function render(options = {}) {
+  await themeBackgrounds.prepare();
   theme.initFonts();
   const S = theme.S, width = theme.WIDTH, p = theme.PALETTE;
   const rows = Array.isArray(options.rows) ? options.rows.slice(0, 8) : [];
