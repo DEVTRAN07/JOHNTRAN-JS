@@ -441,9 +441,30 @@ class Reply {
     }
   }
 
-  working() { return this.react(Reactions.PRAY); }
-  done() { return this.react(Reactions.OK); }
-  failed() { return this.react(Reactions.CRY); }
+  // Progress status is cosmetic. Never await a Zalo reaction before the
+  // command can do useful work or return its primary result.
+  working(options = {}) {
+    const requestedDelay = Number(options?.delayMs);
+    const delay = Number.isFinite(requestedDelay)
+      ? Math.max(0, Math.min(5000, Math.floor(requestedDelay)))
+      : 600;
+    this.scheduleAcknowledgement(() => {
+      void this.react(Reactions.PRAY);
+    }, delay);
+    return Promise.resolve(false);
+  }
+
+  finishWithReaction(reaction) {
+    this.cancelAcknowledgement();
+    this.reacted = true;
+    setImmediate(() => {
+      void this.react(reaction);
+    });
+    return Promise.resolve(false);
+  }
+
+  done() { return this.finishWithReaction(Reactions.OK); }
+  failed() { return this.finishWithReaction(Reactions.CRY); }
 }
 
 // ZaloApi của zalo-client khai báo MỌI method bằng accessor get/set (lazy).
