@@ -373,6 +373,9 @@ function help(prefix) {
     "⚔️ GAME CỜ CARO 16×16",
     "",
     "🎮 CHẾ ĐỘ CHƠI",
+    "Gõ " + prefix + "caro để mở menu chọn nhanh:",
+    "• Gửi 1 / chọn 1 — Đấu Bot AI (Solo).",
+    "• Gửi 2 / chọn 2 — Tạo phòng PvP.",
     `${prefix}caro solo [x/o] [truoc/sau] — Đấu Bot AI`,
     `${prefix}caro pvp [x/o] — Tạo phòng 2 người`,
     "join caro hoặc " + prefix + "caro join — Tham gia phòng PvP",
@@ -622,22 +625,44 @@ async function handleMove({ api, event, Users }, text) {
 
 async function handleIncoming(context = {}) {
   const { event, isSelf, Threads } = context;
-  if (isSelf) return;
-  const content = String(event?.data?.content || "").trim();
-  if (!content) return;
-  const prefix = global.config?.prefix || "/";
-  if (content.startsWith(prefix)) return;
+  const selfMessage = isSelf === true || event?.isSelf === true;
+  // config.yml allows same-account testing; accept the bot's own move only
+  // when allow_self_command is explicitly enabled.
+  if (selfMessage && global.config?.allow_self_command !== true) return false;
 
-  const lower = content.toLowerCase();
+  const content = String(event?.data?.content || "").trim();
+  if (!content) return false;
+  const prefix = global.config?.prefix || "/";
+  if (content.startsWith(prefix)) return false;
+
+  const lower = content.toLocaleLowerCase("vi-VN");
   const threadId = String(event?.threadId || "");
-  if (!threadId) return;
+  const uid = String(event?.data?.uidFrom || "");
+  if (!threadId || !uid) return false;
 
   if (lower === "join caro") return joinRoom(context);
   if (["lose", "leave", "stop"].includes(lower)) return handleSpecial(context, lower);
-  if (!/^\d{1,3}$/.test(lower)) return;
 
-  if (!await isGameEnabled(Threads, threadId)) return;
-  return handleMove(context, lower);
+  const session = game.get(threadId);
+  const cell = parseCellChoice(lower);
+  if (session?.status === "active" && cell !== null) {
+    if (!await isGameEnabled(Threads, threadId)) {
+      return send(context.api, event, "🚫 Game Caro đã được Admin tắt trong nhóm này.");
+    }
+    return handleMove(context, String(cell));
+  }
+
+  // Outside an active game, only treat a number as a mode choice when this
+  // user recently opened /caro. Explicit "chọn 1/2" is accepted directly.
+  const mode = parseModeChoice(lower);
+  const hasPendingChoice = hasPendingModeSelection(threadId, uid);
+  const explicitChoice = /^(?:ch[oọ]n\s*)[12]$/u.test(lower);
+  if (mode && (hasPendingChoice || explicitChoice)) {
+    clearModeSelection(threadId, uid);
+    return module.exports.run({ ...context, args: [mode] });
+  }
+
+  return false;
 }
 
 async function leaderboard(Users, mode = "all", month = null) {
@@ -719,8 +744,22 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   const prefix = global.config?.prefix || "/";
   if (!uid || !threadId) return;
 
-  const action = String(args[0] || "help").toLowerCase();
-  const rest = args.slice(1).map(value => String(value).toLowerCase());
+  const actionText = args.map(value => String(value)).join(" ").trim();
+  let action = String(args[0] || "").toLocaleLowerCase("vi-VN");
+  const rest = args.slice(1).map(value => String(value).toLocaleLowerCase("vi-VN"));
+
+  if (!args.length) return openModeMenu({ api, event, Users, Threads });
+
+  const selectedMode = parseModeChoice(actionText);
+  if (selectedMode) {
+    const activeSession = game.get(threadId);
+    if (activeSession?.status === "active") {
+      const selectedCell = parseCellChoice(actionText);
+      if (selectedCell !== null) return handleMove({ api, event, Users }, String(selectedCell));
+    }
+    clearModeSelection(threadId, uid);
+    action = selectedMode;
+  }
 
   if (action === "help") return send(api, event, help(prefix));
 
@@ -861,6 +900,12 @@ module.exports._test = {
   recallPreviousBoard,
   sendBoardReplacement,
   enqueueBoardUpdate,
+  rememberModeSelection,
+  hasPendingModeSelection,
+  clearModeSelection,
+  parseModeChoice,
+  parseCellChoice,
+  modeMenuText,
   leaderboard,
   updateCaroStats,
   help,
