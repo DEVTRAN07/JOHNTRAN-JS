@@ -12,11 +12,9 @@ const PAD = 40;
 function drawRandomText(ctx, value, x, y, options = {}) {
   const size = options.size || 18;
   ctx.save();
-  ctx.font = options.font || `${options.bold ? "bold " : ""}${size}px ${options.family || "P"}`;
   theme.drawMulticolorText(ctx, String(value ?? ""), x, y, {
     size,
-    family: "JT",
-    font: ctx.font,
+    family: options.family || (options.bold ? "PB" : "P"),
     color: options.color || "#ffffff",
     align: options.align || "left",
     maxWidth: options.maxWidth,
