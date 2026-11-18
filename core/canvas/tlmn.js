@@ -10,8 +10,6 @@ function drawText(ctx, text, x, y, scale, options = {}) {
   ctx.font = (options.weight || 700) + " " + size + "px " + (options.family || "Arial, sans-serif");
   const requestedColor = options.color || theme.PALETTE.ink;
   const value = String(text ?? "");
-  const words = value.match(/[\p{L}\p{N}]+/gu) || [];
-  const semanticColor = [theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(requestedColor);
   theme.drawMulticolorText(ctx, value, x, y, {
     font: ctx.font,
     color: requestedColor,
