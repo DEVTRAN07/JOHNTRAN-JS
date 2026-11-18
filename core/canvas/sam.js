@@ -10,8 +10,6 @@ function text(ctx, value, x, y, scale, options = {}) {
     (options.family || "Arial, sans-serif");
   const requestedColor = options.color || theme.PALETTE.ink;
   const content = String(value ?? "");
-  const words = content.match(/[\p{L}\p{N}]+/gu) || [];
-  const semanticColor = [theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(requestedColor);
   theme.drawMulticolorText(ctx, content, x, y, {
     font: ctx.font,
     color: requestedColor,
@@ -265,7 +263,7 @@ function renderTable(ctx, width, height, scale, data) {
   }
 
   if (data.notice) {
-    text(ctx, String(data.notice).replace(/[\r\n\t]+/g, " ").slice(0, 90),
+    text(ctx, String(data.notice).replace(/[\r\n\t]+/g, " "),
       width / 2, px(744), scale, {
         size: 10, color: p.accent2, align: "center", maxWidth: width - px(100)
       });
