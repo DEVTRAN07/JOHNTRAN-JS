@@ -315,13 +315,6 @@ async function main() {
     await saveWorker(name, type, data);
   }
 
-  // Discord sticker frames are generated with a transparent centre by the live STK renderer.
-  const stickerFrames = require("../core/stickerFrames");
-  for (const frame of stickerFrames.frameList()) {
-    const fileName = "24-stk-discord-" + frame.id + "-" + frame.tag.toLowerCase();
-    await stickerFrames.renderSamplePreview(frame.id, path.join(OUTPUT, fileName + ".png"));
-  }
-
   // /card directly invokes profileCard.render(), outside canvasWorker.
   const config = require("../core/config");
   global.config = typeof config.load === "function" ? config.load() : {};
@@ -378,7 +371,7 @@ async function main() {
     "Active outputs:",
     "01 menu, 02 menu folder, 03 topchat, 04 status, 05 /card profile,",
     "06 music search, 07 now playing, 08-11 reply.card variants, 12 generic card,",
-    "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand, 19 Anti-Protection V2, 20 photo theme gallery, 21 Nối Từ guide, 22 Ghép Chữ, 23 Caro board, 24-28 Discord STK frames.",
+    "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand, 19 Anti-Protection V2, 20 photo theme gallery, 21 Nối Từ guide, 22 Ghép Chữ, 23 Caro board.",
     "",
     "Reference only (not mapped into canvasWorker):",
     "17-18 legacy profile and avatar renderer previews."
