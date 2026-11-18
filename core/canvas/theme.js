@@ -544,5 +544,5 @@ module.exports = {
   paintBackground, panel, button, text, newCanvas, save, foil, label,
   THEME_STYLE, randomAccent, RANDOM_ACCENTS, getCardPalette,
   reload: resolveTheme, ensureTheme, sanitizeGlyphs, mixHex, rgba,
-  randomTextColor, RANDOM_TEXT_COLORS
+  randomTextColor, RANDOM_TEXT_COLORS, sharpenPhotoImageData
 };
