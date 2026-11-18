@@ -27,6 +27,20 @@ const { consumeCooldown } = require("../runtime/middleware/cooldown");
 const { dispatchCommand } = require("../runtime/dispatcher");
 const { canRunCommandInGroup } = require("../runtime/groupBotState");
 
+// These built-in plugins were checked and none consume the legacy userData
+// preload. Unknown/custom plugins keep the old preload contract by default.
+const BUILTINS_WITHOUT_USER_DATA = new Set([
+  "adc", "adduser", "admin", "anti", "anticard", "antidoodle", "antifile",
+  "antigif", "antiinvite", "antijoin", "antilink", "antilocation", "antinude",
+  "antiother", "antiphoto", "antiqr", "antireaction", "antirecall", "antisex",
+  "antispam", "antistk", "antistklag", "antitaghide", "antivideo", "antivoice",
+  "antiword", "autodown", "autokick", "autosend", "bot", "card", "caro", "cmd",
+  "delmsg", "events", "getavt", "getlink", "getvd", "getvoice", "girl", "hon",
+  "id", "infofb", "jobs", "lyric", "menu", "noi", "noitu", "reloadconfig",
+  "restart", "sam", "scl", "spam", "spamsticker", "stats", "status", "stk",
+  "theme", "tiktok", "tlmn", "topchat", "vdgirl"
+]);
+
 async function runCommandPipeline(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
   const config = global.config;
 
@@ -192,11 +206,14 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
     }
   }
 
-  // The current command set reads user records through Users only when it
-  // actually needs them. Avoid a cold storage await on every ordinary command;
-  // legacy/custom plugins can opt in explicitly with config.requiresUserData.
+  // Built-in commands that do not use userData skip the cold DB lookup.
+  // Preserve the legacy preload for custom/unknown plugins unless they opt out.
+  const commandId = String(command.config.name || commandName).toLowerCase();
+  const preloadUserData = command.config.requiresUserData === true ||
+    command.config.preloadUserData === true ||
+    (command.config.preloadUserData !== false && !BUILTINS_WITHOUT_USER_DATA.has(commandId));
   let userData = null;
-  if (command.config.requiresUserData === true) {
+  if (preloadUserData) {
     const cachedUserData = Users.getCachedData?.(UIDUsage) ?? null;
     userData = cachedUserData || await Users.getData(UIDUsage).catch(() => null);
   }
