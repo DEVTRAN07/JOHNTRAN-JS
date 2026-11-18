@@ -91,7 +91,7 @@ test("legacy anti_link blocks ordinary text and recommended links", async () => 
 });
 
 test("Anti link also moderates the group creator and deputies; no role lookup can bypass enforcement", async () => {
-  const admin = makeApi({ groupInfo: { creatorId: "owner", adminIds: ["deputy"] } });
+  const admin = makeApi({ groupInfo: { creatorId: "owner", adminIds: ["bot-id", "deputy"] } });
   await run({ anti_link: true }, admin.api, makeEvent({
     uidFrom: "owner", content: "https://owner-link.example"
   }));
