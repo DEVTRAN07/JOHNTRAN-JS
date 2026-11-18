@@ -47,7 +47,7 @@ async function render(options = {}) {
     ctx.fillStyle = g; ctx.beginPath();
     ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.font = theme.font(48, "JT-Display-Bold"); ctx.fillStyle = "#d9f8ff";
+    ctx.font = theme.font(48, "JT-Display-Bold"); ctx.fillStyle = theme.randomTextColor(String(options.name || "?") + ":profile-initial");
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(String(options.name || "?").trim().charAt(0).toUpperCase(),
       avatarX + avatarSize / 2, avatarY + avatarSize / 2);
