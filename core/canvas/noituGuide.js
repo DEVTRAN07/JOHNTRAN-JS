@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { createCanvas } = require("canvas");
+const theme = require("./theme");
 
 function roundedRect(ctx, x, y, width, height, radius) {
   const r = Math.min(radius, width / 2, height / 2);
@@ -166,22 +167,13 @@ function renderNoituGuide() {
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
-  const background = ctx.createLinearGradient(0, 0, width, height);
-  background.addColorStop(0, "#06142f");
-  background.addColorStop(.48, "#0b1e40");
-  background.addColorStop(1, "#050c1d");
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, width, height);
-
-  const glow = (cx, cy, radius, color) => {
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    g.addColorStop(0, color);
-    g.addColorStop(1, "rgba(5,12,29,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, width, height);
-  };
-  glow(350, 250, 420, "rgba(20,111,218,.34)");
-  glow(940, 300, 430, "rgba(29,89,197,.22)");
+  // Use the selected JOHNTRAN photo theme instead of painting a solid
+  // navy gradient over the whole game guide.
+  theme.paintBackground(ctx, width, height, {
+    veilAlpha: [0.12, 0.17, 0.25],
+    vignetteAlpha: 0.18,
+    auroraStrength: 0.14
+  });
 
   // Subtle diagonal technical grid.
   ctx.save();
@@ -219,7 +211,7 @@ function renderNoituGuide() {
   for (const [cx, cy, glyph] of seals) {
     ctx.beginPath();
     ctx.arc(cx, cy, 34, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(4,13,32,.84)";
+    ctx.fillStyle = "rgba(4,13,32,.34)";
     ctx.fill();
     ctx.strokeStyle = "#2784ff";
     ctx.lineWidth = 3;
@@ -259,8 +251,8 @@ function renderNoituGuide() {
   // Subtitle plate.
   roundedRect(ctx, 592, 370, 474, 62, 16);
   const plate = ctx.createLinearGradient(592, 370, 1066, 432);
-  plate.addColorStop(0, "rgba(8,26,58,.95)");
-  plate.addColorStop(1, "rgba(8,13,29,.98)");
+  plate.addColorStop(0, "rgba(8,26,58,.34)");
+  plate.addColorStop(1, "rgba(8,13,29,.42)");
   ctx.fillStyle = plate;
   ctx.fill();
   ctx.strokeStyle = "#2585ff";
