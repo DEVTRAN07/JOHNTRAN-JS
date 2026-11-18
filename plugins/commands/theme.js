@@ -20,7 +20,7 @@ module.exports.config = {
 
 function buildText(current, presets) {
   return [
-    "🎨 JOHNTRAN · UNIFIED CANVAS THEME",
+    "🎨 THEME MENU · UNIFIED CANVAS",
     "Đang dùng: " + current.label + " · " + current.accent,
     "",
     "Preset có sẵn:",
