@@ -180,3 +180,16 @@ test("Anti link continues to moderate ordinary members while self testing is dis
   assert.equal(calls.deleted.length, 1);
   assert.equal(calls.sent.length, 1);
 });
+
+
+test("Anti link does not exempt a group owner or deputy sender", async () => {
+  const calls = await runLinkModeration({
+    isSelf: false,
+    senderId: "group-owner",
+    allowSelf: false
+  });
+
+  assert.equal(calls.groupLookups, 1, "the bot's QTV key is verified independently");
+  assert.equal(calls.deleted.length, 1, "the group owner link is moderated too");
+  assert.equal(calls.sent.length, 1);
+});
