@@ -452,58 +452,45 @@ async function renderFolderCard({
     sharpen: 0.46
   });
 
-  const panelX = S(24);
-  const panelY = S(24);
-  const panelW = W - panelX * 2;
-  const panelH = S(252);
-  drawOuterPanel(ctx, panelX, panelY, panelW, panelH, S(15), palette.panel, palette.border);
-
-  const padX = panelX + S(23);
+  // Strict two-layer folder: photo background + foreground content only.
+  // No outer glass panel and no nested info card are drawn here.
+  const padX = S(48);
   const iconCenterX = padX + S(25);
-  const iconCenterY = panelY + S(52);
+  const iconCenterY = S(78);
   const slug = resolveFolderIconSlug(folderSlug, folderName);
   drawCategoryIcon(ctx, slug, iconCenterX, iconCenterY, S(54));
 
   const titleX = padX + S(70);
-  drawText(ctx, "Chi tiết chức năng: " + (folderName || "Danh mục"), titleX, panelY + S(61), 22, palette.text, true);
-  drawText(ctx, folderDescription || "Các chức năng hỗ trợ", padX, panelY + S(120), 20, palette.text, true);
+  drawText(ctx, "Chi tiết chức năng: " + (folderName || "Danh mục"), titleX, S(86), 22, palette.text, true, "left", W - titleX - S(150));
+  drawText(ctx, folderDescription || "Các chức năng hỗ trợ", padX, S(137), 20, palette.text, true, "left", W - padX - S(150));
 
+  // Instruction is plain foreground text, not a nested translucent card.
   const infoX = padX;
-  const infoY = panelY + S(149);
-  const infoW = S(502);
-  const infoH = S(42);
-  rounded(ctx, infoX, infoY, infoW, infoH, S(12));
-  ctx.fillStyle = palette.infoFill;
-  ctx.fill();
-  rounded(ctx, infoX, infoY, infoW, infoH, S(12));
-  ctx.strokeStyle = palette.infoBorder;
-  ctx.lineWidth = S(1);
-  ctx.stroke();
-
+  const infoY = S(190);
   ctx.beginPath();
-  ctx.arc(infoX + S(23), infoY + infoH / 2, S(8), 0, Math.PI * 2);
+  ctx.arc(infoX + S(9), infoY - S(5), S(8), 0, Math.PI * 2);
   ctx.strokeStyle = palette.accent;
   ctx.lineWidth = S(1.5);
   ctx.stroke();
-  drawInfoMark(ctx, infoX + S(23), infoY + infoH / 2, S(8), palette.accent);
+  drawInfoMark(ctx, infoX + S(9), infoY - S(5), S(8), palette.accent);
   drawText(
     ctx,
     "Gõ tên lệnh hoặc tag bot để thực thi chức năng " + (folderName || ""),
-    infoX + S(42),
-    infoY + S(27),
+    infoX + S(28),
+    infoY,
     15.5,
     palette.text,
     true,
     "left",
-    infoW - S(54)
+    W - infoX - S(170)
   );
 
   const avatarSize = S(76);
-  const avatarX = panelX + panelW - S(28) - avatarSize;
-  const avatarY = panelY + S(81);
+  const avatarX = W - S(104) - avatarSize;
+  const avatarY = S(44);
   await drawAvatar(ctx, requesterAvatarUrl, requesterName, avatarX, avatarY, avatarSize, true);
 
-  const footerY = panelY + panelH - S(18);
+  const footerY = H - S(22);
   // Keep the icons separate from the version label.
   drawPaletteIcon(ctx, W - S(174), footerY, S(14), palette.accent);
   drawBotIcon(ctx, W - S(140), footerY, S(16), palette.accent);
