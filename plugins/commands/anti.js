@@ -14,7 +14,7 @@ const antiSelfEchoes = new Map();
 const antiSkipLogAt = new Map();
 
 function normalizeEchoText(value) {
-  return String(value || "").replace(/\\s+/g, " ").trim().toLowerCase();
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function echoKeysFromPayload(threadId, payload) {
@@ -28,7 +28,7 @@ function echoKeysFromPayload(threadId, payload) {
     if (value == null || depth > 5) return;
     if (typeof value === "string") {
       const trimmed = value.trim();
-      if (/^https?:\\/\\//i.test(trimmed)) add("url", trimmed);
+      if (/^https?:\/\//i.test(trimmed)) add("url", trimmed);
       else add("text", trimmed);
       return;
     }
@@ -175,7 +175,7 @@ function extractMessageUrls(data) {
   const seen = new Set();
   const addText = (value) => {
     if (typeof value !== "string" || !value) return;
-    candidates.push(...(value.match(/https?:\\/\\/[^\\s<>"']+/gi) || []));
+    candidates.push(...(value.match(/https?:\/\/[^\s<>"']+/gi) || []));
   };
   const visit = (value, depth = 0) => {
     if (value == null || depth > 6) return;
@@ -214,8 +214,8 @@ function extractMessageUrls(data) {
   const urls = [];
   const unique = new Set();
   for (const raw of candidates) {
-    const url = String(raw || "").replace(/[.,;:!?]+$/g, "").replace(/[)\\]}]+$/g, "");
-    if (!/^https?:\\/\\//i.test(url)) continue;
+    const url = String(raw || "").replace(/[.,;:!?]+$/g, "").replace(/[)}\]]+$/g, "");
+    if (!/^https?:\/\//i.test(url)) continue;
     try {
       const parsed = new URL(url);
       if (!["http:", "https:"].includes(parsed.protocol)) continue;
