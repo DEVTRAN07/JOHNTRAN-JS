@@ -297,7 +297,7 @@ function paintBackground(ctx, width, height, options = {}) {
   }
 
   // Layer 1: transparent navy veil; it darkens photography without hiding it.
-  const defaultVeilAlpha = [0.38, 0.53, 0.62];
+  const defaultVeilAlpha = [0.16, 0.23, 0.30];
   const requestedVeilAlpha = Array.isArray(options.veilAlpha)
     ? options.veilAlpha
     : defaultVeilAlpha;
@@ -381,7 +381,7 @@ function paintBackground(ctx, width, height, options = {}) {
   vignette.addColorStop(0, "rgba(0,0,0,0)");
   const vignetteAlpha = Number.isFinite(Number(options.vignetteAlpha))
     ? Math.max(0, Math.min(1, Number(options.vignetteAlpha)))
-    : 0.48;
+    : 0.22;
   vignette.addColorStop(1, "rgba(0,5,16," + vignetteAlpha + ")");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
@@ -403,13 +403,13 @@ function panel(ctx, x, y, width, height, radius = THEME_STYLE.panelRadius, accen
   const palette = getCardPalette();
   ctx.save();
   roundRect(ctx, x, y, width, height, radius);
-  ctx.shadowColor = "rgba(0,0,0,.46)";
-  ctx.shadowBlur = S(16);
-  ctx.shadowOffsetY = S(6);
+  ctx.shadowColor = "rgba(0,0,0,.22)";
+  ctx.shadowBlur = S(10);
+  ctx.shadowOffsetY = S(3);
   const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
-  gradient.addColorStop(0, rgba(palette.card[0], 0.70));
-  gradient.addColorStop(0.52, rgba(mixHex(palette.card[0], "#ffffff", 0.025), 0.66));
-  gradient.addColorStop(1, rgba(palette.card[1], 0.72));
+  gradient.addColorStop(0, rgba(palette.card[0], 0.38));
+  gradient.addColorStop(0.52, rgba(mixHex(palette.card[0], "#ffffff", 0.025), 0.34));
+  gradient.addColorStop(1, rgba(palette.card[1], 0.42));
   ctx.fillStyle = gradient;
   ctx.fill();
   ctx.restore();
