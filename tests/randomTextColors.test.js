@@ -34,7 +34,7 @@ test("bot text receives random Zalo colors per visible token without changing an
   }
 });
 
-test("mentions remain untouched but words previously styled bold are colored too", () => {
+test("mentions stay linked and their visible text is also randomized", () => {
   const msg = "🤖 @Wuang chào chủ nhân, dùng help ngay.";
   const mention = { pos: 3, len: 6, uid: "member-id" };
   const helpStart = msg.indexOf("help");
@@ -47,20 +47,17 @@ test("mentions remain untouched but words previously styled bold are colored too
   }, { random: () => 0.2 });
 
   assert.equal(output.msg, msg);
-  assert.ok(!output.styles.some(style =>
-    COLOR_STYLES.has(style.st) &&
-    style.start < mention.pos + mention.len &&
-    mention.pos < style.start + style.len
-  ), "random color must not overlap the mention");
-
+  assert.deepEqual(output.mentions, [mention]);
+  assert.ok(output.styles.some(style =>
+    style.start === mention.pos && style.len === mention.len && COLOR_STYLES.has(style.st)
+  ), "mention text should receive a random color while retaining its mention metadata");
   assert.ok(output.styles.some(style =>
     style.start === helpStart && style.len === 4 && COLOR_STYLES.has(style.st)
-  ), "a previously bold word should not remain an uncolored gap");
+  ), "a previously bold word should also receive a random color");
   assert.ok(!output.styles.some(style =>
     style.start === bold.start && style.len === bold.len && style.st === TextStyle.Bold
   ));
 });
-
 test("long bot messages retain all characters and color all non-mention tokens", () => {
   const msg = ("Nội dung rất dài để kiểm tra không bị mất chữ khi tô màu. ").repeat(30);
   const output = styledText.randomize(msg, { random: () => 0.7 });
