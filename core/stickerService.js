@@ -193,7 +193,7 @@ async function fetchSource(api, url) {
     return { buffer, contentType: result.contentType || "" };
   }
 
-  const response = await http.getBuffer(url, { timeout: 60000, retries: 1 });
+  const response = await http.getBuffer(url, { timeout: 20000, retries: 0 });
   if (response.status < 200 || response.status >= 300) {
     throw new Error("Không tải được media (HTTP " + response.status + ").");
   }
@@ -429,7 +429,7 @@ function registerStickerApi(api) {
   target.custom("fetchZaloMedia", async ({ utils, props }) => {
     const url = normalizeSourceUrl(props?.url);
     if (!url || !isZaloMediaUrl(url)) throw new Error("Chỉ được tải media từ CDN Zalo hợp lệ.");
-    const response = await utils.request(url);
+    const response = await utils.request(url, { timeoutMs: 18000, retries: 0 });
     if (!response?.ok) throw new Error("Tải media lỗi HTTP " + (response?.status ?? "?"));
     const contentLength = Number(response.headers?.get?.("content-length") || 0);
     if (contentLength > MAX_SOURCE_BYTES) throw new Error("Media vượt giới hạn 20 MB.");
@@ -471,7 +471,9 @@ function registerStickerApi(api) {
     const response = await utils.request(url, {
       method: "POST",
       headers: { "content-type": multipart.contentType },
-      body: multipart.body
+      body: multipart.body,
+      timeoutMs: 20000,
+      retries: 0
     });
     return (await utils.resolve(response)) || {};
   });
@@ -520,7 +522,9 @@ function registerStickerApi(api) {
     const response = await utils.request(url, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "params=" + encodeURIComponent(encryptedParams)
+      body: "params=" + encodeURIComponent(encryptedParams),
+      timeoutMs: 20000,
+      retries: 0
     });
     const result = await utils.resolve(response);
     if (result && typeof result === "object" && !result.cliMsgId) {
