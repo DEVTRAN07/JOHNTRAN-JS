@@ -21,7 +21,7 @@ module.exports.run = async ({ args, event, reply }) => {
   const { threadId, data } = event;
   const key = music.pickKey(threadId, data.uidFrom);
 
-  await reply.working();
+  // Dispatcher handles delayed progress for long lyric lookups.
 
   if (!args[0]) {
     const pending = music.getPending(key);
