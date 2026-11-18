@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const http = require("./http");
 const frames = require("./stickerFrames");
+const decorations = require("./stickerDecorations");
 
 const UPLOAD_HOST = "https://tt-files-wpa.chat.zalo.me";
 const UPLOAD_USER_PATH = "/api/message/photo_original/upload";
@@ -14,6 +15,9 @@ const SEND_USER_PATH = "/api/message/photo_url";
 const SEND_GROUP_PATH = "/api/group/photo_url";
 const STICKER_SUFFIX = "?sticker.webp";
 const CACHE_DIR = path.join(__dirname, "..", "assets", "cache", "sticker");
+const DECORATION_ASSET_CACHE_DIR = path.join(CACHE_DIR, "decorations");
+const MAX_DECORATION_BYTES = 10 * 1024 * 1024;
+const DECORATION_ASSET_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_STICKER_BYTES = 512 * 1024;
 const MAX_ANIMATION_SECONDS = 8;
@@ -163,9 +167,11 @@ async function fetchSource(api, url) {
   return { buffer: response.buffer, contentType: response.contentType || "" };
 }
 
-async function convertMedia(inputPath, overlayPath, outputBasePath) {
+async function convertMedia(inputPath, overlayPath, outputBasePath, options = {}) {
   const webp = await hasWebpEncoder();
-  const isStatic = !/\.(gif|webp|mp4|webm|mov|m4v)$/i.test(inputPath);
+  const isStaticInput = !/\.(gif|webp|mp4|webm|mov|m4v)$/i.test(inputPath);
+  const overlayAnimated = options.overlayAnimated === true;
+  const outputAnimated = !isStaticInput || overlayAnimated;
   const profiles = [
     { size: 512, fps: FPS, quality: 68 },
     { size: 480, fps: 10, quality: 55 },
@@ -179,10 +185,12 @@ async function convertMedia(inputPath, overlayPath, outputBasePath) {
     const extension = webp ? ".webp" : ".gif";
     const outputPath = outputBasePath + profile.size + extension;
     const size = profile.size;
-    const baseInput = isStatic
+    const baseInput = isStaticInput
       ? ["-loop", "1", "-framerate", String(profile.fps), "-i", inputPath]
       : ["-i", inputPath];
-    const overlayInput = ["-loop", "1", "-framerate", String(profile.fps), "-i", overlayPath];
+    const overlayInput = overlayAnimated
+      ? ["-stream_loop", "-1", "-i", overlayPath]
+      : ["-loop", "1", "-framerate", String(profile.fps), "-i", overlayPath];
     const baseFilter =
       "[0:v]scale=" + size + ":" + size + ":force_original_aspect_ratio=increase:flags=lanczos," +
       "crop=" + size + ":" + size + ",setsar=1[base];" +
@@ -202,8 +210,8 @@ async function convertMedia(inputPath, overlayPath, outputBasePath) {
       "-map", "[sticker]",
       "-an"
     ];
-    if (isStatic) args.push("-frames:v", "1");
-    else args.push("-t", String(MAX_ANIMATION_SECONDS));
+    if (outputAnimated) args.push("-t", String(MAX_ANIMATION_SECONDS));
+    else args.push("-frames:v", "1");
     if (webp) {
       args.push("-c:v", "libwebp", "-lossless", "0", "-q:v", String(profile.quality),
         "-compression_level", "4", "-preset", "picture", "-loop", "0");
@@ -222,6 +230,7 @@ async function convertMedia(inputPath, overlayPath, outputBasePath) {
           width: size,
           height: size,
           format: webp ? "webp" : "gif",
+          animated: outputAnimated,
           size: stat.size
         };
       }
@@ -235,6 +244,75 @@ async function convertMedia(inputPath, overlayPath, outputBasePath) {
   throw lastError || new Error("Không thể tạo sticker Discord.");
 }
 
+function isAllowedDecorationAssetUrl(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || ""));
+    return parsed.protocol === "https:" &&
+      parsed.hostname === "raw.githubusercontent.com" &&
+      parsed.pathname.startsWith("/uhidontkno/DiscordAvatarDecorations/main/") &&
+      /\.(png|gif|webp|apng)$/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+async function downloadDecorationOverlay(decoration, options = {}) {
+  if (!decoration || typeof decoration !== "object") throw new Error("Decoration Discord không hợp lệ.");
+  const useAnimation = options.animated === true && decoration.animatedUrl;
+  const assetUrl = useAnimation
+    ? decoration.animatedUrl
+    : (decoration.staticUrl || decoration.animatedUrl);
+  if (!isAllowedDecorationAssetUrl(assetUrl)) {
+    throw new Error("URL decoration không thuộc kho Discord đã cấu hình.");
+  }
+
+  const parsed = new URL(assetUrl);
+  const extension = path.extname(parsed.pathname).toLowerCase();
+  const cacheKey = crypto.createHash("sha1").update(assetUrl).digest("hex");
+  const cachedPath = path.join(DECORATION_ASSET_CACHE_DIR, cacheKey + extension);
+  try {
+    const stat = fs.statSync(cachedPath);
+    if (stat.isFile() && stat.size > 0 && stat.size <= MAX_DECORATION_BYTES &&
+      now() - stat.mtimeMs < DECORATION_ASSET_TTL_MS) {
+      return {
+        path: cachedPath,
+        animated: Boolean(useAnimation || /\/apng\//i.test(parsed.pathname) || /\.(gif|webp|apng)$/i.test(extension)),
+        cached: true,
+        url: assetUrl
+      };
+    }
+  } catch {}
+
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== "function") throw new Error("Môi trường không hỗ trợ tải ảnh Discord.");
+  const response = await fetchImpl(assetUrl, {
+    headers: { "User-Agent": "JOHNTRAN-JS-sticker-decoration" },
+    signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout
+      ? AbortSignal.timeout(15000)
+      : undefined
+  });
+  if (!response?.ok) throw new Error("Không tải được khung Discord (HTTP " + (response?.status || "?") + ").");
+  const declaredLength = Number(response.headers?.get?.("content-length") || 0);
+  if (declaredLength > MAX_DECORATION_BYTES) throw new Error("Ảnh decoration vượt giới hạn 10 MB.");
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length || buffer.length > MAX_DECORATION_BYTES) throw new Error("Ảnh decoration rỗng hoặc vượt giới hạn 10 MB.");
+
+  const isPng = buffer[0] === 0x89 && buffer.subarray(1, 4).toString() === "PNG";
+  const isGif = buffer.subarray(0, 6).toString() === "GIF87a" || buffer.subarray(0, 6).toString() === "GIF89a";
+  const isWebp = buffer.subarray(0, 4).toString() === "RIFF" && buffer.subarray(8, 12).toString() === "WEBP";
+  if (!isPng && !isGif && !isWebp) throw new Error("Tệp tải về không phải ảnh PNG/GIF/WebP hợp lệ.");
+
+  fs.mkdirSync(DECORATION_ASSET_CACHE_DIR, { recursive: true });
+  const tempPath = cachedPath + "." + process.pid + ".tmp";
+  fs.writeFileSync(tempPath, buffer);
+  fs.renameSync(tempPath, cachedPath);
+  return {
+    path: cachedPath,
+    animated: Boolean(useAnimation || /\/apng\//i.test(parsed.pathname) || isGif || isWebp),
+    cached: true,
+    url: assetUrl
+  };
+}
 function resolveUploadHost(ctx) {
   const serviceHost = ctx?.loginInfo?.zpw_service_map_v3?.file?.[0];
   if (typeof serviceHost === "string" && /^https:\/\//i.test(serviceHost)) {
@@ -381,12 +459,12 @@ function registerStickerApi(api) {
   return target;
 }
 
-async function processSticker({ api, event, url, frameId = 1 }) {
+async function processSticker({ api, event, url, frameId = 1, decorationId = null }) {
   if (!api || !event?.threadId) throw new Error("Thiếu thông tin cuộc trò chuyện để gửi sticker.");
   const normalizedUrl = normalizeSourceUrl(url);
   if (!normalizedUrl) throw new Error("Link media không hợp lệ. Chỉ nhận URL HTTP/HTTPS.");
-  const frameIdNormalized = frames.normalizeFrameId(frameId);
-  if (!frameIdNormalized) throw new RangeError("Mẫu khung Discord không tồn tại.");
+  const frameIdNormalized = decorationId ? null : frames.normalizeFrameId(frameId);
+  if (!decorationId && !frameIdNormalized) throw new RangeError("Mẫu khung Discord không tồn tại.");
 
   registerStickerApi(api);
   fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -394,13 +472,41 @@ async function processSticker({ api, event, url, frameId = 1 }) {
   const ext = sourceExtension(normalizedUrl, source.contentType, source.buffer);
   if (ext === ".bin") throw new Error("Không nhận diện được định dạng ảnh/video. Hãy gửi PNG, JPG, GIF, WebP, MP4 hoặc MOV.");
 
+  const sourceIsAnimated = /\.(gif|webp|mp4|webm|mov|m4v)$/i.test(ext);
   const sourcePath = path.join(CACHE_DIR, uniqueName("stk-source", ext));
-  const overlayPath = path.join(CACHE_DIR, uniqueName("stk-discord-frame-" + frameIdNormalized, ".png"));
+  const overlayExtension = decorationId ? ".png" : ".png";
+  const overlayPath = decorationId
+    ? null
+    : path.join(CACHE_DIR, uniqueName("stk-discord-frame-" + frameIdNormalized, overlayExtension));
+  let overlayCached = false;
   let outputPath = null;
+  let frameName = null;
+  let resolvedDecorationId = null;
+  let overlayAnimated = false;
+  let resolvedOverlayPath = overlayPath;
   try {
     fs.writeFileSync(sourcePath, source.buffer);
-    frames.renderFrame(frameIdNormalized, overlayPath);
-    const output = await convertMedia(sourcePath, overlayPath, path.join(CACHE_DIR, uniqueName("stk-discord-", "")));
+    if (decorationId) {
+      const decoration = await decorations.getDecoration(decorationId);
+      if (!decoration) throw new Error("Không tìm thấy decoration Discord: " + String(decorationId).slice(0, 80) + ". Dùng /stk list hoặc /stk find <tên>.");
+      const overlay = await downloadDecorationOverlay(decoration, {
+        animated: sourceIsAnimated || !decoration.staticAvailable
+      });
+      resolvedOverlayPath = overlay.path;
+      overlayCached = overlay.cached;
+      overlayAnimated = overlay.animated;
+      frameName = decoration.name;
+      resolvedDecorationId = decoration.id;
+    } else {
+      frames.renderFrame(frameIdNormalized, resolvedOverlayPath);
+      frameName = frames.getFrame(frameIdNormalized).name;
+    }
+    const output = await convertMedia(
+      sourcePath,
+      resolvedOverlayPath,
+      path.join(CACHE_DIR, uniqueName("stk-discord-", "")),
+      { overlayAnimated }
+    );
     outputPath = output.path;
 
     const uploaded = await api.uploadStickerImage({
@@ -424,9 +530,9 @@ async function processSticker({ api, event, url, frameId = 1 }) {
       width: output.width,
       height: output.height
     });
-    return { ...output, response: sent, frameId: frameIdNormalized, frameName: frames.getFrame(frameIdNormalized).name };
+    return { ...output, response: sent, frameId: frameIdNormalized, decorationId: resolvedDecorationId, frameName };
   } finally {
-    for (const filePath of [sourcePath, overlayPath, outputPath]) {
+    for (const filePath of [sourcePath, overlayCached ? null : resolvedOverlayPath, outputPath]) {
       if (!filePath) continue;
       try { fs.rmSync(filePath, { force: true }); } catch {}
     }
@@ -446,6 +552,8 @@ module.exports = {
   buildStickerUrl,
   buildMultipart,
   registerStickerApi,
+  isAllowedDecorationAssetUrl,
+  downloadDecorationOverlay,
   convertMedia,
   processSticker
 };
