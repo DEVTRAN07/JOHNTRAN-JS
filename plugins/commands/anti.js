@@ -708,12 +708,27 @@ async function handleAntiEvent(context = {}) {
     logAntiSkip(threadId, "tài khoản bot chưa được xác minh là trưởng/phó nhóm (role=" + botRole + ")");
     return;
   }
-  if (typeof Threads?.getData !== "function") return;
+  if (typeof Threads?.getCachedData !== "function" &&
+      typeof Threads?.getData !== "function") return;
 
   let threadData;
   try {
-    const record = await Threads.getData(threadId);
-    threadData = record?.data || record || {};
+    // Moderation runs on every incoming group event. Read the controller's
+    // last-known committed snapshot synchronously first, so a temporary
+    // Supabase outage / startup sync does not silently disable Anti for an
+    // already-configured group. Cold groups still use the durable async read.
+    let record = null;
+    try {
+      record = Threads.getCachedData?.(threadId) || null;
+    } catch { /* fall back to the durable read below */ }
+    if (!record) {
+      if (typeof Threads?.getData !== "function") return;
+      record = await Threads.getData(threadId);
+    }
+    const source = record?.data || record || {};
+    // Work on a detached snapshot. Anti-Join updates strike history locally;
+    // failed writes must never mutate the controller cache by reference.
+    threadData = { ...source };
   } catch (error) {
     console.error("[ANTI] Không đọc được cấu hình nhóm " + threadId + ":", error?.message || error);
     return;
