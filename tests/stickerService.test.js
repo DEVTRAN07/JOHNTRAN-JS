@@ -20,6 +20,49 @@ test("STK source URL validation rejects non-web and local addresses", () => {
   assert.equal(service.isZaloMediaUrl("https://cdn.example.test/a.png"), false);
 });
 
+test("Discord decoration assets are downloaded from the fixed host and cached on disk", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-decoration-assets-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const gif = Buffer.from("GIF89a" + "decoration");
+  let requests = 0;
+  const decoration = {
+    id: "archive-test-sample",
+    name: "Sample",
+    staticAvailable: true,
+    staticUrl: "https://raw.githubusercontent.com/uhidontkno/DiscordAvatarDecorations/main/shop/test/sample.png",
+    animatedUrl: "https://raw.githubusercontent.com/uhidontkno/DiscordAvatarDecorations/main/archive/test/gif/sample.gif"
+  };
+  const fetchImpl = async url => {
+    requests += 1;
+    assert.equal(url, decoration.animatedUrl);
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: name => name === "content-length" ? String(gif.length) : "image/gif" },
+      async arrayBuffer() { return gif; }
+    };
+  };
+
+  assert.equal(service.isAllowedDecorationAssetUrl("https://evil.example/test.gif"), false);
+  assert.equal(service.isAllowedDecorationAssetUrl(decoration.animatedUrl), true);
+  const first = await service.downloadDecorationOverlay(decoration, {
+    animated: true,
+    cacheDir: dir,
+    fetchImpl
+  });
+  assert.equal(first.animated, true);
+  assert.equal(first.cached, true);
+  assert.ok(fs.existsSync(first.path));
+
+  const second = await service.downloadDecorationOverlay(decoration, {
+    animated: true,
+    cacheDir: dir,
+    fetchImpl
+  });
+  assert.equal(second.path, first.path);
+  assert.equal(requests, 1, "subsequent STK calls should reuse the cached image asset");
+});
+
 test("STK quote URL selection prioritizes animated sticker, then video and image", () => {
   assert.equal(
     service.pickMediaUrl({ webpUrl: "https://cdn.test/a.webp", video: "https://cdn.test/a.mp4", image: "https://cdn.test/a.png" }),
