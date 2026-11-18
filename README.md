@@ -250,7 +250,7 @@ flowchart TB
 | `core/loader/*`, `plugins/commands/*`, `plugins/events/*` | Plugin discovery, registry và command handlers |
 | `core/jobQueue.js`, `core/workerPool.js`, `core/workers/*` | Queue router và worker execution |
 | `core/music/*` | Music engine |
-| `core/stickerStore.js` | Kho sticker hiệu ứng có sẵn, dùng riêng cho `/spamsticker` |
+| `core/stickerFrames.js`, `core/stickerService.js` | Khung Discord trong suốt, ghép ảnh/GIF/video và gửi sticker Zalo |\n| `core/stickerStore.js` | Kho sticker hiệu ứng có sẵn, dùng riêng cho `/spamsticker` |
 | `core/mediaDownloader.js`, `mediaCache.js`, `mediaReply.js`, `videoMeta.js`, `tiktok.js` | Media engine |
 | `core/canvas/*` | Canvas renderer |
 | `core/storage/*`, `core/controller/*`, `utils/db.js` | Storage và repositories |
@@ -335,11 +335,17 @@ JOHNTRAN-JS/
 | `/getlink` (reply tin) | Lấy link media từ tin nhắn được reply |
 | `/getvoice` (reply video) | Trích xuất audio từ video rồi gửi voice |
 | `/getvd` (reply video) | Tải video gốc → upload asyncfile → gửi video gốc (không nén) |
-| `/delmsg <N>` / `/delmsg <N> @tag` | Admin bot hoặc admin nhóm xóa tối đa N tin gần nhất trong cache 24 giờ của chính mình (không tag) hoặc người được tag; chỉ gồm tin bot đã nhận khi đang chạy (Zalo không còn API tải lịch sử nhóm), tối đa 100 tin/lần; tài khoản bot cần quyền xóa tin trong nhóm |
+| `/stk` (reply ảnh/GIF/video hoặc link) | Tạo sticker mới với 5 khung phong cách Discord, vùng giữa trong suốt |\n| `/delmsg <N>` / `/delmsg <N> @tag` | Admin bot hoặc admin nhóm xóa tối đa N tin gần nhất trong cache 24 giờ của chính mình (không tag) hoặc người được tag; chỉ gồm tin bot đã nhận khi đang chạy (Zalo không còn API tải lịch sử nhóm), tối đa 100 tin/lần; tài khoản bot cần quyền xóa tin trong nhóm |
 | `/autodown on` / `off` / `status` | Bật tự tải media trong nhóm. Đang bật thì **mọi link gửi vào nhóm** đều được tự tải (không cần prefix). Bot bỏ qua tin do chính mình gửi và tin là lệnh → không bị lặp |
 | `/noi <văn bản>` | Bot đọc thành giọng nói (cần `ai.tts_enabled: true`) |
 | `/events [tên] on\|off` | Bật/tắt **bộ sự kiện tự động** (mặc định tắt) |
 | `/stats` | Thẻ thống kê ngày (lệnh, nhạc, lỗi, top lệnh, cache hit rate) |
+
+**STK — tạo sticker với khung Discord:**
+- `/stk` — reply ảnh/GIF/video để tạo sticker với khung Discord Classic.
+- `/stk 1` đến `/stk 5` — chọn mẫu khung; `/stk random` — chọn ngẫu nhiên; `/stk khung` — xem danh sách mẫu.
+- `/stk <link media> [1-5]` — tạo sticker từ link.
+- Khung có nền trong suốt và được ghép lên từng frame; bot nén file theo giới hạn 512 KB trước khi upload.
 
 **Điều hướng menu & nhạc (không cần nhớ lệnh dài):**
 - Menu chỉ có `/menu` (bỏ alias `/menu2` vì gõ `/menu2` bị hiểu là mở lại trang 1, gây nhầm) — muốn tới trang 2 thì gõ `/menu 2`.

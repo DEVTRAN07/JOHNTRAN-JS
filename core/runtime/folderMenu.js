@@ -186,7 +186,7 @@ const MENU_COMMAND_GROUPS = Object.freeze({
   public: new Set(["card", "getavt", "getlink", "getvd", "getvoice", "tiktok"]),
   music: new Set(["scl", "lyric"]),
   game: new Set(["noitu"]),
-  tools: new Set(["autodown", "autosend"]),
+  tools: new Set(["autodown", "autosend", "stk"]),
   test: new Set([]),
   anti: new Set(["anti", "antinude", "antirecall", "antilink", "antispam", "autokick"]),
   manager: new Set(["adduser", "delmsg"]),
