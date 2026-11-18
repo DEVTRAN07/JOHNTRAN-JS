@@ -304,7 +304,7 @@ async function downloadDecorationOverlay(decoration, options = {}) {
   if (!isPng && !isGif && !isWebp) throw new Error("Tệp tải về không phải ảnh PNG/GIF/WebP hợp lệ.");
 
   fs.mkdirSync(assetCacheDir, { recursive: true });
-  const tempPath = cachedPath + "." + process.pid + ".tmp";
+  const tempPath = cachedPath + "." + process.pid + "." + crypto.randomBytes(4).toString("hex") + ".tmp";
   fs.writeFileSync(tempPath, buffer);
   fs.renameSync(tempPath, cachedPath);
   return {
