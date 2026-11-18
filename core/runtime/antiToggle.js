@@ -4,7 +4,7 @@ const { ThreadType } = require("zalo-client");
 const { getGroupAdminState } = require("./groupAdmin");
 
 const FEATURES = Object.freeze({
-  antinude: { key: "anti_nude", label: "AI quét ảnh 18+ / khỏa thân", usage: "antinude [on/off]" },
+  antinude: { key: "anti_nude", label: "AI quét ảnh 18+; cảnh cáo 3 lần, tái phạm lần 4 kick", usage: "antinude [on/off]" },
   antirecall: { key: "anti_undo", label: "chống thu hồi tin nhắn", usage: "antirecall [on/off]" },
   antilink: { key: "anti_danger_link", label: "chặn link mời nhóm khác / link nguy hiểm", usage: "antilink [on/off]" },
   antispam: { key: "anti_sticker_spam", label: "chống dội bom spam sticker", usage: "antispam [on/off]" }
