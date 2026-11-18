@@ -399,7 +399,7 @@ function drawFooter(ctx, data = {}) {
 }
 
 function drawResultState(ctx, data = {}) {
-  ctx.fillStyle = "#10203a";
+  ctx.fillStyle = "rgba(16,32,58,.42)";
   ctx.fillRect(315, 312, 650, 108);
   const title = data.status === "finished" ? "HẾT GIỜ!" : "ĐÃ DỪNG VÁN";
   drawText(ctx, title, 640, 355, {
