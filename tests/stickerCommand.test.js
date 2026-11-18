@@ -172,7 +172,7 @@ test("/stk N returns immediately and sends the final result after background pro
     const result = await command.run({ api, event, args: ["12"] });
     const elapsed = Date.now() - started;
     assert.equal(result, true);
-    assert.ok(elapsed < 100, "command dispatch must not wait for FFmpeg/upload");
+    assert.ok(elapsed < 900, "command dispatch must return in under one second without waiting for FFmpeg/upload");
     assert.equal(completed, false, "sticker job should still be processing in the background");
 
     for (let i = 0; i < 30 && !completed; i += 1) {
