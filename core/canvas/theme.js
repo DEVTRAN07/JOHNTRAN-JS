@@ -492,6 +492,54 @@ function text(ctx, value, x, y, options = {}) {
 
 function drawMulticolorText(ctx, value, x, y, options = {}) {
   ensureTheme();
+  const rawText = String(value ?? "");
+  if (/\\r|\\n/.test(rawText)) {
+    const lines = sanitizeGlyphs(rawText).split(/\\r\\n|\\r|\\n/);
+    const requestedSize = options.size || 20;
+    const family = options.family || "JT";
+    let lineSize = requestedSize;
+    let lineFont = options.font || font(lineSize, family);
+
+    // Fit every line with one shared font size so multiline labels stay aligned.
+    if (!options.font && options.maxWidth) {
+      ctx.save();
+      ctx.font = lineFont;
+      const widthOfLongestLine = () => Math.max(
+        0,
+        ...lines.map(line => ctx.measureText(line).width)
+      );
+      let longestWidth = widthOfLongestLine();
+      while (longestWidth > options.maxWidth && lineSize > 9) {
+        lineSize = Math.max(9, lineSize - 1);
+        lineFont = font(lineSize, family);
+        ctx.font = lineFont;
+        longestWidth = widthOfLongestLine();
+      }
+      ctx.restore();
+    }
+
+    const lineHeight = Number(options.lineHeight) > 0
+      ? Number(options.lineHeight)
+      : lineSize * 1.25;
+    const results = lines.map((line, index) => drawMulticolorText(
+      ctx,
+      line,
+      x,
+      y + index * lineHeight,
+      {
+        ...options,
+        size: lineSize,
+        font: lineFont,
+        colorSeed: String(options.colorSeed ?? rawText) + ":line:" + index
+      }
+    ));
+    return {
+      text: results.map(result => result.text).join("\\n"),
+      segments: results.reduce((sum, result) => sum + result.segments, 0),
+      width: Math.max(0, ...results.map(result => result.width))
+    };
+  }
+
   const size = options.size || 20;
   const family = options.family || "JT";
   const baseColor = options.color || PALETTE.ink2;
