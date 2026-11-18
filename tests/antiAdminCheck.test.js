@@ -1,14 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { after, test } = require("node:test");
+const test = require("node:test");
 const anti = require("../plugins/commands/anti");
-
-const previousSpamCache = global.spamCache;
-after(() => {
-  if (previousSpamCache === undefined) delete global.spamCache;
-  else global.spamCache = previousSpamCache;
-});
 
 function makeEvent(threadId, userId, content, index = 1) {
   return {
@@ -29,6 +23,7 @@ function makeEvent(threadId, userId, content, index = 1) {
 
 function makeApi(groupInfo, calls, options = {}) {
   return {
+    getOwnId() { return "bot-id"; },
     async getGroupInfo(threadId) {
       calls.groupLookups++;
       if (options.groupInfoError) throw new Error("group info unavailable");
@@ -54,65 +49,89 @@ async function handle(threadData, api, event) {
   });
 }
 
-test("anti_link deletes a normal member link without a role lookup", async () => {
-  const calls = { groupLookups: 0, deleted: [], sent: [] };
-  const api = makeApi({ creatorId: "owner", adminIds: ["moderator"] }, calls);
+function makeCalls() {
+  return { groupLookups: 0, deleted: [], sent: [] };
+}
+
+test("Anti moderates members when the bot itself is a deputy", async () => {
+  const calls = makeCalls();
+  const api = makeApi({ creatorId: "group-owner", adminIds: ["bot-id"] }, calls);
   await handle(
     { anti_link: true },
     api,
     makeEvent("anti-link-group", "ordinary-member", "Check https://bad.example", 1)
   );
 
-  assert.equal(calls.groupLookups, 0);
+  assert.equal(calls.groupLookups, 1);
   assert.equal(calls.deleted.length, 1);
   assert.equal(calls.sent.length, 1);
   assert.match(calls.sent[0].payload.msg, /không được gửi link/i);
 });
 
-test("anti_link deletes group creator links too", async () => {
-  const calls = { groupLookups: 0, deleted: [], sent: [] };
-  const api = makeApi({ creatorId: "group-owner", adminIds: ["moderator"] }, calls);
+test("Anti is completely silent when the bot is not a group owner or deputy", async () => {
+  const calls = makeCalls();
+  const api = makeApi(
+    { creatorId: "group-owner", adminIds: ["group-deputy"] },
+    calls
+  );
   await handle(
     { anti_link: true },
     api,
-    makeEvent("anti-link-admin-group", "group-owner", "https://owner.example", 1)
+    makeEvent("no-bot-key-group", "ordinary-member", "https://bad.example", 1)
   );
 
-  assert.equal(calls.groupLookups, 0);
-  assert.equal(calls.deleted.length, 1);
-  assert.equal(calls.sent.length, 1);
+  assert.equal(calls.groupLookups, 1);
+  assert.equal(calls.deleted.length, 0);
+  assert.equal(calls.sent.length, 0);
 });
 
-test("anti_link still enforces the rule when group role metadata is unavailable", async () => {
-  const calls = { groupLookups: 0, deleted: [], sent: [] };
+test("Anti stays silent when Zalo cannot confirm the bot group role", async () => {
+  const calls = makeCalls();
   const api = makeApi(null, calls);
   await handle(
     { anti_link: true },
     api,
-    makeEvent("anti-unknown-group", "ordinary-member", "https://bad.example", 1)
+    makeEvent("unknown-bot-role-group", "ordinary-member", "https://bad.example", 1)
   );
 
-  assert.equal(calls.groupLookups, 0);
-  assert.equal(calls.deleted.length, 1);
-  assert.equal(calls.sent.length, 1);
+  assert.equal(calls.groupLookups, 1);
+  assert.equal(calls.deleted.length, 0);
+  assert.equal(calls.sent.length, 0);
 });
 
-test("anti_spam detects the group owner's sixth message without an admin exemption", async () => {
-  global.spamCache = {};
-  const calls = { groupLookups: 0, deleted: [], sent: [] };
-  const api = makeApi({ creatorId: "owner", adminIds: [] }, calls);
-  const threadId = "anti-spam-group";
+test("Group owner and deputy senders are still moderated when the bot has QTV", async () => {
+  const calls = makeCalls();
+  const api = makeApi(
+    { creatorId: "group-owner", adminIds: ["bot-id", "group-deputy"] },
+    calls
+  );
 
-  for (let index = 1; index <= 6; index++) {
-    await handle(
-      { anti_spam: true },
-      api,
-      makeEvent(threadId, "owner", "message " + index, index)
-    );
-  }
+  await handle(
+    { anti_link: true },
+    api,
+    makeEvent("admin-senders-group", "group-owner", "https://owner.example", 1)
+  );
+  await handle(
+    { anti_link: true },
+    api,
+    makeEvent("admin-senders-group", "group-deputy", "https://deputy.example", 2)
+  );
 
-  assert.equal(calls.groupLookups, 0, "anti moderation does not exempt admins or require role lookups");
-  assert.equal(calls.deleted.length, 1);
-  assert.equal(calls.sent.length, 1);
-  assert.match(calls.sent[0].payload.msg, /không spam/i);
+  assert.equal(calls.groupLookups, 1, "the bot's QTV status is cached briefly");
+  assert.equal(calls.deleted.length, 2);
+  assert.equal(calls.sent.length, 2);
+});
+
+test("Anti stays silent when the group info API fails", async () => {
+  const calls = makeCalls();
+  const api = makeApi(null, calls, { groupInfoError: true });
+  await handle(
+    { anti_link: true },
+    api,
+    makeEvent("group-info-error", "ordinary-member", "https://bad.example", 1)
+  );
+
+  assert.equal(calls.groupLookups, 1);
+  assert.equal(calls.deleted.length, 0);
+  assert.equal(calls.sent.length, 0);
 });
