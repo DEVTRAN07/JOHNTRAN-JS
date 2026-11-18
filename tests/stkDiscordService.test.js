@@ -35,6 +35,9 @@ test("Discord STK compositor produces a transparent 288px WebP with a circular a
   const framePath = path.join(dir, "frame.png");
   const frameCanvas = createCanvas(288, 288);
   const frameCtx = frameCanvas.getContext("2d");
+  frameCtx.clearRect(0, 0, 288, 288);
+  assert.equal(frameCtx.getImageData(0, 0, 1, 1).data[3], 0,
+    "fixture Discord frame starts with transparent corners");
   frameCtx.strokeStyle = "#7e57ff";
   frameCtx.lineWidth = 10;
   frameCtx.strokeRect(5, 5, 278, 278);
