@@ -323,21 +323,22 @@ function getImageUrl(data) {
 
 const ANTI_QR_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
-async function decodeQrFromImageBuffer(buffer) {
+async function decodeQrFromImageBuffer(buffer, options = {}) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0 || buffer.length > ANTI_QR_MAX_IMAGE_BYTES) {
     return null;
   }
-  const Jimp = require("jimp");
-  const jsQR = require("jsqr");
-  const image = await Jimp.read(buffer);
-  const bitmap = image?.bitmap;
-  if (!bitmap?.data || !bitmap.width || !bitmap.height) return null;
-  const decoded = jsQR(
-    new Uint8ClampedArray(bitmap.data),
-    bitmap.width,
-    bitmap.height
-  );
-  return decoded?.data ? String(decoded.data) : null;
+
+  // Jimp decoding and jsQR scanning are CPU work. Keep them off the Zalo
+  // listener's main thread so a large photo cannot pause command dispatch.
+  const runInWorker = typeof options.runInWorker === "function"
+    ? options.runInWorker
+    : require("../../core/workerPool").runInWorker;
+  const decoded = await runInWorker("qrWorker", { buffer }, {
+    timeout: 8000,
+    size: 1,
+    maxPending: 8
+  });
+  return typeof decoded === "string" && decoded ? decoded : null;
 }
 
 async function imageContainsQr(data, options = {}) {
