@@ -10,6 +10,8 @@ if (!fs.existsSync(messageCachePath)) {
 }
 
 let messageCacheMem = null;
+let messageCacheEntryCount = 0;
+let messageCacheFullScanCount = 0;
 let cacheFlushTimer = null;
 const CACHE_FLUSH_DELAY = 5000;
 const MAX_MESSAGE_CACHE_ENTRIES = 50000;
@@ -18,9 +20,14 @@ const MESSAGE_CACHE_EVICTION_BATCH = 2500;
 function enforceMessageCacheLimit(cache, maxEntries = MAX_MESSAGE_CACHE_ENTRIES) {
     if (!cache || typeof cache !== 'object') return 0;
     const keys = Object.keys(cache);
-    if (keys.length <= maxEntries) return 0;
+    messageCacheFullScanCount++;
+    if (keys.length <= maxEntries) {
+        if (cache === messageCacheMem) messageCacheEntryCount = keys.length;
+        return 0;
+    }
     const removeCount = Math.max(keys.length - maxEntries, Math.min(MESSAGE_CACHE_EVICTION_BATCH, Math.ceil(maxEntries * 0.05)));
     for (const key of keys.slice(0, removeCount)) delete cache[key];
+    if (cache === messageCacheMem) messageCacheEntryCount = keys.length - removeCount;
     return removeCount;
 }
 
@@ -100,6 +107,14 @@ function getMessageCache() {
     return readMessageJson();
 }
 
+function getMessageCacheStats() {
+    return {
+        entries: messageCacheEntryCount,
+        fullScans: messageCacheFullScanCount,
+        maxEntries: MAX_MESSAGE_CACHE_ENTRIES
+    };
+}
+
 function updateMessageCache(data) {
     let messageCache = readMessageJson();
     try {
@@ -125,11 +140,19 @@ function updateMessageCache(data) {
             threadId: data.threadId || messageData.idTo,
             type: data.type ?? messageData.type
         };
-        // Refresh insertion order for recently updated IDs, then enforce a hard
-        // memory bound. Eviction affects only this auxiliary cache, not Zalo data.
-        delete messageCache[String(clientId)];
-        messageCache[String(clientId)] = filtered;
-        enforceMessageCacheLimit(messageCache);
+        // Refresh insertion order while maintaining O(1) size accounting.
+        // Do not enumerate up to 50k keys for every incoming Zalo message.
+        const cacheKey = String(clientId);
+        const existed = Object.prototype.hasOwnProperty.call(messageCache, cacheKey);
+        delete messageCache[cacheKey];
+        messageCache[cacheKey] = filtered;
+        if (!existed) messageCacheEntryCount++;
+
+        // A full scan happens only after the estimated cap is crossed, then
+        // the scan refreshes the exact count for future O(1) updates.
+        if (messageCacheEntryCount > MAX_MESSAGE_CACHE_ENTRIES) {
+            enforceMessageCacheLimit(messageCache);
+        }
         scheduleCacheFlush();
     } catch (e) {
         logger.log("Lỗi khi update messageCache: " + e.message, "error");
@@ -146,5 +169,6 @@ module.exports = {
     getMessageCache,
     updateMessageCache,
     enforceMessageCacheLimit,
+    getMessageCacheStats,
     MAX_MESSAGE_CACHE_ENTRIES
 };
