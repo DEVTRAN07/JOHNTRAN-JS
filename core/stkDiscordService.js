@@ -94,8 +94,8 @@ function buildFilterGraph(fps = DEFAULT_FPS) {
       ":force_original_aspect_ratio=decrease:flags=lanczos," +
       "pad=" + CANVAS_SIZE + ":" + CANVAS_SIZE +
       ":(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,format=rgba[decor]",
-    "color=c=black@0.0:s=" + CANVAS_SIZE + "x" + CANVAS_SIZE +
-      ":r=" + fps + ",format=rgba[base]",
+    "color=c=black:s=" + CANVAS_SIZE + "x" + CANVAS_SIZE +
+      ":r=" + fps + ",format=rgba,geq=r='0':g='0':b='0':a='0'[base]",
     "[base][avatar]overlay=" + OFFSET + ":" + OFFSET + ":format=auto[stage]",
     "[stage][decor]overlay=0:0:format=auto,format=rgba,fps=" + fps + "[out]"
   ].join(";");
