@@ -76,8 +76,9 @@ test("legacy /anti link|undo|spam switches require confirmed group QTV and persi
   const data = {};
   const sent = [];
   const api = {
+    getOwnId() { return "bot-id"; },
     async getGroupInfo() {
-      return { gridInfoMap: { [threadId]: { creatorId:"owner", adminIds:["deputy"] } } };
+      return { gridInfoMap: { [threadId]: { creatorId:"owner", adminIds:["deputy", "bot-id"] } } };
     },
     async sendMessage(payload) { sent.push(payload); }
   };
