@@ -80,7 +80,7 @@ module.exports.run = async function ({ api, event, args }) {
       `${global.config.prefix}autokick add <từ> — thêm từ cấm (nhiều từ cách nhau dấu phẩy)\n` +
       `${global.config.prefix}autokick del <từ> — xoá\n` +
       `${global.config.prefix}autokick list — xem danh sách\n\n` +
-      "Quy tắc: vi phạm lần 1-2 cảnh báo, lần 3 sẽ bị kick."
+      "Quy tắc: vi phạm lần 1-3 cảnh cáo, vi phạm lần thứ 4 sẽ bị kick."
   }, threadId, type);
 };
 
@@ -110,32 +110,40 @@ module.exports.handleEvent = async function ({ api, event, Threads }) {
     );
     if (!found) return;
 
-    const violations = (Number(autoKick.violations[uid]) || 0) + 1;
-    autoKick.violations[uid] = violations;
-    groupData.auto_kick = autoKick;
+    const currentWarnings = Math.min(3, Math.max(0, Math.floor(Number(autoKick.violations[uid]) || 0)));
     const save = Threads.setDataAndWait || Threads.setData;
-    await save.call(Threads, threadId, groupData);
 
-    if (violations >= 3) {
-      try {
-        await api.removeUserFromGroup(uid, threadId);
-      } catch (error) {
-        console.error("Lỗi kick:", error.message);
-        return api.sendMessage({
-          msg: `⚠️ Không thể kick ${data.dName || uid} (thiếu quyền quản trị). Cảnh cáo đã đạt ${violations}/3.`
-        }, threadId, type);
-      }
-
-      delete autoKick.violations[uid];
+    if (currentWarnings < 3) {
+      const warnings = currentWarnings + 1;
+      autoKick.violations[uid] = warnings;
       groupData.auto_kick = autoKick;
       await save.call(Threads, threadId, groupData);
       return api.sendMessage({
-        msg: `🚫 Đã kick ${data.dName || uid} do vi phạm từ cấm "${found}" ${violations} lần.`
+        msg: `⚠️ Cảnh cáo ${data.dName || uid}: dùng từ cấm "${found}" (lần ${warnings}/3). Sau 3 cảnh cáo, vi phạm lần thứ 4 sẽ bị kick!`
       }, threadId, type);
     }
 
+    // Keep the three warnings while retrying the kick. A failed API call must
+    // not reset or inflate the counter and the next offence retries the kick.
+    autoKick.violations[uid] = 3;
+    groupData.auto_kick = autoKick;
+    try {
+      const result = await api.removeUserFromGroup(uid, threadId);
+      const failedMembers = Array.isArray(result?.errorMembers) ? result.errorMembers.map(String) : [];
+      if (failedMembers.includes(uid)) throw new Error("Zalo từ chối kick thành viên (errorMembers)");
+    } catch (error) {
+      await save.call(Threads, threadId, groupData);
+      console.error("Lỗi kick:", error.message);
+      return api.sendMessage({
+        msg: `⚠️ Không thể kick ${data.dName || uid}. Đã đủ 3 cảnh cáo; bot sẽ thử lại khi tái phạm. ${error.message}`
+      }, threadId, type);
+    }
+
+    delete autoKick.violations[uid];
+    groupData.auto_kick = autoKick;
+    await save.call(Threads, threadId, groupData);
     return api.sendMessage({
-      msg: `⚠️ Cảnh báo ${data.dName || uid}: dùng từ cấm "${found}" (lần ${violations}/3). Lần thứ 3 sẽ bị kick!`
+      msg: `🚫 Đã kick ${data.dName || uid} sau 3 lần cảnh cáo vì tiếp tục dùng từ cấm "${found}".`
     }, threadId, type);
   });
 };
