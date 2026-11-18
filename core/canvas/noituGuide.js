@@ -238,14 +238,14 @@ function renderNoituGuide() {
   ctx.shadowBlur = 12;
   ctx.shadowOffsetY = 8;
   ctx.strokeText("NỐI TỪ", 830, 310);
-  const title = ctx.createLinearGradient(0, 205, 0, 322);
-  title.addColorStop(0, "#d8f2ff");
-  title.addColorStop(.48, "#55b7ff");
-  title.addColorStop(1, "#1674f4");
-  ctx.fillStyle = title;
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
-  ctx.fillText("NỐI TỪ", 830, 310);
+  theme.drawMulticolorText(ctx, "NỐI TỪ", 830, 310, {
+    font: ctx.font,
+    color: "#d8f2ff",
+    align: "center",
+    multicolor: true
+  });
   ctx.restore();
 
   // Subtitle plate.
@@ -259,15 +259,16 @@ function renderNoituGuide() {
   ctx.lineWidth = 3;
   ctx.stroke();
   ctx.font = "bold 28px Arial";
-  ctx.fillStyle = "#e9f5ff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("ĐẠI CHIẾN TỪ VỰNG TIẾNG VIỆT", 829, 402);
+  theme.drawMulticolorText(ctx, "ĐẠI CHIẾN TỪ VỰNG TIẾNG VIỆT", 829, 402, {
+    font: ctx.font, color: "#e9f5ff", align: "center", multicolor: true
+  });
 
   ctx.font = "bold 15px Arial";
-  ctx.fillStyle = "rgba(150,203,255,.78)";
-  ctx.textAlign = "center";
-  ctx.fillText("JOHNTRAN  •  VIETNAMESE WORD ARENA", 830, 475);
+  theme.drawMulticolorText(ctx, "JOHNTRAN  •  VIETNAMESE WORD ARENA", 830, 475, {
+    font: ctx.font, color: "rgba(150,203,255,.78)", align: "center", multicolor: true
+  });
 
   const outputPath = path.join(os.tmpdir(), "jt_noitu_guide_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".png");
   fs.writeFileSync(outputPath, canvas.toBuffer("image/png"));
