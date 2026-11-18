@@ -3,12 +3,14 @@
 const fs = require("node:fs");
 const { withRequesterMention } = require("../../core/mentions");
 const game = require("../../core/runtime/services/games/caroService");
-const { renderCanvas } = require("../../core/canvas/workerRender");
+const workerRender = require("../../core/canvas/workerRender");
 
 // One live Caro canvas card per group. A replacement is sent first; only
 // after Zalo returns its message IDs do we recall the previous board image.
 const boardCards = new Map();
 const boardUpdateQueues = new Map();
+const pendingModeSelections = new Map();
+const PENDING_MODE_SELECTION_MS = 55 * 1000;
 
 function snapshotBoardSession(session) {
   return {
@@ -176,6 +178,87 @@ function isAdmin(uid) {
 
 async function send(api, event, msg) {
   return api.sendMessage(withRequesterMention(event, { msg }), event.threadId, event.type);
+}
+
+function getRawApi(api) {
+  if (!api || typeof api.sendMessage !== "function" ||
+      !Object.prototype.hasOwnProperty.call(api, "sendMessage")) return api;
+  const parent = Object.getPrototypeOf(api);
+  return parent && typeof parent.sendMessage === "function" ? parent : api;
+}
+
+function selectionKey(threadId, uid) {
+  return String(threadId || "") + ":" + String(uid || "");
+}
+
+function rememberModeSelection(threadId, uid, now = Date.now()) {
+  if (!threadId || !uid) return false;
+  const key = selectionKey(threadId, uid);
+  pendingModeSelections.set(key, now + PENDING_MODE_SELECTION_MS);
+  if (pendingModeSelections.size > 500) {
+    for (const [entry, expiresAt] of pendingModeSelections) {
+      if (expiresAt <= now) pendingModeSelections.delete(entry);
+      if (pendingModeSelections.size <= 350) break;
+    }
+  }
+  return true;
+}
+
+function hasPendingModeSelection(threadId, uid, now = Date.now()) {
+  const key = selectionKey(threadId, uid);
+  const expiresAt = pendingModeSelections.get(key);
+  if (!expiresAt) return false;
+  if (expiresAt <= now) {
+    pendingModeSelections.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function clearModeSelection(threadId, uid) {
+  return pendingModeSelections.delete(selectionKey(threadId, uid));
+}
+
+function parseModeChoice(value) {
+  const text = String(value || "").trim().toLocaleLowerCase("vi-VN");
+  const match = text.match(/^(?:ch[oọ]n\s*)?([12])$/u);
+  return match ? (match[1] === "1" ? "solo" : "pvp") : null;
+}
+
+function parseCellChoice(value) {
+  const text = String(value || "").trim().toLocaleLowerCase("vi-VN");
+  const match = text.match(/^(?:ch[oọ]n\s*)?(\d{1,3})$/u);
+  if (!match) return null;
+  const cell = Number(match[1]);
+  return Number.isInteger(cell) && cell >= 1 && cell <= 256 ? cell : null;
+}
+
+function modeMenuText(prefix) {
+  return [
+    "⚔️ CARO 16×16 · CHỌN CHẾ ĐỘ",
+    "",
+    "1️⃣ ĐẤU VỚI AI — Solo, đánh luân phiên với Bot.",
+    "2️⃣ ĐẤU PvP — Tạo phòng để người khác tham gia.",
+    "",
+    "👉 Gửi 1 hoặc “chọn 1” để đấu AI.",
+    "👉 Gửi 2 hoặc “chọn 2” để tạo phòng PvP.",
+    "",
+    "Lệnh nhanh: " + prefix + "caro solo | " + prefix + "caro pvp",
+    "⏳ Lựa chọn có hiệu lực trong 55 giây."
+  ].join("\n");
+}
+
+async function openModeMenu(context) {
+  const { api, event } = context;
+  const threadId = String(event?.threadId || "");
+  const uid = String(event?.data?.uidFrom || "");
+  const current = game.get(threadId);
+  if (current && current.status !== "ended") {
+    return sendBoard(api, event, current, "⚔️ BÀN CỜ CARO HIỆN TẠI");
+  }
+  rememberModeSelection(threadId, uid);
+  const prefix = global.config?.prefix || "/";
+  return send(api, event, modeMenuText(prefix));
 }
 
 async function isGameEnabled(Threads, threadId) {
