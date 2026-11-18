@@ -1,5 +1,5 @@
 // ===== LẤY MEDIA TỪ TIN REPLY =====
-// Dùng chung cho getlink / getvoice / getvd / stk / stkvd.
+// Dùng chung cho getlink / getvoice / getvd / stk.
 // Zalo gửi thông tin media trong quote: field `attach` (chuỗi JSON) hoặc
 // `content` (object), tùy loại tin (ảnh/video/file/sticker/link).
 function pickUrl(obj, keys) {
