@@ -21,10 +21,12 @@ async function execute(command) {
   const sent = [];
   let receivedUserData = "not-called";
   const uid = "user-data-fast-user-" + Math.random().toString(36).slice(2);
+  const commandName = String(command.config?.name || "probe").toLowerCase();
+  const messageText = "/" + commandName;
   const event = {
     threadId: "private-user-data-fast",
     type: ThreadType.User,
-    data: { uidFrom: uid, content: "/probe" }
+    data: { uidFrom: uid, content: messageText }
   };
   const originalRun = command.run;
   command.run = async ({ userData, api: wrappedApi }) => {
@@ -32,7 +34,7 @@ async function execute(command) {
     await wrappedApi.sendMessage({ msg: "OK" }, event.threadId, event.type);
   };
   try {
-    await handleCommand("/probe", event, makeApi(sent), {}, "/", { data: {} });
+    await handleCommand(messageText, event, makeApi(sent), {}, "/", { data: {} });
     return { receivedUserData, sent };
   } finally {
     command.run = originalRun;
