@@ -1489,5 +1489,14 @@ module.exports.handleEvent = function (context = {}) {
     cachedThreadRecord,
     cachedThreadCacheChecked
   };
+
+  // Incoming messages have their rate counters updated synchronously before
+  // any network await. Do not put them behind a per-group queue: a slow URL
+  // scan or image moderation must not hold every later message in that group.
+  // Stateful non-message events (undo/reaction/join) remain serialized.
+  const eventType = context.eventType || "message";
+  if (eventType === "message") {
+    return handleAntiEvent(queuedContext);
+  }
   return runThreadQueue(threadId, () => handleAntiEvent(queuedContext));
 };
