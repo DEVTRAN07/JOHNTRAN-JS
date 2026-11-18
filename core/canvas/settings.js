@@ -22,6 +22,9 @@ function safeText(ctx, value, maxWidth) {
 function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
   ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
+  ctx.shadowColor = "rgba(0,5,16,.82)";
+  ctx.shadowBlur = theme.S(bold ? 2.1 : 1.3);
+  ctx.shadowOffsetY = theme.S(0.6);
   const accentText = color === theme.PALETTE.accent || color === theme.PALETTE.accent2;
   ctx.fillStyle = accentText ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : color;
   ctx.textAlign = align || "left";
@@ -388,7 +391,7 @@ function renderAntiProtectionCardV2(data = {}) {
     const textWidth = cardW - S(125);
     drawText(ctx, item.label || item.key || "Anti",
       textX, y + S(28), 10.5, palette.text, true, "left", textWidth);
-    drawText(ctx, item.detail || "Chế độ bảo vệ nhóm",
+    drawText(ctx, String(item.command || item.detail || "Anti").trim() + " on|off",
       textX, y + S(44), 7.1, palette.muted, false, "left", textWidth);
     const enabled = item.enabled === true;
     drawText(ctx, enabled ? "✓ ĐANG BẬT" : "○ ĐANG TẮT",
