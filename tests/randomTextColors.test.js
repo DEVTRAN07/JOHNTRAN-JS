@@ -139,7 +139,10 @@ test("Canvas keeps every line of multiline text and colors its words", () => {
   });
 
   assert.equal(result.text, fullText);
-  assert.equal(result.segments, 16);
+  assert.equal(
+    result.segments,
+    [...fullText.matchAll(/[\\p{L}\\p{N}]+/gu)].length
+  );
 });
 
 test("each newly rendered Canvas gets a palette seed for randomized card text", () => {
