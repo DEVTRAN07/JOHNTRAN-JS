@@ -25,18 +25,6 @@ const RANDOM_TEXT_COLORS = Object.freeze([
 ]);
 const RANDOM_TEXT_COLOR_SET = new Set(RANDOM_TEXT_COLORS);
 
-function collectMentionRanges(mentions) {
-  const ranges = [];
-  for (const mention of Array.isArray(mentions) ? mentions : []) {
-    const start = Number(mention?.pos);
-    const len = Number(mention?.len);
-    if (Number.isInteger(start) && start >= 0 && Number.isInteger(len) && len > 0) {
-      ranges.push({ start, end: start + len });
-    }
-  }
-  return ranges;
-}
-
 function overlapsRange(start, end, ranges) {
   return ranges.some(range => start < range.end && range.start < end);
 }
@@ -45,18 +33,17 @@ function randomColorStyles(message, options = {}) {
   const text = String(message ?? "");
   if (!text) return [];
 
-  const protectedRanges = collectMentionRanges(options.mentions);
   const random = typeof options.random === "function" ? options.random : Math.random;
   const styles = [];
   let previousColor = null;
 
-  // Color every visible token (words, punctuation and emoji), not just letters.
+  // Color every visible token, including @mentions. The Zalo API sends mentionInfo
+  // and textProperties independently, so applying a color does not remove the mention.
   // RegExp indices and lengths use UTF-16 offsets, as required by Zalo styles.
   for (const match of text.matchAll(/\S+/gu)) {
     const start = match.index ?? 0;
     const len = match[0].length;
     const end = start + len;
-    if (overlapsRange(start, end, protectedRanges)) continue;
 
     const available = RANDOM_TEXT_COLORS.filter(color => color !== previousColor);
     const sample = Number(random());
@@ -83,13 +70,12 @@ function randomize(messageContent, options = {}) {
 
   const currentStyles = Array.isArray(source.styles) ? source.styles : [];
   const generatedStyles = randomColorStyles(source.msg, {
-    mentions: source.mentions,
     random: options.random
   });
 
   // A Zalo text span can carry one style only. Give color priority for every
   // visible token, removing old bold/italic/color spans that would cover it.
-  // Keep structural styles that apply only to whitespace or mention ranges.
+  // Keep structural styles that apply only to whitespace.
   const preservedStyles = currentStyles.filter(style => {
     const start = Number(style?.start);
     const len = Number(style?.len);
