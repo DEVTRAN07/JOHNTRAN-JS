@@ -1,6 +1,7 @@
 "use strict";
 
 const { createCanvas } = require("canvas");
+const theme = require("./theme");
 
 // Stable app-wide frame. /theme is intentionally not read here: only the
 // menu and folder renderers pass their selected palette explicitly.
