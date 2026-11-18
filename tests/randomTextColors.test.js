@@ -141,7 +141,7 @@ test("Canvas keeps every line of multiline text and colors its words", () => {
   assert.equal(result.text, fullText);
   assert.equal(
     result.segments,
-    [...fullText.matchAll(/[\\p{L}\\p{N}]+/gu)].length
+    [...fullText.matchAll(/[\p{L}\p{N}]+/gu)].length
   );
 });
 
