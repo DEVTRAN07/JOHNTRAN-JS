@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { requestHandler } = require("../core/health");
+const { requestHandler, stopEventLoopMonitor } = require("../core/health");
 
 function request(path, authorization) {
   const response = {
@@ -55,4 +55,11 @@ test("detailed /metrics remains protected", () => {
   } finally {
     global.config = previousConfig;
   }
+});
+
+
+test.after(() => {
+  // monitorEventLoopDelay creates a live sampler; production keeps it enabled,
+  // but the isolated test process must disable it so node --test can exit.
+  stopEventLoopMonitor();
 });
