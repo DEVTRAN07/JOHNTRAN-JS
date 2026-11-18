@@ -23,26 +23,62 @@ function getDecoration(id) {
   return catalog.items[number - 1] || null;
 }
 
-function findDecorationFile(id) {
+function isUsableAsset(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return stat.isFile() && stat.size > 0;
+  } catch {
+    return false;
+  }
+}
+
+function resolveDecorationFile(id, directory = DECOR_DIR) {
+  const info = getDecoration(id);
+  if (!info) return null;
+
+  const expected = path.join(directory, info.file);
+  if (isUsableAsset(expected)) return expected;
+
+  try {
+    const prefix = String(info.id) + "_";
+    const alternate = fs.readdirSync(directory)
+      .filter(name => name.startsWith(prefix) && /\.(png|gif|webp|apng)$/i.test(name))
+      .sort()
+      .map(name => path.join(directory, name))
+      .find(isUsableAsset);
+    return alternate || null;
+  } catch {
+    return null;
+  }
+}
+
+function findDecorationFile(id, directory = DECOR_DIR) {
   const info = getDecoration(id);
   if (!info) throw new RangeError("Số thứ tự khung phải từ 1 đến 200.");
 
-  const expected = path.join(DECOR_DIR, info.file);
-  if (fs.existsSync(expected)) return expected;
-
-  if (!fs.existsSync(DECOR_DIR)) {
-    throw new Error("Chưa có thư mục khung Discord: " + DECOR_DIR);
-  }
-  const prefix = String(info.id) + "_";
-  const alternate = fs.readdirSync(DECOR_DIR)
-    .filter(name => name.startsWith(prefix) && /\.(png|gif|webp|apng)$/i.test(name))
-    .sort()[0];
-  if (alternate) return path.join(DECOR_DIR, alternate);
+  const found = resolveDecorationFile(id, directory);
+  if (found) return found;
 
   const error = new Error("Không tìm thấy tài nguyên khung #" + id + " (" + info.file + ").");
   error.code = "STK_DECORATION_NOT_FOUND";
   error.decoration = info;
   throw error;
+}
+
+function getAssetStatus(directory = DECOR_DIR) {
+  const menuPath = path.join(directory, "menu.jpg");
+  const menuReady = isUsableAsset(menuPath);
+  const missing = catalog.items
+    .filter(item => !resolveDecorationFile(item.id, directory))
+    .map(item => ({ id: item.id, name: item.name, file: item.file }));
+  return {
+    directory,
+    menu: { path: menuPath, exists: menuReady },
+    total: catalog.items.length,
+    available: catalog.items.length - missing.length,
+    missingCount: missing.length,
+    missing
+  };
 }
 
 function isAnimatedBuffer(buffer, extension = "") {
@@ -297,7 +333,9 @@ module.exports = {
   MAX_OUTPUT_BYTES,
   catalog,
   getDecoration,
+  resolveDecorationFile,
   findDecorationFile,
+  getAssetStatus,
   isAnimatedBuffer,
   inputArgs,
   buildFilterGraph,
