@@ -694,7 +694,13 @@ async function handleAntiEvent(context = {}) {
     logAntiSkip(threadId, "sự kiện thu hồi không có uid người gửi và không tìm thấy bản tin trong cache");
     return;
   }
-  if (shouldSkipSelfEvent(context)) {
+  // GroupEvent.isSelf can mean either "the bot was added" OR
+  // "the bot initiated the group action" (for example, it invited a human).
+  // Anti-Join must still inspect human updateMembers when the bot is the inviter;
+  // its own-ID guard below excludes the bot if the bot itself joined.
+  const isGroupJoinEvent = eventType === "group_event" &&
+    String(event.type || "").toLowerCase() === "join";
+  if (shouldSkipSelfEvent(context) && !isGroupJoinEvent) {
     logAntiSkip(threadId, "tin do bot gửi bị chặn bởi allow_self_anti hoặc là phản hồi Anti do bot tạo");
     return;
   }

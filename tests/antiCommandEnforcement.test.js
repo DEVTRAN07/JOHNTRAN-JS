@@ -245,6 +245,65 @@ test("Anti-Join never counts the bot as a rejoining member during self-test mode
   }
 });
 
+test("Anti-Join still moderates a human member invited by the bot (SDK marks group event isSelf)", async () => {
+  const { GroupEventType, initializeGroupEvent } = require("zalo-client");
+  const threadId = "anti-bot-inviter-join";
+  const { api, calls } = makeApi(threadId);
+  const threadData = { anti_join: true };
+  const Threads = {
+    async getData() { return { data: threadData }; },
+    async setDataAndWait(_threadId, next) { Object.assign(threadData, next); }
+  };
+
+  for (let count = 1; count <= 5; count++) {
+    const event = initializeGroupEvent("bot-id", {
+      groupId: threadId,
+      creatorId: "group-owner",
+      sourceId: "bot-id",
+      updateMembers: [{
+        id: "member",
+        dName: "Member",
+        avatar: "",
+        type: 0,
+        avatar_25: ""
+      }],
+      groupSetting: null,
+      groupTopic: null,
+      info: null,
+      extraData: null,
+      time: String(Date.now()),
+      avt: null,
+      fullAvt: null,
+      isAdd: 1,
+      hideGroupInfo: 0,
+      version: "1",
+      groupType: 1
+    }, GroupEventType.JOIN, "join");
+
+    assert.equal(event.isSelf, true, "the SDK marks a bot-initiated invite event as self");
+    await anti.handleEvent({
+      event,
+      api,
+      eventType: "group_event",
+      isSelf: event.isSelf,
+      Threads
+    });
+
+    if (count === 1) {
+      assert.equal(calls.kicked.length, 0);
+      assert.equal(threadData.anti_join_warnings?.member, undefined);
+    } else if (count <= 4) {
+      assert.equal(calls.kicked.length, 0);
+      assert.equal(threadData.anti_join_warnings.member, count - 1);
+    }
+  }
+
+  assert.equal(calls.kicked.length, 1, "the human invitee should still be kicked on the rejoin after three warnings");
+  assert.equal(calls.kicked[0].uid, "member");
+  assert.equal(threadData.anti_join_warnings.member, undefined);
+  assert.match(calls.sent.at(-1).payload.msg, /sau 3 lần cảnh cáo và bị kick/i);
+});
+
 test("Anti-Join retains the three warnings when Zalo refuses the kick", async () => {
   const threadId = "anti-rejoin-kick-refused";
   const { api, calls } = makeApi(threadId, {

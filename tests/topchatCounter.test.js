@@ -2,6 +2,8 @@
 
 const { test, after } = require("node:test");
 const workerPool = require("../core/workerPool");
+const fs = require("node:fs");
+const { renderCanvas } = require("../core/canvas/workerRender");
 
 after(async () => {
   await workerPool.shutdown();
@@ -149,6 +151,21 @@ test("topchat sends the daily ranking from persisted counters without REST histo
     }
   });
   const event = { threadId, type: ThreadType.Group, data: { uidFrom: "requester" } };
+
+  // Keep this assertion focused on the hot command path. The first Canvas
+  // worker startup is a one-time cold-start cost and varies significantly
+  // across CI runners; warm the same renderer before starting the timer.
+  const warmupImage = await renderCanvas("topchat", {
+    title: "TOP CHAT HÔM NAY",
+    subtitle: date + " · WORKER WARMUP",
+    ranking: [
+      { uid: "warmup-1", name: "Warmup One", count: 2, avatar: "" },
+      { uid: "warmup-2", name: "Warmup Two", count: 1, avatar: "" }
+    ],
+    totalMessages: 3,
+    totalMembers: 2
+  }, { timeout: 30000, poolSize: 2 });
+  fs.rmSync(warmupImage, { force: true });
 
   const started = performance.now();
   await command.run({ api, event, Threads, reply: {} });
