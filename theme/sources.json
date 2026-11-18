@@ -1,0 +1,20 @@
+{
+  "default": "random",
+  "backgrounds": [
+    {
+      "id": "1",
+      "file": "hinh-nen-gai-xinh-sexy-27.jpg",
+      "source": "https://thoitietmiennam.edu.vn/wp-content/uploads/2026/08/hinh-nen-gai-xinh-sexy-27.jpg"
+    },
+    {
+      "id": "2",
+      "file": "hinh-nen-gai-xinh-sexy-18.jpg",
+      "source": "https://thoitietmiennam.edu.vn/wp-content/uploads/2026/08/hinh-nen-gai-xinh-sexy-18.jpg"
+    },
+    {
+      "id": "3",
+      "file": "hinh-nen-gai-xinh-sexy-16.jpg",
+      "source": "https://thoitietmiennam.edu.vn/wp-content/uploads/2026/08/hinh-nen-gai-xinh-sexy-16.jpg"
+    }
+  ]
+}
