@@ -144,6 +144,7 @@ function createDecorationCatalog({
 } = {}) {
   let memory = null;
   let refreshPromise = null;
+  let retryAfterAt = 0;
 
   function readCache() {
     if (memory) return memory;
@@ -163,10 +164,12 @@ function createDecorationCatalog({
     } catch {}
   }
 
-  async function refresh() {
+  async function refresh({ force = false } = {}) {
     if (refreshPromise) return refreshPromise;
+    if (!force && memory && now() < retryAfterAt) return memory;
     if (typeof fetchImpl !== "function") throw new Error("Môi trường không hỗ trợ fetch để tải catalog Discord.");
     refreshPromise = (async () => {
+      try {
       const response = await fetchImpl(SOURCE.treeUrl, {
         headers: {
           Accept: "application/vnd.github+json",
@@ -185,14 +188,19 @@ function createDecorationCatalog({
       if (!next.items.length) throw new Error("Catalog Discord không có decoration hợp lệ.");
       memory = next;
       writeCache(next);
+      retryAfterAt = 0;
       return next;
+      } catch (error) {
+        retryAfterAt = now() + 60 * 1000;
+        throw error;
+      }
     })().finally(() => { refreshPromise = null; });
     return refreshPromise;
   }
 
   async function snapshot({ forceRefresh = false } = {}) {
     const cached = readCache();
-    if (forceRefresh) return refresh();
+    if (forceRefresh) return refresh({ force: true });
     if (cached && now() - Number(cached.generatedAt || 0) < ttlMs) return cached;
     if (cached) {
       refresh().catch(() => {});
