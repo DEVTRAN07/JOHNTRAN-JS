@@ -88,17 +88,21 @@ async function run(threadData, api, event, eventType = "message") {
 
 test("legacy anti_link blocks ordinary text and recommended links", async () => {
   const { api, calls } = makeApi();
-  await run({ anti_link: true }, api, makeEvent({ content: "Xem https://bad.example/path" }));
+  const threadData = { anti_link: true };
+  await run(threadData, api, makeEvent({ content: "Xem https://bad.example/path" }));
   assert.equal(calls.deleted.length, 1);
   assert.equal(calls.sent.length, 1);
   assert.equal(calls.deleted[0].onlyMe, false);
+  assert.equal(threadData.anti_link_warnings.member, 1);
+  assert.match(calls.sent[0].payload.msg, /cảnh cáo lần 1\/3/i);
 
-  await run({ anti_link: true }, api, makeEvent({
+  await run(threadData, api, makeEvent({
     msgType: "chat.recommended",
     content: { action: "recommended.link", href: "https://zalo.me/g/group123" },
     cliMsgId: "cli-2", msgId: "msg-2"
   }));
   assert.equal(calls.deleted.length, 2);
+  assert.equal(threadData.anti_link_warnings.member, 2);
 });
 
 test("Anti link also moderates the group creator and deputies; no role lookup can bypass enforcement", async () => {
@@ -124,12 +128,20 @@ test("antilink uses Zalo scanURL and only deletes unsafe URLs", async () => {
   const { api, calls } = makeApi({
     scanURL: url => ({ isSafe: url !== "https://malware.example" })
   });
-  await run({ anti_danger_link: true }, api, makeEvent({ content: "https://malware.example" }));
+  const threadData = { anti_danger_link: true };
+  await run(threadData, api, makeEvent({ content: "https://malware.example" }));
   assert.equal(calls.deleted.length, 1);
-  await run({ anti_danger_link: true }, api, makeEvent({
+  assert.equal(threadData.anti_link_warnings.member, 1);
+  await run(threadData, api, makeEvent({
+    content: "[tham gia nhóm](https://zalo.me/g/trfrv1vrakhqeocdpxpo)",
+    cliMsgId: "cli-zalo", msgId: "msg-zalo"
+  }));
+  assert.equal(calls.deleted.length, 2, "Markdown Zalo invitation should be deleted");
+  assert.equal(threadData.anti_link_warnings.member, 2);
+  await run(threadData, api, makeEvent({
     content: "https://safe.example", cliMsgId: "cli-2", msgId: "msg-2"
   }));
-  assert.equal(calls.deleted.length, 1);
+  assert.equal(calls.deleted.length, 2);
   assert.equal(calls.scanned.length, 2);
 });
 
@@ -146,8 +158,9 @@ test("antispam sticker flood deletes six stickers from one member", async () => 
       msgId: "sticker-msg-" + i
     }));
   }
-  assert.equal(calls.deleted.length, 6);
+  assert.equal(calls.deleted.length, 6, "all stickers in the flood should be deleted");
   assert.equal(calls.sent.length, 1);
+  assert.match(calls.sent[0].payload.msg, /cảnh cáo lần 1\/3/i);
   assert.match(calls.sent[0].payload.msg, /dội bom sticker/i);
 });
 
@@ -313,7 +326,7 @@ test("legacy anti_spam recalls the sixth bot self-test text message", async () =
       }));
     }
     assert.equal(calls.deleted.length, 0);
-    assert.equal(calls.undone.length, 1, "only the sixth rapid message crosses the spam threshold");
+    assert.equal(calls.undone.length, 6, "all six messages in the bot self-test spam burst should be recalled");
     assert.equal(calls.sent.length, 1);
     assert.match(calls.sent[0].payload.msg, /vui lòng không spam/i);
   } finally {
@@ -428,7 +441,48 @@ test("legacy anti_spam also deletes the sixth rapid text message from the group 
       msgId: "spam-msg-" + i
     }));
   }
-  assert.equal(calls.deleted.length, 1);
+  assert.equal(calls.deleted.length, 6, "all six texts in the spam burst should be removed");
   assert.equal(calls.sent.length, 1);
+  assert.match(calls.sent[0].payload.msg, /cảnh cáo lần 1\/3/i);
   assert.match(calls.sent[0].payload.msg, /vui lòng không spam/i);
+});
+
+
+test("Anti Link warns three times, kicks on the fourth violation and clears its counter", async () => {
+  const { api, calls } = makeApi();
+  const threadData = { anti_link: true };
+  for (let strike = 1; strike <= 3; strike++) {
+    await run(threadData, api, makeEvent({
+      content: "https://blocked-" + strike + ".example",
+      cliMsgId: "link-cli-" + strike,
+      msgId: "link-msg-" + strike
+    }));
+    assert.equal(calls.kicked.length, 0, "first three violations are warnings only");
+    assert.equal(threadData.anti_link_warnings.member, strike);
+    assert.match(calls.sent[strike - 1].payload.msg, new RegExp("cảnh cáo lần " + strike + "/3", "i"));
+  }
+  await run(threadData, api, makeEvent({
+    content: "https://blocked-fourth.example",
+    cliMsgId: "link-cli-4",
+    msgId: "link-msg-4"
+  }));
+  assert.equal(calls.deleted.length, 4);
+  assert.equal(calls.kicked.length, 1, "the fourth offence kicks the sender");
+  assert.deepEqual(threadData.anti_link_warnings, {});
+  assert.match(calls.sent[3].payload.msg, /đã kick thành viên/i);
+});
+
+test("Anti Link preserves all three warnings when Zalo refuses the fourth-offence kick", async () => {
+  const { api, calls } = makeApi({
+    removeUserFromGroup: async uid => ({ errorMembers: [uid] })
+  });
+  const threadData = { anti_link: true, anti_link_warnings: { member: 3 } };
+  await run(threadData, api, makeEvent({
+    content: "https://blocked-fourth.example",
+    cliMsgId: "link-fail-cli",
+    msgId: "link-fail-msg"
+  }));
+  assert.equal(calls.kicked.length, 1);
+  assert.equal(threadData.anti_link_warnings.member, 3);
+  assert.match(calls.sent[0].payload.msg, /Zalo từ chối kick/i);
 });
