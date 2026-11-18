@@ -29,7 +29,7 @@ function getDispatchSources(eventType, eventData, isSelf, events, commands) {
   };
 }
 
-async function handleEvent(eventType, eventData, api, isSelf = false) {
+async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOptions = {}) {
   // Safety net: suppress every event source when this group has disabled the bot.
   // Use the synchronous hot cache so the event path never waits for a database round-trip.
   const isGroupEvent = isGroupEventPayload(eventType, eventData);
@@ -43,7 +43,8 @@ async function handleEvent(eventType, eventData, api, isSelf = false) {
   // enrolled in the matching session can consume a message; unrelated group
   // conversations continue through the regular event plugins unchanged.
   const allowSelfGameMessages = global.config?.allow_self_command === true;
-  if (eventType === "message" && ((!isSelf && !eventData?.isSelf) || allowSelfGameMessages)) {
+  if (!dispatchOptions.skipGameConsumers &&
+      eventType === "message" && ((!isSelf && !eventData?.isSelf) || allowSelfGameMessages)) {
     // Load the game consumer directly. Do not rely on command-registry timing:
     // the listener may receive plain text immediately after a command reload.
     try {
@@ -81,10 +82,16 @@ async function handleEvent(eventType, eventData, api, isSelf = false) {
   const sources = getDispatchSources(
     eventType, eventData, isSelf, global.client?.events, global.client?.commands
   );
+  const commandSources = dispatchOptions.skipAnti === true
+    ? new Map([...sources.commands].filter(([name, command]) =>
+        String(name).toLowerCase() !== "anti" &&
+        String(command?.config?.name || "").toLowerCase() !== "anti"
+      ))
+    : sources.commands;
 
   return dispatchEvent({
     events: sources.events,
-    commands: sources.commands,
+    commands: commandSources,
     eventType,
     onEventModule(eventModule, name) {
       const context = createEventContext({
