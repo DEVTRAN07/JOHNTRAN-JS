@@ -335,10 +335,13 @@ function getReplyQuote(event) {
 
 async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationPath) {
   fs.mkdirSync(TMP_DIR, { recursive: true });
-  const binary = stickerService.resolveFfmpegBinary();
   if (!(await stickerService.hasWebpEncoder())) {
-    throw new Error("FFmpeg trên máy chủ chưa hỗ trợ libwebp. Hãy cài FFmpeg có encoder libwebp.");
+    throw new Error(
+      "Render chưa có FFmpeg hỗ trợ libwebp. Bot đã thử cả ffmpeg-static và FFmpeg hệ thống; " +
+      "hãy kiểm tra package ffmpeg-static và cấu hình deploy."
+    );
   }
+  const binary = stickerService.resolveFfmpegBinary();
 
   const overlayBuffer = fs.readFileSync(decorationPath);
   if (!overlayBuffer.length || overlayBuffer.length > MAX_DECORATION_BYTES) {
@@ -356,24 +359,19 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
     { fps: 8, quality: 25 }
   ];
   let lastError = null;
-  const { createCanvas } = require("canvas");
-  const transparentBasePath = makeTempName("stk_base", ".png");
-  const transparentBase = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
-  fs.writeFileSync(transparentBasePath, transparentBase.toBuffer("image/png"));
-
-  try {
-    for (const profile of profiles) {
-      const outputPath = makeTempName("stk_dis", ".webp");
-      const filter = buildFilterGraph(profile.fps);
-      const args = [
-        "-hide_banner", "-loglevel", "error", "-y",
-        ...inputArgs(sourcePath, sourceExtension, sourceAnimated, profile.fps),
-        ...inputArgs(decorationPath, path.extname(decorationPath), overlayAnimated, profile.fps),
-        "-loop", "1", "-framerate", String(profile.fps), "-i", transparentBasePath,
-        "-filter_complex", filter,
-        "-map", "[out]",
-        "-an"
-      ];
+  for (const profile of profiles) {
+    const outputPath = makeTempName("stk_dis", ".webp");
+    const filter = buildFilterGraph(profile.fps);
+    const args = [
+      "-hide_banner", "-loglevel", "error", "-y",
+      ...inputArgs(sourcePath, sourceExtension, sourceAnimated, profile.fps),
+      ...inputArgs(decorationPath, path.extname(decorationPath), overlayAnimated, profile.fps),
+      "-f", "lavfi", "-i",
+      "color=c=black:s=" + CANVAS_SIZE + "x" + CANVAS_SIZE + ":r=" + profile.fps,
+      "-filter_complex", filter,
+      "-map", "[out]",
+      "-an"
+    ];
 
     if (animated) args.push("-t", String(ANIMATION_SECONDS));
     else args.push("-frames:v", "1");
@@ -411,9 +409,6 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
     }
 
     try { fs.rmSync(outputPath, { force: true }); } catch {}
-    }
-  } finally {
-    try { fs.rmSync(transparentBasePath, { force: true }); } catch {}
   }
 
   throw lastError || new Error("Không thể tạo sticker Discord.");
