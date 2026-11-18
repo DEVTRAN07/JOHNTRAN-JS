@@ -256,7 +256,7 @@ export const sendMessageFactory = apiFactory()((api, ctx, utils) => {
         };
     }
     async function handleAttachment(opts, threadId, type, outerClientId) {
-        const { msg, attachments, mentions, quote, ttl, urgency } = opts;
+        const { msg, attachments, mentions, quote, ttl, urgency, styles } = opts;
         if (!attachments)
             throw new ZaloApiError("Missing attachments");
         if (!Array.isArray(attachments))
@@ -318,6 +318,8 @@ export const sendMessageFactory = apiFactory()((api, ctx, utils) => {
                         },
                         body: new URLSearchParams(),
                     };
+                    // A single image carries its caption in desc, so forward its text styles too.
+                    if (msg) handleStyles(data.params, styles);
                     break;
                 }
                 case "video": {
