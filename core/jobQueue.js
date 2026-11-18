@@ -2,7 +2,7 @@
 
 // Bounded in-process queues. Retry backoff is delayed outside active worker
 // slots, so a temporarily failing provider cannot block unrelated work.
-const DOWNLOAD_CONCURRENCY = positiveEnv("JT_DOWNLOAD_CONCURRENCY", 1);
+const DOWNLOAD_CONCURRENCY = positiveEnv("JT_DOWNLOAD_CONCURRENCY", 2);
 const STICKER_CONCURRENCY = positiveEnv("JT_STICKER_CONCURRENCY", 2);
 
 const DEFAULT_LANES = {
@@ -10,6 +10,9 @@ const DEFAULT_LANES = {
   image: { concurrency: 1, maxPending: 20, maxInFlight: 21 },
   gif: { concurrency: 1, maxPending: 12, maxInFlight: 13 },
   video: { concurrency: 1, maxPending: 8, maxInFlight: 9 },
+  // Small/control-plane requests must not sit behind a large binary download.
+  http: { concurrency: 3, maxPending: 48, maxInFlight: 51 },
+  asset: { concurrency: 2, maxPending: 32, maxInFlight: 34 },
   download: { concurrency: DOWNLOAD_CONCURRENCY, maxPending: 24, maxInFlight: DOWNLOAD_CONCURRENCY + 24 },
   "music-search": { concurrency: 2, maxPending: 40, maxInFlight: 42 },
   "music-resolve": { concurrency: 2, maxPending: 24, maxInFlight: 26 },
@@ -54,7 +57,13 @@ function getLane(name, options = {}) {
       completed: 0,
       failed: 0,
       rejected: 0,
-      retried: 0
+      retried: 0,
+      waitCount: 0,
+      waitTotalMs: 0,
+      waitMaxMs: 0,
+      runCount: 0,
+      runTotalMs: 0,
+      runMaxMs: 0
     };
     lanes.set(name, lane);
   }
@@ -77,7 +86,17 @@ function clearInFlight(lane, job) {
   if (job.key && lane.inFlight.get(job.key) === job.promise) lane.inFlight.delete(job.key);
 }
 
+function recordRunDuration(lane, job) {
+  if (!job.startedAt) return;
+  const elapsed = Math.max(0, Date.now() - job.startedAt);
+  lane.runCount++;
+  lane.runTotalMs += elapsed;
+  lane.runMaxMs = Math.max(lane.runMaxMs, elapsed);
+  job.startedAt = null;
+}
+
 function finishJob(lane, job, error, value) {
+  recordRunDuration(lane, job);
   releaseActive(lane, job);
   if (error) {
     lane.failed++;
@@ -98,6 +117,7 @@ function canRetry(job, error) {
 }
 
 function deferRetry(lane, job, error) {
+  recordRunDuration(lane, job);
   releaseActive(lane, job);
   const attempt = job.retryAttempt || 0;
   const waitMs = Math.min(job.retryDelayMs * (2 ** attempt), 10000);
@@ -142,6 +162,10 @@ function drain(lane) {
     lane.active++;
     globalActive++;
     job.startedAt = Date.now();
+    const waitMs = Math.max(0, job.startedAt - job.queuedAt);
+    lane.waitCount++;
+    lane.waitTotalMs += waitMs;
+    lane.waitMaxMs = Math.max(lane.waitMaxMs, waitMs);
     lane.running.set(job.id, job);
     runJob(lane, job);
   }
@@ -221,6 +245,10 @@ function stats() {
       failed: lane.failed,
       rejected: lane.rejected,
       retried: lane.retried,
+      avgWaitMs: lane.waitCount ? Number((lane.waitTotalMs / lane.waitCount).toFixed(2)) : 0,
+      maxWaitMs: lane.waitMaxMs,
+      avgRunMs: lane.runCount ? Number((lane.runTotalMs / lane.runCount).toFixed(2)) : 0,
+      maxRunMs: lane.runMaxMs,
       oldestPendingMs: allPending.length
         ? Math.max(0, Date.now() - Math.min(...allPending.map(job => job.queuedAt))) : 0,
       runningJobs: [...lane.running.values()].map(job => ({
