@@ -88,7 +88,7 @@ test("expired-media detection is limited to 404/not-found errors", () => {
 });
 
 
-test("/stk dis explains missing local menu and frame resources", async () => {
+test("/stk dis downloads the remote menu into cache and sends the cached file", async () => {
   const sent = [];
   const api = {
     async sendMessage(message) {
@@ -97,14 +97,19 @@ test("/stk dis explains missing local menu and frame resources", async () => {
     }
   };
   const event = { threadId: "stk-test-thread", type: 1, data: {} };
-  await command.run({ api, event, args: ["dis"] });
+  const originalEnsureMenu = service.ensureMenuFile;
+  service.ensureMenuFile = async () => "/tmp/stk-discord-menu.jpg";
+  try {
+    await command.run({ api, event, args: ["dis"] });
+  } finally {
+    service.ensureMenuFile = originalEnsureMenu;
+  }
   assert.equal(sent.length, 1);
-  assert.match(sent[0].msg, /Chưa có ảnh menu/);
-  assert.match(sent[0].msg, /Kho khung đã có:/);
-  assert.match(sent[0].msg, /data\/discord_decor\/menu\.jpg/);
+  assert.deepEqual(sent[0].attachments, ["/tmp/stk-discord-menu.jpg"]);
+  assert.match(sent[0].msg, /AVATAR DECORATION/);
 });
 
-test("/stk dis rejects a missing selected local decoration with its expected filename", async () => {
+test("/stk dis reports a raw GitHub error when the menu cannot be downloaded", async () => {
   const sent = [];
   const api = {
     async sendMessage(message) {
@@ -113,8 +118,16 @@ test("/stk dis rejects a missing selected local decoration with its expected fil
     }
   };
   const event = { threadId: "stk-test-thread", type: 1, data: {} };
-  await command.run({ api, event, args: ["dis", "200"] });
+  const originalEnsureMenu = service.ensureMenuFile;
+  service.ensureMenuFile = async () => { throw new Error("network offline"); };
+  try {
+    await command.run({ api, event, args: ["dis"] });
+  } finally {
+    service.ensureMenuFile = originalEnsureMenu;
+  }
   assert.equal(sent.length, 1);
-  assert.match(sent[0].msg, /khung #200/);
-  assert.match(sent[0].msg, /200_timekeepers_clock\.png/);
+  assert.match(sent[0].msg, /raw GitHub/);
+  assert.match(sent[0].msg, /network offline/);
 });
+
+
