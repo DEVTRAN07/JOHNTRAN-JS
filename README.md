@@ -361,9 +361,11 @@ JOHNTRAN-JS/
 | `/events bye on` | 🚪 Có thành viên rời/bị kick → thẻ tạm biệt |
 | `/events rank on` | 🏆 Chat để nhận EXP (30s/lần), lên level → thẻ chúc mừng |
 | `/events react on` | 😍 Thả icon/emoji cho **mọi tin nhắn** của thành viên (10s/người, bỏ qua lệnh) |
-| `/events guard on` | 🚨 Canh link lạ & từ cấm (`assets/spam/badwords.txt`): cảnh cáo 3 lần → kick |
+| `/events guard on` | 🚨 Canh link lạ, link mời nhóm Zalo và từ cấm (`assets/spam/badwords.txt`): 3 lần cảnh cáo, vi phạm lần thứ 4 → kick |
 | `/events` | Xem trạng thái tất cả + hướng dẫn bật/tắt |
 | `/events guard allow <host>` / `guard allowed` | Thêm / xem host được phép (mặc định: youtube, facebook, tiktok, instagram...) |
+
+**Chính sách Anti:** Anti-Link, Anti-Spam, chống dội bom sticker, Guard và AutoKick lưu số lần vi phạm theo từng thành viên trong từng nhóm. Ba lần đầu chỉ cảnh cáo; lần vi phạm thứ tư mới thử kick. Nếu Zalo từ chối kick, bộ đếm giữ ở 3 để thử lại khi tái phạm. Bot thu hồi tin tự kiểm thử của chính mình nhưng không tự cảnh cáo/kick tài khoản bot.
 
 **Lệnh spam (chỉ admin bot):**
 | Lệnh | Chức năng |
