@@ -108,9 +108,7 @@ function sanitizeGlyphs(value) {
   for (const [emoji, replacement] of Object.entries(GLYPH_FALLBACK)) {
     if (output.includes(emoji)) output = output.split(emoji).join(replacement);
   }
-  return output
-    .replace(/[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{2600}-\u{26CF}\u{2700}-\u{27BF}]/gu, "")
-    .replace(/[\u{1D00}-\u{1D7F}\u{2070}-\u{209F}]/gu, "");
+  return output;
 }
 
 const RANDOM_ACCENTS = [
@@ -142,14 +140,14 @@ function label(ctx, value, x, y, options = {}) {
   ensureTheme();
   const size = options.size || 15;
   const color = options.color || PALETTE.accent;
-  const display = sanitizeGlyphs(String(value || "").toUpperCase().split("").join("\u200a"));
+  const display = sanitizeGlyphs(String(value || "").toUpperCase()).split("").join("\u200a");
   drawMulticolorText(ctx, display, x, y, {
     size,
     family: "JT-Bold",
     color,
     align: options.align || "left",
     maxWidth: options.maxWidth,
-    multicolor: options.randomColor !== false
+    multicolor: options.randomColor !== false && ![PALETTE.green, PALETTE.red, PALETTE.gold].includes(color)
   });
 }
 
@@ -492,47 +490,120 @@ function text(ctx, value, x, y, options = {}) {
 
 function drawMulticolorText(ctx, value, x, y, options = {}) {
   ensureTheme();
+  const rawText = String(value ?? "");
+
+  // Canvas fillText does not render newline characters as separate lines.
+  // Render each line with one shared fitted font size and preserve all text.
+  if (/\r|\n/.test(rawText)) {
+    const lines = sanitizeGlyphs(rawText).split(/\r\n|\r|\n/);
+    const family = options.family || "JT";
+    let lineSize = options.size || 20;
+    let lineFont = options.font || font(lineSize, family);
+
+    if (!options.font && options.maxWidth) {
+      ctx.save();
+      ctx.font = lineFont;
+      const measureLongestLine = () => Math.max(0, ...lines.map(line => ctx.measureText(line).width));
+      let longest = measureLongestLine();
+      while (longest > options.maxWidth && lineSize > 9) {
+        lineSize = Math.max(9, lineSize - 1);
+        lineFont = font(lineSize, family);
+        ctx.font = lineFont;
+        longest = measureLongestLine();
+      }
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.font = lineFont;
+    const metrics = ctx.measureText("Mg");
+    ctx.restore();
+    const actualLineHeight =
+      Number(metrics.actualBoundingBoxAscent || 0) +
+      Number(metrics.actualBoundingBoxDescent || 0);
+    const lineHeight = Number(options.lineHeight) > 0
+      ? Number(options.lineHeight)
+      : actualLineHeight > 0 ? actualLineHeight * 1.35 : lineSize * 1.4;
+
+    const results = lines.map((line, index) => drawMulticolorText(
+      ctx,
+      line,
+      x,
+      y + index * lineHeight,
+      {
+        ...options,
+        size: lineSize,
+        font: lineFont,
+        colorSeed: String(options.colorSeed ?? rawText) + ":line:" + index
+      }
+    ));
+    return {
+      text: results.map(result => result.text).join("\n"),
+      segments: results.reduce((sum, result) => sum + result.segments, 0),
+      width: Math.max(0, ...results.map(result => result.width))
+    };
+  }
+
   const size = options.size || 20;
   const family = options.family || "JT";
   const baseColor = options.color || PALETTE.ink2;
   const align = options.align || "left";
-  const safe = sanitizeGlyphs(value);
-  ctx.font = options.font || font(size, family);
-  const display = options.maxWidth ? truncate(ctx, safe, options.maxWidth) : safe;
-  const useMulticolor = options.multicolor === true;
+  const display = sanitizeGlyphs(rawText);
+  let fittedSize = size;
+  const makeFont = value => options.font || font(value, family);
+  ctx.font = makeFont(fittedSize);
 
-  if (!useMulticolor) {
+  // Reduce the font first; if a fixed font still cannot fit, compress the
+  // line horizontally. Never replace the end of a label with an ellipsis.
+  let measuredWidth = ctx.measureText(display).width;
+  while (options.maxWidth && measuredWidth > options.maxWidth &&
+         fittedSize > 9 && !options.font) {
+    fittedSize = Math.max(9, fittedSize - 1);
+    ctx.font = makeFont(fittedSize);
+    measuredWidth = ctx.measureText(display).width;
+  }
+  const scaleX = options.maxWidth && measuredWidth > options.maxWidth && measuredWidth > 0
+    ? options.maxWidth / measuredWidth
+    : 1;
+  const visualWidth = measuredWidth * scaleX;
+  const startX = align === "center" ? x - visualWidth / 2
+    : align === "right" ? x - visualWidth : x;
+
+  ctx.save();
+  if (scaleX !== 1) {
+    ctx.translate(startX, 0);
+    ctx.scale(scaleX, 1);
+  }
+  const drawX = scaleX === 1 ? startX : 0;
+  ctx.textAlign = "left";
+  if (options.baseline) ctx.textBaseline = options.baseline;
+
+  if (options.multicolor !== true) {
     ctx.fillStyle = baseColor;
-    ctx.textAlign = align;
-    ctx.fillText(display, x, y);
-    ctx.textAlign = "left";
-    return { text: display, segments: 1, width: ctx.measureText(display).width };
+    ctx.fillText(display, drawX, y);
+    ctx.restore();
+    return { text: display, segments: display ? 1 : 0, width: visualWidth };
   }
 
-  // Tokenize words separately from spaces/punctuation. Word spans get a
-  // different bright brand color; separators keep the requested base color.
   const tokens = display.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu) || [];
-  if (!tokens.length) return { text: display, segments: 0, width: 0 };
+  if (!tokens.length) {
+    ctx.restore();
+    return { text: display, segments: 0, width: 0 };
+  }
 
-  const totalWidth = tokens.reduce((sum, token) => sum + ctx.measureText(token).width, 0);
-  let cursor = align === "center" ? x - totalWidth / 2
-    : align === "right" ? x - totalWidth : x;
-  let wordIndex = 0;
-  const canvasSeed = Number.isFinite(ctx.__jtRenderSeed)
-    ? ctx.__jtRenderSeed
-    : themeBackgrounds.getRenderSeed();
-  const seed = String(options.colorSeed ?? display) + ":" + x + ":" + y + ":" + canvasSeed;
-  // Choose a randomized starting color once, then cycle the palette. This keeps
-  // consecutive words distinct and prevents adjacent hashes colliding.
+  if (!Number.isFinite(ctx.__jtRenderSeed)) {
+    ctx.__jtRenderSeed = Math.floor(Math.random() * 0x7fffffff);
+  }
+  const seed = String(options.colorSeed ?? display) + ":" + x + ":" + y + ":" + ctx.__jtRenderSeed;
   const startingColorIndex = RANDOM_TEXT_COLORS.indexOf(randomTextColor(seed + ":sequence"));
   const startIndex = startingColorIndex >= 0 ? startingColorIndex : 0;
-  ctx.textAlign = "left";
+  let cursor = drawX;
+  let wordIndex = 0;
 
   for (const token of tokens) {
     const width = ctx.measureText(token).width;
     if (/[\p{L}\p{N}]/u.test(token)) {
-      const colorIndex = (startIndex + wordIndex) % RANDOM_TEXT_COLORS.length;
-      ctx.fillStyle = RANDOM_TEXT_COLORS[colorIndex];
+      ctx.fillStyle = RANDOM_TEXT_COLORS[(startIndex + wordIndex) % RANDOM_TEXT_COLORS.length];
       wordIndex++;
     } else {
       ctx.fillStyle = baseColor;
@@ -540,8 +611,9 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
     if (token.trim()) ctx.fillText(token, cursor, y);
     cursor += width;
   }
-  ctx.textAlign = "left";
-  return { text: display, segments: wordIndex, width: totalWidth };
+
+  ctx.restore();
+  return { text: display, segments: wordIndex, width: visualWidth };
 }
 
 function rgba(hex, alpha) {
