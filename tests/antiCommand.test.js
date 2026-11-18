@@ -63,12 +63,39 @@ test("bare /anti sends one Anti-Protection image with no duplicate plaintext tab
     assert.equal(sent.length, 1, "the image and its caption are the only message when Canvas succeeds");
     assert.deepEqual(sent[0].payload.attachments, [rendered[0].file]);
     assert.match(sent[0].payload.msg, /ANTI-PROTECTION V2/);
+    assert.match(sent[0].payload.msg, /CHƯA XÁC MINH ĐƯỢC QTV/i);
     assert.equal(sent[0].payload.ttlKind, "card");
   } finally {
     for (const item of rendered) {
       try { fs.unlinkSync(item.file); } catch {}
     }
   }
+});
+
+test("bare /anti warns when protection flags are ON but the bot has lost QTV", async () => {
+  const sent = [];
+  const data = { anti_link: true };
+  const threadId = "anti-menu-bot-lost-key";
+  const api = {
+    getOwnId() { return "bot-id"; },
+    async getGroupInfo() {
+      return { gridInfoMap: { [threadId]: { creatorId: "group-owner", adminIds: ["group-deputy"] } } };
+    },
+    async sendMessage(payload, id, type) { sent.push({ payload, id, type }); }
+  };
+  const renderStart = rendered.length;
+  await command.run({
+    api,
+    event: { threadId, type: ThreadType.Group, data: { uidFrom: "member" } },
+    args: [],
+    Threads: { async getData() { return { data }; } }
+  });
+
+  assert.equal(rendered.length, renderStart + 1);
+  assert.equal(rendered.at(-1).data.items.find(item => item.key === "anti_link").enabled, true);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].payload.msg, /BOT CHƯA CÓ QTV/i);
+  assert.match(sent[0].payload.msg, /Anti đang tạm ngừng xử lý/i);
 });
 
 test("legacy /anti link|undo|spam switches require confirmed group QTV and persist durably", async () => {
