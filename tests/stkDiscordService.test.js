@@ -66,6 +66,74 @@ test("Discord STK compositor produces a transparent 288px WebP with a circular a
 
 
 
+
+test("Discord STK adaptive WebP encoder compresses complex animation below 512 KB", {
+  skip: !ffmpegAvailable || !webpAvailable
+}, async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-adaptive-webp-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const sourceFramesDir = path.join(dir, "frames");
+  fs.mkdirSync(sourceFramesDir, { recursive: true });
+  let seed = 0x12345678;
+  const nextRandom = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed >>> 24;
+  };
+
+  for (let frameIndex = 0; frameIndex < 10; frameIndex += 1) {
+    const canvas = createCanvas(288, 288);
+    const context = canvas.getContext("2d");
+    const image = context.createImageData(288, 288);
+    for (let index = 0; index < image.data.length; index += 4) {
+      image.data[index] = (nextRandom() + frameIndex * 13) & 255;
+      image.data[index + 1] = (nextRandom() + frameIndex * 29) & 255;
+      image.data[index + 2] = (nextRandom() + frameIndex * 47) & 255;
+      image.data[index + 3] = 255;
+    }
+    context.putImageData(image, 0, 0);
+    const name = "frame_" + String(frameIndex).padStart(2, "0") + ".png";
+    fs.writeFileSync(path.join(sourceFramesDir, name), canvas.toBuffer("image/png"));
+  }
+
+  const sourcePath = path.join(dir, "complex.gif");
+  const generated = spawnSync(FFMPEG, [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-framerate", "8",
+    "-i", path.join(sourceFramesDir, "frame_%02d.png"),
+    "-t", "1.25",
+    "-loop", "0",
+    sourcePath
+  ], { encoding: "utf8", timeout: 20000, maxBuffer: 4 * 1024 * 1024 });
+  assert.equal(generated.status, 0, String(generated.stderr || "failed to generate animated fixture"));
+
+  const framePath = path.join(dir, "decor.png");
+  const frameCanvas = createCanvas(288, 288);
+  const frameContext = frameCanvas.getContext("2d");
+  frameContext.clearRect(0, 0, 288, 288);
+  frameContext.strokeStyle = "rgba(255,255,255,0.9)";
+  frameContext.lineWidth = 8;
+  frameContext.strokeRect(8, 8, 272, 272);
+  fs.writeFileSync(framePath, frameCanvas.toBuffer("image/png"));
+
+  const sourceBuffer = fs.readFileSync(sourcePath);
+  const output = await service.createWebp(sourcePath, sourceBuffer, ".gif", framePath);
+  assert.ok(output.size > 0 && output.size <= service.MAX_OUTPUT_BYTES,
+    "adaptive compression must always return a Zalo-sized file");
+  assert.ok([288, 256, 224, 192].includes(output.width));
+  assert.equal(output.width, output.height);
+  assert.equal(output.format, "webp");
+  assert.ok(fs.existsSync(output.path));
+
+  if (output.downscaled) {
+    assert.ok(output.width < 288, "downscaled output reports its reduced canvas size");
+  }
+  if (output.degradedAnimation) {
+    assert.equal(output.animated, false, "last-resort profile is a usable still WebP");
+  }
+  fs.rmSync(output.path, { force: true });
+});
+
 test("static Discord STK Canvas fast path renders a circular avatar and transparent corners", async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-static-fast-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
