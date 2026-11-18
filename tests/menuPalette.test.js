@@ -43,7 +43,7 @@ test("Vietnamese aliases and custom HEX colors are supported", t => {
 test("invalid theme cannot overwrite a valid saved selection", t => {
   const file = temporaryThemeFile(t);
   menuPalette.setTheme("rose", file);
-  assert.throws(() => menuPalette.setTheme("neon", file), /Theme không hợp lệ/);
+  assert.throws(() => menuPalette.setTheme("not-a-theme", file), /Theme không hợp lệ/);
   assert.equal(menuPalette.getThemeInfo(file).name, "rose");
 });
 
