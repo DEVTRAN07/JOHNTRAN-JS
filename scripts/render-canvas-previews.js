@@ -280,6 +280,17 @@ async function main() {
       ],
       isTurn: true,
       isAdmin: false
+    }],
+    ["21-noitu-guide", "noitu-guide", {}],
+    ["22-ghepchu", "ghepchu", {
+      status: "active",
+      letters: ["H", "Ọ", "C", "S", "I", "N", "H"],
+      remainingSeconds: 38,
+      score: 12,
+      streak: 3,
+      playerName: "MrQ · Preview",
+      version: VERSION,
+      botName: "JOHNTRAN"
     }]
   ];
 
@@ -343,7 +354,7 @@ async function main() {
     "Active outputs:",
     "01 menu, 02 menu folder, 03 topchat, 04 status, 05 /card profile,",
     "06 music search, 07 now playing, 08-11 reply.card variants, 12 generic card,",
-    "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand, 19 Anti-Protection V2, 20 photo theme gallery.",
+    "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand, 19 Anti-Protection V2, 20 photo theme gallery, 21 Nối Từ guide, 22 Ghép Chữ.",
     "",
     "Reference only (not mapped into canvasWorker):",
     "17-18 legacy profile and avatar renderer previews."
