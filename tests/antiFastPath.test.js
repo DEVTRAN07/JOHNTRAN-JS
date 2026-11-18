@@ -132,3 +132,29 @@ test("a slow Anti danger-link scan does not block the next ordinary group messag
   }
   assert.ok(first && typeof first.then === "function");
 });
+
+
+test("Anti QR decoding delegates CPU work to the bounded worker pool", async () => {
+  const input = Buffer.from("sample-image");
+  let captured = null;
+  const decoded = await anti._test.decodeQrFromImageBuffer(input, {
+    async runInWorker(name, payload, options) {
+      captured = { name, payload, options };
+      return "https://example.com/qr";
+    }
+  });
+
+  assert.equal(decoded, "https://example.com/qr");
+  assert.equal(captured.name, "qrWorker");
+  assert.equal(captured.payload.buffer, input);
+  assert.equal(captured.options.timeout, 8000);
+  assert.equal(captured.options.size, 1);
+  assert.equal(captured.options.maxPending, 8);
+
+  let called = false;
+  const ignored = await anti._test.decodeQrFromImageBuffer(Buffer.alloc(0), {
+    async runInWorker() { called = true; return null; }
+  });
+  assert.equal(ignored, null);
+  assert.equal(called, false);
+});
