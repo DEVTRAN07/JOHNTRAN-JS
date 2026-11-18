@@ -185,3 +185,76 @@ test("/stk N returns immediately and sends the final result after background pro
     service.processDiscordSticker = originalProcess;
   }
 });
+
+
+test("/stk re-sends a recent avatar UID cache without looking up avatar or reloading frame", async () => {
+  const originalKey = service.createIdentityResultCacheKey;
+  const originalRead = service.readStickerResultCache;
+  const originalSendCached = service.sendCachedStickerForIdentity;
+  const originalEnsureFrame = service.ensureDecorationFile;
+  const originalProcess = service.processDiscordSticker;
+  const cacheCalls = [];
+  let profileLookups = 0;
+  let frameLookups = 0;
+
+  service.createIdentityResultCacheKey = () => "test-avatar-cache-key";
+  service.readStickerResultCache = key => key === "test-avatar-cache-key"
+    ? { cdnUrl: "https://f123.zdn.vn/avatar-cached.png" }
+    : null;
+  service.sendCachedStickerForIdentity = async options => {
+    cacheCalls.push(options);
+    return { cached: true, response: { sent: true } };
+  };
+  service.ensureDecorationFile = async () => {
+    frameLookups++;
+    throw new Error("cache hit must skip frame download");
+  };
+  service.processDiscordSticker = async () => {
+    throw new Error("cache hit must skip sticker rendering");
+  };
+
+  const sent = [];
+  const api = {
+    async sendMessage(message) {
+      sent.push(message);
+      return { ok: true };
+    },
+    async getUserInfo() {
+      profileLookups++;
+      return null;
+    },
+    async getAvatarUrlProfile() {
+      profileLookups++;
+      return null;
+    }
+  };
+  const event = {
+    threadId: "stk-uid-cache-thread",
+    type: 1,
+    data: {
+      uidFrom: "cached-zalo-user",
+      dName: "CacheUser",
+      msgId: "stk-uid-cache-message",
+      cliMsgId: "stk-uid-cache-client"
+    }
+  };
+
+  try {
+    const result = await command.run({ api, event, args: ["18"] });
+    assert.equal(result, true);
+    for (let i = 0; i < 40 && !sent.some(item => /SUCCESS/.test(item.msg || "")); i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(cacheCalls.length, 1);
+    assert.equal(cacheCalls[0].identity, "cached-zalo-user");
+    assert.equal(profileLookups, 0, "the profile API is skipped on a UID cache hit");
+    assert.equal(frameLookups, 0, "the Raw GitHub frame is not loaded on a UID cache hit");
+    assert.ok(sent.some(item => /SUCCESS/.test(item.msg || "")));
+  } finally {
+    service.createIdentityResultCacheKey = originalKey;
+    service.readStickerResultCache = originalRead;
+    service.sendCachedStickerForIdentity = originalSendCached;
+    service.ensureDecorationFile = originalEnsureFrame;
+    service.processDiscordSticker = originalProcess;
+  }
+});
