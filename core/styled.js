@@ -16,7 +16,7 @@ const THEMES = {
 
 const WIDTH = 26; // độ rộng vùng tiêu đề
 // Zalo chỉ hỗ trợ bốn màu chữ cho tin nhắn thường. Chọn màu theo từng từ
-// để tạo hiệu ứng nhiều màu mà không đụng vào mention hoặc đoạn được format.
+// để tạo hiệu ứng nhiều màu, đồng thời giữ nguyên các vùng mention.
 const RANDOM_TEXT_COLORS = Object.freeze([
   TextStyle.Red,
   TextStyle.Orange,
