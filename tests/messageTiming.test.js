@@ -14,7 +14,7 @@ test("first-response latency separates local processing from Zalo send RTT", asy
   };
   const beforeFirst = metrics.getFirstResponseLatencyStats(100)
     .find(item => item.command === "latency-test")?.count || 0;
-  const beforeSend = metrics.getZaloSendLatencyStats().count;
+  const beforeSendSuccess = metrics.getZaloSendLatencyStats().success;
 
   timing.markReceived(event);
   await new Promise(resolve => setTimeout(resolve, 8));
@@ -36,7 +36,7 @@ test("first-response latency separates local processing from Zalo send RTT", asy
   assert.ok(first);
   assert.equal(first.count, beforeFirst + 1);
   assert.ok(first.avgMs >= 5, "first response should include the intentional local delay");
-  assert.equal(send.count, beforeSend + 1);
+  assert.equal(send.success, beforeSendSuccess + 1);
   assert.ok(send.lastMs >= 8, "Zalo RTT should include the mocked network delay");
 });
 
