@@ -164,6 +164,7 @@ function renderThemeSettings(data = {}) {
     const x = margin + index * (cardW + gap);
     const y = cardsY;
     const image = themeBackgrounds.getImage(background.id);
+    const isSelected = background.id === current.selected;
     theme.panel(ctx, x, y, cardW, cardH, S(16), palette.accent);
 
     const thumbX = x + S(8);
@@ -211,7 +212,7 @@ function renderThemeSettings(data = {}) {
     rounded(ctx, thumbX, thumbY, thumbW, thumbH, S(12));
     ctx.strokeStyle = background.id === current.selected
       ? "rgba(110,255,230,.95)" : "rgba(98,220,255,.70)";
-    ctx.lineWidth = background.selected ? S(2.2) : S(1);
+    ctx.lineWidth = isSelected ? S(2.2) : S(1);
     ctx.shadowColor = "rgba(47,220,255,.72)";
     ctx.shadowBlur = S(9);
     ctx.stroke();
@@ -230,9 +231,9 @@ function renderThemeSettings(data = {}) {
     drawText(ctx, "NỀN ẢNH  /  AURORA CYBER",
       thumbX + S(13), thumbY + thumbH - S(40), 7.4,
       palette.text, true);
-    drawText(ctx, background.id === current.selected ? "ĐANG CHỌN" : "GÕ /theme " + background.id,
+    drawText(ctx, isSelected ? "ĐANG CHỌN" : "GÕ /theme " + background.id,
       thumbX + S(13), thumbY + thumbH - S(18), 8.5,
-      background.selected ? "#8dffe8" : palette.accent, true);
+      isSelected ? "#8dffe8" : palette.accent, true);
   });
 
   theme.panel(ctx, margin, footerY, W - margin * 2, S(70), S(14), palette.accent);
