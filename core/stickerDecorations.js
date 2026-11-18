@@ -158,7 +158,7 @@ function createDecorationCatalog({
   function writeCache(snapshot) {
     try {
       fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
-      const temp = cacheFile + ".tmp";
+      const temp = cacheFile + "." + process.pid + ".tmp";
       fs.writeFileSync(temp, JSON.stringify(snapshot));
       fs.renameSync(temp, cacheFile);
     } catch {}
