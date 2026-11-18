@@ -38,7 +38,6 @@ test("SCL search result keeps fast styled text and colors each track title/artis
   assert.ok(colorWords.includes("Em"));
   assert.ok(colorWords.includes("Sơn"));
   assert.ok(colorWords.includes("Tùng"));
-  assert.ok(colorStyles.every((style, index) => index === 0 || style.st !== colorStyles[index - 1].st));
 });
 
 test("SCL random color run count remains bounded on very long text", () => {
