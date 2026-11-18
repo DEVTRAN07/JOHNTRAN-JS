@@ -76,13 +76,13 @@ test("Custom game and Nối Từ Canvas renderers use word-level multicolor text
   const root = path.join(__dirname, "..", "core", "canvas");
   for (const file of ["tlmn.js", "sam.js", "caro.js", "ghepchu.js"]) {
     const source = fs.readFileSync(path.join(root, file), "utf8");
-    assert.match(source, /theme\\.drawMulticolorText/,
+    assert.match(source, /theme\.drawMulticolorText/,
       file + " must route multi-word card text through the shared renderer");
-    assert.match(source, /words\\.length > 1/,
+    assert.match(source, /words\.length > 1/,
       file + " should keep one-character game symbols in their original semantic color");
   }
   const guide = fs.readFileSync(path.join(root, "noituGuide.js"), "utf8");
-  assert.match(guide, /theme\\.drawMulticolorText/);
+  assert.match(guide, /theme\.drawMulticolorText/);
   assert.match(guide, /ĐẠI CHIẾN TỪ VỰNG TIẾNG VIỆT/);
 });
 
