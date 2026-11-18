@@ -1,13 +1,28 @@
 const { Reactions } = require("zalo-client");
+const { performance } = require("node:perf_hooks");
 const cache = require("./cache");
 const logger = require("../utils/logger");
 const styledText = require("./styled");
 const fs = require("fs");
 const crypto = require("crypto");
 
+async function callTrackedZaloApi(method, call, onStart = null) {
+  const startedAt = performance.now();
+  if (typeof onStart === "function") onStart();
+  try {
+    return await call();
+  } finally {
+    try {
+      require("./metrics").trackZaloApiLatency?.(method, performance.now() - startedAt);
+    } catch {
+      // Telemetry must never interfere with Zalo message delivery.
+    }
+  }
+}
+
 const RECALL_REACTION_CONCURRENCY = readPositiveInt(process.env.JT_RECALL_REACTION_CONCURRENCY, 3, 1, 6);
 const RECALL_REACTION_MAX_PENDING = 128;
-const MAX_RECALL_CLOCK_UPDATES = 5;
+const MAX_RECALL_CLOCK_UPDATES = 3;
 const recallReactionQueue = [];
 const recallReactionStates = new Map();
 let activeRecallReactions = 0;
@@ -88,7 +103,7 @@ function drainRecallReactionQueue() {
     activeRecallReactions++;
     const icon = state.icon;
     Promise.resolve()
-      .then(() => state.api.addReaction({ rType: 0, source: 6, icon }, state.destination))
+      .then(() => callTrackedZaloApi("addReaction", () => state.api.addReaction({ rType: 0, source: 6, icon }, state.destination)))
       .catch(() => {
         // Zalo can throttle reactions during busy periods. A missed clock tick
         // must never affect message delivery or the scheduled recall itself.
@@ -279,11 +294,21 @@ class Reply {
     this._ackTimer = null;
   }
 
-  // Universal textual progress messages are disabled. Commands send only
-  // their actual result, error, or command-specific output.
-  scheduleAcknowledgement() {
+  // Show a working reaction only when a command has not produced a reply
+  // within the grace period. Fast commands avoid an extra Zalo API request.
+  scheduleAcknowledgement(callback, delayMs = 600) {
     this.cancelAcknowledgement();
-    return false;
+    if (this._responseStarted || this._commandCompleted || typeof callback !== "function") return false;
+    const parsed = Number(delayMs);
+    const delay = Math.max(0, Math.min(5000, Number.isFinite(parsed) ? Math.floor(parsed) : 600));
+    this._ackTimer = setTimeout(() => {
+      this._ackTimer = null;
+      if (this._responseStarted || this._commandCompleted || this._ackSent) return;
+      this._ackSent = true;
+      try { callback(); } catch { /* status indicators must not break commands */ }
+    }, delay);
+    this._ackTimer.unref?.();
+    return true;
   }
 
   markResponseStarted() {
@@ -405,11 +430,11 @@ class Reply {
     this.reacted = true; // đánh dấu để handleCommand không tự thả thêm
     if (!this.event?.data?.msgId || !this.api?.addReaction) return false;
     try {
-      await this.api.addReaction(reaction, {
+      await callTrackedZaloApi("addReaction", () => this.api.addReaction(reaction, {
         data: { msgId: this.event.data.msgId, cliMsgId: this.event.data.cliMsgId },
         threadId: this.threadId,
         type: this.type
-      });
+      }));
       return true;
     } catch {
       return false;
@@ -438,7 +463,14 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   if (!api) return api;
   const wrapped = Object.create(api);
   let reply = null;
-  const markResponseStarted = () => reply?.markResponseStarted?.();
+  const markResponseStarted = () => {
+    reply?.markResponseStarted?.();
+    try {
+      require("./metrics").trackFirstResponseLatency?.(event, performance.now());
+    } catch {
+      // Missing telemetry must not affect message delivery.
+    }
+  };
 
   defineWrapped(wrapped, "sendMessage", async (message, tid, ty) => {
     const targetThreadId = threadId || tid;
@@ -461,8 +493,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
       logger.log("Không thể tô màu ngẫu nhiên cho tin nhắn: " + (error?.message || error), "warn");
     }
 
-    const response = await api.sendMessage(outgoing, targetThreadId, targetType);
-    markResponseStarted();
+    const response = await callTrackedZaloApi("sendMessage", () => api.sendMessage(outgoing, targetThreadId, targetType), markResponseStarted);
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
   });
@@ -472,8 +503,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     const targetType = type || ty;
     const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
     const content = typeof extracted.payload === "string" ? { voiceUrl: extracted.payload } : extracted.payload;
-    const response = await api.sendVoice(content, targetThreadId, targetType);
-    markResponseStarted();
+    const response = await callTrackedZaloApi("sendVoice", () => api.sendVoice(content, targetThreadId, targetType), markResponseStarted);
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
   });
@@ -482,8 +512,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
     const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
-    const response = await api.sendVideo(extracted.payload, targetThreadId, targetType);
-    markResponseStarted();
+    const response = await callTrackedZaloApi("sendVideo", () => api.sendVideo(extracted.payload, targetThreadId, targetType), markResponseStarted);
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
   });
@@ -494,8 +523,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
       const targetThreadId = threadId || tid;
       const targetType = type || ty;
       const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
-      const response = await api[method](extracted.payload, targetThreadId, targetType);
-      markResponseStarted();
+      const response = await callTrackedZaloApi(method, () => api[method](extracted.payload, targetThreadId, targetType), markResponseStarted);
       scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
       return response;
     });
@@ -506,8 +534,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
       const targetThreadId = payload?.threadId || threadId;
       const targetType = payload?.threadType ?? type;
       const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
-      const response = await api.sendCustomStickerUrl(extracted.payload);
-      markResponseStarted();
+      const response = await callTrackedZaloApi("sendCustomStickerUrl", () => api.sendCustomStickerUrl(extracted.payload), markResponseStarted);
       scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
       return response;
     });
