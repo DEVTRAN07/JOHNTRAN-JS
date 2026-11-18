@@ -103,7 +103,10 @@ logger.log(` NHẠC: ${musicSystem.listProviders().map((p) => p.name.toUpperCase
 logger.log("┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n");
 if (IS_CHILD) logger.log(`Bot con đang chạy${BOT_TAG} | pid ${process.pid}`, "info");
 
-schedule.scheduleJob("0 * * * * *", () => {
+// Message-cache cleanup is maintenance work, not a per-minute hot-path task.
+// Messages are retained for 24h, so a 15-minute sweep is sufficient and avoids
+// repeatedly enumerating/serializing tens of thousands of cached messages.
+schedule.scheduleJob("0 */15 * * * *", () => {
     cleanOldMessages();
 });
 
