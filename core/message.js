@@ -5,6 +5,13 @@ const styledText = require("./styled");
 const fs = require("fs");
 const crypto = require("crypto");
 
+const RECALL_REACTION_CONCURRENCY = readPositiveInt(process.env.JT_RECALL_REACTION_CONCURRENCY, 3, 1, 6);
+const RECALL_REACTION_MAX_PENDING = 128;
+const MAX_RECALL_CLOCK_UPDATES = 5;
+const recallReactionQueue = [];
+const recallReactionStates = new Map();
+let activeRecallReactions = 0;
+
 const DEFAULT_AUTO_RECALL_MS = readRecallDelay(process.env.JT_AUTO_RECALL_MS, 60 * 1000);
 const MAX_RECALL_DELAY_MS = 2_147_483_647;
 const RECALL_COUNTDOWN_CLOCKS = Object.freeze([
@@ -17,6 +24,12 @@ function readRecallDelay(value, fallback) {
   return Number.isFinite(parsed) && parsed >= 0
     ? Math.min(Math.floor(parsed), MAX_RECALL_DELAY_MS)
     : fallback;
+}
+
+function readPositiveInt(value, fallback, min = 1, max = 100) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < min) return fallback;
+  return Math.min(max, parsed);
 }
 
 // Legacy ttl is interpreted locally as a recall delay and never sent to Zalo.
@@ -39,19 +52,107 @@ function extractRecallOptions(input, fallbackDelay = DEFAULT_AUTO_RECALL_MS) {
   return { payload, delayMs };
 }
 
-function addRecallClock(api, message, threadId, type, icon) {
+function recallReactionKey(message, threadId) {
+  return [threadId, message?.msgId, message?.cliMsgId].map(value => String(value ?? "")).join(":");
+}
+
+function enqueueRecallReaction(state) {
+  if (!state || state.queued || state.active || state.cancelled) return;
+  if (state.expiresAt <= Date.now()) {
+    state.cancelled = true;
+    recallReactionStates.delete(state.key);
+    return;
+  }
+  // Countdown is cosmetic. When the bounded queue is full, skip this update
+  // rather than delaying the actual command reply or growing memory forever.
+  if (recallReactionQueue.length >= RECALL_REACTION_MAX_PENDING) {
+    state.cancelled = true;
+    recallReactionStates.delete(state.key);
+    return;
+  }
+  state.queued = true;
+  recallReactionQueue.push(state);
+  drainRecallReactionQueue();
+}
+
+function drainRecallReactionQueue() {
+  while (activeRecallReactions < RECALL_REACTION_CONCURRENCY && recallReactionQueue.length) {
+    const state = recallReactionQueue.shift();
+    state.queued = false;
+    if (state.cancelled || state.expiresAt <= Date.now()) {
+      recallReactionStates.delete(state.key);
+      continue;
+    }
+
+    state.active = true;
+    activeRecallReactions++;
+    const icon = state.icon;
+    Promise.resolve()
+      .then(() => state.api.addReaction({ rType: 0, source: 6, icon }, state.destination))
+      .catch(() => {
+        // Zalo can throttle reactions during busy periods. A missed clock tick
+        // must never affect message delivery or the scheduled recall itself.
+      })
+      .finally(() => {
+        activeRecallReactions = Math.max(0, activeRecallReactions - 1);
+        state.active = false;
+        state.sentIcon = icon;
+        if (!state.cancelled && state.icon !== state.sentIcon && state.expiresAt > Date.now()) {
+          // Collapse all ticks that arrived during the request into one latest
+          // update instead of sending a burst of stale reactions afterward.
+          enqueueRecallReaction(state);
+        } else {
+          recallReactionStates.delete(state.key);
+        }
+        drainRecallReactionQueue();
+      });
+  }
+}
+
+function addRecallClock(api, message, threadId, type, icon, expiresAt = Date.now() + DEFAULT_AUTO_RECALL_MS) {
   if (typeof api?.addReaction !== "function") return;
-  const destination = {
-    data: { msgId: String(message.msgId), cliMsgId: String(message.cliMsgId) },
-    threadId: String(threadId),
-    type
-  };
-  Promise.resolve()
-    .then(() => api.addReaction({ rType: 0, source: 6, icon }, destination))
-    .catch(error => logger.log(
-      "Không thể thả reaction đồng hồ cho tin sắp thu hồi: " + (error?.message || error),
-      "warn"
-    ));
+  if (message?.msgId == null || message?.cliMsgId == null) return;
+  const key = recallReactionKey(message, threadId);
+  if (!key.replace(/:/g, "")) return;
+
+  let state = recallReactionStates.get(key);
+  if (!state || state.cancelled || state.expiresAt <= Date.now()) {
+    state = {
+      key,
+      api,
+      destination: {
+        data: { msgId: String(message.msgId), cliMsgId: String(message.cliMsgId) },
+        threadId: String(threadId),
+        type
+      },
+      icon,
+      expiresAt: Number(expiresAt) || Date.now(),
+      queued: false,
+      active: false,
+      cancelled: false,
+      sentIcon: null
+    };
+    recallReactionStates.set(key, state);
+  } else {
+    state.icon = icon;
+    state.expiresAt = Math.max(state.expiresAt, Number(expiresAt) || state.expiresAt);
+  }
+  enqueueRecallReaction(state);
+}
+
+function getRecallCountdownUpdates(delayMs) {
+  const delay = Math.max(0, Number(delayMs) || 0);
+  if (!(delay > 0)) return [];
+  const ticks = Math.min(MAX_RECALL_CLOCK_UPDATES, Math.max(1, Math.floor(delay / 1000)));
+  return Array.from({ length: ticks }, (_, index) => {
+    const step = index + 1;
+    const waitMs = Math.min(delay - 1, Math.max(0, Math.round(delay * step / (ticks + 1))));
+    const clockIndex = Math.min(
+      RECALL_COUNTDOWN_CLOCKS.length - 1,
+      Math.round((step / ticks) * (RECALL_COUNTDOWN_CLOCKS.length - 1))
+    );
+    return { waitMs, icon: RECALL_COUNTDOWN_CLOCKS[clockIndex] };
+  });
 }
 
 function scheduleRecallCountdown(api, message, threadId, type, delayMs) {
@@ -59,15 +160,16 @@ function scheduleRecallCountdown(api, message, threadId, type, delayMs) {
   if (!message || (typeof message.msgId !== "number" && typeof message.msgId !== "string") ||
       (typeof message.cliMsgId !== "number" && typeof message.cliMsgId !== "string")) return;
 
-  // At most ten updates per message so a busy group does not receive a
-  // reaction request every second for each short-lived bot reply.
-  addRecallClock(api, message, threadId, type, RECALL_COUNTDOWN_CLOCKS[0]);
-  const ticks = Math.min(10, Math.max(1, Math.floor(delayMs / 1000)));
-  for (let step = 1; step <= ticks; step += 1) {
-    const waitMs = Math.min(delayMs - 1,
-      Math.max(0, Math.round(delayMs * step / (ticks + 1))));
-    const icon = RECALL_COUNTDOWN_CLOCKS[Math.min(step, RECALL_COUNTDOWN_CLOCKS.length - 1)];
-    const timer = setTimeout(() => addRecallClock(api, message, threadId, type, icon), waitMs);
+  const expiresAt = Date.now() + delayMs;
+  // Keep a visible countdown, but cap it at five updates per message. A
+  // dedicated bounded scheduler limits concurrent Zalo reaction calls and
+  // coalesces stale ticks while the API is busy.
+  addRecallClock(api, message, threadId, type, RECALL_COUNTDOWN_CLOCKS[0], expiresAt);
+  for (const update of getRecallCountdownUpdates(delayMs)) {
+    const timer = setTimeout(
+      () => addRecallClock(api, message, threadId, type, update.icon, expiresAt),
+      update.waitMs
+    );
     timer.unref?.();
   }
 }
@@ -422,4 +524,21 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   return wrapped;
 }
 
-module.exports = { Reply, wrapApi, DEFAULT_AUTO_RECALL_MS, extractRecallOptions, scheduleRecall, scheduleRecallCountdown };
+module.exports = {
+  Reply,
+  wrapApi,
+  DEFAULT_AUTO_RECALL_MS,
+  extractRecallOptions,
+  scheduleRecall,
+  scheduleRecallCountdown,
+  _test: {
+    addRecallClock,
+    getRecallCountdownUpdates,
+    getRecallReactionQueueStats: () => ({
+      active: activeRecallReactions,
+      pending: recallReactionQueue.length,
+      concurrency: RECALL_REACTION_CONCURRENCY,
+      tracked: recallReactionStates.size
+    })
+  }
+};
