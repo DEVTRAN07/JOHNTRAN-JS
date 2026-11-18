@@ -1060,8 +1060,8 @@ async function handleNoiTuText({ api, event, eventType, isSelf = false, Users })
   return true;
 }
 
-function isNoituEnabled(Threads, threadId) {
-  const record = Threads?.getCachedData?.(String(threadId));
+function isNoituEnabled(Threads, threadId, initialThreadData = null) {
+  const record = initialThreadData || Threads?.getCachedData?.(String(threadId));
   const data = record?.data || record || {};
   return data.noitu_enabled !== false;
 }
@@ -1101,7 +1101,7 @@ function hasActiveGameForThread(threadId) {
 }
 
 async function handleActiveGameText(context) {
-  if (!isNoituEnabled(context.Threads || defaultThreads, context.event?.threadId)) return false;
+  if (!isNoituEnabled(context.Threads || defaultThreads, context.event?.threadId, context.threadData)) return false;
   if (await handleNoituRoomText(context)) return true;
   if (await handleQuickNoituText(context)) return true;
   if (await handleGhepChuText(context)) return true;

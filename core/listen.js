@@ -160,7 +160,7 @@ async function dispatchGroupMessageBeforeGame({
     return { consumed: true, source: "anti", antiDispatched: anti.dispatched === true };
   }
 
-  const gameConsumed = await gameDispatcher({ api, event, Users, Threads, isSelf });
+  const gameConsumed = await gameDispatcher({ api, event, Users, Threads, isSelf, threadData });
   return {
     consumed: gameConsumed === true,
     source: gameConsumed === true ? "game" : null,
@@ -168,7 +168,7 @@ async function dispatchGroupMessageBeforeGame({
   };
 }
 
-async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = false } = {}) {
+async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = false, threadData = null } = {}) {
   // Keep Nối Từ available in any supported thread, but never send private chats
   // through the group-only TLMN handler.
   if (!event?.threadId || event?.type == null) return false;
@@ -183,7 +183,7 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
       : true;
     if (hasActiveGame && typeof noituCommand?.handleEvent === "function") {
       const consumed = await noituCommand.handleEvent({
-        api, event, eventType: "message", isSelf: false, Users, Threads
+        api, event, eventType: "message", isSelf: false, Users, Threads, threadData
       });
       if (consumed === true) return true;
     }
@@ -311,6 +311,9 @@ function startListening(api) {
       if (isGroupThread && !groupBotEnabled) return;
       Promise.resolve(handleEvent("message", event, api, event.isSelf === true, {
         ...dispatchOptions,
+        // Top Chat already runs once in handleIncoming before command filtering.
+        // Exclude its registry subscription so one group message is not counted twice.
+        skipTopchatCounter: isGroupMessage(event),
         threadData
       }))
         .catch((err) => logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn", {

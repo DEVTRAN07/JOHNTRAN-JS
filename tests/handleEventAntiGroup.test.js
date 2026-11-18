@@ -28,11 +28,16 @@ test("handleEvent reuses the listener group snapshot for group state and event p
     threadId: "handle-event-listener-snapshot",
     data: { bot_enabled: true, event_rank: true }
   };
+  let topchatCalls = 0;
   const eventModule = {
     config: { event_type: ["message"] },
     async run({ threadData }) {
       receivedSnapshot = threadData;
     }
+  };
+  const topchatModule = {
+    config: { name: "topchatCounter", event_type: ["message"] },
+    async run() { topchatCalls++; }
   };
 
   Threads.getCachedData = () => {
@@ -40,7 +45,7 @@ test("handleEvent reuses the listener group snapshot for group state and event p
     throw new Error("group snapshot should be reused");
   };
   global.client = {
-    events: new Map([["snapshot-test", eventModule]]),
+    events: new Map([["snapshot-test", eventModule], ["topchatCounter", topchatModule]]),
     commands: new Map()
   };
 
@@ -49,12 +54,29 @@ test("handleEvent reuses the listener group snapshot for group state and event p
       threadId: snapshot.threadId,
       type: ThreadType.Group,
       data: { uidFrom: "member-1", content: "hello" }
-    }, {}, false, { threadData: snapshot });
+    }, {}, false, { threadData: snapshot, skipTopchatCounter: true });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(receivedSnapshot, snapshot);
+    assert.equal(topchatCalls, 0, "Top Chat is already counted by the listener's direct fast path");
     assert.equal(cacheReads, 0);
   } finally {
     global.client = previousClient;
     Threads.getCachedData = originalGetCachedData;
   }
+});
+
+
+test("Nối Từ group setting check reuses a supplied thread snapshot", () => {
+  const noitu = require("../plugins/commands/noitu");
+  let cacheReads = 0;
+  const Threads = {
+    getCachedData() {
+      cacheReads++;
+      throw new Error("should not need the cache when a snapshot is supplied");
+    }
+  };
+  assert.equal(noitu._test.isNoituEnabled(Threads, "noitu-snapshot", {
+    data: { noitu_enabled: false }
+  }), false);
+  assert.equal(cacheReads, 0);
 });

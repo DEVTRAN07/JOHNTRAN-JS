@@ -49,7 +49,12 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
     // the listener may receive plain text immediately after a command reload.
     try {
       const noituCommand = require("../../plugins/commands/noitu");
-      if (typeof noituCommand?.handleEvent === "function") {
+      const hasActiveGame = typeof noituCommand?.hasActiveGameForThread === "function"
+        ? noituCommand.hasActiveGameForThread(eventData?.threadId)
+        : true;
+      // The listener also performs this in-memory check before dispatch. Keep
+      // the safety-net path equally cheap for command-originated events.
+      if (hasActiveGame && typeof noituCommand?.handleEvent === "function") {
         // This early game consumer runs before the regular event dispatcher.
         // Wrap it through the same adapter so every auto-recalled game reply
         // receives its clock reaction just like normal commands and events.
@@ -60,7 +65,8 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
           eventType,
           isSelf,
           Users,
-          Threads
+          Threads,
+          threadData: dispatchOptions.threadData || null
         });
         if (consumed === true) {
           return { consumed: true, eventModules: 0, commandModules: 0 };
@@ -82,6 +88,12 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
   const sources = getDispatchSources(
     eventType, eventData, isSelf, global.client?.events, global.client?.commands
   );
+  const eventSources = dispatchOptions.skipTopchatCounter === true
+    ? new Map([...sources.events].filter(([name, eventModule]) => {
+        const key = String(name || eventModule?.config?.name || "").toLowerCase();
+        return key !== "topchatcounter";
+      }))
+    : sources.events;
   const skipAntiHandler = dispatchOptions.skipAnti === true;
   const skipNoituHandler = dispatchOptions.skipGameConsumers === true;
   const commandSources = skipAntiHandler || skipNoituHandler
@@ -100,7 +112,7 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
     : sources.commands;
 
   return dispatchEvent({
-    events: sources.events,
+    events: eventSources,
     commands: commandSources,
     eventType,
     onEventModule(eventModule, name) {
