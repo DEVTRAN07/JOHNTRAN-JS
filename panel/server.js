@@ -306,7 +306,7 @@ function startPanel({ manager, config }) {
         }
 
         if (req.method === "POST" && pathname === "/api/stk/decorations/refresh") {
-          const refreshed = await catalog.refresh();
+          const refreshed = await catalog.refresh({ force: true });
           return sendJson(res, 200, {
             success: true,
             total: refreshed.total,
