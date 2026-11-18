@@ -32,11 +32,12 @@ test("feature state reflects strict persisted booleans and defaults to off", () 
 });
 
 test("feature updates persist in the same group data object", () => {
-  const data = { bot_enabled: true, disabled_commands: ["menu"] };
+  const data = { bot_enabled: true, disabled_commands: ["menu"], anti_nude_warnings: { memberA: 2 } };
   const state = setAntiProtectionState(data, "anti_sticker_spam", true);
   assert.equal(data.anti_sticker_spam, true);
   assert.equal(data.bot_enabled, true);
   assert.deepEqual(data.disabled_commands, ["menu"]);
+  assert.deepEqual(data.anti_nude_warnings, { memberA: 2 }, "toggling a protection flag must preserve saved Anti Nude strikes");
   assert.equal(state.anti_sticker_spam, true);
 });
 
