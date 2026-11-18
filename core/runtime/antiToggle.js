@@ -136,25 +136,4 @@ async function runAntiToggle(featureName, context = {}) {
   });
 }
 
-function createAntiCommand(featureName) {
-  const spec = FEATURES[featureName];
-  if (!spec) throw new Error("Anti command không hợp lệ: " + String(featureName));
-
-  return {
-    config: {
-      name: featureName,
-      version: "1.0.0",
-      role: 0,
-      author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
-      description: spec.label,
-      category: "Anti",
-      usage: spec.usage,
-      cooldowns: 1
-    },
-    run(context) {
-      return runAntiToggle(featureName, context);
-    }
-  };
-}
-
-module.exports = { FEATURES, runAntiToggle, sendAntiToggleNotice  , createAntiCommand };
+module.exports = { FEATURES, runAntiToggle, sendAntiToggleNotice };
