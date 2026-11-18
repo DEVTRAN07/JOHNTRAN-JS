@@ -109,8 +109,7 @@ function sanitizeGlyphs(value) {
     if (output.includes(emoji)) output = output.split(emoji).join(replacement);
   }
   return output
-    .replace(/[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{2600}-\u{26CF}\u{2700}-\u{27BF}]/gu, "")
-    .replace(/[\u{1D00}-\u{1D7F}\u{2070}-\u{209F}]/gu, "");
+    .replace(/[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{2600}-\u{26CF}\u{2700}-\u{27BF}]/gu, "");
 }
 
 const RANDOM_ACCENTS = [
