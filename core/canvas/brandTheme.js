@@ -4,14 +4,30 @@ const fs = require("fs");
 const menuPalette = require("./menuPalette");
 
 const paletteCache = new Map();
+const fileVersionCache = new Map();
+const DEFAULT_STAT_TTL_MS = 100;
 
 function fileVersion(filePath) {
+  const now = Date.now();
+  const cacheKey = String(filePath);
+  const cached = fileVersionCache.get(cacheKey);
+  // Render helpers call ensureTheme/palette getters many times while drawing
+  // one bitmap. Throttle stat() on the production theme file only; temporary
+  // files used by tests and explicit tools are always checked immediately.
+  if (filePath === menuPalette.THEME_FILE &&
+      cached && now - cached.checkedAt < DEFAULT_STAT_TTL_MS) {
+    return cached.version;
+  }
+
+  let version = "missing";
   try {
     const stat = fs.statSync(filePath);
-    return String(stat.ino || "") + ":" + String(stat.mtimeMs) + ":" + String(stat.size);
+    version = String(stat.ino || "") + ":" + String(stat.mtimeMs) + ":" + String(stat.size);
   } catch {
-    return "missing";
+    version = "missing";
   }
+  fileVersionCache.set(cacheKey, { version, checkedAt: now });
+  return version;
 }
 
 /**
@@ -44,8 +60,13 @@ function signature(filePath = menuPalette.THEME_FILE) {
 }
 
 function clearCache(filePath) {
-  if (filePath) paletteCache.delete(filePath);
-  else paletteCache.clear();
+  if (filePath) {
+    paletteCache.delete(filePath);
+    fileVersionCache.delete(String(filePath));
+  } else {
+    paletteCache.clear();
+    fileVersionCache.clear();
+  }
 }
 
 module.exports = {
@@ -53,5 +74,6 @@ module.exports = {
   getThemeInfo,
   signature,
   clearCache,
-  fileVersion
+  fileVersion,
+  DEFAULT_STAT_TTL_MS
 };
