@@ -41,7 +41,7 @@ test("Panel chat generates randomized multi-color word spans with UTF-16-safe of
   });
   const message = "Chào 🌈 các bạn JOHNTRAN!";
   const styles = build(message, () => 0);
-  assert.deepEqual(styles.map(style => message.slice(style.start, style.start + style.len)),
+  assert.deepEqual(Array.from(styles, style => message.slice(style.start, style.start + style.len)),
     ["Chào", "các", "bạn", "JOHNTRAN"]);
   assert.ok(styles.every(style => ["c_db342e","c_f27806","c_f7b503","c_15a85f"].includes(style.st)));
   assert.ok(styles.some((style, index) => index > 0 && style.st !== styles[index - 1].st),
