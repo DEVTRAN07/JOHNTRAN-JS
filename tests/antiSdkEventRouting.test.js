@@ -132,7 +132,7 @@ test("real zalo-client Reaction objects reach Anti-Reaction through the runtime 
     }
 
     await waitFor(
-      () => runtime.state.anti_reaction_warnings?.["member-1"] === 1,
+      () => runtime.state.anti_reaction_warnings?.["member-1"] === 1 && runtime.calls.sent.length === 1,
       "first Anti-Reaction warning from SDK events"
     );
 
@@ -197,7 +197,10 @@ test("real zalo-client GroupEvent JOIN objects reach Anti-Join through the runti
     }
 
     await waitFor(
-      () => runtime.calls.kicked.length === 1,
+      () => runtime.calls.kicked.length === 1 &&
+        runtime.state.anti_join_warnings?.["rejoining-member"] === undefined &&
+        runtime.state.anti_join_history?.["rejoining-member"] === undefined &&
+        runtime.calls.sent.length === 4,
       "Anti-Join kick after three warnings"
     );
 
