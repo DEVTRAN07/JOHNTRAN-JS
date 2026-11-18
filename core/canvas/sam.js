@@ -18,7 +18,7 @@ function text(ctx, value, x, y, scale, options = {}) {
     align: options.align || "left",
     baseline: options.baseline || "alphabetic",
     maxWidth: options.maxWidth,
-    multicolor: words.length > 1 && !semanticColor
+    multicolor: true
   });
   ctx.restore();
 }
@@ -93,7 +93,7 @@ function drawSeat(ctx, player, x, y, w, h, scale, index, isTurn, room) {
       size: 21, color: p.ink, align: "center"
     });
   const name = String(player.name || "Người chơi").replace(/[\r\n\t]+/g, " ");
-  text(ctx, name.length > 22 ? name.slice(0, 20) + "…" : name,
+  text(ctx, name,
     x + px(80), y + px(36), scale, {
       size: 16, color: p.ink,
       maxWidth: w - px(w < px(260) ? 112 : 152)
