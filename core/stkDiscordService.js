@@ -9,7 +9,9 @@ const catalog = require("./data/stkDiscord200.json");
 
 const RAW_BASE_URL = String(process.env.STK_DISCORD_RAW_BASE_URL ||
   "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/main").replace(/\/+$/, "");
-const DECOR_DIR = path.join(__dirname, "..", "cache", "stk-discord");
+const DEFAULT_CACHE_ROOT = process.env.JT_PERSISTENT_DIR || path.join(__dirname, "..", "cache");
+const DECOR_DIR = path.resolve(process.env.STK_DISCORD_CACHE_DIR ||
+  path.join(DEFAULT_CACHE_ROOT, "stk-discord"));
 const TMP_DIR = path.join(__dirname, "..", "cache", "temp");
 const CANVAS_SIZE = 288;
 const AVATAR_SIZE = 240;
@@ -117,6 +119,37 @@ function buildRawAssetUrl(fileName, baseUrl = RAW_BASE_URL) {
     encodeURIComponent(safeName);
 }
 
+
+async function fetchRemoteImageBuffer(fetchImpl, url, timeoutMs, maxBytes) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { "User-Agent": "JOHNTRAN-JS-STK" }
+    });
+    if (!response || !response.ok) {
+      const status = Number(response && response.status || 0);
+      throw new Error("HTTP " + (status || "không xác định"));
+    }
+
+    const contentLength = Number(response.headers && response.headers.get
+      ? response.headers.get("content-length") || 0 : 0);
+    if (contentLength > maxBytes) {
+      throw new Error("Tệp nguồn vượt giới hạn " + maxBytes + " byte.");
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > maxBytes) {
+      throw new Error("Tệp tải về rỗng hoặc vượt giới hạn " + maxBytes + " byte.");
+    }
+    return buffer;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function ensureRemoteAsset(fileName, options = {}) {
   const safeName = String(fileName || "");
   const url = buildRawAssetUrl(safeName, options.rawBaseUrl || RAW_BASE_URL);
@@ -153,34 +186,9 @@ async function ensureRemoteAsset(fileName, options = {}) {
 
   const pending = (async () => {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
-      let response;
-      try {
-        response = await fetchImpl(url, {
-          method: "GET",
-          signal: controller.signal,
-          headers: { "User-Agent": "JOHNTRAN-JS-STK" }
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
-
-      if (!response || !response.ok) {
-        const status = Number(response && response.status || 0);
-        throw new Error("HTTP " + (status || "không xác định"));
-      }
-
-      const contentLength = Number(response.headers && response.headers.get
-        ? response.headers.get("content-length") || 0 : 0);
-      if (contentLength > maxBytes) {
-        throw new Error("Tệp nguồn vượt giới hạn " + maxBytes + " byte.");
-      }
-
-      const buffer = Buffer.from(await response.arrayBuffer());
-      if (!buffer.length || buffer.length > maxBytes) {
-        throw new Error("Tệp tải về rỗng hoặc vượt giới hạn " + maxBytes + " byte.");
-      }
+      const buffer = await fetchRemoteImageBuffer(
+        fetchImpl, url, timeoutMs, maxBytes
+      );
       if (!isValidImageBuffer(buffer, safeName)) {
         throw new Error("Dữ liệu tải về không đúng định dạng ảnh " +
           path.extname(safeName) + ".");
