@@ -44,4 +44,7 @@ Lệnh này kiểm tra catalog và trạng thái cache, không tải hàng loạ
 - Đầu ra WebP được giảm chất lượng theo từng mức, giới hạn 512 KB.
 - Lệnh phản hồi ngay và đưa tác vụ vào hàng đợi nền; kết quả được gửi sau khi xử lý xong.
 - Khung và media được tải đồng thời; bộ mã hóa dùng tối đa hai cấu hình FFmpeg thay vì thử năm cấu hình liên tiếp.
-- Không thể bảo đảm toàn bộ quá trình dưới 1 giây vì còn thời gian tải ảnh, encode và upload/send qua máy chủ Zalo.
+- Phản hồi nhận lệnh được tách khỏi tác vụ nặng để trả về nhanh (mục tiêu dưới 1 giây).
+- Tải media Zalo: tối đa 18 giây, không retry; tải URL media ngoài: tối đa 20 giây, không retry.
+- Upload/gửi sticker và mỗi lượt FFmpeg: tối đa 20 giây; FFmpeg chỉ thử tối đa hai cấu hình.
+- Không thể bảo đảm sticker hoàn tất dưới 1 giây vì còn thời gian mạng, encode và upload/send qua máy chủ Zalo.
