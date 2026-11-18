@@ -590,7 +590,7 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
   }
 
   // Color every text word independently while preserving every character.
-  const tokens = display.match(/[\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+/gu) || [];
+  const tokens = display.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu) || [];
   let cursor = drawX;
   let previousColorIndex = -1;
   let wordIndex = 0;
