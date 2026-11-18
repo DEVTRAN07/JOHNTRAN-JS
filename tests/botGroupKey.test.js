@@ -53,6 +53,29 @@ test("bypasses the message adapter's long-lived group-info cache", async () => {
   assert.equal(rawLookups, 1, "the underlying Zalo API must be read instead of a stale wrapper cache");
 });
 
+test("shares the QTV cache across fresh event wrappers for one Zalo session", async () => {
+  let rawLookups = 0;
+  const rawApi = {
+    getOwnId() { return "bot"; },
+    async getGroupInfo(groupId) {
+      rawLookups++;
+      return { gridInfoMap: { [groupId]: { creatorId: "owner", adminIds: ["bot"] } } };
+    }
+  };
+  const makeEventWrapper = () => {
+    const wrapped = Object.create(rawApi);
+    Object.defineProperty(wrapped, "__reply", { value: {} });
+    wrapped.getGroupInfo = async () => {
+      throw new Error("wrapper cache should be bypassed");
+    };
+    return wrapped;
+  };
+
+  assert.equal(await hasBotGroupKey(makeEventWrapper(), "shared-group"), true);
+  assert.equal(await hasBotGroupKey(makeEventWrapper(), "shared-group"), true);
+  assert.equal(rawLookups, 1, "new wrappers for the same raw API session share the short QTV cache");
+});
+
 test("collects all joined groups and returns the bot's QTV group names", async () => {
   const requested = [];
   const api = {
