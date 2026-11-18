@@ -2156,7 +2156,8 @@ function shouldQueueIncoming(context = {}) {
   // room creation keyword. Keep the normalized fallback for "gó" variants.
   if (!room) {
     const simpleGo = content.toLowerCase() === "go";
-    const normalizedGo = simpleGo || engine.normalizeText(content) === "go";
+    const normalizedGo = simpleGo ||
+      (content.length <= 3 && engine.normalizeText(content) === "go");
     return normalizedGo && isEnabled(Threads, threadId);
   }
 
