@@ -12,14 +12,13 @@ test("menu groups loaded commands and uses unique slugs for custom categories", 
   global.users = { admin: ["admin-1"], support: [] };
   const commands = new Map([
     ["menu", command("menu", "Tiện ích")],
-    ["stk", command("stk", "Tiện ích")],
     ["tutien", command("tutien", "Game")],
     ["restart", command("restart", "Hệ thống", 2)],
     ["weather", command("weather", "Thời tiết")],
     ["shop", command("shop", "Mua sắm")]
   ]);
   const folders = folderMenu.collectFolders(commands, "guest");
-  assert.equal(folders.reduce((n, folder) => n + folder.count, 0), 5);
+  assert.equal(folders.reduce((n, folder) => n + folder.count, 0), 4);
   assert.ok(folders.some(folder => folder.slug === "tienich"));
   assert.ok(!folders.some(folder => folder.name === "Hệ thống"));
   assert.equal(folderMenu.resolveFolder(commands, "guest", "tools").category, "Tiện ích");
@@ -33,27 +32,28 @@ test("menu groups loaded commands and uses unique slugs for custom categories", 
 test("folder command list contains only commands from the selected category", () => {
   global.users = { admin: [], support: [] };
   const commands = new Map([
-    ["stk", command("stk", "Tiện ích")],
+    ["getavt", command("getavt", "Tiện ích")],
     ["getlink", command("getlink", "Tiện ích")],
     ["tutien", command("tutien", "Game")]
   ]);
   const folder = folderMenu.resolveFolder(commands, "u1", "tools");
   const items = folderMenu.collectFolderCommands(commands, "u1", folder);
-  assert.deepEqual(items.map(item => item.name), ["getlink", "stk"]);
+  assert.deepEqual(items.map(item => item.name), ["getavt", "getlink"]);
   assert.match(folderMenu.renderFolder(folder, items, "/", "JOHNTRAN", "4.0.0"), /Danh sách lệnh/);
 });
 
 test("folder tổng returns all visible commands grouped by category", () => {
   global.users = { admin: [], support: [] };
   const commands = new Map([
-    ["stk", command("stk", "Tiện ích")],
+    ["getlink", command("getlink", "Tiện ích")],
     ["tutien", command("tutien", "Game")],
     ["secret", command("secret", "Hệ thống", 2)]
   ]);
   const groups = folderMenu.collectAllCommands(commands, "guest");
   const output = folderMenu.renderAllCommands(groups, "/", "JOHNTRAN", "4.0.0");
   assert.match(output, /TOÀN BỘ LỆNH/);
-  assert.match(output, /\/stk/);
+  assert.match(output, /\/getlink/);
+  assert.doesNotMatch(output, /\/stk(?:\s|$)/);
   assert.match(output, /\/tutien/);
   assert.doesNotMatch(output, /\/secret/);
 });
