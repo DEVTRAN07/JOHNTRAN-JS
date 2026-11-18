@@ -522,6 +522,17 @@ function createResultCacheKey(mediaUrl, decorationId) {
     .digest("hex");
 }
 
+
+const AVATAR_RESULT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function createIdentityResultCacheKey(identity, decorationId) {
+  const value = String(identity || "").trim();
+  if (!value) throw new Error("Thiếu định danh để tạo cache avatar STK.");
+  return crypto.createHash("sha256")
+    .update("stk-discord-identity-v1\\0" + String(decorationId) + "\\0" + value)
+    .digest("hex");
+}
+
 function readResultCacheStore(filePath) {
   try {
     const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -636,7 +647,7 @@ async function measureStage(name, operation, timings) {
   }
 }
 
-async function processDiscordSticker({ api, event, mediaUrl, decorationId, resultCacheFile: resultCacheFileOverride }) {
+async function processDiscordSticker({ api, event, mediaUrl, decorationId, resultCacheFile: resultCacheFileOverride, cacheIdentity }) {
   const totalStartedAt = Date.now();
   const timings = {};
   let sourcePath = null;
@@ -659,9 +670,17 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId, resul
     // call. This is the only practical sub-second path after the first build.
     const resultCacheFile = resultCacheFileOverride || DEFAULT_RESULT_CACHE_FILE;
     const resultCacheKey = createResultCacheKey(normalizedUrl, decorationId);
+    const identityCacheKey = cacheIdentity
+      ? createIdentityResultCacheKey(cacheIdentity, decorationId)
+      : null;
     const cachedResult = readStickerResultCache(resultCacheKey, {
       filePath: resultCacheFile
-    });
+    }) || (identityCacheKey
+      ? readStickerResultCache(identityCacheKey, {
+        filePath: resultCacheFile,
+        ttlMs: AVATAR_RESULT_CACHE_TTL_MS
+      })
+      : null);
     if (cachedResult && typeof api.sendCustomStickerUrl === "function") {
       currentStage = "zalo-send-cache";
       try {
@@ -769,13 +788,18 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId, resul
     // Persist the personalized CDN URL before sending so a subsequent command
     // can skip both rendering and the upload request.
     try {
-      writeStickerResultCache(resultCacheKey, {
+      const cacheValue = {
         cdnUrl,
         format: output.format,
         width: output.width,
         height: output.height,
         animated: output.animated
-      }, { filePath: resultCacheFile });
+      };
+      writeStickerResultCache(resultCacheKey, cacheValue, { filePath: resultCacheFile });
+      if (identityCacheKey) {
+        // Short-lived UID alias lets the next avatar command skip profile lookup.
+        writeStickerResultCache(identityCacheKey, cacheValue, { filePath: resultCacheFile });
+      }
     } catch (error) {
       console.warn("[stk] Không lưu được cache kết quả Zalo: " +
         String(error && error.message || error));
@@ -854,6 +878,8 @@ module.exports = {
   createStaticPng,
   extractUploadedUrl,
   createResultCacheKey,
+  createIdentityResultCacheKey,
+  AVATAR_RESULT_CACHE_TTL_MS,
   readStickerResultCache,
   writeStickerResultCache,
   deleteStickerResultCache,
