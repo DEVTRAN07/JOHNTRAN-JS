@@ -207,7 +207,7 @@ async function processWithAvatarFallback(api, event, media) {
       event,
       mediaUrl: avatarUrl,
       decorationId: media.decorationId,
-      cacheIdentity: media.cacheIdentity || null
+      cacheIdentity: media.cacheIdentity || media.targetUid || null
     });
   }
 }
