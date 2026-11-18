@@ -43,7 +43,7 @@ test("SCL search result keeps fast styled text and colors each track title/artis
 test("SCL random color run count remains bounded on very long text", () => {
   const text = Array.from({ length: 300 }, (_, index) => "word" + index).join(" ");
   const styles = ui.randomWordColorStyles(text, 5, () => 0.5);
-  assert.equal(styles.length, 120);
+  assert.equal(styles.length, 100, "300 words are grouped into 3-word color spans");
   const last = styles[styles.length - 1];
   assert.ok(text.slice(last.start - 5, last.start - 5 + last.len).endsWith("word299"));
 });
