@@ -41,17 +41,25 @@ test("bare /anti sends one Anti-Protection image with no duplicate plaintext tab
 
     assert.equal(rendered.length, 1);
     assert.equal(rendered[0].type, "anti-protection-v2");
-    assert.equal(rendered[0].data.items.length, 6);
+    assert.equal(rendered[0].data.items.length, 21);
     assert.deepEqual(rendered[0].data.items.map(item => item.command), [
-      "/antinude", "/antirecall", "/antilink", "/antispam", "/anti link", "/anti spam"
-    ], "the single Anti image must retain each mode's command usage");
+      "/anticard", "/antidoodle", "/antifile", "/antigif", "/antiinvite",
+      "/antijoin", "/antilink", "/antilocation", "/antiother", "/antiphoto",
+      "/antiqr", "/antireaction", "/antisex", "/antispam", "/antistk",
+      "/antistklag", "/antitaghide", "/antivideo", "/antivoice", "/antiword",
+      "/antirecall"
+    ], "the Anti image must show every moderation command");
     assert.deepEqual(rendered[0].data.items.map(item => item.key), [
-      "anti_nude", "anti_undo", "anti_danger_link",
-      "anti_sticker_spam", "anti_link", "anti_spam"
+      "anti_card", "anti_doodle", "anti_file", "anti_gif", "anti_danger_link",
+      "anti_join", "anti_link", "anti_location", "anti_other", "anti_photo",
+      "anti_qr", "anti_reaction", "anti_nude", "anti_spam", "anti_sticker",
+      "anti_sticker_spam", "anti_taghide", "anti_video", "anti_voice", "anti_word",
+      "anti_undo"
     ]);
     assert.deepEqual(rendered[0].data.items.map(item => item.enabled), [
-      true, true, false, true, false, false
-    ], "the /anti image must mirror the exact group flags also managed by Panel");
+      false, false, false, false, false, false, false, false, false, false,
+      false, false, true, false, false, true, false, false, false, false, true
+    ], "the Anti image must mirror the exact group flags also managed by Panel");
     assert.equal(sent.length, 1, "the image and its caption are the only message when Canvas succeeds");
     assert.deepEqual(sent[0].payload.attachments, [rendered[0].file]);
     assert.match(sent[0].payload.msg, /ANTI-PROTECTION V2/);

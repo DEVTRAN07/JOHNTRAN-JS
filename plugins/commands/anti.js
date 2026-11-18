@@ -369,9 +369,11 @@ function extractPlainMessageText(data = {}) {
 }
 
 function normalizeAntiWord(value) {
-  return String(value || "").toLowerCase().normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d")
-    .replace(/[^a-z0-9]+/g, " ").trim();
+  // Preserve Vietnamese tone marks: stripping them turns the profanity "đĩ"
+  // into "di", which would incorrectly block the ordinary word "đi".
+  return String(value || "").toLowerCase().normalize("NFC")
+    .replace(/đ/g, "d")
+    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
 const ANTI_BAD_WORDS = (() => {
