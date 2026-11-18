@@ -36,7 +36,12 @@ module.exports.run = async function ({ api, event, Threads, isSelf }) {
   if (prefix && content.startsWith(prefix)) return;
 
   // Chỉ chạy khi nhóm đã bật
-  const thread = (await Threads.getData(threadId)).data || {};
+  // The listener's group snapshot is already hot for normal messages.
+  // Do not await a storage read when no cached rank setting is enabled.
+  let record = null;
+  try { record = Threads.getCachedData?.(String(threadId)) || null; } catch {}
+  if (!record) record = await Threads.getData(threadId);
+  const thread = { ...(record?.data || record || {}) };
   if (!thread.event_rank) return;
 
   const uid = String(data.uidFrom || "");
