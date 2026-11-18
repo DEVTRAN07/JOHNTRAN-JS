@@ -61,6 +61,7 @@ function metricsPayload() {
   const { allStats } = safe(() => require("./cache"), { allStats: () => ({}) });
   const jobQueues = safe(() => require("./jobQueue").stats(), {});
   const workers = safe(() => require("./workerPool").stats(), {});
+  const messageCache = safe(() => require("../utils/messageCache").getMessageCacheStats(), {});
   return {
     ...healthPayload(),
     today: safe(() => metrics?.getDayStats(), null),
@@ -73,6 +74,7 @@ function metricsPayload() {
     eventLoop: safe(getEventLoopMetrics, null),
     jobQueues,
     workers,
+    messageCache,
     cache: allStats()
   };
 }
