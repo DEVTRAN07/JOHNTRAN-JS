@@ -582,5 +582,8 @@ module.exports = {
   isAllowedDecorationAssetUrl,
   downloadDecorationOverlay,
   convertMedia,
+  // Shared low-level media helpers for the replacement /stk dis command.
+  fetchSource,
+  hasWebpEncoder,
   processSticker
 };

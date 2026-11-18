@@ -1,198 +1,310 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
 const { enqueue } = require("../../core/jobQueue");
 const { parseQuote } = require("../../core/mediaReply");
-const stickerService = require("../../core/stickerService");
-const stickerDecorations = require("../../core/stickerDecorations");
+const { getUserAvatar, getRequesterProfile } = require("../../core/runtime/requesterProfile");
+const stkDiscord = require("../../core/stkDiscordService");
 
 const PREFIX = () => global.config?.prefix || "/";
-const PAGE_SIZE = 15;
+const MENU_IMAGE = path.join(stkDiscord.DECOR_DIR, "menu.jpg");
 
 module.exports.config = {
   name: "stk",
   aliases: [],
-  version: "1.2.0",
+  version: "2.0.0",
   role: 0,
   author: "JOHNTRAN",
-  description: "Tạo sticker ảnh/GIF/video bằng Discord avatar decorations",
+  description: "Ghép 200 khung Discord vào ảnh, sticker, GIF hoặc video",
   category: "Tiện ích",
-  usage: "stk [list [trang]|find <tên>|random|<số-ID>] (reply media) | stk <link> <số-ID>",
-  cooldowns: 5,
+  usage: "stk dis [1-200] (reply ảnh/sticker/GIF/video)",
+  cooldowns: 3,
   preferCommandOnBare: true,
   dependencies: {}
 };
 
 function parseArguments(args) {
-  const tokens = Array.isArray(args) ? args.map(value => String(value).trim()).filter(Boolean) : [];
-  const lowered = tokens.map(value => value.toLowerCase());
-  if (lowered.some(value => ["help", "--help", "-h"].includes(value))) {
-    return { help: true, url: null, decorationId: null };
-  }
-  if (["list", "decorations", "ds"].includes(lowered[0])) {
-    const pageToken = tokens[1] && /^\d+$/.test(tokens[1]) ? Number(tokens[1]) : 1;
-    return { list: true, page: Math.max(1, Math.min(1000, pageToken)), url: null, decorationId: null };
-  }
-  if (["find", "search", "tim"].includes(lowered[0])) {
-    return { find: tokens.slice(1).join(" ").trim(), url: null, decorationId: null };
+  const tokens = Array.isArray(args)
+    ? args.map(value => String(value ?? "").trim()).filter(Boolean)
+    : [];
+  if (!tokens.length || tokens[0].toLowerCase() !== "dis") {
+    return { help: true, menu: false, decorationId: null, error: null };
   }
 
-  let url = null;
-  let randomDecoration = false;
-  const idTokens = [];
-  for (const token of tokens) {
-    const normalizedUrl = stickerService.normalizeSourceUrl(token);
-    if (normalizedUrl) {
-      if (!url) url = normalizedUrl;
-      continue;
-    }
-    if (["random", "rand", "ngẫu-nhiên", "ngau-nhien"].includes(token.toLowerCase())) {
-      randomDecoration = true;
-      continue;
-    }
-    idTokens.push(token);
+  const candidate = tokens[1];
+  if (!candidate || ["menu", "help", "list"].includes(candidate.toLowerCase())) {
+    return { help: false, menu: true, decorationId: null, error: null };
   }
 
-  const decorationId = idTokens.join(" ").trim() || null;
-  return { help: false, list: false, find: null, url, randomDecoration, decorationId };
+  if (!/^\d{1,3}$/.test(candidate)) {
+    return {
+      help: false,
+      menu: false,
+      decorationId: null,
+      error: "Số thứ tự khung không hợp lệ. Vui lòng chọn từ 1 đến 200."
+    };
+  }
+
+  const decorationId = Number(candidate);
+  if (decorationId < 1 || decorationId > 200) {
+    return {
+      help: false,
+      menu: false,
+      decorationId,
+      error: "Khung #" + decorationId + " không tồn tại. Vui lòng chọn từ 1 đến 200."
+    };
+  }
+
+  return { help: false, menu: false, decorationId, error: null };
 }
 
-function formatDecorationList(result, page, prefix = PREFIX(), heading = "KHO DISCORD DECORATIONS") {
-  // The displayed numeric ID is the 1-based position in the full bundled
-  // catalog, so IDs stay consistent across list pages and search results.
-  const serialById = new Map(
-    stickerDecorations.snapshot().items.map((item, index) => [String(item.id), index + 1])
+function getAuthorId(event) {
+  return String(
+    event?.data?.uidFrom || event?.data?.uid || event?.uidFrom ||
+    event?.senderID || event?.senderId || ""
   );
-  const rows = (result.items || []).map((item, index) => {
-    const serial = serialById.get(String(item.id)) || result.offset + index + 1;
-    return String(serial).padStart(3, " ") + ". " +
-      item.name + " [" + item.collection + "]" +
-      (item.animated ? " · ANIMATED" : "") +
-      "\n    ID: " + serial;
-  });
-  return [
-    "╭━━━〔 " + heading + " 〕━━━╮",
-    "Tổng: " + result.total + " mẫu · Trang " + page,
-    "├────────────────────────",
-    ...(rows.length ? rows : ["Không tìm thấy mẫu phù hợp."]),
-    "├────────────────────────",
-    "• Trang tiếp: " + prefix + "stk list " + (page + 1),
-    "• Tìm tên: " + prefix + "stk find <từ khóa>",
-    "• Reply media rồi dùng: " + prefix + "stk <số ID>",
-    "• Chọn ngẫu nhiên: reply media rồi gõ " + prefix + "stk random",
-    "• Nguồn: uhidontkno/DiscordAvatarDecorations",
-    "╰────────────────────────"
-  ].join("\n");
 }
 
-function guide(prefix = PREFIX()) {
-  return [
-    "CÁCH DÙNG /STK",
-    "• Reply đúng tin ảnh/GIF/video rồi gõ " + prefix + "stk random",
-    "• Xem kho decoration: " + prefix + "stk list [trang]",
-    "• Tìm decoration: " + prefix + "stk find <tên>",
-    "• Áp dụng mẫu: reply media rồi gõ " + prefix + "stk 1",
-    "• Dùng link media: " + prefix + "stk <link media> <số ID>",
-    "",
-    "Lệnh STK hiện chỉ sử dụng Discord avatar decorations trong kho; 5 khung tự thiết kế cũ đã được gỡ."
-  ].join("\n");
+function getQuotedOwnerId(event) {
+  const quote = event?.data?.quote || event?.data?.dQuote || event?.quote;
+  return String(quote?.ownerId || quote?.uidFrom || quote?.uid || getAuthorId(event));
 }
 
-async function safeSend(api, message, event) {
+function getQuotedMediaUrl(event) {
+  const media = parseQuote(event);
+  if (!media) return null;
+  return [
+    media.webpUrl,
+    media.video,
+    media.image,
+    media.file
+  ].find(value => typeof value === "string" && /^https?:\/\//i.test(value)) || null;
+}
+
+function getMention(profile, uid) {
+  if (!uid) return [];
+  const name = String(profile?.requesterName || "Bạn").trim() || "Bạn";
+  return [{ uid: String(uid), pos: 0, len: name.startsWith("@") ? name.length : name.length + 1 }];
+}
+
+async function safeSend(api, event, msg, mentions = []) {
   try {
     return await api.sendMessage(
-      { msg: message, recallAfterMs: 60000 },
+      { msg, ...(mentions.length ? { mentions } : {}), ttl: 60000 },
       event.threadId,
       event.type
     );
   } catch (error) {
-    console.error("[stk] Không gửi được trạng thái:", error?.message || error);
+    console.error("[stk] Không gửi được tin nhắn:", error?.message || error);
     return null;
   }
 }
 
-async function resolveDecoration(options) {
-  if (options.randomDecoration) return stickerDecorations.getRandomDecoration();
-  if (!options.decorationId) return null;
-  const requestedId = String(options.decorationId).trim();
-  if (/^\d+$/.test(requestedId)) {
-    const serial = Number(requestedId);
-    if (!Number.isSafeInteger(serial) || serial < 1) return null;
-    return stickerDecorations.snapshot().items[serial - 1] || null;
+async function safeReaction(api, event, icon) {
+  const data = event?.data || {};
+  const msgId = data.msgId || data.messageId || event?.msgId;
+  const cliMsgId = data.cliMsgId || data.clientMsgId || event?.cliMsgId;
+  if (!msgId || !cliMsgId || typeof api?.addReaction !== "function") return;
+  try {
+    await api.addReaction(
+      { rType: 0, source: 6, icon },
+      {
+        data: { msgId: String(msgId), cliMsgId: String(cliMsgId) },
+        threadId: String(event.threadId),
+        type: event.type
+      }
+    );
+  } catch {
+    // Reaction is only a progress indicator; it must not cancel sticker work.
   }
-  const exact = await stickerDecorations.getDecoration(requestedId);
-  if (exact) return exact;
-  const matches = await stickerDecorations.getDecorations({
-    query: options.decorationId,
-    limit: 20
+}
+
+function helpText(prefix = PREFIX()) {
+  return [
+    "✨ DISCORD AVATAR DECORATION — 200 KHUNG ✨",
+    "",
+    "1. Reply vào ảnh, sticker, GIF hoặc video.",
+    "2. Gõ: " + prefix + "stk dis <1-200>",
+    "",
+    "Xem menu: " + prefix + "stk dis",
+    "Ví dụ: " + prefix + "stk dis 12",
+    "",
+    "Không reply media? Bot sẽ thử dùng avatar Zalo của người gửi lệnh."
+  ].join("\n");
+}
+
+async function sendMenu(api, event) {
+  const uid = getAuthorId(event);
+  const profile = await getRequesterProfile(api, event, { skipAvatarWarm: true });
+  const name = String(profile?.requesterName || "Bạn");
+  const tag = "@" + name;
+  const mentions = uid ? [{ uid, pos: 0, len: tag.length }] : [];
+
+  if (fs.existsSync(MENU_IMAGE)) {
+    try {
+      return await api.sendMessage(
+        {
+          msg: "✨ AVATAR DECORATION — DISCORD (200 KHUNG) ✨",
+          mentions,
+          attachments: [MENU_IMAGE],
+          ttlKind: "media"
+        },
+        event.threadId,
+        event.type
+      );
+    } catch (error) {
+      console.error("[stk] Không gửi được menu.jpg:", error?.message || error);
+    }
+  }
+
+  return safeSend(api, event, helpText(), mentions);
+}
+
+function isNotFoundError(error) {
+  const status = Number(error?.status || error?.statusCode || error?.response?.status);
+  return status === 404 || /\b404\b|not found|hết hạn lưu trữ/i.test(
+    String(error?.message || error || "")
+  );
+}
+
+async function resolveMediaSource(api, event, quotedUrl) {
+  if (quotedUrl) {
+    return { url: quotedUrl, usingAvatar: false, targetUid: getQuotedOwnerId(event) };
+  }
+
+  const targetUid = getQuotedOwnerId(event);
+  const avatarUrl = await getUserAvatar(api, targetUid, {
+    waitMs: 900,
+    fetchTimeoutMs: 1600,
+    skipAvatarWarm: true
   });
-  return matches.total === 1 ? matches.items[0] : null;
+  if (avatarUrl) return { url: avatarUrl, usingAvatar: true, targetUid };
+
+  throw new Error(
+    "Không tìm thấy ảnh/sticker trong tin nhắn được reply và cũng không lấy được avatar Zalo. " +
+    "Hãy reply một ảnh hoặc gửi ảnh mới rồi reply lại."
+  );
+}
+
+async function processWithAvatarFallback(api, event, media) {
+  try {
+    return await stkDiscord.processDiscordSticker({
+      api,
+      event,
+      mediaUrl: media.url,
+      decorationId: media.decorationId
+    });
+  } catch (error) {
+    if (media.usingAvatar || !isNotFoundError(error)) throw error;
+
+    const avatarUrl = await getUserAvatar(api, media.targetUid, {
+      waitMs: 900,
+      fetchTimeoutMs: 1600,
+      skipAvatarWarm: true
+    });
+    if (!avatarUrl) {
+      throw new Error(
+        "Ảnh/sticker đã hết hạn trên máy chủ Zalo (404) và không lấy được avatar thay thế. " +
+        "Vui lòng gửi lại ảnh mới rồi reply lại."
+      );
+    }
+
+    return stkDiscord.processDiscordSticker({
+      api,
+      event,
+      mediaUrl: avatarUrl,
+      decorationId: media.decorationId
+    });
+  }
 }
 
 module.exports.run = async function ({ api, event, args }) {
   const options = parseArguments(args);
-  if (options.help) return safeSend(api, guide(), event);
-  if (options.list) {
-    try {
-      const result = await stickerDecorations.getDecorations({
-        limit: PAGE_SIZE,
-        offset: (options.page - 1) * PAGE_SIZE
-      });
-      return safeSend(api, formatDecorationList(result, options.page), event);
-    } catch (error) {
-      return safeSend(api, "❌ Không đọc được catalog decoration đã đóng gói: " + String(error?.message || error).slice(0, 220), event);
-    }
-  }
-  if (options.find !== undefined && options.find !== null) {
-    if (!options.find) return safeSend(api, "Nhập từ khóa. Ví dụ: " + PREFIX() + "stk find anime", event);
-    try {
-      const result = await stickerDecorations.getDecorations({ query: options.find, limit: PAGE_SIZE });
-      return safeSend(api, formatDecorationList(result, 1, PREFIX(), "KẾT QUẢ TÌM KIẾM"), event);
-    } catch (error) {
-      return safeSend(api, "❌ Không tìm được decoration: " + String(error?.message || error).slice(0, 220), event);
-    }
+
+  if (options.help) return safeSend(api, event, helpText());
+  if (options.menu) return sendMenu(api, event);
+  if (options.error) return safeSend(api, event, "⚠️ " + options.error + "\nGõ " + PREFIX() + "stk dis để xem menu.");
+
+  const decoration = stkDiscord.getDecoration(options.decorationId);
+  if (!decoration) {
+    return safeSend(api, event, "❌ Không tìm thấy khung #" + options.decorationId + ".");
   }
 
-  const quotedMedia = parseQuote(event);
-  const url = options.url || stickerService.pickMediaUrl(quotedMedia);
-  if (!url) return safeSend(api, guide(), event);
-
-  let decoration;
+  // Fail early when the selected local asset is missing; do not queue work
+  // that cannot succeed and do not leave an ⏳ reaction behind.
   try {
-    decoration = await resolveDecoration(options);
-    if (!decoration) {
-      return safeSend(api, "❌ Không tìm thấy decoration. Dùng /stk list hoặc /stk find <tên> để lấy ID chính xác.", event);
-    }
+    stkDiscord.findDecorationFile(options.decorationId);
   } catch (error) {
-    return safeSend(api, "❌ Không đọc được catalog decoration: " + String(error?.message || error).slice(0, 220), event);
-  }
-
-  await safeSend(api, "⏳ Đang tạo sticker với decoration " + decoration.name + "...", event);
-  try {
-    await enqueue("sticker", () => stickerService.processSticker({
+    return safeSend(
       api,
       event,
-      url,
-      decorationId: decoration.id
-    }), {
-      key: String(event.threadId) + ":" + url + ":" + decoration.id,
-      label: "STK Discord · " + decoration.name,
-      retries: 1,
-      retryDelayMs: 500,
-      retryOn: error => /worker|temporarily|timeout|ECONNRESET|ETIMEDOUT/i.test(String(error?.message || error))
+      "❌ " + String(error?.message || error) +
+      "\nĐặt file khung vào: data/discord_decor/" +
+      "\nTên file chuẩn: " + decoration.file
+    );
+  }
+
+  const quotedUrl = getQuotedMediaUrl(event);
+
+  // Emit the progress reaction/text before avatar lookup or media download,
+  // matching the immediate acknowledgement in the Python implementation.
+  const profile = await getRequesterProfile(api, event, { skipAvatarWarm: true });
+  const uid = getAuthorId(event);
+  const tag = "@" + String(profile?.requesterName || "Bạn");
+  const mentions = uid ? [{ uid, pos: 0, len: tag.length }] : [];
+
+  await safeReaction(api, event, "⏳");
+  await safeSend(
+    api,
+    event,
+    "⏳ Đang tạo sticker Discord [" + decoration.name + " - " + decoration.vi + "]...",
+    mentions
+  );
+
+  const jobKey = [
+    String(event.threadId),
+    String(event?.data?.msgId || event?.data?.cliMsgId || Date.now()),
+    String(options.decorationId)
+  ].join(":");
+
+  try {
+    await enqueue("sticker", async () => {
+      const media = await resolveMediaSource(api, event, quotedUrl);
+      media.decorationId = options.decorationId;
+      return processWithAvatarFallback(api, event, media);
+    }, {
+      key: jobKey,
+      label: "STK Discord · #" + options.decorationId,
+      retries: 0
     });
+
+    const success = [
+      tag,
+      "SUCCESS",
+      "Đã thêm khung Discord [" + decoration.name + " - " + decoration.vi + "]"
+    ].join("\n");
+    await safeSend(api, event, success, mentions);
+    await safeReaction(api, event, "✅");
+    return true;
   } catch (error) {
     console.error("[stk] Tạo sticker thất bại:", error?.stack || error);
-    const message = /privacy|không nằm trong danh sách cho phép/i.test(String(error?.message || error))
-      ? "❌ Host của link media chưa được cho phép trong privacy.allowed_hosts. Hãy dùng CDN Zalo hoặc link từ host đã bật."
-      : "❌ Không tạo được sticker: " + String(error?.userMessage || error?.message || "lỗi không xác định").slice(0, 260);
-    return safeSend(api, message, event);
+    await safeSend(
+      api,
+      event,
+      "❌ Đã xảy ra lỗi khi tạo sticker khung Discord:\n" +
+      String(error?.userMessage || error?.message || error).slice(0, 350),
+      mentions
+    );
+    return false;
   }
 };
 
 module.exports._test = {
   parseArguments,
-  formatDecorationList,
-  guide,
-  resolveDecoration,
-  PAGE_SIZE
+  getAuthorId,
+  getQuotedOwnerId,
+  getQuotedMediaUrl,
+  helpText,
+  isNotFoundError
 };
