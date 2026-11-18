@@ -87,7 +87,7 @@ function shouldReplayOldMessage(message, reconnectSince) {
 }
 
 
-async function dispatchAntiMessageBeforeGame({ api, event, Users, Threads, isSelf = false } = {}) {
+async function dispatchAntiMessageBeforeGame({ api, event, Users, Threads, threadData = null, isSelf = false } = {}) {
   if (event?.type !== ThreadType.Group || !event?.threadId) {
     return { dispatched: false, consumed: false };
   }
@@ -101,6 +101,26 @@ async function dispatchAntiMessageBeforeGame({ api, event, Users, Threads, isSel
     return { dispatched: false, consumed: false };
   }
 
+  // onMessage has already loaded the group's settings. Reuse that snapshot
+  // and skip all Anti setup for groups with no active message protections.
+  let cachedThreadRecord = threadData || null;
+  let cachedThreadCacheChecked = Boolean(threadData);
+  try {
+    if (!cachedThreadRecord && typeof Threads?.getCachedData === "function") {
+      cachedThreadCacheChecked = true;
+      cachedThreadRecord = Threads.getCachedData(event.threadId) || null;
+    }
+    if (cachedThreadRecord) {
+      const source = cachedThreadRecord?.data || cachedThreadRecord;
+      const relevantKeys = antiCommand._test?.getRelevantAntiProtectionKeys?.("message") || [];
+      if (relevantKeys.length && !relevantKeys.some(key => source?.[key] === true)) {
+        return { dispatched: false, consumed: false, skipped: true };
+      }
+    }
+  } catch {
+    // Preserve the existing durable fallback when the snapshot cannot be read.
+  }
+
   try {
     const wrapped = wrapForThread(api, event.threadId, ThreadType.Group, "anti", event);
     const result = await antiCommand.handleEvent({
@@ -110,6 +130,8 @@ async function dispatchAntiMessageBeforeGame({ api, event, Users, Threads, isSel
       isSelf: isSelf === true || event?.isSelf === true,
       Users,
       Threads,
+      cachedThreadRecord,
+      cachedThreadCacheChecked,
       reply: wrapped?.__reply,
       threadType: ThreadType.Group
     });
@@ -129,10 +151,11 @@ async function dispatchGroupMessageBeforeGame({
   Users,
   Threads,
   isSelf = false,
+  threadData = null,
   antiDispatcher = dispatchAntiMessageBeforeGame,
   gameDispatcher = dispatchActiveGameMessage
 } = {}) {
-  const anti = await antiDispatcher({ api, event, Users, Threads, isSelf });
+  const anti = await antiDispatcher({ api, event, Users, Threads, threadData, isSelf });
   if (anti?.consumed === true) {
     return { consumed: true, source: "anti", antiDispatched: anti.dispatched === true };
   }
@@ -309,7 +332,7 @@ function startListening(api) {
     // but it must not bypass Anti-Link, Anti-Word, Anti-Spam, media or AI rules.
     // If Anti removes/blocks the message, the game must never consume it.
     const activeDispatch = await dispatchGroupMessageBeforeGame({
-      api, event, Users, Threads, isSelf: event?.isSelf === true
+      api, event, Users, Threads, threadData, isSelf: event?.isSelf === true
     });
     if (activeDispatch.consumed) return;
 
