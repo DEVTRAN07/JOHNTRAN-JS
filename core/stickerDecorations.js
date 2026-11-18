@@ -101,5 +101,6 @@ module.exports = {
   getDecorations: catalog.getDecorations,
   getDecoration: catalog.getDecoration,
   getRandomDecoration: catalog.getRandomDecoration,
-  refresh: catalog.refresh
+  refresh: catalog.refresh,
+  snapshot: catalog.snapshot
 };
