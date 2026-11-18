@@ -153,7 +153,15 @@ function drawAvatarFallback(ctx, name, x, y, size) {
   ctx.textBaseline = "middle";
   ctx.shadowColor = second;
   ctx.shadowBlur = theme.S(7);
-  ctx.fillText(monogram, x + size / 2, y + size / 2);
+  theme.drawMulticolorText(ctx, monogram, x + size / 2, y + size / 2, {
+    size: size * 0.34,
+    family: "JT-Round-Bold",
+    font: ctx.font,
+    color: "#eafaff",
+    align: "center",
+    maxWidth: size * 0.62,
+    multicolor: true
+  });
   ctx.shadowBlur = 0;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
