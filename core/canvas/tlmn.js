@@ -18,7 +18,7 @@ function drawText(ctx, text, x, y, scale, options = {}) {
     align: options.align || "left",
     baseline: options.baseline || "alphabetic",
     maxWidth: options.maxWidth,
-    multicolor: words.length > 1 && !semanticColor
+    multicolor: true
   });
   ctx.restore();
 }
@@ -108,7 +108,7 @@ function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
   const name = String(item.name || "Người chơi").replace(/[\r\n\t]+/g, " ");
   const compact = w < px(260);
   const nameWidth = Math.max(px(68), w - px(compact ? 104 : 142));
-  drawText(ctx, name.length > 22 ? name.slice(0, 20) + "…" : name,
+  drawText(ctx, name,
     x + px(78), y + px(36), scale, {
       size: 16, weight: 900, color: p.ink, maxWidth: nameWidth
     });
