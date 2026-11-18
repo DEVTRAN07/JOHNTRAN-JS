@@ -19,6 +19,7 @@ function makeThreads(initialData) {
 function makeApi() {
   const calls = { sent: [], reactions: 0, kicks: 0 };
   const api = {
+    getOwnId() { return "deputy"; },
     async getGroupInfo() {
       return { gridInfoMap: { group: { creatorId: "owner", adminIds: ["deputy"] } } };
     },
@@ -52,10 +53,11 @@ test("simultaneous autokick violations increment once per message and kick once"
     data: { uidFrom: "member", content: "this badword", dName: "Member" }
   };
   try {
-    await Promise.all([1, 2, 3].map(() => autokick.handleEvent({ api, event, Threads })));
+    await Promise.all([1, 2, 3, 4].map(() => autokick.handleEvent({ api, event, Threads })));
     assert.equal(calls.kicks, 1);
     assert.equal(calls.sent.filter(item => /lần 1\/3/.test(item.msg || "")).length, 1);
     assert.equal(calls.sent.filter(item => /lần 2\/3/.test(item.msg || "")).length, 1);
+    assert.equal(calls.sent.filter(item => /lần 3\/3/.test(item.msg || "")).length, 1);
     assert.equal(calls.sent.filter(item => /Đã kick/.test(item.msg || "")).length, 1);
     assert.equal(Threads.snapshot().auto_kick.violations.member, undefined);
   } finally {
@@ -72,9 +74,9 @@ test("simultaneous guard violations increment once per message and kick once", a
     type: 1,
     data: { uidFrom: "member", content: "https://untrusted.example/path", msgId: 100, cliMsgId: "100" }
   };
-  await Promise.all([1, 2, 3].map(() => guard.run({ api, event, Threads, isSelf: false })));
+  await Promise.all([1, 2, 3, 4].map(() => guard.run({ api, event, Threads, isSelf: false })));
   assert.equal(calls.kicks, 1);
-  assert.equal(calls.reactions, 2);
+  assert.equal(calls.reactions, 3);
   assert.equal(calls.sent.filter(item => /Cảnh cáo 1\/3/.test(item.msg || "")).length, 1);
   assert.equal(calls.sent.filter(item => /Cảnh cáo 2\/3/.test(item.msg || "")).length, 1);
   assert.equal(calls.sent.filter(item => /Đã kick/.test(item.msg || "")).length, 1);

@@ -7,6 +7,7 @@ const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
 const fsSync = require("fs");
 const { getBotGroupRole } = require("../../core/runtime/botGroupKey");
+const { runThreadQueue } = require("../../core/runtime/threadQueue");
 const { sendAntiToggleNotice } = require("../../core/runtime/antiToggle");
 
 const ANTI_SELF_ECHO_TTL_MS = 60_000;
@@ -418,17 +419,22 @@ async function withNudeEnforcementLock(threadId, task) {
   }
 }
 
-async function registerAntiNudeViolation(Threads, api, threadId, userId) {
+async function registerAntiViolation(Threads, api, threadId, userId, warningsKey = "anti_nude_warnings") {
   return withNudeEnforcementLock(threadId, async () => {
     if (typeof Threads?.getData !== "function") {
       return { warningCount: 0, persistError: new Error("Không đọc được dữ liệu nhóm để lưu cảnh cáo") };
     }
 
-    const record = await Threads.getData(threadId);
+    let record;
+    try {
+      record = await Threads.getData(threadId);
+    } catch (error) {
+      return { warningCount: 0, persistError: error };
+    }
     const threadData = {
       ...((record?.data && typeof record.data === "object") ? record.data : (record || {}))
     };
-    const storedWarnings = threadData.anti_nude_warnings;
+    const storedWarnings = threadData[warningsKey];
     const warnings = storedWarnings && typeof storedWarnings === "object" && !Array.isArray(storedWarnings)
       ? { ...storedWarnings }
       : {};
@@ -443,6 +449,7 @@ async function registerAntiNudeViolation(Threads, api, threadId, userId) {
       return { warningCount: current, persistError: new Error("Không có API lưu số lần cảnh cáo Anti") };
     }
 
+    // Three strikes are warnings. The fourth violating message attempts the kick.
     if (current < ANTI_NUDE_WARNING_LIMIT) {
       const nextCount = current + 1;
       warnings[uid] = nextCount;
@@ -451,7 +458,7 @@ async function registerAntiNudeViolation(Threads, api, threadId, userId) {
         if (!oldestUid) break;
         delete warnings[oldestUid];
       }
-      threadData.anti_nude_warnings = warnings;
+      threadData[warningsKey] = warnings;
       try {
         await save.call(Threads, threadId, threadData);
         return { warningCount: nextCount, kicked: false };
@@ -467,13 +474,13 @@ async function registerAntiNudeViolation(Threads, api, threadId, userId) {
     }
 
     delete warnings[uid];
-    threadData.anti_nude_warnings = warnings;
+    threadData[warningsKey] = warnings;
     let cleanupError = null;
     try {
       await save.call(Threads, threadId, threadData);
     } catch (error) {
       cleanupError = error;
-      console.error("[ANTINUDE] Đã kick thành viên nhưng không xóa được bộ đếm cảnh cáo:", error?.message || error);
+      console.error("[ANTI] Đã kick thành viên nhưng không xóa được bộ đếm cảnh cáo:", error?.message || error);
     }
     return { warningCount: ANTI_NUDE_WARNING_LIMIT, kicked: true, cleanupError };
   });
@@ -490,7 +497,42 @@ function createMentionMessage(text, name, userId) {
   };
 }
 
-module.exports.handleEvent = async function (context = {}) {
+async function enforceAntiViolation({ api, event, Threads, sendNotice, userId, reason, warningKey, deleteEvents }) {
+  const targets = Array.isArray(deleteEvents) && deleteEvents.length ? deleteEvents : [event];
+  const botAuthored = await isBotAuthoredMessage(api, event);
+  const deleteResults = await Promise.allSettled(
+    targets.map(target => deleteGroupMessage(api, target, { isBotMessage: botAuthored }))
+  );
+  const deleted = deleteResults.filter(result => result.status === "fulfilled").length;
+  const deleteFailures = deleteResults.filter(result => result.status === "rejected");
+  const deleteNote = deleteFailures.length
+    ? "⚠️ Bot xóa/thu hồi được " + deleted + "/" + targets.length + " tin; " +
+      String(deleteFailures[0].reason?.message || deleteFailures[0].reason || "API Zalo từ chối")
+    : (botAuthored ? "Đã thu hồi tin nhắn thử nghiệm." : "Đã xóa tin nhắn vi phạm.");
+
+  if (botAuthored) {
+    return sendNotice("🚫 {member}, " + reason + "\n" + deleteNote + " Bỏ qua cảnh cáo và không kick tài khoản bot.");
+  }
+
+  const enforcement = await registerAntiViolation(Threads, api, event.threadId, userId, warningKey);
+  let warningNote;
+  if (enforcement.persistError) {
+    warningNote = "⚠️ Chưa lưu được cảnh cáo nên bot chưa kick: " +
+      String(enforcement.persistError.message || enforcement.persistError);
+  } else if (enforcement.kicked) {
+    warningNote = "⛔ Đã đủ 3 lần cảnh cáo. Vi phạm lần thứ 4, bot đã kick thành viên.";
+  } else if (enforcement.kickError) {
+    warningNote = "⚠️ Đã đủ 3 lần cảnh cáo; bot thử kick nhưng Zalo từ chối kick thành viên. Bot sẽ thử lại khi thành viên tái phạm.";
+  } else {
+    warningNote = "⚠️ Cảnh cáo lần " + enforcement.warningCount +
+      "/3. Sau 3 lần cảnh cáo, vi phạm lần thứ 4 sẽ bị kick.";
+  }
+
+  if (deleteFailures.length) warningNote += "\n" + deleteNote;
+  return sendNotice("🚫 {member}, " + reason + "\n" + warningNote);
+}
+
+async function handleAntiEvent(context = {}) {
   const event = context.event || {};
   // Legacy direct callers historically passed only event/api/Threads.
   // Missing eventType therefore means a normal incoming message; Undo callers
@@ -692,7 +734,7 @@ module.exports.handleEvent = async function (context = {}) {
               if (botAuthored) {
                 actions.push("bỏ qua cảnh cáo và kick tài khoản bot khi tự kiểm tra");
               } else {
-                enforcement = await registerAntiNudeViolation(Threads, api, threadId, userId);
+                enforcement = await registerAntiViolation(Threads, api, threadId, userId, "anti_nude_warnings");
                 if (enforcement.persistError) {
                   actions.push("chưa lưu được lượt cảnh cáo nên chưa kick");
                 } else if (enforcement.kicked) {
@@ -734,26 +776,20 @@ module.exports.handleEvent = async function (context = {}) {
         }
       }
       if (blockedUrl) {
-        let deleteError = null;
-        try { await deleteGroupMessage(api, event); }
-        catch (error) { deleteError = error; }
-        return sendNotice(
-          deleteError
-            ? "🚫 {member}, phát hiện link nguy hiểm nhưng bot chưa xóa được tin nhắn: " + deleteError.message
-            : "🚫 {member}, link mời nhóm khác hoặc URL không an toàn đã bị chặn."
-        );
+        return enforceAntiViolation({
+          api, event, Threads, sendNotice, userId,
+          warningKey: "anti_link_warnings",
+          reason: "phát hiện link mời nhóm khác trên Zalo hoặc URL không an toàn (" + blockedUrl.slice(0, 90) + ")."
+        });
       }
     }
 
     if (urls.length && threadData.anti_link === true) {
-      let deleteError = null;
-      try { await deleteGroupMessage(api, event); }
-      catch (error) { deleteError = error; }
-      return sendNotice(
-        deleteError
-          ? "🚫 {member}, không được gửi link. Bot chưa xóa được tin nhắn: " + deleteError.message
-          : "🚫 {member}, không được gửi link trong nhóm này!"
-      );
+      return enforceAntiViolation({
+        api, event, Threads, sendNotice, userId,
+        warningKey: "anti_link_warnings",
+        reason: "không được gửi link trong nhóm này."
+      });
     }
 
     if (threadData.anti_sticker_spam === true && isStickerMessage(data)) {
@@ -773,25 +809,16 @@ module.exports.handleEvent = async function (context = {}) {
 
       if (history.length > 5) {
         cache.delete(cacheKey);
-        const results = await Promise.allSettled(history.map(item => deleteGroupMessage(api, {
-          threadId,
-          type: ThreadType.Group,
-          data: item.data
-        })));
-        const deleted = results.filter(item => item.status === "fulfilled").length;
-        const warnings = global.antiStickerSpamWarnings instanceof Map
-          ? global.antiStickerSpamWarnings
-          : (global.antiStickerSpamWarnings = new Map());
-        const lastWarning = warnings.get(cacheKey) || 0;
-        if (now - lastWarning >= 10000) {
-          warnings.set(cacheKey, now);
-          return sendNotice(
-            deleted
-              ? "🚫 {member}, không được dội bom sticker! Bot đã xóa " + deleted + "/" + history.length + " sticker."
-              : "🚫 {member}, phát hiện dội bom sticker nhưng Zalo không cho bot xóa sticker."
-          );
-        }
-        return;
+        return enforceAntiViolation({
+          api, event, Threads, sendNotice, userId,
+          warningKey: "anti_sticker_spam_warnings",
+          reason: "không được dội bom sticker (hơn 5 sticker trong 4 giây).",
+          deleteEvents: history.map(item => ({
+            threadId,
+            type: ThreadType.Group,
+            data: item.data
+          }))
+        });
       }
 
       cache.set(cacheKey, history);
@@ -804,19 +831,37 @@ module.exports.handleEvent = async function (context = {}) {
         ? global.spamCache
         : (global.spamCache = {});
       if (!cache[threadId]) cache[threadId] = {};
-      const history = (cache[threadId][userId] || []).filter(ts => now - ts <= 5000);
-      history.push(now);
+      const rawHistory = Array.isArray(cache[threadId][userId]) ? cache[threadId][userId] : [];
+      const history = rawHistory.filter(item => {
+        const at = typeof item === "number" ? item : Number(item?.at);
+        return Number.isFinite(at) && now - at <= 5000;
+      });
+      history.push({
+        at: now,
+        data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
+      });
       cache[threadId][userId] = history;
+
       if (history.length > 5) {
-        let deleteError = null;
-        try { await deleteGroupMessage(api, event); }
-        catch (error) { deleteError = error; }
-        return sendNotice(
-          deleteError
-            ? "🚫 {member}, vui lòng không spam. Bot chưa xóa được tin nhắn: " + deleteError.message
-            : "🚫 {member}, vui lòng không spam!"
-        );
+        // Reset this burst after processing it, so each burst generates one warning.
+        cache[threadId][userId] = [];
+        const deleteEvents = history
+          .filter(item => item?.data?.cliMsgId != null && item?.data?.msgId != null)
+          .map(item => ({
+            threadId,
+            type: ThreadType.Group,
+            data: item.data
+          }));
+        return enforceAntiViolation({
+          api, event, Threads, sendNotice, userId,
+          warningKey: "anti_spam_warnings",
+          reason: "vui lòng không spam: gửi tin nhắn quá dồn dập (hơn 5 tin trong 5 giây).",
+          deleteEvents: deleteEvents.length ? deleteEvents : [event]
+        });
       }
+
+      const groupIds = Object.keys(cache);
+      if (groupIds.length > 500) delete cache[groupIds[0]];
     }
   } catch (error) {
     console.error("[ANTI] Lỗi xử lý tại nhóm " + threadId + ":", error?.stack || error);
@@ -845,7 +890,8 @@ module.exports._test = {
   buildDeleteDestination,
   isBotAuthoredMessage,
   deleteGroupMessage,
-  kickGroupMember
+  kickGroupMember,
+  registerAntiViolation
 };
 
 
@@ -991,4 +1037,10 @@ module.exports.run = async function ({ api, event, args, Threads }) {
     enabled: newValue,
     detail: notice.detail
   });
+};
+
+module.exports.handleEvent = function (context = {}) {
+  const threadId = String(context.event?.threadId || "");
+  if (!threadId) return Promise.resolve();
+  return runThreadQueue(threadId, () => handleAntiEvent(context));
 };
