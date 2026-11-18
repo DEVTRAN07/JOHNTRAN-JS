@@ -51,14 +51,14 @@ test("menu color themes are shared by every Canvas card", t => {
   const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
   const legacyProfile = fs.readFileSync(require.resolve("../core/canvas/profile"), "utf8");
   const macWindow = fs.readFileSync(require.resolve("../core/canvas/macWindow"), "utf8");
-  assert.doesNotMatch(source, /^const menuPalette\\s*=/m);
+  assert.doesNotMatch(source, /^const menuPalette\s*=/m);
   assert.ok(!source.includes("BG_IMAGE"));
   assert.ok(!source.includes("theme.jpg"));
   assert.ok(!source.includes("loadImage"));
   assert.ok(!macWindow.includes("menuPalette"));
   assert.ok(!macWindow.includes("theme.jpg"));
   assert.doesNotMatch(source, /withMacWindow/);
-  assert.match(source, /canvas\\.toBuffer\\("image\\/png"\\)/);
+  assert.match(source, /canvas\.toBuffer\("image\/png"\)/);
   assert.ok(!legacyProfile.includes("BG_IMAGE"));
   assert.ok(!legacyProfile.includes("theme.jpg"));
   const topchat = fs.readFileSync(require.resolve("../core/canvas/topchat"), "utf8");
