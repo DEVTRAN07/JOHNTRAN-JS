@@ -13,6 +13,10 @@ let messageCacheMem = null;
 let messageCacheEntryCount = 0;
 let messageCacheFullScanCount = 0;
 let cacheFlushTimer = null;
+let cacheWriteQueue = Promise.resolve();
+let asyncFlushCount = 0;
+let asyncFlushFailures = 0;
+let asyncFlushLastMs = 0;
 const CACHE_FLUSH_DELAY = 5000;
 const MAX_MESSAGE_CACHE_ENTRIES = 50000;
 const MESSAGE_CACHE_EVICTION_BATCH = 2500;
@@ -63,9 +67,43 @@ function writeMessageJson(data) {
     }
 }
 
+function writeMessageJsonAsync(data) {
+    if (!data) return Promise.resolve(false);
+
+    // Snapshot before entering the serialized write queue. The file write and
+    // atomic rename are asynchronous so disk latency cannot block Zalo events.
+    let serialized;
+    try {
+        serialized = JSON.stringify(data);
+    } catch (error) {
+        asyncFlushFailures++;
+        logger.log("Lỗi serialize message cache: " + error.message, "error");
+        return Promise.resolve(false);
+    }
+
+    const startedAt = Date.now();
+    const tempPath = messageCachePath + "." + process.pid + ".tmp";
+    cacheWriteQueue = cacheWriteQueue
+        .catch(() => {})
+        .then(async () => {
+            await fs.promises.writeFile(tempPath, serialized, "utf-8");
+            await fs.promises.rename(tempPath, messageCachePath);
+            asyncFlushCount++;
+            asyncFlushLastMs = Math.max(0, Date.now() - startedAt);
+            return true;
+        })
+        .catch(async error => {
+            asyncFlushFailures++;
+            try { await fs.promises.unlink(tempPath); } catch {}
+            logger.log("Lỗi ghi message cache bất đồng bộ: " + error.message, "error");
+            return false;
+        });
+    return cacheWriteQueue;
+}
+
 function flushMessageCache() {
     cacheFlushTimer = null;
-    if (messageCacheMem) writeMessageJson(messageCacheMem);
+    return messageCacheMem ? writeMessageJsonAsync(messageCacheMem) : Promise.resolve(false);
 }
 
 function scheduleCacheFlush() {
@@ -111,7 +149,10 @@ function getMessageCacheStats() {
     return {
         entries: messageCacheEntryCount,
         fullScans: messageCacheFullScanCount,
-        maxEntries: MAX_MESSAGE_CACHE_ENTRIES
+        maxEntries: MAX_MESSAGE_CACHE_ENTRIES,
+        asyncFlushCount,
+        asyncFlushFailures,
+        asyncFlushLastMs
     };
 }
 
