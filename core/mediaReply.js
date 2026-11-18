@@ -54,15 +54,24 @@ function parseQuote(event) {
 
   // Sticker động: attach.webp = JSON chuỗi {url, width, height} — đây mới là nguồn sticker
   let webpUrl = null;
-  try {
-    const webp = merged.webp;
-    if (typeof webp === "string" && webp.trim()) {
-      const parsed = JSON.parse(webp);
-      if (parsed?.url) webpUrl = String(parsed.url);
-    } else if (webp && typeof webp === "object" && webp.url) {
-      webpUrl = String(webp.url);
+  const webp = merged.webp;
+  if (typeof webp === "string" && webp.trim()) {
+    const rawWebp = webp.trim();
+    try {
+      const parsed = JSON.parse(rawWebp);
+      const candidate = typeof parsed === "string" ? parsed : parsed?.url;
+      if (typeof candidate === "string" && /^https?:\/\//i.test(candidate)) {
+        webpUrl = candidate;
+      }
+    } catch {
+      // Zalo versions differ: attach.webp may be a JSON object string or
+      // the direct media URL. Preserve both formats for sticker replies.
+      if (/^https?:\/\//i.test(rawWebp)) webpUrl = rawWebp;
     }
-  } catch { /* không parse được */ }
+  } else if (webp && typeof webp === "object" && typeof webp.url === "string" &&
+      /^https?:\/\//i.test(webp.url)) {
+    webpUrl = webp.url;
+  }
 
   // Sticker gốc (reply sticker)
   const stickerId = pickNum(merged, ["stickerId", "id", "sId"]);
