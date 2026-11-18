@@ -208,7 +208,15 @@ async function runMusic(providerName, { api, event, args, reply, Threads: thread
   }
 
   const query = options.queryArgs.join(" ");
-  // The dispatcher emits progress only if search outlives its grace period.
+
+  // A first SoundCloud search can require a cold client_id discovery against
+  // the home page and JS bundles. Acknowledge before queueing any remote work.
+  try {
+    await send(api, threadId, type, `🔎 Đang tìm "${query}" trên ${provider.label}...`);
+  } catch (ackError) {
+    logger.log("[music] Không gửi được tin báo tìm kiếm: " + (ackError?.message || ackError), "warn");
+  }
+
   let tracks;
   try {
     tracks = await enqueue("music-search", () => music.search(providerName, query), {

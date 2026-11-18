@@ -132,6 +132,7 @@ function helpText(prefix = PREFIX()) {
 
 async function sendMenu(api, event) {
   try {
+    await safeSend(api, event, "⏳ Đang tải danh sách 200 khung STK...");
     const menuPath = await stkDiscord.ensureMenuFile();
     return await api.sendMessage(
       {
@@ -244,7 +245,17 @@ module.exports.run = async function ({ api, event, args }) {
     })
     : null;
 
-  // Cold requests still warm both network inputs in parallel with the queue.
+  // The acknowledgement is the first outgoing operation. Do not start
+  // network lookups or asset downloads until Zalo has accepted this reply.
+  await safeSend(
+    api,
+    event,
+    "⏳ Đã nhận yêu cầu tạo sticker [" + decoration.name + " - " + decoration.vi +
+      "]. Bot đang xử lý nền; kết quả sẽ được gửi khi hoàn tất.",
+    mentions
+  );
+
+  // Cold requests warm both network inputs in parallel after acknowledgement.
   const queuedAt = Date.now();
   const frameWarmPromise = avatarCacheHit
     ? Promise.resolve(null)
@@ -256,16 +267,6 @@ module.exports.run = async function ({ api, event, args }) {
     ? null
     : resolveMediaSource(api, event, quotedUrl);
   if (mediaWarmPromise) void mediaWarmPromise.catch(() => {});
-
-  // Acknowledge immediately. The expensive download/FFmpeg/upload work must
-  // not hold the command dispatcher or block the user's next command.
-  void safeSend(
-    api,
-    event,
-    "⏳ Đã nhận yêu cầu tạo sticker [" + decoration.name + " - " + decoration.vi +
-      "]. Bot đang xử lý nền; kết quả sẽ được gửi khi hoàn tất.",
-    mentions
-  );
 
   const jobKey = [
     String(event.threadId),
