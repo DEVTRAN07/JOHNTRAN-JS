@@ -59,6 +59,25 @@ function shouldExecuteMessageCommand(options = {}) {
   return options.skipCommandExecution !== true;
 }
 
+// Preserve an already cached private-thread override, but do not cold-load or
+// create a Threads group record for a direct message. Group messages keep the
+// original durable fallback because prefix and bot-enabled state live there.
+function getThreadDataForMessage(event, Threads) {
+  const threadId = event?.threadId;
+  if (threadId == null || threadId === "") return null;
+
+  let cached = null;
+  try {
+    cached = Threads?.getCachedData?.(threadId) || null;
+  } catch {
+    // A cache failure should not trigger a private-thread database read.
+  }
+  if (cached) return cached;
+
+  if (event?.type !== ThreadType.Group) return null;
+  return Threads.getData(threadId);
+}
+
 function shouldProcessUndoEvent(event) {
   return event?.isSelf !== true || global.config?.allow_self_anti === true;
 }
@@ -292,8 +311,10 @@ function startListening(api) {
     const threadLookupStartedAt = performance.now();
     let threadData = null;
     try {
-      threadData = Threads.getCachedData?.(event.threadId) || null;
-      if (!threadData) threadData = await Threads.getData(event.threadId);
+      const lookup = getThreadDataForMessage(event, Threads);
+      // Keep the synchronous cache-hit path; only cold group records create an
+      // asynchronous boundary. Private messages intentionally stop at cache.
+      threadData = lookup && typeof lookup.then === "function" ? await lookup : lookup;
     } catch (err) {
       // DB (Supabase) hỏng / timeout → vẫn chạy lệnh với threadInfo rỗng
       logger.log(`Lỗi đọc dữ liệu nhóm ${event.threadId} (bỏ qua): ${err.message}`, "warn", { source: "listener-database", isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
@@ -798,5 +819,6 @@ module.exports.claimListenerRegistration = claimListenerRegistration;
 module.exports.shouldExecuteMessageCommand = shouldExecuteMessageCommand;
 module.exports.shouldProcessUndoEvent = shouldProcessUndoEvent;
 module.exports.shouldCacheIncomingMessage = shouldCacheIncomingMessage;
+module.exports.getThreadDataForMessage = getThreadDataForMessage;
 
 module.exports.computeReconnectDelay = computeReconnectDelay;
