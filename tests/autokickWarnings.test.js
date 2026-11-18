@@ -38,7 +38,7 @@ function makeFixture(removeUserFromGroup) {
   return { threadId, groupData, calls, api, Threads };
 }
 
-async function violate(fixture, index) {
+async function violate(fixture, index, content = "spamword") {
   return autokick.handleEvent({
     api: fixture.api,
     Threads: fixture.Threads,
@@ -48,7 +48,7 @@ async function violate(fixture, index) {
       data: {
         uidFrom: "member-id",
         dName: "Member",
-        content: "spamword",
+        content,
         msgId: "msg-" + index,
         cliMsgId: "cli-" + index
       }
@@ -87,6 +87,24 @@ test("autokick keeps the three warnings when Zalo refuses the fourth-offence kic
     assert.equal(fixture.calls.kicked.length, 1);
     assert.equal(fixture.groupData.auto_kick.violations["member-id"], 3);
     assert.match(fixture.calls.sent[0].payload.msg, /đã đủ 3 cảnh cáo/i);
+  } finally {
+    if (previousUsers === undefined) delete global.users;
+    else global.users = previousUsers;
+  }
+});
+
+
+test("autokick treats regular-expression punctuation literally in banned words", async () => {
+  const previousUsers = global.users;
+  global.users = { admin: [], support: [] };
+  const fixture = makeFixture();
+  fixture.groupData.auto_kick.words = ["promo.code"];
+  try {
+    await violate(fixture, 1, "promoXcode");
+    assert.equal(fixture.calls.sent.length, 0, "a dot in the configured word must not act as a wildcard");
+    await violate(fixture, 2, "promo.code");
+    assert.equal(fixture.calls.sent.length, 1, "the exact configured word should be detected");
+    assert.equal(fixture.groupData.auto_kick.violations["member-id"], 1);
   } finally {
     if (previousUsers === undefined) delete global.users;
     else global.users = previousUsers;
