@@ -86,7 +86,8 @@ function buildFilterGraph(fps = DEFAULT_FPS) {
   // avatar circle OR the Discord frame's original alpha channel.
   const center = OFFSET + AVATAR_SIZE / 2;
   const circleMask =
-    "255*lt(hypot(X-" + center + "\\,Y-" + center + ")\\," + AVATAR_SIZE / 2 + ")";
+    "255*max(0\\,min(1\\," + AVATAR_SIZE / 2 + "-hypot(X-" + center +
+    "\\,Y-" + center + ")))";
   return [
     "[0:v]scale=" + AVATAR_SIZE + ":" + AVATAR_SIZE +
       ":force_original_aspect_ratio=increase:flags=lanczos," +
