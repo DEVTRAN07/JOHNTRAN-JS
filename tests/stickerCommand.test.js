@@ -8,6 +8,7 @@ const service = require("../core/stkDiscordService");
 test("/stk defaults to the Discord menu and keeps the Python-style dis subcommand", () => {
   assert.equal(command.config.name, "stk");
   assert.equal(command.config.version, "2.0.0");
+  assert.equal(command.config.cooldowns, 0, "menu and frame selection must not share a blocking cooldown");
   assert.match(command.config.usage, /stk \(menu\)/);
   assert.match(command.config.usage, /stk dis/);
   assert.doesNotMatch(command.config.usage, /list|find|random/i);
