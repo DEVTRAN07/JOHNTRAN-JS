@@ -16,7 +16,7 @@ module.exports.config = {
   author: "JOHNTRAN",
   description: "Tạo sticker ảnh/GIF/video bằng Discord avatar decorations",
   category: "Tiện ích",
-  usage: "stk [list [trang]|find <tên>|random|<decoration-id>] (reply media) | stk <link> <decoration-id>",
+  usage: "stk [list [trang]|find <tên>|random|<số-ID>] (reply media) | stk <link> <số-ID>",
   cooldowns: 5,
   preferCommandOnBare: true,
   dependencies: {}
@@ -57,12 +57,18 @@ function parseArguments(args) {
 }
 
 function formatDecorationList(result, page, prefix = PREFIX(), heading = "KHO DISCORD DECORATIONS") {
-  const rows = (result.items || []).map((item, index) =>
-    String(result.offset + index + 1).padStart(3, " ") + ". " +
-    item.name + " [" + item.collection + "]" +
-    (item.animated ? " · ANIMATED" : "") +
-    "\n    ID: " + item.id
+  // The displayed numeric ID is the 1-based position in the full bundled
+  // catalog, so IDs stay consistent across list pages and search results.
+  const serialById = new Map(
+    stickerDecorations.snapshot().items.map((item, index) => [String(item.id), index + 1])
   );
+  const rows = (result.items || []).map((item, index) => {
+    const serial = serialById.get(String(item.id)) || result.offset + index + 1;
+    return String(serial).padStart(3, " ") + ". " +
+      item.name + " [" + item.collection + "]" +
+      (item.animated ? " · ANIMATED" : "") +
+      "\n    ID: " + serial;
+  });
   return [
     "╭━━━〔 " + heading + " 〕━━━╮",
     "Tổng: " + result.total + " mẫu · Trang " + page,
@@ -71,7 +77,7 @@ function formatDecorationList(result, page, prefix = PREFIX(), heading = "KHO DI
     "├────────────────────────",
     "• Trang tiếp: " + prefix + "stk list " + (page + 1),
     "• Tìm tên: " + prefix + "stk find <từ khóa>",
-    "• Reply media rồi dùng: " + prefix + "stk <ID>",
+    "• Reply media rồi dùng: " + prefix + "stk <số ID>",
     "• Chọn ngẫu nhiên: reply media rồi gõ " + prefix + "stk random",
     "• Nguồn: uhidontkno/DiscordAvatarDecorations",
     "╰────────────────────────"
@@ -84,8 +90,8 @@ function guide(prefix = PREFIX()) {
     "• Reply đúng tin ảnh/GIF/video rồi gõ " + prefix + "stk random",
     "• Xem kho decoration: " + prefix + "stk list [trang]",
     "• Tìm decoration: " + prefix + "stk find <tên>",
-    "• Áp dụng mẫu: reply media rồi gõ " + prefix + "stk <ID>",
-    "• Dùng link media: " + prefix + "stk <link media> <ID>",
+    "• Áp dụng mẫu: reply media rồi gõ " + prefix + "stk 1",
+    "• Dùng link media: " + prefix + "stk <link media> <số ID>",
     "",
     "Lệnh STK hiện chỉ sử dụng Discord avatar decorations trong kho; 5 khung tự thiết kế cũ đã được gỡ."
   ].join("\n");
@@ -107,7 +113,13 @@ async function safeSend(api, message, event) {
 async function resolveDecoration(options) {
   if (options.randomDecoration) return stickerDecorations.getRandomDecoration();
   if (!options.decorationId) return null;
-  const exact = await stickerDecorations.getDecoration(options.decorationId);
+  const requestedId = String(options.decorationId).trim();
+  if (/^\d+$/.test(requestedId)) {
+    const serial = Number(requestedId);
+    if (!Number.isSafeInteger(serial) || serial < 1) return null;
+    return stickerDecorations.snapshot().items[serial - 1] || null;
+  }
+  const exact = await stickerDecorations.getDecoration(requestedId);
   if (exact) return exact;
   const matches = await stickerDecorations.getDecorations({
     query: options.decorationId,
@@ -138,10 +150,6 @@ module.exports.run = async function ({ api, event, args }) {
     } catch (error) {
       return safeSend(api, "❌ Không tìm được decoration: " + String(error?.message || error).slice(0, 220), event);
     }
-  }
-
-  if (!options.randomDecoration && options.decorationId && /^\d+$/.test(options.decorationId)) {
-    return safeSend(api, "❌ 5 khung số cũ đã được gỡ. Hãy dùng /stk list để chọn ID decoration mới.", event);
   }
 
   const quotedMedia = parseQuote(event);
