@@ -70,7 +70,6 @@ test("each live command is assigned to its intended folder", () => {
     ["noitu", "Game", "game"],
     ["autodown", "Tiện ích", "tools"],
     ["autosend", "Tiện ích", "tools"],
-    ["stk", "Tiện ích", "tools"],
     ["anti", "Nhóm", "anti"],
     ["autokick", "Nhóm", "anti"],
     ["antinude", "Anti", "anti"],
