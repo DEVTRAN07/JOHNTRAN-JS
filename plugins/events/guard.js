@@ -73,32 +73,56 @@ function withDeleteStatus(deleted, error) {
   return "⚠️ Bot chưa xóa được tin vi phạm: " + String(error?.message || error || "API Zalo không hỗ trợ.");
 }
 
+function inspectGuardViolation(data, thread = {}) {
+  // Anti-Link already owns URLs for groups where either Anti link rule is ON.
+  const antiLinkOwnsUrls = thread.anti_danger_link === true || thread.anti_link === true;
+  const urls = anti._test.extractMessageUrls(data);
+  const allowed = defaultAllowedHosts().concat(
+    Array.isArray(thread.guard_allowed_hosts) ? thread.guard_allowed_hosts : []
+  );
+  const blockedUrl = antiLinkOwnsUrls
+    ? null
+    : urls.find(url => anti._test.isGroupInviteUrl(url) || !isAllowedLink(url, allowed));
+  const badword = badwordHit(getMessageText(data));
+  return { blockedUrl, badword };
+}
+
+async function readGuardThread(Threads, threadId) {
+  let record = null;
+  try { record = Threads?.getCachedData?.(String(threadId)) || null; } catch {}
+  if (!record) record = await Threads.getData(threadId);
+  return { ...(record?.data || record || {}) };
+}
+
 module.exports.run = async function ({ api, event, Threads, isSelf }) {
   if (isSelf) return;
   const { data = {}, threadId } = event || {};
   const uid = String(data.uidFrom || "");
   if (!threadId || !uid) return;
 
-  // Người quản trị nhóm được miễn guard từ cấm/link lạ.
+  // Fast reject before any group-admin API request or serialized queue.
+  let initialThread;
+  try {
+    initialThread = await readGuardThread(Threads, threadId);
+  } catch {
+    return;
+  }
+  if (initialThread.event_guard !== true) return;
+
+  const initialViolation = inspectGuardViolation(data, initialThread);
+  if (!initialViolation.blockedUrl && !initialViolation.badword) return;
+
+  // Admin members only need a live role check when the message is an actual
+  // Guard violation, not for every harmless message in every active group.
   const hasAdminFlag = data.isGroupAdmin === true || data.isAdmin === true || data.isGroupAdmin === 1;
   if (hasAdminFlag || await getGroupAdminState(api, threadId, uid) !== false) return;
 
   return runThreadQueue(threadId, async () => {
-    const record = await Threads.getData(threadId);
-    const thread = { ...(record?.data || {}) };
-    if (!thread.event_guard) return;
+    const thread = await readGuardThread(Threads, threadId);
+    if (thread.event_guard !== true) return;
 
-    // Anti-Link đã xử lý URL ở handler chính. Tránh nhân đôi cảnh cáo nếu
-    // nhóm đồng thời bật /antilink hoặc /anti link; guard vẫn quét từ cấm.
-    const antiLinkOwnsUrls = thread.anti_danger_link === true || thread.anti_link === true;
-    const urls = anti._test.extractMessageUrls(data);
-    const allowed = defaultAllowedHosts().concat(
-      Array.isArray(thread.guard_allowed_hosts) ? thread.guard_allowed_hosts : []
-    );
-    const blockedUrl = antiLinkOwnsUrls
-      ? null
-      : urls.find(url => anti._test.isGroupInviteUrl(url) || !isAllowedLink(url, allowed));
-    const badword = badwordHit(getMessageText(data));
+    // Re-check against the latest group settings after entering the warning lock.
+    const { blockedUrl, badword } = inspectGuardViolation(data, thread);
     if (!blockedUrl && !badword) return;
 
     // Fail closed if the bot itself is not a confirmed group owner/deputy.
@@ -159,4 +183,4 @@ module.exports.run = async function ({ api, event, Threads, isSelf }) {
   });
 };
 
-module.exports._test = { defaultAllowedHosts, isAllowedLink, badwordHit, getMessageText, WARN_LIMIT };
+module.exports._test = { defaultAllowedHosts, isAllowedLink, badwordHit, getMessageText, inspectGuardViolation, WARN_LIMIT };
