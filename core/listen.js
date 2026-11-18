@@ -58,6 +58,10 @@ function shouldExecuteMessageCommand(options = {}) {
   return options.skipCommandExecution !== true;
 }
 
+function shouldProcessUndoEvent(event) {
+  return event?.isSelf !== true || global.config?.allow_self_anti === true;
+}
+
 function shouldReplayOldMessage(message, reconnectSince) {
   const rawTimestamp = Number(message?.data?.ts);
   if (!Number.isFinite(rawTimestamp) || rawTimestamp <= 0) return false;
@@ -475,8 +479,9 @@ function startListening(api) {
   });
 
   listener.on("undo", (event) => {
-    // Không xử lý undo của chính bot (tránh anti_undo tự đăng thông báo cho tin bot xoá)
-    if (skipPrivate(event) || event.isSelf) return;
+    // Self undo is allowed only for Anti's explicit self-test mode.
+    // handleEvent narrows that event to the Anti command, not every plugin.
+    if (skipPrivate(event) || !shouldProcessUndoEvent(event)) return;
     void Promise.resolve(handleEvent("undo", event, api, event.isSelf === true)).catch((err) => logger.log(`Lỗi handleEvent undo: ${err.message}`, "warn"));
   });
 
@@ -649,5 +654,6 @@ module.exports.dispatchActiveGameMessage = dispatchActiveGameMessage;
 module.exports.shouldReplayOldMessage = shouldReplayOldMessage;
 module.exports.claimListenerRegistration = claimListenerRegistration;
 module.exports.shouldExecuteMessageCommand = shouldExecuteMessageCommand;
+module.exports.shouldProcessUndoEvent = shouldProcessUndoEvent;
 
 module.exports.computeReconnectDelay = computeReconnectDelay;
