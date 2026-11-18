@@ -518,9 +518,18 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
       ctx.restore();
     }
 
+    ctx.save();
+    ctx.font = lineFont;
+    const lineMetrics = ctx.measureText("Mg");
+    ctx.restore();
+    const measuredLineHeight =
+      Number(lineMetrics.actualBoundingBoxAscent || 0) +
+      Number(lineMetrics.actualBoundingBoxDescent || 0);
     const lineHeight = Number(options.lineHeight) > 0
       ? Number(options.lineHeight)
-      : lineSize * 1.25;
+      : measuredLineHeight > 0
+        ? measuredLineHeight * 1.35
+        : lineSize * 1.4;
     const results = lines.map((line, index) => drawMulticolorText(
       ctx,
       line,
