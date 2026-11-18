@@ -78,13 +78,17 @@ test("legacy /anti link|undo|spam switches require confirmed group QTV and persi
     async setDataAndWait(id, next) { Object.assign(data, next); }
   };
 
+  const renderStart = rendered.length;
   await command.run({
     api, Threads,
     event:{ threadId, type:ThreadType.Group, data:{ uidFrom:"deputy" } },
     args:["link","on"]
   });
   assert.equal(data.anti_link, true);
-  assert.match(sent[0].msg, /Đã bật chế độ Anti LINK/);
+  assert.match(sent[0].msg, /THÔNG BÁO HỆ THỐNG/);
+  assert.ok(Array.isArray(sent[0].attachments));
+  assert.equal(rendered[renderStart].type, "card");
+  assert.match(rendered[renderStart].data.subtitle, /Đã bật thành công chế độ Anti-Link/);
 
   await command.run({
     api, Threads,
@@ -92,6 +96,7 @@ test("legacy /anti link|undo|spam switches require confirmed group QTV and persi
     args:["undo","off"]
   });
   assert.equal(data.anti_undo, false);
+  assert.match(rendered[renderStart + 1].data.subtitle, /Đã tắt thành công chế độ Anti-Recall/);
 });
 
 test("legacy /anti switch refuses an ordinary member or unknown QTV state", async () => {
