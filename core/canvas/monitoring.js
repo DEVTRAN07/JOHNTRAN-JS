@@ -15,9 +15,19 @@ function fit(ctx, value, width) {
   return out + "…";
 }
 function text(ctx, value, x, y, size, color, bold, align, maxWidth) {
-  ctx.save(); ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
-  ctx.fillStyle = (color === theme.PALETTE.accent || color === theme.PALETTE.accent2) ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : color; ctx.textAlign = align || "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillText(fit(ctx, value, maxWidth), x, y); ctx.restore();
+  ctx.save();
+  ctx.shadowColor = "rgba(0,5,16,.78)";
+  ctx.shadowBlur = S(bold ? 2.8 : 2);
+  ctx.shadowOffsetY = S(0.8);
+  theme.drawMulticolorText(ctx, String(value == null ? "" : value), x, y, {
+    size,
+    family: bold ? "JT-Round-Bold" : "JT-Round",
+    color,
+    align: align || "left",
+    maxWidth,
+    multicolor: true
+  });
+  ctx.restore();
 }
 function backdrop(ctx, width, height, p) {
   theme.paintBackground(ctx, width, height);
