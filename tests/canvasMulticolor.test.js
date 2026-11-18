@@ -37,6 +37,18 @@ test("Canvas text defaults to per-word multicolor while keeping Vietnamese words
     "the sentence should use several colors, not one color per whole line");
 });
 
+test("Canvas button labels use randomized per-word colors", () => {
+  const ctx = createCanvas(460, 110).getContext("2d");
+  const draws = captureTextDraws(ctx);
+  theme.button(ctx, 20, 15, 300, 58, "XEM THÊM", "#65e8ff");
+
+  const words = draws.filter(item => /[\p{L}\p{N}]/u.test(item.value));
+  assert.deepEqual(words.map(item => item.value), ["XEM", "THÊM"]);
+  assert.ok(words.every(item => theme.RANDOM_TEXT_COLORS.includes(item.color)));
+  assert.notEqual(words[0].color, words[1].color);
+  assert.ok(words[0].x >= 20 && words[1].x < 320);
+});
+
 test("Canvas center and right alignment are preserved for multicolor text", () => {
   const canvas = createCanvas(1000, 120);
   const ctx = canvas.getContext("2d");
