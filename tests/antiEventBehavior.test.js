@@ -29,7 +29,7 @@ function makeApi(options = {}) {
   const groupInfo = options.groupInfo === undefined
     ? { creatorId: "bot-id", adminIds: [] }
     : options.groupInfo;
-  const calls = { lookups: 0, deleted: [], kicked: [], sent: [], scanned: [] };
+  const calls = { lookups: 0, deleted: [], undone: [], kicked: [], sent: [], scanned: [] };
   const api = {
     getOwnId() { return "bot-id"; },
     async getGroupInfo(threadId) {
@@ -43,6 +43,10 @@ function makeApi(options = {}) {
     async deleteMessage(destination, onlyMe) {
       calls.deleted.push({ destination, onlyMe });
       return options.deleteMessage ? options.deleteMessage(destination, onlyMe) : { status: 0 };
+    },
+    async undo(payload, threadId, type) {
+      calls.undone.push({ payload, threadId, type });
+      return { status: 0 };
     },
     async removeUserFromGroup(uid, gid) {
       calls.kicked.push({ uid, gid });
@@ -70,7 +74,7 @@ function makeApi(options = {}) {
 
 async function run(threadData, api, event, eventType = "message") {
   return anti.handleEvent({
-    event, api, eventType, isSelf: false,
+    event, api, eventType, isSelf: event?.isSelf === true,
     Threads: { async getData() { return { data: threadData }; } }
   });
 }
@@ -192,6 +196,99 @@ test("antinude reports a Zalo errorMembers kick refusal", async () => {
     http.request = originalRequest;
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("antinude self-test recalls an explicit bot image but never kicks the bot account", async () => {
+  const originalRequest = http.request;
+  const previousKey = process.env.OPENAI_API_KEY;
+  const previousConfig = global.config;
+  process.env.OPENAI_API_KEY = "test-key";
+  global.config = { allow_self_anti: true };
+  http.request = async () => ({
+    status: 200,
+    json: () => ({
+      results: [{
+        category_scores: { sexual: 0.99 },
+        category_applied_input_types: { sexual: ["image"] }
+      }]
+    })
+  });
+  try {
+    const { api, calls } = makeApi();
+    await run({ anti_nude: true }, api, makeEvent({
+      isSelf: true,
+      uidFrom: "bot-id",
+      msgType: "chat.photo",
+      content: { href: "https://cdn.zaloapp.com/bot-test-photo.jpg" }
+    }));
+    assert.equal(calls.deleted.length, 0, "bot-authored image must not use deleteMessage");
+    assert.equal(calls.undone.length, 1, "bot-authored image must use undo");
+    assert.deepEqual(calls.undone[0], {
+      payload: { msgId: "msg-1", cliMsgId: "cli-1" },
+      threadId: "anti-test-group",
+      type: ThreadType.Group
+    });
+    assert.equal(calls.kicked.length, 0, "Anti must never kick its own bot account during self testing");
+    assert.match(calls.sent[0].payload.msg, /bỏ qua kick tài khoản bot/i);
+  } finally {
+    http.request = originalRequest;
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
+
+test("antispam recalls bot self-test sticker flood through undo", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_anti: true };
+  global.antiStickerSpamCache = new Map();
+  global.antiStickerSpamWarnings = new Map();
+  const { api, calls } = makeApi();
+  try {
+    for (let i = 1; i <= 6; i++) {
+      await run({ anti_sticker_spam: true }, api, makeEvent({
+        isSelf: true,
+        uidFrom: "bot-id",
+        msgType: "chat.sticker",
+        content: { id: i, catId: 1 },
+        cliMsgId: "bot-sticker-" + i,
+        msgId: "bot-sticker-msg-" + i
+      }));
+    }
+    assert.equal(calls.deleted.length, 0);
+    assert.equal(calls.undone.length, 6, "all six bot test stickers must be recalled");
+    assert.equal(calls.sent.length, 1);
+    assert.match(calls.sent[0].payload.msg, /dội bom sticker/i);
+  } finally {
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
+});
+
+test("legacy anti_spam recalls the sixth bot self-test text message", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_anti: true };
+  global.spamCache = {};
+  const { api, calls } = makeApi();
+  try {
+    for (let i = 1; i <= 6; i++) {
+      await run({ anti_spam: true }, api, makeEvent({
+        isSelf: true,
+        uidFrom: "bot-id",
+        content: "bot spam test " + i,
+        cliMsgId: "bot-spam-" + i,
+        msgId: "bot-spam-msg-" + i
+      }));
+    }
+    assert.equal(calls.deleted.length, 0);
+    assert.equal(calls.undone.length, 1, "only the sixth rapid message crosses the spam threshold");
+    assert.equal(calls.sent.length, 1);
+    assert.match(calls.sent[0].payload.msg, /vui lòng không spam/i);
+  } finally {
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
   }
 });
 
