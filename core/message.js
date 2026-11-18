@@ -444,9 +444,24 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
     const extracted = extractRecallOptions(message, DEFAULT_AUTO_RECALL_MS);
-    const content = typeof extracted.payload === "string" ? { msg: extracted.payload } : extracted.payload;
-    if (content.plain) delete content.plain;
-    const response = await api.sendMessage(content, targetThreadId, targetType);
+    const rawContent = typeof extracted.payload === "string"
+      ? { msg: extracted.payload }
+      : extracted.payload;
+    const content = rawContent && typeof rawContent === "object"
+      ? { ...rawContent }
+      : rawContent;
+    if (content && typeof content === "object" && content.plain) delete content.plain;
+
+    // Màu ngẫu nhiên được áp dụng ở một điểm chung cho mọi tin nhắn text.
+    // Nội dung, emoji, mentions và các định dạng không phải màu vẫn được giữ.
+    let outgoing = content;
+    try {
+      outgoing = styledText.randomize(content);
+    } catch (error) {
+      logger.log("Không thể tô màu ngẫu nhiên cho tin nhắn: " + (error?.message || error), "warn");
+    }
+
+    const response = await api.sendMessage(outgoing, targetThreadId, targetType);
     markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
