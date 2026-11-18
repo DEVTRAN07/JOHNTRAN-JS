@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const anti = require("../plugins/commands/anti");
+const { ThreadType } = require("zalo-client");
 
 const originalConfig = global.config;
 
@@ -101,4 +102,81 @@ test("URL extraction covers plain text, recommended links, and nested Zalo metad
     "https://example.com/watch?id=123",
     "https://example.org/post"
   ]);
+});
+
+
+async function runLinkModeration({ isSelf = false, senderId = "member", allowSelf = false } = {}) {
+  anti._test.clearAntiSelfEchoes();
+  global.config = { allow_self_anti: allowSelf };
+  const calls = { deleted: [], sent: [], groupLookups: 0 };
+  const api = {
+    getOwnId() { return "bot-account"; },
+    async getGroupInfo(threadId) {
+      calls.groupLookups++;
+      return {
+        gridInfoMap: {
+          [threadId]: { creatorId: "group-owner", adminIds: ["bot-account"] }
+        }
+      };
+    },
+    async deleteMessage(destination, force) {
+      calls.deleted.push({ destination, force });
+      return { success: true };
+    },
+    async sendMessage(payload, threadId, type) {
+      calls.sent.push({ payload, threadId, type });
+      return { message: { msgId: "anti-notice-msg", cliMsgId: "anti-notice-cli" } };
+    }
+  };
+  const Threads = {
+    async getData() {
+      return { data: { anti_link: true } };
+    }
+  };
+  const event = {
+    threadId: "anti-e2e-group",
+    type: ThreadType.Group,
+    isSelf,
+    data: {
+      uidFrom: senderId,
+      dName: "Tester",
+      msgId: "original-msg",
+      cliMsgId: "original-cli",
+      content: "https://example.com/blocked"
+    }
+  };
+
+  await anti.handleEvent({
+    api,
+    event,
+    eventType: "message",
+    isSelf,
+    Threads
+  });
+  return calls;
+}
+
+test("Anti link moderates a self-sent bot test message when explicitly enabled", async () => {
+  const calls = await runLinkModeration({
+    isSelf: true,
+    senderId: "bot-account",
+    allowSelf: true
+  });
+
+  assert.equal(calls.groupLookups, 1, "the bot QTV key is checked");
+  assert.equal(calls.deleted.length, 1, "the link message is deleted");
+  assert.equal(calls.sent.length, 1, "one warning is sent");
+  assert.match(calls.sent[0].payload.msg, /không được gửi link/i);
+});
+
+test("Anti link continues to moderate ordinary members while self testing is disabled", async () => {
+  const calls = await runLinkModeration({
+    isSelf: false,
+    senderId: "ordinary-member",
+    allowSelf: false
+  });
+
+  assert.equal(calls.groupLookups, 1);
+  assert.equal(calls.deleted.length, 1);
+  assert.equal(calls.sent.length, 1);
 });
