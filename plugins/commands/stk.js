@@ -82,12 +82,6 @@ function getQuotedMediaUrl(event) {
   ].find(value => typeof value === "string" && /^https?:\/\//i.test(value)) || null;
 }
 
-function getMention(profile, uid) {
-  if (!uid) return [];
-  const name = String(profile?.requesterName || "Bạn").trim() || "Bạn";
-  return [{ uid: String(uid), pos: 0, len: name.startsWith("@") ? name.length : name.length + 1 }];
-}
-
 async function safeSend(api, event, msg, mentions = []) {
   try {
     return await api.sendMessage(
@@ -158,7 +152,16 @@ async function sendMenu(api, event) {
     }
   }
 
-  return safeSend(api, event, helpText(), mentions);
+  const assets = stkDiscord.getAssetStatus();
+  const warning = [
+    "⚠️ Chưa có ảnh menu: data/discord_decor/menu.jpg.",
+    "Kho khung đã có: " + assets.available + "/" + assets.total + ".",
+    assets.missingCount
+      ? "Còn thiếu " + assets.missingCount + " file khung. Ví dụ: " +
+        assets.missing.slice(0, 5).map(item => "#" + item.id + " " + item.file).join(", ") + "."
+      : "Đã đủ 200 file khung; chỉ cần bổ sung menu.jpg."
+  ];
+  return safeSend(api, event, helpText() + "\n\n" + warning.join("\n"), mentions);
 }
 
 function isNotFoundError(error) {
