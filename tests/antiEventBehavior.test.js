@@ -89,16 +89,23 @@ test("legacy anti_link blocks ordinary text and recommended links", async () => 
   assert.equal(calls.deleted.length, 2);
 });
 
-test("anti link preserves admins and fails safe when group role is unknown", async () => {
+test("Anti link also moderates the group creator and deputies; no role lookup can bypass enforcement", async () => {
   const admin = makeApi({ groupInfo: { creatorId: "owner", adminIds: ["deputy"] } });
   await run({ anti_link: true }, admin.api, makeEvent({
-    uidFrom: "deputy", content: "https://example.com"
+    uidFrom: "owner", content: "https://owner-link.example"
   }));
-  assert.equal(admin.calls.deleted.length, 0);
+  await run({ anti_link: true }, admin.api, makeEvent({
+    uidFrom: "deputy", content: "https://deputy-link.example",
+    cliMsgId: "admin-cli-2", msgId: "admin-msg-2"
+  }));
+  assert.equal(admin.calls.deleted.length, 2);
+  assert.equal(admin.calls.sent.length, 2);
+  assert.equal(admin.calls.lookups, 0, "moderation must not ask for admin exemptions");
 
   const unknown = makeApi({ groupInfo: null });
-  await run({ anti_link: true }, unknown.api, makeEvent({ content: "https://example.com" }));
-  assert.equal(unknown.calls.deleted.length, 0);
+  await run({ anti_link: true }, unknown.api, makeEvent({ content: "https://member-link.example" }));
+  assert.equal(unknown.calls.deleted.length, 1);
+  assert.equal(unknown.calls.sent.length, 1);
 });
 
 test("antilink uses Zalo scanURL and only deletes unsafe URLs", async () => {
@@ -120,6 +127,7 @@ test("antispam sticker flood deletes six stickers from one member", async () => 
   const { api, calls } = makeApi();
   for (let i = 1; i <= 6; i++) {
     await run({ anti_sticker_spam: true }, api, makeEvent({
+      uidFrom: "deputy",
       msgType: "chat.sticker",
       content: { id: i, catId: 1 },
       cliMsgId: "sticker-" + i,
@@ -147,6 +155,7 @@ test("antinude calls moderation, deletes the image and verifies kick result", as
   try {
     const { api, calls } = makeApi();
     await run({ anti_nude: true }, api, makeEvent({
+      uidFrom: "deputy",
       msgType: "chat.photo",
       content: { href: "https://cdn.zaloapp.com/photo.jpg" }
     }));
@@ -197,8 +206,8 @@ test("antirecall restores cached text using group Undo payload without type", as
     isGroup: true,
     isSelf: false,
     data: {
-      uidFrom: "member",
-      dName: "Member",
+      uidFrom: "owner",
+      dName: "Group owner",
       msgId: "undo-id",
       cliMsgId: "undo-cli",
       ts: Date.now(),
@@ -252,11 +261,12 @@ test("antirecall prepares temp folder before restoring a shared file", async () 
   }
 });
 
-test("legacy anti_spam deletes the sixth rapid text message from a member", async () => {
+test("legacy anti_spam also deletes the sixth rapid text message from the group owner", async () => {
   global.spamCache = {};
   const { api, calls } = makeApi();
   for (let i = 1; i <= 6; i++) {
     await run({ anti_spam: true }, api, makeEvent({
+      uidFrom: "owner",
       content: "tin nhắn " + i,
       cliMsgId: "spam-" + i,
       msgId: "spam-msg-" + i

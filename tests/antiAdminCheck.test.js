@@ -54,7 +54,7 @@ async function handle(threadData, api, event) {
   });
 }
 
-test("anti_link awaits role lookup and deletes a non-admin link message", async () => {
+test("anti_link deletes a normal member link without a role lookup", async () => {
   const calls = { groupLookups: 0, deleted: [], sent: [] };
   const api = makeApi({ creatorId: "owner", adminIds: ["moderator"] }, calls);
   await handle(
@@ -63,27 +63,27 @@ test("anti_link awaits role lookup and deletes a non-admin link message", async 
     makeEvent("anti-link-group", "ordinary-member", "Check https://bad.example", 1)
   );
 
-  assert.equal(calls.groupLookups, 1);
+  assert.equal(calls.groupLookups, 0);
   assert.equal(calls.deleted.length, 1);
   assert.equal(calls.sent.length, 1);
   assert.match(calls.sent[0].payload.msg, /không được gửi link/i);
 });
 
-test("anti_link preserves group creator messages", async () => {
+test("anti_link deletes group creator links too", async () => {
   const calls = { groupLookups: 0, deleted: [], sent: [] };
   const api = makeApi({ creatorId: "group-owner", adminIds: ["moderator"] }, calls);
   await handle(
     { anti_link: true },
     api,
-    makeEvent("anti-link-admin-group", "group-owner", "https://safe-for-admin.example", 1)
+    makeEvent("anti-link-admin-group", "group-owner", "https://owner.example", 1)
   );
 
-  assert.equal(calls.groupLookups, 1);
-  assert.equal(calls.deleted.length, 0);
-  assert.equal(calls.sent.length, 0);
+  assert.equal(calls.groupLookups, 0);
+  assert.equal(calls.deleted.length, 1);
+  assert.equal(calls.sent.length, 1);
 });
 
-test("anti rules fail safe when group role metadata cannot be verified", async () => {
+test("anti_link still enforces the rule when group role metadata is unavailable", async () => {
   const calls = { groupLookups: 0, deleted: [], sent: [] };
   const api = makeApi(null, calls);
   await handle(
@@ -92,12 +92,12 @@ test("anti rules fail safe when group role metadata cannot be verified", async (
     makeEvent("anti-unknown-group", "ordinary-member", "https://bad.example", 1)
   );
 
-  assert.equal(calls.groupLookups, 1);
-  assert.equal(calls.deleted.length, 0);
-  assert.equal(calls.sent.length, 0);
+  assert.equal(calls.groupLookups, 0);
+  assert.equal(calls.deleted.length, 1);
+  assert.equal(calls.sent.length, 1);
 });
 
-test("anti_spam detects the sixth message from a non-admin member", async () => {
+test("anti_spam detects the group owner's sixth message without an admin exemption", async () => {
   global.spamCache = {};
   const calls = { groupLookups: 0, deleted: [], sent: [] };
   const api = makeApi({ creatorId: "owner", adminIds: [] }, calls);
@@ -107,11 +107,11 @@ test("anti_spam detects the sixth message from a non-admin member", async () => 
     await handle(
       { anti_spam: true },
       api,
-      makeEvent(threadId, "spam-member", "message " + index, index)
+      makeEvent(threadId, "owner", "message " + index, index)
     );
   }
 
-  assert.equal(calls.groupLookups, 6, "one role lookup per incoming message");
+  assert.equal(calls.groupLookups, 0, "anti moderation does not exempt admins or require role lookups");
   assert.equal(calls.deleted.length, 1);
   assert.equal(calls.sent.length, 1);
   assert.match(calls.sent[0].payload.msg, /không spam/i);
