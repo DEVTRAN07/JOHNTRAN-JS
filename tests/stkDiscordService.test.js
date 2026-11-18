@@ -100,3 +100,94 @@ test("STK asset inventory identifies a missing menu and an empty frame file", t 
   assert.equal(status.available, 0);
   assert.equal(status.missingCount, 200);
 });
+
+
+test("raw GitHub loader downloads one image lazily and reuses its local cache", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-raw-cache-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/2ZcAAAAASUVORK5CYII=",
+    "base64"
+  );
+  const urls = [];
+  const fetchImpl = async url => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => String(png.length) },
+    arrayBuffer: async () => {
+      urls.push(url);
+      return png;
+    }
+  });
+
+  const file = await service.ensureDecorationFile(200, {
+    directory: dir,
+    fetchImpl,
+    ttlMs: 60_000
+  });
+  assert.equal(path.basename(file), "200_timekeepers_clock.png");
+  assert.deepEqual(fs.readFileSync(file), png);
+  assert.deepEqual(urls, [
+    "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/main/200_timekeepers_clock.png"
+  ]);
+
+  const cached = await service.ensureDecorationFile(200, {
+    directory: dir,
+    fetchImpl,
+    ttlMs: 60_000
+  });
+  assert.equal(cached, file);
+  assert.equal(urls.length, 1, "second use must not download the frame again");
+});
+
+test("raw GitHub loader keeps a stale valid cache when the remote is unavailable", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-stale-cache-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const file = path.join(dir, "menu.jpg");
+  const cachedJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  fs.writeFileSync(file, cachedJpeg);
+  const fetched = await service.ensureRemoteAsset("menu.jpg", {
+    directory: dir,
+    rawBaseUrl: "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/main",
+    fetchImpl: async () => { throw new Error("offline"); },
+    ttlMs: 0,
+    maxBytes: 1024
+  });
+  assert.equal(fetched, file);
+  assert.deepEqual(fs.readFileSync(fetched), cachedJpeg);
+});
+
+test("raw GitHub loader rejects path traversal and invalid image payloads", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-invalid-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  await assert.rejects(
+    service.ensureRemoteAsset("../secret.png", { directory: dir }),
+    /không hợp lệ/
+  );
+  await assert.rejects(
+    service.ensureRemoteAsset("broken.png", {
+      directory: dir,
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: () => "4" },
+        arrayBuffer: async () => Buffer.from("nope")
+      })
+    }),
+    /Không tải được broken\.png/
+  );
+});
+
+test("STK metadata maps to the raw GitHub repository and has 200 frame URLs", () => {
+  assert.equal(
+    service.buildRawAssetUrl("menu.jpg"),
+    "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/main/menu.jpg"
+  );
+  assert.equal(service.catalog.items.length, 200);
+  for (const item of service.catalog.items) {
+    assert.ok(service.buildRawAssetUrl(item.file).endsWith("/" + item.file));
+  }
+});
