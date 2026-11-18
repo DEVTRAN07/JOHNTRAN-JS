@@ -1,58 +1,48 @@
 "use strict";
 
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const brandTheme = require("../core/canvas/brandTheme");
-const menuPalette = require("../core/canvas/menuPalette");
+const themeBackgrounds = require("../core/canvas/themeBackgrounds");
 const menu = require("../core/canvas/menu");
 const theme = require("../core/canvas/theme");
 const settings = require("../core/canvas/settings");
 
-function temporaryThemeFile(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-unified-theme-"));
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  return path.join(directory, "menu-theme.json");
-}
+test("the brand palette stays Aurora Cyber while /theme changes photo selection", () => {
+  const menuPalette = menu._test.getMainMenuPalette();
+  const cardPalette = theme.getCardPalette();
 
-test("all cards use the current main-menu Blue Neon default when no /theme is saved", t => {
-  const file = temporaryThemeFile(t);
-  const palette = brandTheme.getPalette(file);
+  assert.equal(menuPalette.label, "JOHNTRAN · Aurora Cyber");
+  assert.equal(menuPalette.accent, "#62dcff");
+  assert.equal(cardPalette.accent, menuPalette.accent);
+  assert.deepEqual(cardPalette.background, menuPalette.background);
+  assert.deepEqual(cardPalette.panel, menuPalette.panel);
+  assert.deepEqual(cardPalette.card, menuPalette.card);
+  assert.deepEqual(brandTheme.getPalette().footer, menuPalette.footer);
 
-  assert.equal(palette.label, "JOHNTRAN · Blue Neon");
-  assert.equal(palette.accent, "#62dcff");
-  assert.deepEqual(palette.background, ["#030914", "#07182d", "#102b4b", "#040d1d"]);
+  assert.equal(themeBackgrounds.normalizeSelection("1"), "1");
+  assert.equal(themeBackgrounds.normalizeSelection("2"), "2");
+  assert.equal(themeBackgrounds.normalizeSelection("3"), "3");
+  assert.equal(themeBackgrounds.normalizeSelection("random"), "random");
+  assert.equal(themeBackgrounds.normalizeSelection("reset"), "random");
+  assert.equal(themeBackgrounds.normalizeSelection("next", "2"), "3");
+  assert.equal(themeBackgrounds.normalizeSelection("invalid"), null);
 });
 
-test("/theme selection is reused by the unified canvas brand palette", t => {
-  const file = temporaryThemeFile(t);
-
-  menuPalette.setTheme("purple", file);
-  const palette = brandTheme.getPalette(file);
-  assert.equal(palette.label, menuPalette.PRESETS.purple.label);
-  assert.equal(palette.accent, "#c4a4ff");
-
-  menuPalette.setTheme("#12abef", file);
-  const custom = brandTheme.getPalette(file);
-  assert.equal(custom.accent, "#12abef");
-  assert.match(custom.border, /^rgba\(/);
+test("theme library contains the three requested photo sources and a local cache folder", () => {
+  const backgrounds = themeBackgrounds.getBackgrounds();
+  assert.equal(backgrounds.length, 3);
+  assert.deepEqual(backgrounds.map(item => item.id), ["1", "2", "3"]);
+  assert.match(backgrounds[0].url, /hinh-nen-gai-xinh-sexy-27\\.jpg$/);
+  assert.match(backgrounds[1].url, /hinh-nen-gai-xinh-sexy-18\\.jpg$/);
+  assert.match(backgrounds[2].url, /hinh-nen-gai-xinh-sexy-16\\.jpg$/);
+  assert.ok(fs.existsSync(path.join(themeBackgrounds.THEME_DIR, "README.md")));
 });
 
-test("main menu and generic Canvas renderers resolve the exact same palette", () => {
-  const menuPaletteNow = menu._test.getMainMenuPalette();
-  const cardPaletteNow = theme.getCardPalette();
-
-  assert.equal(menuPaletteNow.accent, cardPaletteNow.accent);
-  assert.deepEqual(menuPaletteNow.background, cardPaletteNow.background);
-  assert.deepEqual(menuPaletteNow.panel, cardPaletteNow.panel);
-  assert.deepEqual(menuPaletteNow.card, cardPaletteNow.card);
-  assert.deepEqual(menuPaletteNow.footer, cardPaletteNow.footer);
-});
-
-test("shared Canvas background and raised panels render a valid PNG", () => {
+test("shared Aurora background and translucent glass panels render a valid PNG", () => {
   const { canvas, ctx } = theme.newCanvas(750, 500);
   theme.paintBackground(ctx, 750, 500);
   theme.panel(ctx, 28, 28, 694, 120, 16, theme.PALETTE.accent);
@@ -64,25 +54,25 @@ test("shared Canvas background and raised panels render a valid PNG", () => {
   assert.ok(png.length > 1000);
 });
 
-test("Anti V2 and the legacy Anti renderer both use the unified Canvas theme", t => {
+test("theme gallery renderer and Anti renderer generate valid PNGs", t => {
   const outputs = [];
-  const sample = {
+  const gallery = settings.renderThemeSettings({});
+  outputs.push(gallery);
+  const anti = settings.renderAntiProtectionCardV2({
     prefix: "/",
     items: [
       { key: "anti_nude", label: "Chặn nội dung nhạy cảm", detail: "AI quét ảnh 18+", command: "/antinude", icon: "18+", tone: "#e83f9e", enabled: true },
-      { key: "anti_undo", label: "Chống thu hồi tin nhắn", detail: "Khôi phục nội dung", command: "/antirecall", icon: "↶", tone: "#a94ce5", enabled: true },
+      { key: "anti_undo", label: "Chống thu hồi tin nhắn", detail: "Khôi phục chữ, ảnh, video, voice", command: "/antirecall", icon: "↶", tone: "#a94ce5", enabled: true },
       { key: "anti_link", label: "Chặn tất cả link", detail: "Chặn đường dẫn trong nhóm", command: "/anti link", icon: "URL", tone: "#08aeba", enabled: false }
     ]
-  };
+  });
+  outputs.push(anti);
 
-  for (const render of [settings.renderAntiProtectionCardV2, settings.renderAntiProtectionCard]) {
-    const file = render(sample);
-    outputs.push(file);
+  for (const file of outputs) {
     const png = fs.readFileSync(file);
     assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
     assert.ok(png.length > 1000);
   }
-
   t.after(() => {
     for (const file of outputs) {
       try { fs.unlinkSync(file); } catch {}
