@@ -108,6 +108,8 @@ privacy:
     - cloudflare-dns.com
     - dns.google
     - dict.minhqnd.com
+    - api.openverse.org # Openverse open-licensed image search and thumbnail proxy
+    - adultembed.com # AdultEmbed 18+ video catalogue/player API (private DM command only)
 
 # ===== DỊCH VỤ NGOÀI (chỉ chạy khi admin tự cấu hình endpoint) =====
 # Để trống = tính năng tắt hoàn toàn, bot KHÔNG gửi dữ liệu đi đâu cả.
