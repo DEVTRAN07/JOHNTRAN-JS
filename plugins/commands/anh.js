@@ -84,7 +84,7 @@ async function fetchImage(item) {
   const response = await queuedGetBuffer(thumbnailUrl, {
     timeout: SOURCE_TIMEOUT_MS,
     retries: 1,
-    headers: { Accept: "image/avif,image/webp,image/png,image/jpeg,*/*;q=0.5" }
+    headers: { Accept: "image/webp,image/png,image/jpeg,image/gif,*/*;q=0.5" }
   });
   if (response.status < 200 || response.status >= 300) {
     throw new Error("Openverse thumbnail trả HTTP " + response.status);
