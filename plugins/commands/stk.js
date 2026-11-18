@@ -80,7 +80,7 @@ function parseArguments(args) {
     otherTokens.push(token);
   }
 
-  if (randomDecoration) return { randomDecoration: true, url, frameId, invalidFrame };
+  if (randomDecoration) return { randomDecoration: true, url, frameId, invalidFrame, decorationId: null };
   const decorationId = otherTokens.join(" ").trim();
   return { help: false, listFrames: false, list: false, find: null, url, frameId, invalidFrame, decorationId: decorationId || null };
 }
