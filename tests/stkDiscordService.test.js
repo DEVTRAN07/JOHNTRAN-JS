@@ -40,7 +40,7 @@ test("Discord STK compositor produces a transparent 288px WebP with a circular a
     "fixture Discord frame starts with transparent corners");
   frameCtx.strokeStyle = "#7e57ff";
   frameCtx.lineWidth = 10;
-  frameCtx.strokeRect(5, 5, 278, 278);
+  frameCtx.strokeRect(14, 14, 260, 260);
   fs.writeFileSync(framePath, frameCanvas.toBuffer("image/png"));
 
   const output = await service.createWebp(sourcePath, sourceBuffer, ".png", framePath);
