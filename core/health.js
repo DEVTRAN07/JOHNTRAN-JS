@@ -60,6 +60,7 @@ function metricsPayload() {
   const metrics = safe(() => require("./metrics"), null);
   const { allStats } = safe(() => require("./cache"), { allStats: () => ({}) });
   const jobQueues = safe(() => require("./jobQueue").stats(), {});
+  const workers = safe(() => require("./workerPool").stats(), {});
   return {
     ...healthPayload(),
     today: safe(() => metrics?.getDayStats(), null),
@@ -71,6 +72,7 @@ function metricsPayload() {
     commandExecutionLatency: safe(() => metrics?.getCommandExecutionLatencyStats?.(15), []),
     eventLoop: safe(getEventLoopMetrics, null),
     jobQueues,
+    workers,
     cache: allStats()
   };
 }
