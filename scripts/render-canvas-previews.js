@@ -281,6 +281,23 @@ async function main() {
       isTurn: true,
       isAdmin: false
     }],
+    ["23-caro-active-board", "caro", {
+      session: {
+        threadId: "preview-caro",
+        mode: "solo",
+        status: "active",
+        players: {
+          X: { uid: "preview-human", name: "MrQ · Caro Preview", kind: "human" },
+          O: { uid: "BOT", name: "Bot AI", kind: "bot" }
+        },
+        board: Array.from({ length: 256 }, (_, index) => (
+          [101, 102, 118, 119, 135, 136, 152, 153].includes(index) ? (index % 2 ? "O" : "X") : null
+        )),
+        turnSymbol: "X",
+        turnUid: "preview-human",
+        moves: 8
+      }
+    }],
     ["21-noitu-guide", "noitu-guide", {}],
     ["22-ghepchu", "ghepchu", {
       status: "active",
@@ -354,7 +371,7 @@ async function main() {
     "Active outputs:",
     "01 menu, 02 menu folder, 03 topchat, 04 status, 05 /card profile,",
     "06 music search, 07 now playing, 08-11 reply.card variants, 12 generic card,",
-    "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand, 19 Anti-Protection V2, 20 photo theme gallery, 21 Nối Từ guide, 22 Ghép Chữ.",
+    "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand, 19 Anti-Protection V2, 20 photo theme gallery, 21 Nối Từ guide, 22 Ghép Chữ, 23 Caro board.",
     "",
     "Reference only (not mapped into canvasWorker):",
     "17-18 legacy profile and avatar renderer previews."
