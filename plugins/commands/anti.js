@@ -1046,8 +1046,11 @@ async function handleAntiEvent(context = {}) {
     );
     // Anti-QR also decodes actual image pixels: QR codes shared as an ordinary
     // photo must not bypass the protection just because Zalo omitted QR metadata.
-    const qrImageDetected = threadData.anti_qr === true &&
-      kind === "photo" && threadData.anti_photo !== true
+    const shouldScanQrImage = threadData.anti_qr === true &&
+      kind === "photo" && threadData.anti_photo !== true;
+    // Do not download/decode image pixels when the bot has no confirmed
+    // group admin key and therefore cannot enforce the Anti-QR rule.
+    const qrImageDetected = shouldScanQrImage && await ensureBotKey()
       ? await imageContainsQr(data)
       : false;
     const qrBlocked = threadData.anti_qr === true && (kind === "qr" || qrImageDetected);
