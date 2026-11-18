@@ -20,10 +20,11 @@ Khi không reply media, bot thử lấy avatar Zalo của người gửi lệnh.
 - Bot không chứa 200 ảnh trong repository.
 - /stk dis chỉ tải menu.jpg.
 - /stk dis N chỉ tải file PNG của ID N, không tải toàn bộ kho.
-- Ảnh được lưu ở cache/stk-discord/ và dùng lại trong các lần sau.
+- Ảnh được lưu ở thư mục stk-discord trong Persistent Disk nếu JT_PERSISTENT_DIR được cấu hình; trên Render hiện khai báo mount /opt/render/project/data nên cache ở /opt/render/project/data/stk-discord.
+- Khi chạy local mà không có JT_PERSISTENT_DIR, cache nằm trong cache/stk-discord/.
 - Cache mặc định có thời hạn 7 ngày; sau thời hạn đó bot thử cập nhật từ raw GitHub.
 - Nếu raw GitHub tạm thời lỗi nhưng cache cũ còn hợp lệ, bot tiếp tục dùng cache.
-- Có thể đổi nguồn raw bằng biến môi trường STK_DISCORD_RAW_BASE_URL.
+- Có thể đổi thư mục cache bằng STK_DISCORD_CACHE_DIR hoặc đổi nguồn raw bằng STK_DISCORD_RAW_BASE_URL.
 - Không cần token GitHub vì repository tài nguyên là public.
 
 Lệnh kiểm tra cấu hình/catalog:
