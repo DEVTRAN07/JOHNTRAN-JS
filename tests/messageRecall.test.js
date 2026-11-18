@@ -147,7 +147,7 @@ test("every auto-recalled message gets a clock-face reaction countdown", async (
 
     for (const timer of scheduled) await timer.callback();
     await Promise.resolve();
-    assert.equal(reactions.length, 6, "the clock reaction changes before recall");
+    assert.equal(reactions.length, 4, "stale clock ticks are coalesced per message instead of sent in a burst");
     assert.equal(undone.length, 2, "text and attachment are both recalled");
   } finally {
     global.setTimeout = originalSetTimeout;
