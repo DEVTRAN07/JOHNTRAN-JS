@@ -158,13 +158,26 @@ async function dispatch(ctx, url, options, raw, timeoutMs) {
  * (used for raw HTML/navigation requests such as the login page).
  */
 async function request(ctx, url, options, raw = false) {
-    var _a;
-    const policy = resolvePolicy(ctx.options.retry);
-    const method = ((_a = options === null || options === void 0 ? void 0 : options.method) !== null && _a !== void 0 ? _a : "GET").toUpperCase();
+    const requestOptions = options ? Object.assign({}, options) : {};
+    const timeoutOverride = Number.isFinite(requestOptions.timeoutMs)
+      ? Math.max(0, Math.floor(requestOptions.timeoutMs))
+      : undefined;
+    const retriesOverride = Number.isSafeInteger(requestOptions.retries)
+      ? Math.max(0, requestOptions.retries)
+      : undefined;
+    delete requestOptions.timeoutMs;
+    delete requestOptions.retries;
+
+    const policy = {
+      ...resolvePolicy(ctx.options.retry),
+      ...(timeoutOverride !== undefined ? { timeoutMs: timeoutOverride } : {}),
+      ...(retriesOverride !== undefined ? { limit: retriesOverride } : {})
+    };
+    const method = String(requestOptions.method || "GET").toUpperCase();
     const retryable = policy.methods.some((allowed) => allowed.toUpperCase() === method);
     for (let attempt = 0;; attempt++) {
         try {
-            const response = await dispatch(ctx, url, options, raw, policy.timeoutMs);
+            const response = await dispatch(ctx, url, requestOptions, raw, policy.timeoutMs);
             const exhausted = attempt >= policy.limit;
             if (!retryable || exhausted || response.ok || !RETRYABLE_STATUS.has(response.status)) {
                 return response;
