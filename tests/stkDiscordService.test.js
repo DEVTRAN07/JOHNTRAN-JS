@@ -396,7 +396,7 @@ test("raw GitHub loader keeps a stale valid cache when the remote is unavailable
   fs.writeFileSync(file, cachedJpeg);
   const fetched = await service.ensureRemoteAsset("menu.jpg", {
     directory: dir,
-    rawBaseUrl: "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/main",
+    rawBaseUrl: "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/745a7ad1d155d03bda4466a92e52c3c578f279ab",
     fetchImpl: async () => { throw new Error("offline"); },
     ttlMs: 0,
     maxBytes: 1024
@@ -430,7 +430,7 @@ test("raw GitHub loader rejects path traversal and invalid image payloads", asyn
 test("STK metadata maps to the raw GitHub repository and has 200 frame URLs", () => {
   assert.equal(
     service.buildRawAssetUrl("menu.jpg"),
-    "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/main/menu.jpg"
+    "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/745a7ad1d155d03bda4466a92e52c3c578f279ab/menu.jpg"
   );
   assert.equal(service.catalog.items.length, 200);
   for (const item of service.catalog.items) {
