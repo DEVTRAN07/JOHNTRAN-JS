@@ -8,7 +8,10 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { createCanvas } = require("canvas");
 const service = require("../core/stickerService");
-const frames = require("../core/stickerFrames");
+
+const SOURCE_SHA = "804611c782965a2c3a8050e1135c9a91882a8ce7";
+const CDN_GIF = "https://cdn.jsdelivr.net/gh/uhidontkno/DiscordAvatarDecorations@" + SOURCE_SHA + "/archive/test/gif/sample.gif";
+const RAW_GIF = "https://raw.githubusercontent.com/uhidontkno/DiscordAvatarDecorations/" + SOURCE_SHA + "/archive/test/gif/sample.gif";
 
 test("STK source URL validation rejects non-web and local addresses", () => {
   assert.equal(service.normalizeSourceUrl("file:///etc/passwd"), null);
@@ -20,21 +23,33 @@ test("STK source URL validation rejects non-web and local addresses", () => {
   assert.equal(service.isZaloMediaUrl("https://cdn.example.test/a.png"), false);
 });
 
-test("Discord decoration assets are downloaded from the fixed host and cached on disk", async t => {
+test("Discord asset URL guard accepts only pinned CDN and raw GitHub repository paths", () => {
+  assert.equal(service.isAllowedDecorationAssetUrl(CDN_GIF), true);
+  assert.equal(service.isAllowedDecorationAssetUrl(RAW_GIF), true);
+  assert.equal(service.isAllowedDecorationAssetUrl("https://evil.example/sample.gif"), false);
+  assert.equal(service.isAllowedDecorationAssetUrl("https://api.github.com/repos/uhidontkno/DiscordAvatarDecorations"), false);
+  assert.equal(service.isAllowedDecorationAssetUrl("http://cdn.jsdelivr.net/gh/uhidontkno/DiscordAvatarDecorations@" + SOURCE_SHA + "/sample.gif"), false);
+  assert.equal(service.isAllowedDecorationAssetUrl("https://cdn.jsdelivr.net/gh/other/repo@" + SOURCE_SHA + "/sample.gif"), false);
+});
+
+test("Discord decoration falls back from CDN failure to raw GitHub and caches the asset", async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-decoration-assets-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const gif = Buffer.from("GIF89a" + "decoration");
-  let requests = 0;
+  let requests = [];
   const decoration = {
     id: "archive-test-sample",
     name: "Sample",
     staticAvailable: true,
-    staticUrl: "https://raw.githubusercontent.com/uhidontkno/DiscordAvatarDecorations/main/shop/test/sample.png",
-    animatedUrl: "https://raw.githubusercontent.com/uhidontkno/DiscordAvatarDecorations/main/archive/test/gif/sample.gif"
+    staticUrl: "https://cdn.jsdelivr.net/gh/uhidontkno/DiscordAvatarDecorations@" + SOURCE_SHA + "/shop/test/sample.png",
+    staticFallbackUrl: "https://raw.githubusercontent.com/uhidontkno/DiscordAvatarDecorations/" + SOURCE_SHA + "/shop/test/sample.png",
+    animatedUrl: CDN_GIF,
+    animatedFallbackUrl: RAW_GIF
   };
   const fetchImpl = async url => {
-    requests += 1;
-    assert.equal(url, decoration.animatedUrl);
+    requests.push(url);
+    if (url === CDN_GIF) return { ok: false, status: 403, headers: { get: () => null } };
+    assert.equal(url, RAW_GIF);
     return {
       ok: true,
       status: 200,
@@ -43,8 +58,6 @@ test("Discord decoration assets are downloaded from the fixed host and cached on
     };
   };
 
-  assert.equal(service.isAllowedDecorationAssetUrl("https://evil.example/test.gif"), false);
-  assert.equal(service.isAllowedDecorationAssetUrl(decoration.animatedUrl), true);
   const first = await service.downloadDecorationOverlay(decoration, {
     animated: true,
     cacheDir: dir,
@@ -52,15 +65,17 @@ test("Discord decoration assets are downloaded from the fixed host and cached on
   });
   assert.equal(first.animated, true);
   assert.equal(first.cached, true);
+  assert.equal(first.url, RAW_GIF);
   assert.ok(fs.existsSync(first.path));
+  assert.deepEqual(requests, [CDN_GIF, RAW_GIF]);
 
   const second = await service.downloadDecorationOverlay(decoration, {
     animated: true,
     cacheDir: dir,
-    fetchImpl
+    fetchImpl: async () => { throw new Error("cache miss should not fetch"); }
   });
   assert.equal(second.path, first.path);
-  assert.equal(requests, 1, "subsequent STK calls should reuse the cached image asset");
+  assert.equal(requests.length, 2, "subsequent STK calls should reuse the cached image asset");
 });
 
 test("STK quote URL selection prioritizes animated sticker, then video and image", () => {
@@ -142,14 +157,15 @@ test("custom Zalo sticker methods register only once on the base API object", as
   assert.match(requests[1].url, /group\/photo_url/);
 });
 
-test("FFmpeg composes a Discord frame over a still image and returns a compact sticker", {
+test("FFmpeg composes a transparent decoration overlay over a still image and respects the 512 KB cap", {
   skip: spawnSync(service.resolveFfmpegBinary(), ["-version"], { stdio: "ignore" }).status !== 0
 }, async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-sticker-compose-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const source = path.join(dir, "source.png");
-  const overlay = path.join(dir, "frame.png");
+  const overlay = path.join(dir, "decoration.png");
   const outputBase = path.join(dir, "sticker-");
+
   const canvas = createCanvas(160, 160);
   const ctx = canvas.getContext("2d");
   const gradient = ctx.createLinearGradient(0, 0, 160, 160);
@@ -158,7 +174,13 @@ test("FFmpeg composes a Discord frame over a still image and returns a compact s
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 160, 160);
   fs.writeFileSync(source, canvas.toBuffer("image/png"));
-  frames.renderFrame(2, overlay);
+
+  const overlayCanvas = createCanvas(160, 160);
+  const overlayCtx = overlayCanvas.getContext("2d");
+  overlayCtx.strokeStyle = "#9b72ff";
+  overlayCtx.lineWidth = 12;
+  overlayCtx.strokeRect(8, 8, 144, 144);
+  fs.writeFileSync(overlay, overlayCanvas.toBuffer("image/png"));
 
   const result = await service.convertMedia(source, overlay, outputBase);
   assert.ok(result.size > 100);

@@ -5,7 +5,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const http = require("./http");
-const frames = require("./stickerFrames");
+const STICKER_SIZE = 512;
 const decorations = require("./stickerDecorations");
 
 const UPLOAD_HOST = "https://tt-files-wpa.chat.zalo.me";
@@ -247,10 +247,14 @@ async function convertMedia(inputPath, overlayPath, outputBasePath, options = {}
 function isAllowedDecorationAssetUrl(rawUrl) {
   try {
     const parsed = new URL(String(rawUrl || ""));
-    return parsed.protocol === "https:" &&
-      parsed.hostname === "raw.githubusercontent.com" &&
-      parsed.pathname.startsWith("/uhidontkno/DiscordAvatarDecorations/main/") &&
-      /\.(png|gif|webp|apng)$/i.test(parsed.pathname);
+    if (parsed.protocol !== "https:" || !/\.(png|gif|webp|apng)$/i.test(parsed.pathname)) return false;
+    if (parsed.hostname === "cdn.jsdelivr.net") {
+      return /^\/gh\/uhidontkno\/DiscordAvatarDecorations@[a-f0-9]{40}\//i.test(parsed.pathname);
+    }
+    if (parsed.hostname === "raw.githubusercontent.com") {
+      return /^\/uhidontkno\/DiscordAvatarDecorations\/[a-f0-9]{40}\//i.test(parsed.pathname);
+    }
+    return false;
   } catch {
     return false;
   }
@@ -258,17 +262,21 @@ function isAllowedDecorationAssetUrl(rawUrl) {
 
 async function downloadDecorationOverlay(decoration, options = {}) {
   if (!decoration || typeof decoration !== "object") throw new Error("Decoration Discord không hợp lệ.");
-  const useAnimation = options.animated === true && decoration.animatedUrl;
-  const assetUrl = useAnimation
+  const useAnimation = options.animated === true && Boolean(decoration.animatedUrl);
+  const primaryUrl = useAnimation
     ? decoration.animatedUrl
     : (decoration.staticUrl || decoration.animatedUrl);
-  if (!isAllowedDecorationAssetUrl(assetUrl)) {
+  const fallbackUrl = useAnimation
+    ? (decoration.animatedFallbackUrl || decoration.staticFallbackUrl)
+    : (decoration.staticFallbackUrl || decoration.animatedFallbackUrl);
+  const candidates = [...new Set([primaryUrl, fallbackUrl].filter(Boolean))];
+  if (!candidates.length || candidates.some(url => !isAllowedDecorationAssetUrl(url))) {
     throw new Error("URL decoration không thuộc kho Discord đã cấu hình.");
   }
 
-  const parsed = new URL(assetUrl);
-  const extension = path.extname(parsed.pathname).toLowerCase();
-  const cacheKey = crypto.createHash("sha1").update(assetUrl).digest("hex");
+  const parsed = new URL(primaryUrl);
+  const extension = path.extname(parsed.pathname).toLowerCase() || ".png";
+  const cacheKey = crypto.createHash("sha1").update(primaryUrl).digest("hex");
   const assetCacheDir = options.cacheDir || DECORATION_ASSET_CACHE_DIR;
   const cachedPath = path.join(assetCacheDir, cacheKey + extension);
   try {
@@ -279,39 +287,58 @@ async function downloadDecorationOverlay(decoration, options = {}) {
         path: cachedPath,
         animated: Boolean(useAnimation || /\/apng\//i.test(parsed.pathname) || /\.(gif|webp|apng)$/i.test(extension)),
         cached: true,
-        url: assetUrl
+        url: primaryUrl
       };
     }
   } catch {}
 
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   if (typeof fetchImpl !== "function") throw new Error("Môi trường không hỗ trợ tải ảnh Discord.");
-  const response = await fetchImpl(assetUrl, {
-    headers: { "User-Agent": "JOHNTRAN-JS-sticker-decoration" },
-    signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout
-      ? AbortSignal.timeout(15000)
-      : undefined
-  });
-  if (!response?.ok) throw new Error("Không tải được khung Discord (HTTP " + (response?.status || "?") + ").");
-  const declaredLength = Number(response.headers?.get?.("content-length") || 0);
-  if (declaredLength > MAX_DECORATION_BYTES) throw new Error("Ảnh decoration vượt giới hạn 10 MB.");
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (!buffer.length || buffer.length > MAX_DECORATION_BYTES) throw new Error("Ảnh decoration rỗng hoặc vượt giới hạn 10 MB.");
+  let buffer = null;
+  let selectedUrl = null;
+  let lastError = null;
+  for (const assetUrl of candidates) {
+    try {
+      const response = await fetchImpl(assetUrl, {
+        headers: { "User-Agent": "JOHNTRAN-JS-sticker-decoration" },
+        signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout
+          ? AbortSignal.timeout(15000)
+          : undefined
+      });
+      if (!response?.ok) throw new Error("HTTP " + (response?.status || "?"));
+      const declaredLength = Number(response.headers?.get?.("content-length") || 0);
+      if (declaredLength > MAX_DECORATION_BYTES) throw new Error("Ảnh decoration vượt giới hạn 10 MB.");
+      const body = Buffer.from(await response.arrayBuffer());
+      if (!body.length || body.length > MAX_DECORATION_BYTES) {
+        throw new Error("Ảnh decoration rỗng hoặc vượt giới hạn 10 MB.");
+      }
 
-  const isPng = buffer[0] === 0x89 && buffer.subarray(1, 4).toString() === "PNG";
-  const isGif = buffer.subarray(0, 6).toString() === "GIF87a" || buffer.subarray(0, 6).toString() === "GIF89a";
-  const isWebp = buffer.subarray(0, 4).toString() === "RIFF" && buffer.subarray(8, 12).toString() === "WEBP";
-  if (!isPng && !isGif && !isWebp) throw new Error("Tệp tải về không phải ảnh PNG/GIF/WebP hợp lệ.");
+      const isPng = body[0] === 0x89 && body.subarray(1, 4).toString() === "PNG";
+      const isGif = body.subarray(0, 6).toString() === "GIF87a" || body.subarray(0, 6).toString() === "GIF89a";
+      const isWebp = body.subarray(0, 4).toString() === "RIFF" && body.subarray(8, 12).toString() === "WEBP";
+      if (!isPng && !isGif && !isWebp) throw new Error("Tệp tải về không phải ảnh PNG/GIF/WebP hợp lệ.");
+      buffer = body;
+      selectedUrl = assetUrl;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (!buffer) {
+    throw new Error("Không tải được ảnh decoration từ CDN chính hoặc nguồn dự phòng: " +
+      String(lastError?.message || lastError || "lỗi không xác định").slice(0, 180));
+  }
 
   fs.mkdirSync(assetCacheDir, { recursive: true });
   const tempPath = cachedPath + "." + process.pid + "." + crypto.randomBytes(4).toString("hex") + ".tmp";
   fs.writeFileSync(tempPath, buffer);
   fs.renameSync(tempPath, cachedPath);
+  const selectedPath = new URL(selectedUrl).pathname;
   return {
     path: cachedPath,
-    animated: Boolean(useAnimation || /\/apng\//i.test(parsed.pathname) || isGif || isWebp),
+    animated: Boolean(useAnimation || /\/apng\//i.test(selectedPath) || /\.(gif|webp|apng)$/i.test(selectedPath)),
     cached: true,
-    url: assetUrl
+    url: selectedUrl
   };
 }
 function resolveUploadHost(ctx) {
@@ -409,8 +436,8 @@ function registerStickerApi(api) {
       staticImgUrl, animationImgUrl, threadId, threadType, reply = null, ttl = 0
     } = props || {};
     if (!staticImgUrl || !threadId) throw new Error("Thiếu URL sticker hoặc threadId.");
-    const width = Number(props?.width) || frames.SIZE;
-    const height = Number(props?.height) || frames.SIZE;
+    const width = Number(props?.width) || STICKER_SIZE;
+    const height = Number(props?.height) || STICKER_SIZE;
     const isGroup = Number(threadType) === 1;
     const sendPath = isGroup ? SEND_GROUP_PATH : SEND_USER_PATH;
     const url = utils.makeURL(resolveUploadHost(ctx) + sendPath, { nretry: 0 });
@@ -460,12 +487,11 @@ function registerStickerApi(api) {
   return target;
 }
 
-async function processSticker({ api, event, url, frameId = 1, decorationId = null }) {
+async function processSticker({ api, event, url, decorationId }) {
   if (!api || !event?.threadId) throw new Error("Thiếu thông tin cuộc trò chuyện để gửi sticker.");
   const normalizedUrl = normalizeSourceUrl(url);
   if (!normalizedUrl) throw new Error("Link media không hợp lệ. Chỉ nhận URL HTTP/HTTPS.");
-  const frameIdNormalized = decorationId ? null : frames.normalizeFrameId(frameId);
-  if (!decorationId && !frameIdNormalized) throw new RangeError("Mẫu khung Discord không tồn tại.");
+  if (!decorationId) throw new Error("Bạn cần chọn một decoration Discord. Dùng /stk list hoặc /stk random.");
 
   registerStickerApi(api);
   fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -473,40 +499,26 @@ async function processSticker({ api, event, url, frameId = 1, decorationId = nul
   const ext = sourceExtension(normalizedUrl, source.contentType, source.buffer);
   if (ext === ".bin") throw new Error("Không nhận diện được định dạng ảnh/video. Hãy gửi PNG, JPG, GIF, WebP, MP4 hoặc MOV.");
 
+  const decoration = await decorations.getDecoration(decorationId);
+  if (!decoration) throw new Error("Không tìm thấy decoration Discord: " + String(decorationId).slice(0, 80) + ". Dùng /stk list hoặc /stk find <tên>.");
   const sourceIsAnimated = /\.(gif|webp|mp4|webm|mov|m4v)$/i.test(ext);
   const sourcePath = path.join(CACHE_DIR, uniqueName("stk-source", ext));
-  const overlayExtension = decorationId ? ".png" : ".png";
-  const overlayPath = decorationId
-    ? null
-    : path.join(CACHE_DIR, uniqueName("stk-discord-frame-" + frameIdNormalized, overlayExtension));
-  let overlayCached = false;
+  let resolvedOverlayPath = null;
   let outputPath = null;
-  let frameName = null;
-  let resolvedDecorationId = null;
-  let overlayAnimated = false;
-  let resolvedOverlayPath = overlayPath;
+  let overlayCached = false;
   try {
     fs.writeFileSync(sourcePath, source.buffer);
-    if (decorationId) {
-      const decoration = await decorations.getDecoration(decorationId);
-      if (!decoration) throw new Error("Không tìm thấy decoration Discord: " + String(decorationId).slice(0, 80) + ". Dùng /stk list hoặc /stk find <tên>.");
-      const overlay = await downloadDecorationOverlay(decoration, {
-        animated: sourceIsAnimated || !decoration.staticAvailable
-      });
-      resolvedOverlayPath = overlay.path;
-      overlayCached = overlay.cached;
-      overlayAnimated = overlay.animated;
-      frameName = decoration.name;
-      resolvedDecorationId = decoration.id;
-    } else {
-      frames.renderFrame(frameIdNormalized, resolvedOverlayPath);
-      frameName = frames.getFrame(frameIdNormalized).name;
-    }
+    const overlay = await downloadDecorationOverlay(decoration, {
+      animated: sourceIsAnimated || !decoration.staticAvailable
+    });
+    resolvedOverlayPath = overlay.path;
+    overlayCached = overlay.cached;
+
     const output = await convertMedia(
       sourcePath,
       resolvedOverlayPath,
       path.join(CACHE_DIR, uniqueName("stk-discord-", "")),
-      { overlayAnimated }
+      { overlayAnimated: overlay.animated }
     );
     outputPath = output.path;
 
@@ -531,7 +543,13 @@ async function processSticker({ api, event, url, frameId = 1, decorationId = nul
       width: output.width,
       height: output.height
     });
-    return { ...output, response: sent, frameId: frameIdNormalized, decorationId: resolvedDecorationId, frameName };
+    return {
+      ...output,
+      response: sent,
+      decorationId: decoration.id,
+      frameName: decoration.name,
+      overlayUrl: overlay.url
+    };
   } finally {
     for (const filePath of [sourcePath, overlayCached ? null : resolvedOverlayPath, outputPath]) {
       if (!filePath) continue;
