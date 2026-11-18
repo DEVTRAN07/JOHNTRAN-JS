@@ -135,3 +135,26 @@ test("metrics expose bounded latency summaries per command", () => {
   assert.equal(metrics.getCommandLatencyStats(2)[1].avgMs, 30);
   metrics.dispose();
 });
+
+
+test("metrics separate first response processing latency from Zalo send RTT", () => {
+  const backend = createFakeDb();
+  const metrics = createMetricsStore(backend, { flushDelayMs: 60000 });
+
+  metrics.trackFirstResponseLatency("menu", 100);
+  metrics.trackFirstResponseLatency("menu", 180);
+  metrics.trackZaloSendLatency(35, true);
+  metrics.trackZaloSendLatency(75, false);
+
+  const first = metrics.getFirstResponseLatencyStats(5)[0];
+  const send = metrics.getZaloSendLatencyStats();
+  assert.equal(first.command, "menu");
+  assert.equal(first.count, 2);
+  assert.equal(first.p95Ms, 180);
+  assert.equal(send.count, 2);
+  assert.equal(send.success, 1);
+  assert.equal(send.failed, 1);
+  assert.equal(send.avgMs, 55);
+  assert.equal(backend.writes.length, 0);
+  metrics.dispose();
+});
