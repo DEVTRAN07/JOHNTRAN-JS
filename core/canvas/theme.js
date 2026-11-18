@@ -1,10 +1,9 @@
-// Shared JOHNTRAN Canvas design system for all non-menu cards.
-// /theme is isolated to /menu and its folder cards.
+// Shared JOHNTRAN Canvas design system. Every Canvas follows the /menu theme.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createCanvas, registerFont } = require("canvas");
-const BASE_CANVAS_THEME = "editorial";
+const brandTheme = require("./brandTheme");
 const PALETTE = {};
 const THEME_STYLE = {};
 
@@ -44,19 +43,34 @@ function mixHex(hex, target, amount) {
 }
 
 function resolveTheme() {
-  const name = String(global.config?.canvas?.theme || BASE_CANVAS_THEME).trim().toLowerCase();
-  const preset = PRESETS[name] || PRESETS.editorial;
-
-  // /theme owns only the /menu and folder-card palette. Other Canvas cards
-  // keep this stable application palette and never inherit menu color changes.
-  Object.assign(PALETTE, BASE_PALETTE);
-  Object.assign(THEME_STYLE, BASE_STYLE, preset.style || {});
-  THEME_STYLE.panelBorder = PALETTE.accent;
+  const active = brandTheme.getPalette();
+  const accent = active.accent || "#62dcff";
+  Object.assign(PALETTE, {
+    bg0: active.background[0],
+    bg1: active.background[1],
+    bg2: active.background[2],
+    ink: active.text || "#f4f9ff",
+    ink2: active.muted || "#a9bfd8",
+    mute: active.muted || "#a9bfd8",
+    accent,
+    accent2: mixHex(accent, "#ffffff", 0.30),
+    green: "#54d6a0",
+    red: "#ff7188",
+    gold: "#f3c46b"
+  });
+  Object.assign(THEME_STYLE, BASE_STYLE, {
+    panelBg: active.card[1],
+    panelBorder: active.border,
+    glowCorners: active.glow,
+    panelRadius: 15,
+    btnRadius: 12,
+    foil: true
+  });
 }
 
 let _resolvedSignature = "";
 function themeSignature() {
-  return String(global.config?.canvas?.theme || BASE_CANVAS_THEME);
+  return brandTheme.signature();
 }
 
 function ensureTheme() {
@@ -117,7 +131,7 @@ function foil(ctx, x, y, width) {
   if (!THEME_STYLE.foil) return;
   const gradient = ctx.createLinearGradient(x, y, x + width, y);
   gradient.addColorStop(0, PALETTE.accent);
-  gradient.addColorStop(0.55, "rgba(85, 214, 232, .32)");
+  gradient.addColorStop(0.55, rgba(PALETTE.accent, .32));
   gradient.addColorStop(1, "rgba(85, 214, 232, 0)");
   ctx.fillStyle = gradient;
   ctx.fillRect(x, y, width, Math.max(1, S(2)));
@@ -199,18 +213,16 @@ function truncate(ctx, value, maxWidth) {
   return output + "…";
 }
 
-async function paintBackground(ctx, width, height) {
+function paintBackground(ctx, width, height) {
   initFonts();
   ensureTheme();
+  const palette = getCardPalette();
 
-  // One stable ocean surface for every non-menu Canvas. The /theme command
-  // remains isolated to the menu and folder cards.
-  const colors = [PALETTE.bg0, PALETTE.bg1, PALETTE.bg2, "#071a29"];
   const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, colors[0]);
-  gradient.addColorStop(0.42, colors[1]);
-  gradient.addColorStop(0.7, colors[2]);
-  gradient.addColorStop(1, colors[3]);
+  gradient.addColorStop(0, palette.background[0]);
+  gradient.addColorStop(0.42, palette.background[1]);
+  gradient.addColorStop(0.70, palette.background[2]);
+  gradient.addColorStop(1, palette.background[3]);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
@@ -221,48 +233,106 @@ async function paintBackground(ctx, width, height) {
     ctx.fillStyle = effect;
     ctx.fillRect(0, 0, width, height);
   };
-  const corners = THEME_STYLE.glowCorners || [];
-  glow(width * 0.16, height * 0.05, width * 0.5, corners[0] || "rgba(212,175,55,.10)");
-  glow(width * 0.88, height * 0.16, width * 0.42, corners[1] || "rgba(212,175,55,.04)");
-  glow(width * 0.28, height * 0.98, width * 0.52, corners[1] || "rgba(212,175,55,.04)");
-  glow(width * 0.92, height * 0.9, width * 0.5, corners[0] || "rgba(212,175,55,.10)");
+  glow(width * 0.16, height * 0.05, width * 0.50, palette.glow[0]);
+  glow(width * 0.88, height * 0.16, width * 0.42, palette.glow[1]);
+  glow(width * 0.28, height * 0.98, width * 0.52, palette.glow[1]);
+  glow(width * 0.92, height * 0.90, width * 0.50, palette.glow[0]);
 
-  if (THEME_STYLE.frame) {
-    ctx.save();
-    ctx.strokeStyle = PALETTE.accent;
-    ctx.globalAlpha = 0.20;
-    ctx.lineWidth = Math.max(1, S(1));
-    ctx.strokeRect(S(10), S(10), width - S(20), height - S(20));
-    ctx.restore();
+  // Same restrained star field and vignette as the current main menu.
+  ctx.save();
+  for (let i = 0; i < 64; i++) {
+    const x = (i * 173 + 47) % width;
+    const y = (i * 97 + 31) % height;
+    const radius = i % 9 === 0 ? S(1.15) : S(0.55);
+    const alpha = i % 4 === 0 ? 0.30 : 0.15;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(0.45, radius), 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(190,225,255," + alpha + ")";
+    ctx.fill();
   }
+  const vignette = ctx.createRadialGradient(
+    width * 0.5, height * 0.45, height * 0.18,
+    width * 0.5, height * 0.45, width * 0.78
+  );
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,4,14,.42)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+
+  // Layer 2: the same raised glass shell used by the main menu.
+  const inset = S(11);
+  const x = inset, y = inset;
+  const shellW = width - inset * 2, shellH = height - inset * 2;
+  roundRect(ctx, x, y, shellW, shellH, S(18));
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,.48)";
+  ctx.shadowBlur = S(24);
+  ctx.shadowOffsetY = S(9);
+  const shell = ctx.createLinearGradient(x, y, x + shellW, y + shellH);
+  shell.addColorStop(0, palette.panel[0]);
+  shell.addColorStop(0.48, "#0b2039");
+  shell.addColorStop(1, palette.panel[1]);
+  ctx.fillStyle = shell;
+  ctx.fill();
+  ctx.restore();
+  roundRect(ctx, x, y, shellW, shellH, S(18));
+  ctx.strokeStyle = palette.border;
+  ctx.lineWidth = Math.max(1, S(1.15));
+  ctx.stroke();
+  roundRect(ctx, x + S(3), y + S(3), shellW - S(6), shellH - S(6), S(15));
+  ctx.strokeStyle = "rgba(220,244,255,.10)";
+  ctx.lineWidth = Math.max(1, S(.75));
+  ctx.stroke();
+
+  const topGlow = ctx.createLinearGradient(x + S(25), y, x + shellW - S(25), y);
+  topGlow.addColorStop(0, "rgba(98,220,255,0)");
+  topGlow.addColorStop(0.48, rgba(palette.accent, 0.42));
+  topGlow.addColorStop(1, "rgba(98,220,255,0)");
+  ctx.fillStyle = topGlow;
+  ctx.fillRect(x + S(24), y + S(1), shellW - S(48), Math.max(1, S(1.2)));
 }
 
 function panel(ctx, x, y, width, height, radius = THEME_STYLE.panelRadius, accent = PALETTE.accent) {
   ensureTheme();
+  const palette = getCardPalette();
   ctx.save();
   roundRect(ctx, x, y, width, height, radius);
-  ctx.shadowColor = "rgba(0,0,0,.24)";
-  ctx.shadowBlur = S(10);
-  ctx.shadowOffsetY = S(4);
-  const gradient = ctx.createLinearGradient(x, y, x, y + height);
-  gradient.addColorStop(0, "rgba(255,255,255,.055)");
-  gradient.addColorStop(1, THEME_STYLE.panelBg);
+  ctx.shadowColor = "rgba(0,0,0,.34)";
+  ctx.shadowBlur = S(16);
+  ctx.shadowOffsetY = S(6);
+  const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
+  gradient.addColorStop(0, palette.card[0]);
+  gradient.addColorStop(0.52, mixHex(palette.card[0], "#ffffff", 0.025));
+  gradient.addColorStop(1, palette.card[1]);
   ctx.fillStyle = gradient;
   ctx.fill();
   ctx.restore();
 
   roundRect(ctx, x, y, width, height, radius);
-  ctx.strokeStyle = "rgba(164,190,218,.20)";
-  ctx.lineWidth = Math.max(1, S(.8));
+  ctx.strokeStyle = palette.cardBorder;
+  ctx.lineWidth = Math.max(1, S(.95));
+  ctx.stroke();
+  roundRect(ctx, x + S(1.5), y + S(1.5), width - S(3), height - S(3), Math.max(0, radius - S(1.5)));
+  ctx.strokeStyle = "rgba(230,246,255,.075)";
+  ctx.lineWidth = Math.max(1, S(.7));
   ctx.stroke();
 
-  // A short accent rail replaces the old bright outline around every tile.
-  ctx.save();
-  roundRect(ctx, x + S(12), y + S(1), Math.max(S(30), Math.min(width * .22, S(112))), S(2), S(1));
-  ctx.fillStyle = accent || PALETTE.accent;
-  ctx.globalAlpha = .48;
+  // The short vertical light rail repeats the main-menu tile silhouette.
+  const edge = ctx.createLinearGradient(x, y, x, y + height);
+  edge.addColorStop(0, rgba(palette.accent, 0.92));
+  edge.addColorStop(1, rgba(palette.accent, 0.14));
+  ctx.fillStyle = edge;
+  roundRect(ctx, x + S(1), y + S(13), S(2), Math.max(S(12), height - S(26)), S(1));
   ctx.fill();
-  ctx.restore();
+  if (accent && accent !== PALETTE.accent) {
+    ctx.save();
+    ctx.globalAlpha = 0.20;
+    ctx.fillStyle = accent;
+    roundRect(ctx, x + S(8), y + S(1), Math.max(S(30), Math.min(width * .2, S(100))), S(2), S(1));
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 function button(ctx, x, y, width, height, value, color) {
@@ -306,20 +376,15 @@ function rgba(hex, alpha) {
 
 function getCardPalette() {
   ensureTheme();
-  const accent = PALETTE.accent;
+  const active = brandTheme.getPalette();
   return {
-    background: [PALETTE.bg0, PALETTE.bg1, PALETTE.bg2, "#071a29"],
-    panel: [mixHex(PALETTE.bg2, "#ffffff", 0.045), mixHex(PALETTE.bg1, PALETTE.bg0, 0.16)],
-    card: [mixHex(PALETTE.bg1, "#ffffff", 0.035), mixHex(PALETTE.bg0, PALETTE.bg1, 0.22)],
-    footer: [mixHex(PALETTE.bg1, PALETTE.bg0, 0.28), PALETTE.bg0],
-    accent,
-    border: rgba(accent, 0.62),
-    cardBorder: rgba(accent, 0.44),
-    glow: [rgba(accent, 0.2), rgba(accent, 0.1)],
-    infoFill: rgba(accent, 0.11),
-    infoBorder: rgba(accent, 0.62),
-    text: PALETTE.ink,
-    muted: PALETTE.ink2
+    ...active,
+    background: active.background.slice(),
+    panel: active.panel.slice(),
+    card: active.card.slice(),
+    footer: active.footer.slice(),
+    text: active.text || PALETTE.ink,
+    muted: active.muted || PALETTE.ink2
   };
 }
 
