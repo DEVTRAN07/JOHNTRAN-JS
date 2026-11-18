@@ -55,7 +55,7 @@ test("bundled Discord catalog is complete and does not depend on the GitHub tree
   assert.ok(manifest.total >= 100);
   assert.ok(manifest.items.every(item =>
     item.id && item.name && item.staticUrl && item.staticFallbackUrl &&
-    item.sourcePath && item.source === undefined || item.source === undefined
+    item.sourcePath && item.source === manifest.source
   ));
 
   const catalog = createDecorationCatalog();
