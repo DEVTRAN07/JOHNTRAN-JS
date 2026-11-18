@@ -31,7 +31,7 @@ function installAntiRuntime({ threadId, initialData }) {
   const previousGetData = Threads.getData;
   const previousSet = Threads.setDataAndWait;
   const state = { ...initialData };
-  const calls = { sent: [], kicked: [], deleted: [], ownId: 0, groupInfo: 0 };
+  const calls = { sent: [], kicked: [], deleted: [], ownId: 0, groupInfo: 0, getData: 0, saved: 0, saveKeys: [] };
 
   const rawApi = {
     getOwnId() {
@@ -67,8 +67,13 @@ function installAntiRuntime({ threadId, initialData }) {
   Threads.getCachedData = id => id === threadId
     ? { threadId, data: { bot_enabled: true } }
     : null;
-  Threads.getData = async id => ({ threadId: id, data: state });
+  Threads.getData = async id => {
+    calls.getData++;
+    return { threadId: id, data: state };
+  };
   Threads.setDataAndWait = async (_id, next) => {
+    calls.saved++;
+    calls.saveKeys.push(Object.keys(next || {}));
     for (const key of Object.keys(state)) delete state[key];
     Object.assign(state, next);
     return { threadId: _id, data: state };
@@ -139,6 +144,7 @@ test("real zalo-client Reaction objects reach Anti-Reaction through the runtime 
       () => ({
         state: runtime.state,
         calls: runtime.calls,
+        serviceMethodPatched: Threads.setDataAndWait.toString().includes("calls.saved++"),
         antiQueue: require("../core/runtime/threadQueue").queues.size,
         commandCount: global.client?.commands?.size,
         eventBotEnabled: Threads.getCachedData(threadId)
@@ -207,6 +213,7 @@ test("real zalo-client GroupEvent JOIN objects reach Anti-Join through the runti
             count,
             state: runtime.state,
             calls: runtime.calls,
+            serviceMethodPatched: Threads.setDataAndWait.toString().includes("calls.saved++"),
             antiQueue: require("../core/runtime/threadQueue").queues.size,
             event: groupEvent,
             eventBotEnabled: Threads.getCachedData(threadId)
