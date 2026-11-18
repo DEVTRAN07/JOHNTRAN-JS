@@ -1,14 +1,93 @@
 "use strict";
 
+const fs = require("node:fs");
 const { ThreadType } = require("zalo-client");
 const { getGroupAdminState } = require("./groupAdmin");
 
 const FEATURES = Object.freeze({
-  antinude: { key: "anti_nude", label: "AI quét ảnh 18+; cảnh cáo 3 lần, tái phạm lần 4 kick", usage: "antinude [on/off]" },
-  antirecall: { key: "anti_undo", label: "chống thu hồi tin nhắn", usage: "antirecall [on/off]" },
-  antilink: { key: "anti_danger_link", label: "chặn link mời nhóm khác / link nguy hiểm", usage: "antilink [on/off]" },
-  antispam: { key: "anti_sticker_spam", label: "chống dội bom spam sticker", usage: "antispam [on/off]" }
+  antinude: {
+    key: "anti_nude",
+    label: "AI quét ảnh 18+; cảnh cáo 3 lần, tái phạm lần 4 kick",
+    cardLabel: "Anti-Nude",
+    detail: "AI kiểm tra ảnh nhạy cảm; cảnh cáo 3 lần, tái phạm lần 4 sẽ kick.",
+    usage: "antinude [on/off]"
+  },
+  antirecall: {
+    key: "anti_undo",
+    label: "chống thu hồi tin nhắn",
+    cardLabel: "Anti-Recall",
+    detail: "Lưu và khôi phục nội dung khi thành viên thu hồi tin nhắn.",
+    usage: "antirecall [on/off]"
+  },
+  antilink: {
+    key: "anti_danger_link",
+    label: "chặn link mời nhóm khác / link nguy hiểm",
+    cardLabel: "Anti-Link",
+    detail: "Chặn link mời nhóm Zalo khác và URL không an toàn.",
+    usage: "antilink [on/off]"
+  },
+  antispam: {
+    key: "anti_sticker_spam",
+    label: "chống dội bom spam sticker",
+    cardLabel: "Anti-Spam Sticker",
+    detail: "Phát hiện và xử lý thành viên gửi sticker dồn dập.",
+    usage: "antispam [on/off]"
+  }
 });
+
+async function sendAntiToggleNotice(api, threadId, type, options = {}) {
+  const label = String(options.label || "Anti");
+  const enabled = options.enabled === true;
+  const detail = String(options.detail || "Thiết lập đã được lưu thành công cho nhóm.");
+  const action = enabled ? "bật" : "tắt";
+  const notice = "✓ Đã " + action + " thành công chế độ " + label + " cho nhóm!";
+  const card = {
+    brand: "JOHNTRAN",
+    chip: enabled ? "ANTI / ENABLED" : "ANTI / DISABLED",
+    theme: "success",
+    title: "THÔNG BÁO HỆ THỐNG",
+    subtitle: notice,
+    sections: [{
+      title: "CẬP NHẬT BẢO VỆ NHÓM",
+      lines: [
+        label,
+        "Trạng thái: " + (enabled ? "ĐANG BẬT" : "ĐANG TẮT"),
+        detail
+      ]
+    }],
+    footer: "JOHNTRAN  •  GROUP SECURITY"
+  };
+  const fallback = () => api.sendMessage({
+    msg: "ℹ️ THÔNG BÁO HỆ THỐNG\n" + notice
+  }, threadId, type);
+
+  let imagePath = null;
+  try {
+    const { renderCanvas } = require("../canvas/workerRender");
+    imagePath = await renderCanvas("card", card);
+  } catch (error) {
+    console.error("[ANTI_NOTICE] Không render được Canvas:", error?.message || error);
+    return fallback();
+  }
+
+  try {
+    return await api.sendMessage({
+      msg: "ℹ️ THÔNG BÁO HỆ THỐNG",
+      attachments: [imagePath],
+      ttlKind: "card"
+    }, threadId, type);
+  } catch (error) {
+    console.error("[ANTI_NOTICE] Không gửi được Canvas, chuyển sang thông báo chữ:", error?.message || error);
+    return fallback();
+  } finally {
+    if (imagePath) {
+      const timer = setTimeout(() => {
+        fs.unlink(imagePath, () => {});
+      }, 60_000);
+      timer.unref?.();
+    }
+  }
+}
 
 async function runAntiToggle(featureName, context = {}) {
   const spec = FEATURES[featureName];
@@ -55,10 +134,16 @@ async function runAntiToggle(featureName, context = {}) {
     );
   }
 
-  data[spec.key] = mode === "on";
+  const enabled = mode === "on";
+  data[spec.key] = enabled;
   const save = context.Threads.setDataAndWait || context.Threads.setData;
   await save.call(context.Threads, threadId, data);
-  return send("✅ QTV BOX đã " + (mode === "on" ? "BẬT" : "TẮT") + " " + spec.label + ".");
+
+  return sendAntiToggleNotice(api, threadId, type, {
+    label: spec.cardLabel,
+    enabled,
+    detail: spec.detail
+  });
 }
 
-module.exports = { FEATURES, runAntiToggle };
+module.exports = { FEATURES, runAntiToggle, sendAntiToggleNotice };
