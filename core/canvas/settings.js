@@ -313,7 +313,7 @@ function renderAntiProtectionCard(data = {}) {
 function renderAntiProtectionCardV2(data = {}) {
   theme.initFonts();
   const palette = theme.getCardPalette();
-  const items = Array.isArray(data.items) ? data.items.slice(0, 8) : [];
+  const items = Array.isArray(data.items) ? data.items.slice(0, 24) : [];
   const columns = 2;
   const rows = Math.max(1, Math.ceil(items.length / columns));
   const margin = S(22);
@@ -349,7 +349,7 @@ function renderAntiProtectionCardV2(data = {}) {
   drawText(ctx, "BẢO VỆ NHÓM",
     margin + S(82), bannerY + S(39), 20, palette.text, true,
     "left", W - margin * 2 - S(210));
-  drawText(ctx, "6 CHẾ ĐỘ · TRẠNG THÁI ON / OFF",
+  drawText(ctx, String(items.length) + " CHẾ ĐỘ · TRẠNG THÁI ON / OFF",
     margin + S(82), bannerY + S(56), 8.5, palette.muted, true,
     "left", W - margin * 2 - S(210));
 

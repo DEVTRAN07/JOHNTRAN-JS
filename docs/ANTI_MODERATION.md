@@ -1,33 +1,36 @@
-# Anti moderation cho nhóm Zalo
+# Hệ thống Anti của JOHNTRAN-JS
 
-Bốn lệnh mới chỉ cho phép **trưởng nhóm hoặc phó nhóm** bật/tắt. Bot kiểm tra quyền bằng getGroupInfo và từ chối khi API không xác minh được vai trò.
+Các lệnh Anti chỉ bật/tắt trong nhóm và chỉ trưởng nhóm hoặc phó nhóm đã được Zalo xác minh mới được thay đổi trạng thái. Cấu hình được lưu theo từng nhóm.
 
-| Lệnh | Cơ chế |
-|---|---|
-| **/antinude on/off** | Quét ảnh chat.photo bằng OpenAI omni-moderation-latest và chỉ xử lý khi điểm sexual đạt ngưỡng mặc định 0.90. Khi xác nhận vi phạm, bot thử xóa ảnh và kick người gửi. |
-| **/antirecall on/off** | Bật/tắt cơ chế thu hồi sẵn có (anti_undo), dùng cache tin nhắn để khôi phục chữ, ảnh, video, voice, sticker và tệp ở các loại Zalo mà handler hỗ trợ. |
-| **/antilink on/off** | Chặn link mời nhóm Zalo khác (zalo.me/g/...) và URL Zalo scanURL đánh dấu không an toàn. Link thường được scanner xác nhận an toàn vẫn gửi được. Khi scanner lỗi, bot không tự xóa link thường. |
-| **/antispam on/off** | Tính theo từng thành viên; khi có hơn 5 sticker trong 4 giây, bot thử xóa loạt sticker vừa gửi và cảnh báo, không tự kick. |
+| Lệnh | Chức năng | Ghi chú |
+|---|---|---|
+| `/anti` | Hiển thị toàn bộ trạng thái bảo vệ | Canvas hiển thị ON/OFF |
+| `/anticard` | Chặn chia sẻ danh thiếp | Dựa vào payload contact-card của Zalo |
+| `/antidoodle` | Chặn nét vẽ doodle | Dựa vào loại payload được SDK trả về |
+| `/antifile` | Chặn tệp đính kèm | `share.file` |
+| `/antigif` | Chặn GIF | Dựa vào msgType/MIME/đuôi .gif |
+| `/antiinvite` | Chặn link mời nhóm Zalo khác | Không đồng nghĩa chặn mọi URL |
+| `/antijoin` | Chống spam vào/ra nhóm | Kick khi thành viên vào nhóm lần thứ 3 trong 10 phút |
+| `/antilink` | Chặn URL và link mời nhóm | Bao gồm link trong payload chia sẻ đã nhận diện |
+| `/antilocation` | Chặn chia sẻ vị trí | Dựa vào loại location/tọa độ trong payload |
+| `/antiother` | Chặn payload không xác định/lỗi | Chỉ chặn khi Zalo đánh dấu unknown/unsupported/error |
+| `/antiphoto` | Chặn ảnh | Ảnh được SDK nhận diện là photo/image |
+| `/antiqr` | Chặn payload QR | Chỉ nhận QR có marker rõ trong payload; không OCR ảnh thông thường |
+| `/antireaction` | Chống spam reaction | Hơn 5 reaction/10 giây; cảnh cáo 3 lần, lần 4 thử kick |
+| `/antisex`, `/antinude` | AI kiểm tra ảnh nhạy cảm | Cần `OPENAI_API_KEY` |
+| `/antispam` | Chống spam tin nhắn và sticker burst | Hơn 5 tin/5 giây hoặc hơn 5 sticker/4 giây |
+| `/antistk` | Chặn mọi sticker | Không phụ thuộc tốc độ gửi |
+| `/antistklag` | Chặn dội bom sticker | Xóa loạt sticker nhận dạng được |
+| `/antitaghide` | Chặn mention ẩn/sai metadata | Dựa vào metadata mention |
+| `/antivideo` | Chặn video | `chat.video.msg` |
+| `/antivoice` | Chặn tin nhắn thoại | `chat.voice` |
+| `/antiword` | Chặn từ/cụm từ trong danh sách | Dùng từ khóa tích hợp và `assets/spam/badwords.txt` |
+| `/antirecall` | Khôi phục tin bị thu hồi | Phụ thuộc cache và loại nội dung còn hỗ trợ |
 
-## Cấu hình AI cho antinude
+## Quy tắc cảnh cáo
 
-Thêm biến môi trường trên Render hoặc môi trường chạy bot:
+Với các vi phạm nội dung (link, ảnh nhạy cảm, media, từ cấm, spam, mention ẩn và payload lỗi), bot xóa/thu hồi tin nếu API Zalo cho phép, lưu cảnh cáo theo từng nhóm và thành viên. Ba lần vi phạm đầu là cảnh cáo; vi phạm lần thứ tư mới thử kick. Nếu Zalo từ chối kick, số cảnh cáo được giữ ở 3 để thử lại khi người đó tái phạm. Anti-Reaction dùng cùng ngưỡng cảnh cáo nhưng Zalo SDK không cung cấp thao tác gỡ reaction của người khác.
 
-~~~env
-OPENAI_API_KEY=your_openai_api_key
-JT_ANTINUDE_SEXUAL_THRESHOLD=0.90
-~~~
+## Giới hạn theo payload/API
 
-api.openai.com đã được thêm vào allowlist outbound của core/http. Không ghi API key trực tiếp vào Git.
-
-**Lưu ý quyền riêng tư và an toàn:** khi antinude chạy, URL ảnh được gửi tới OpenAI Moderation để phân loại. Không dùng endpoint omni-moderation-latest để gửi nội dung đã biết hoặc nghi ngờ là tài liệu xâm hại tình dục trẻ em; tài liệu OpenAI yêu cầu không gửi loại nội dung đó tới model này. Chỉ bật khi chấp nhận luồng xử lý ảnh này.
-
-Không thể cam kết xử lý đúng 0,5 giây: thời gian tải ảnh của Zalo, gọi model và quyền xóa/kick phụ thuộc mạng và trạng thái nhóm. Bot bắt đầu kiểm tra ngay khi nhận ảnh, đặt timeout 8 giây và chỉ xóa/kick sau khi model trả về điểm đủ cao. Nếu AI lỗi hoặc timeout, bot không tự kick.
-
-## Kiểm thử
-
-~~~bash
-npm test
-~~~
-
-Antirecall chỉ khôi phục được nội dung đã vào cache trước khi sự kiện thu hồi đến; không thể bảo đảm 100% với tin cũ trước lúc bot bật, media hết hạn hoặc loại nội dung Zalo không cung cấp cho API.
+Không phải mọi loại nội dung đều có marker nhất quán trong mọi phiên bản Zalo. Các chế độ card, doodle, GIF, location, QR, video, voice và hidden mention chỉ hoạt động khi payload thực tế chứa các trường nhận dạng tương ứng. Anti-QR không quét ảnh bằng OCR/vision; Anti-Other không đoán loại dữ liệu; cả hai tránh chặn nhầm nội dung bình thường. Anti-Recall chỉ khôi phục được nội dung có dữ liệu gốc trong cache và API gửi lại tương ứng.
