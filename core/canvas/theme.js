@@ -262,8 +262,12 @@ function wrapText(ctx, value, maxWidth) {
         if (piece) pieces.push(piece);
       }
 
-      for (const piece of pieces) {
-        const candidate = line ? line + " " + piece : piece;
+      for (let pieceIndex = 0; pieceIndex < pieces.length; pieceIndex++) {
+        const piece = pieces[pieceIndex];
+        // A space separates different original words, never chunks from one
+        // long URL/ID that was split to fit the card.
+        const separator = pieceIndex === 0 && line ? " " : "";
+        const candidate = line ? line + separator + piece : piece;
         if (line && ctx.measureText(candidate).width > width) {
           output.push(line);
           line = piece;
