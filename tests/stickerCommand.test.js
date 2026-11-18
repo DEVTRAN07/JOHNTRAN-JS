@@ -5,36 +5,34 @@ const assert = require("node:assert/strict");
 const command = require("../plugins/commands/stk");
 const service = require("../core/stkDiscordService");
 
-test("/stk defaults to the Discord menu and keeps the Python-style dis subcommand", () => {
+test("/stk uses direct numeric selection and no longer exposes the dis subcommand", () => {
   assert.equal(command.config.name, "stk");
   assert.equal(command.config.version, "2.0.0");
-  assert.equal(command.config.cooldowns, 0, "menu and frame selection must not share a blocking cooldown");
-  assert.match(command.config.usage, /stk \(menu\)/);
-  assert.match(command.config.usage, /stk dis/);
+  assert.equal(command.config.cooldowns, 0, "STK must not have a cross-command cooldown");
+  assert.equal(command.config.backgroundExecution, true);
+  assert.match(command.config.usage, /stk \[1-200\]/);
+  assert.doesNotMatch(command.config.usage, /stk dis/);
   assert.doesNotMatch(command.config.usage, /list|find|random/i);
 });
 
-test("/stk and /stk dis without an index open the menu", () => {
+test("/stk with no arguments opens the menu; /stk dis is removed", () => {
   assert.deepEqual(command._test.parseArguments([]), {
     help: false, menu: true, decorationId: null, error: null
   });
-  assert.deepEqual(command._test.parseArguments([""]), {
+  assert.deepEqual(command._test.parseArguments(["menu"]), {
     help: false, menu: true, decorationId: null, error: null
   });
-  assert.deepEqual(command._test.parseArguments(["dis"]), {
-    help: false, menu: true, decorationId: null, error: null
-  });
-  assert.equal(command._test.parseArguments(["dis", "menu"]).menu, true);
-  assert.equal(command._test.parseArguments(["dis", "help"]).menu, true);
+  assert.match(command._test.parseArguments(["dis"]).error, /đã bỏ/);
+  assert.match(command._test.parseArguments(["dis", "12"]).error, /đã bỏ/);
 });
 
-test("/stk dis accepts exactly the 1-200 index range", () => {
-  assert.equal(command._test.parseArguments(["dis", "1"]).decorationId, 1);
-  assert.equal(command._test.parseArguments(["dis", "200"]).decorationId, 200);
-  assert.match(command._test.parseArguments(["dis", "0"]).error, /1 đến 200/);
-  assert.match(command._test.parseArguments(["dis", "201"]).error, /1 đến 200/);
-  assert.match(command._test.parseArguments(["dis", "abc"]).error, /không hợp lệ/);
-  assert.equal(command._test.parseArguments(["list"]).help, true);
+test("/stk N accepts exactly the 1-200 range", () => {
+  assert.equal(command._test.parseArguments(["1"]).decorationId, 1);
+  assert.equal(command._test.parseArguments(["200"]).decorationId, 200);
+  assert.match(command._test.parseArguments(["0"]).error, /1 đến 200/);
+  assert.match(command._test.parseArguments(["201"]).error, /1 đến 200/);
+  assert.match(command._test.parseArguments(["abc"]).error, /Cú pháp/);
+  assert.match(command._test.parseArguments(["12", "extra"]).error, /Cú pháp/);
 });
 
 test("the replacement Discord catalog contains all 200 ordered entries", () => {
@@ -96,7 +94,7 @@ test("expired-media detection is limited to 404/not-found errors", () => {
 });
 
 
-test("/stk dis downloads the remote menu into cache and sends the cached file", async () => {
+test("/stk downloads the remote menu into cache and sends the cached file", async () => {
   const sent = [];
   const api = {
     async sendMessage(message) {
@@ -108,28 +106,6 @@ test("/stk dis downloads the remote menu into cache and sends the cached file", 
   const originalEnsureMenu = service.ensureMenuFile;
   service.ensureMenuFile = async () => "/tmp/stk-discord-menu.jpg";
   try {
-    await command.run({ api, event, args: ["dis"] });
-  } finally {
-    service.ensureMenuFile = originalEnsureMenu;
-  }
-  assert.equal(sent.length, 1);
-  assert.deepEqual(sent[0].attachments, ["/tmp/stk-discord-menu.jpg"]);
-  assert.match(sent[0].msg, /AVATAR DECORATION/);
-});
-
-
-test("/stk with no arguments sends the remote menu image", async () => {
-  const sent = [];
-  const api = {
-    async sendMessage(message) {
-      sent.push(message);
-      return { ok: true };
-    }
-  };
-  const event = { threadId: "stk-bare-test-thread", type: 1, data: {} };
-  const originalEnsureMenu = service.ensureMenuFile;
-  service.ensureMenuFile = async () => "/tmp/stk-discord-menu.jpg";
-  try {
     await command.run({ api, event, args: [] });
   } finally {
     service.ensureMenuFile = originalEnsureMenu;
@@ -138,6 +114,9 @@ test("/stk with no arguments sends the remote menu image", async () => {
   assert.deepEqual(sent[0].attachments, ["/tmp/stk-discord-menu.jpg"]);
   assert.match(sent[0].msg, /AVATAR DECORATION/);
 });
+
+
+
 
 test("/stk dis reports a raw GitHub error when the menu cannot be downloaded", async () => {
   const sent = [];
@@ -161,3 +140,54 @@ test("/stk dis reports a raw GitHub error when the menu cannot be downloaded", a
 });
 
 
+
+test("/stk N returns immediately and sends the final result after background processing", async () => {
+  const sent = [];
+  const reactions = [];
+  const originalProcess = service.processDiscordSticker;
+  let completed = false;
+  service.processDiscordSticker = async () => {
+    await new Promise(resolve => setTimeout(resolve, 120));
+    completed = true;
+    return { size: 100 };
+  };
+  const api = {
+    async sendMessage(message) {
+      sent.push(message);
+      return { ok: true };
+    },
+    async addReaction(payload) {
+      reactions.push(payload.icon);
+      return { ok: true };
+    }
+  };
+  const event = {
+    threadId: "stk-background-test",
+    type: 1,
+    data: {
+      uidFrom: "stk-user",
+      dName: "Tester",
+      msgId: "stk-background-message",
+      cliMsgId: "stk-background-client",
+      quote: { attach: JSON.stringify({ photoUrl: "https://files.zdn.vn/photo.jpg" }) }
+    }
+  };
+
+  try {
+    const started = Date.now();
+    const result = await command.run({ api, event, args: ["12"] });
+    const elapsed = Date.now() - started;
+    assert.equal(result, true);
+    assert.ok(elapsed < 100, "command dispatch must not wait for FFmpeg/upload");
+    assert.equal(completed, false, "sticker job should still be processing in the background");
+
+    for (let i = 0; i < 30 && !completed; i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(completed, true);
+    assert.ok(sent.some(item => /Đã nhận yêu cầu tạo sticker/.test(item.msg || "")));
+    assert.ok(sent.some(item => /SUCCESS/.test(item.msg || "")));
+  } finally {
+    service.processDiscordSticker = originalProcess;
+  }
+});
