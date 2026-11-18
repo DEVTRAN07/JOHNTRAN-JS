@@ -21,7 +21,8 @@ function rounded(ctx, x, y, w, h, r) {
 function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
   ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
-  ctx.fillStyle = color;
+  const accentText = color === theme.PALETTE.accent || color === theme.PALETTE.accent2;
+  ctx.fillStyle = accentText ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : color;
   ctx.textAlign = align || "left";
   ctx.textBaseline = "alphabetic";
   let text = String(value == null ? "" : value);
@@ -35,38 +36,19 @@ function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.restore();
 }
 
-function paintBackdrop(ctx, w, h, palette) {
-  const colors = palette.background;
-  const base = ctx.createLinearGradient(0, 0, w, h);
-  base.addColorStop(0, colors[0]);
-  base.addColorStop(0.42, colors[1]);
-  base.addColorStop(0.7, colors[2]);
-  base.addColorStop(1, colors[3]);
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, w, h);
-
-  const glow = (x, y, radius, color) => {
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, w, h);
-  };
-  glow(w * 0.16, h * 0.05, w * 0.5, palette.glow[0]);
-  glow(w * 0.88, h * 0.16, w * 0.42, palette.glow[1]);
-  glow(w * 0.28, h * 0.98, w * 0.52, palette.glow[1]);
-  glow(w * 0.92, h * 0.9, w * 0.5, palette.glow[0]);
+function paintBackdrop(ctx, w, h) {
+  theme.paintBackground(ctx, w, h);
 }
 
 function drawOuterPanel(ctx, x, y, w, h, radius, colors, borderColor) {
   ctx.save();
   rounded(ctx, x, y, w, h, radius);
-  ctx.shadowColor = "rgba(0,0,0,.38)";
+  ctx.shadowColor = "rgba(0,0,0,.52)";
   ctx.shadowBlur = theme.S(24);
   ctx.shadowOffsetY = theme.S(10);
   const fill = ctx.createLinearGradient(x, y, x + w, y + h);
-  fill.addColorStop(0, colors[0]);
-  fill.addColorStop(1, colors[1]);
+  fill.addColorStop(0, theme.rgba(colors[0], 0.58));
+  fill.addColorStop(1, theme.rgba(colors[1], 0.64));
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.restore();
@@ -95,8 +77,6 @@ function drawAvatar(ctx, url, name, x, y, size, withStatus) {
   ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
   ctx.clip();
 
-  // Never wait for a remote avatar while drawing a command card. A cache miss
-  // paints the initials now and starts a background download for the next card.
   const image = avatarCache.getAvatar(url);
   if (image) {
     const scale = Math.max(size / image.width, size / image.height);
@@ -106,20 +86,21 @@ function drawAvatar(ctx, url, name, x, y, size, withStatus) {
   } else {
     drawAvatarFallback(ctx, name, x, y, size);
   }
-
   ctx.restore();
+
+  ctx.save();
   ctx.beginPath();
   ctx.arc(x + size / 2, y + size / 2, size / 2 - theme.S(0.7), 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(255,255,255,.9)";
-  ctx.lineWidth = theme.S(1.2);
+  ctx.strokeStyle = theme.PALETTE.accent;
+  ctx.lineWidth = theme.S(1.5);
+  ctx.shadowColor = "rgba(54,222,255,.88)";
+  ctx.shadowBlur = theme.S(7);
   ctx.stroke();
+  ctx.restore();
 
   if (withStatus) {
     const radius = theme.S(6.5);
     const { cx, cy } = presenceBadgePosition(x, y, size, radius);
-
-    // Put the presence badge on the same 45-degree anchor of every avatar
-    // and draw its shadow separately so it cannot shift the green center.
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,.42)";
     ctx.shadowBlur = theme.S(2.2);
@@ -130,7 +111,6 @@ function drawAvatar(ctx, url, name, x, y, size, withStatus) {
     ctx.fillStyle = "#f5ffff";
     ctx.fill();
     ctx.restore();
-
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fillStyle = "#08c977";
@@ -139,18 +119,46 @@ function drawAvatar(ctx, url, name, x, y, size, withStatus) {
 }
 
 function drawAvatarFallback(ctx, name, x, y, size) {
+  const initials = String(name || "U").trim().split(/\\s+/).filter(Boolean);
+  const monogram = initials.length > 1
+    ? (Array.from(initials[0])[0] + Array.from(initials[initials.length - 1])[0]).toUpperCase()
+    : Array.from(initials[0] || "U").slice(0, 2).join("").toUpperCase();
+  const first = theme.randomTextColor(monogram + ":avatar-a");
+  const second = theme.randomTextColor(monogram + ":avatar-b");
+
   const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
-  gradient.addColorStop(0, "#d8c8b8");
-  gradient.addColorStop(1, "#718c9b");
+  gradient.addColorStop(0, "#102b4b");
+  gradient.addColorStop(0.52, "#123b5b");
+  gradient.addColorStop(1, "#241d50");
   ctx.fillStyle = gradient;
   ctx.fillRect(x, y, size, size);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = theme.font(17, "JT-Round-Bold");
+
+  const glow = ctx.createRadialGradient(
+    x + size * 0.27, y + size * 0.23, 0,
+    x + size * 0.27, y + size * 0.23, size * 0.75
+  );
+  glow.addColorStop(0, "rgba(98,220,255,.30)");
+  glow.addColorStop(1, "rgba(98,220,255,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(x, y, size, size);
+
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size * 0.34, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(98,220,255,.42)";
+  ctx.lineWidth = theme.S(1.15);
+  ctx.stroke();
+
+  ctx.fillStyle = first === second ? "#eafaff" : first;
+  ctx.font = theme.font(size * 0.34, "JT-Round-Bold");
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(Array.from(String(name || "U"))[0].toUpperCase(), x + size / 2, y + size / 2);
+  ctx.shadowColor = second;
+  ctx.shadowBlur = theme.S(7);
+  ctx.fillText(monogram, x + size / 2, y + size / 2);
+  ctx.shadowBlur = 0;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
 }
-
 function drawClock(ctx, x, y, size, color) {
   ctx.save();
   ctx.strokeStyle = color;
@@ -204,25 +212,6 @@ function getMainMenuPalette() {
 
 function paintMainMenuBackdrop(ctx, w, h, palette) {
   paintBackdrop(ctx, w, h, palette);
-
-  // A restrained star field adds depth without competing with the menu.
-  ctx.save();
-  for (let i = 0; i < 64; i++) {
-    const x = (i * 173 + 47) % w;
-    const y = (i * 97 + 31) % h;
-    const radius = i % 9 === 0 ? theme.S(1.15) : theme.S(0.55);
-    const alpha = i % 4 === 0 ? 0.30 : 0.15;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(190,225,255," + alpha + ")";
-    ctx.fill();
-  }
-  const vignette = ctx.createRadialGradient(w * 0.5, h * 0.45, h * 0.18, w * 0.5, h * 0.45, w * 0.78);
-  vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, "rgba(0,4,14,.42)");
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, w, h);
-  ctx.restore();
 }
 
 function drawMainMenuShell(ctx, x, y, w, h, radius, palette) {
@@ -232,9 +221,9 @@ function drawMainMenuShell(ctx, x, y, w, h, radius, palette) {
   ctx.shadowBlur = theme.S(28);
   ctx.shadowOffsetY = theme.S(12);
   const fill = ctx.createLinearGradient(x, y, x + w, y + h);
-  fill.addColorStop(0, palette.panel[0]);
-  fill.addColorStop(0.48, "#0b2039");
-  fill.addColorStop(1, palette.panel[1]);
+  fill.addColorStop(0, theme.rgba(palette.panel[0], 0.46));
+  fill.addColorStop(0.48, "rgba(7,24,44,.50)");
+  fill.addColorStop(1, theme.rgba(palette.panel[1], 0.56));
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.restore();
@@ -291,9 +280,9 @@ function drawMainMenuTile(ctx, item, x, y, w, h, palette) {
   ctx.shadowBlur = theme.S(10);
   ctx.shadowOffsetY = theme.S(4);
   const fill = ctx.createLinearGradient(x, y, x + w, y + h);
-  fill.addColorStop(0, "#163657");
-  fill.addColorStop(0.5, palette.card[0]);
-  fill.addColorStop(1, palette.card[1]);
+  fill.addColorStop(0, "rgba(22,54,87,.68)");
+  fill.addColorStop(0.5, theme.rgba(palette.card[0], 0.62));
+  fill.addColorStop(1, theme.rgba(palette.card[1], 0.69));
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.restore();
