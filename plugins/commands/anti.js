@@ -168,6 +168,8 @@ async function handlePhoto(messageCache, tempPath, name, timeSend, timeUndo, thr
 
 
 const nudeModerationInFlight = new Set();
+const nudeEnforcementQueues = new Map();
+const ANTI_NUDE_WARNING_LIMIT = 3;
 const OPENAI_MODERATION_URL = "https://api.openai.com/v1/moderations";
 
 
@@ -399,6 +401,83 @@ async function kickGroupMember(api, userId, threadId) {
   return result;
 }
 
+async function withNudeEnforcementLock(threadId, task) {
+  const key = String(threadId || "");
+  const previous = nudeEnforcementQueues.get(key) || Promise.resolve();
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const queued = previous.catch(() => {}).then(() => gate);
+  nudeEnforcementQueues.set(key, queued);
+  await previous.catch(() => {});
+  try {
+    return await task();
+  } finally {
+    release();
+    if (nudeEnforcementQueues.get(key) === queued) nudeEnforcementQueues.delete(key);
+  }
+}
+
+async function registerAntiNudeViolation(Threads, api, threadId, userId) {
+  return withNudeEnforcementLock(threadId, async () => {
+    if (typeof Threads?.getData !== "function") {
+      return { warningCount: 0, persistError: new Error("Không đọc được dữ liệu nhóm để lưu cảnh cáo") };
+    }
+
+    const record = await Threads.getData(threadId);
+    const threadData = {
+      ...((record?.data && typeof record.data === "object") ? record.data : (record || {}))
+    };
+    const storedWarnings = threadData.anti_nude_warnings;
+    const warnings = storedWarnings && typeof storedWarnings === "object" && !Array.isArray(storedWarnings)
+      ? { ...storedWarnings }
+      : {};
+    const uid = String(userId || "");
+    const current = Math.min(
+      ANTI_NUDE_WARNING_LIMIT,
+      Math.max(0, Math.floor(Number(warnings[uid]) || 0))
+    );
+
+    const save = Threads.setDataAndWait || Threads.setData;
+    if (typeof save !== "function") {
+      return { warningCount: current, persistError: new Error("Không có API lưu số lần cảnh cáo Anti") };
+    }
+
+    if (current < ANTI_NUDE_WARNING_LIMIT) {
+      const nextCount = current + 1;
+      warnings[uid] = nextCount;
+      while (Object.keys(warnings).length > 1000) {
+        const oldestUid = Object.keys(warnings).find(key => key !== uid);
+        if (!oldestUid) break;
+        delete warnings[oldestUid];
+      }
+      threadData.anti_nude_warnings = warnings;
+      try {
+        await save.call(Threads, threadId, threadData);
+        return { warningCount: nextCount, kicked: false };
+      } catch (error) {
+        return { warningCount: current, persistError: error };
+      }
+    }
+
+    try {
+      await kickGroupMember(api, uid, threadId);
+    } catch (error) {
+      return { warningCount: ANTI_NUDE_WARNING_LIMIT, kicked: false, kickError: error };
+    }
+
+    delete warnings[uid];
+    threadData.anti_nude_warnings = warnings;
+    let cleanupError = null;
+    try {
+      await save.call(Threads, threadId, threadData);
+    } catch (error) {
+      cleanupError = error;
+      console.error("[ANTINUDE] Đã kick thành viên nhưng không xóa được bộ đếm cảnh cáo:", error?.message || error);
+    }
+    return { warningCount: ANTI_NUDE_WARNING_LIMIT, kicked: true, cleanupError };
+  });
+}
+
 function createMentionMessage(text, name, userId) {
   const displayName = String(name || "Bạn");
   const uid = String(userId || "");
@@ -602,26 +681,36 @@ module.exports.handleEvent = async function (context = {}) {
             const moderation = await moderateImage(imageUrl);
             if (moderation.explicit) {
               let deleteError = null;
-              let kickError = null;
               const botAuthored = await isBotAuthoredMessage(api, event);
               try { await deleteGroupMessage(api, event, { isBotMessage: botAuthored }); }
               catch (error) { deleteError = error; }
-              // Self-test mode must never remove the bot account from its own group.
-              if (!botAuthored) {
-                try { await kickGroupMember(api, userId, threadId); }
-                catch (error) { kickError = error; }
-              }
 
               const actions = [];
               actions.push(deleteError ? "chưa thu hồi/xóa được ảnh" : (botAuthored ? "đã thu hồi ảnh thử nghiệm" : "đã xóa ảnh"));
-              if (botAuthored) actions.push("bỏ qua kick tài khoản bot khi tự kiểm tra");
-              else actions.push(kickError ? "chưa kick được thành viên" : "đã kick thành viên");
+              let enforcement = null;
+              if (botAuthored) {
+                actions.push("bỏ qua cảnh cáo và kick tài khoản bot khi tự kiểm tra");
+              } else {
+                enforcement = await registerAntiNudeViolation(Threads, api, threadId, userId);
+                if (enforcement.persistError) {
+                  actions.push("chưa lưu được lượt cảnh cáo nên chưa kick");
+                } else if (enforcement.kicked) {
+                  actions.push("đã đủ 3 lần cảnh cáo và đã kick thành viên");
+                } else if (enforcement.kickError) {
+                  actions.push("đã đủ 3 lần cảnh cáo nhưng Zalo chưa cho kick; bot sẽ thử lại ở lần vi phạm tiếp theo");
+                } else {
+                  actions.push("cảnh cáo lần " + enforcement.warningCount + "/" + ANTI_NUDE_WARNING_LIMIT + "; tái phạm tiếp theo sẽ bị kick");
+                }
+              }
+
               return sendNotice(
                 "⛔ AI phát hiện ảnh vi phạm (điểm sexual " +
                 Math.round(moderation.score * 100) + "%). {member}: " +
                 actions.join(", ") + "." +
                 (deleteError ? "\n⚠️ " + deleteError.message : "") +
-                (kickError ? "\n⚠️ " + kickError.message : "")
+                (enforcement?.persistError ? "\n⚠️ " + enforcement.persistError.message : "") +
+                (enforcement?.kickError ? "\n⚠️ " + enforcement.kickError.message : "") +
+                (enforcement?.cleanupError ? "\n⚠️ " + enforcement.cleanupError.message : "")
               );
             }
           } catch (error) {
@@ -760,7 +849,7 @@ module.exports._test = {
 
 
 const ANTI_MENU_ITEMS = Object.freeze([
-  { key:"anti_nude", label:"Chặn nội dung nhạy cảm", detail:"AI quét ảnh 18+ / khỏa thân", command:"/antinude", alias:"", icon:"18+", tone:"#e83f9e" },
+  { key:"anti_nude", label:"Chặn nội dung nhạy cảm", detail:"Xóa ảnh vi phạm; 3 lần cảnh cáo, tái phạm lần 4 kick", command:"/antinude", alias:"", icon:"18+", tone:"#e83f9e" },
   { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục chữ, ảnh, video, voice và sticker", command:"/antirecall", alias:"/anti undo", icon:"↶", tone:"#a94ce5" },
   { key:"anti_danger_link", label:"Chặn link nguy hiểm", detail:"Chặn link mời nhóm khác và URL không an toàn", command:"/antilink", alias:"", icon:"↗", tone:"#138fe5" },
   { key:"anti_sticker_spam", label:"Chống dội bom sticker", detail:"Phát hiện loạt sticker gửi dồn dập", command:"/antispam", alias:"", icon:"ST", tone:"#f18b1c" },
