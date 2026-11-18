@@ -11,7 +11,7 @@ const FEATURES = Object.freeze({
   antigif: { key:"anti_gif", label:"chặn gửi ảnh động GIF", cardLabel:"Anti-GIF", detail:"Chặn GIF có msgType hoặc MIME được nhận diện là GIF.", usage:"antigif [on/off]" },
   antiinvite: { key:"anti_danger_link", label:"chặn link mời nhóm khác", cardLabel:"Anti-Invite", detail:"Chặn link mời nhóm Zalo khác và URL không an toàn.", usage:"antiinvite [on/off]" },
   antijoin: { key:"anti_join", label:"chặn spam vào lại nhóm", cardLabel:"Anti-Join", detail:"Theo dõi lượt tham gia; lần tham gia thứ 3 trong 10 phút sẽ bị kick.", usage:"antijoin [on/off]" },
-  antilink: { key:"anti_danger_link", flags:["anti_danger_link","anti_link"], label:"chặn liên kết mạng", cardLabel:"Anti-Link", detail:"Chặn mọi URL trong nhóm, đồng thời chặn link mời nhóm Zalo.", usage:"antilink [on/off]" },
+  antilink: { key:"anti_link", label:"chặn liên kết mạng", cardLabel:"Anti-Link", detail:"Chặn mọi URL được gửi trong nhóm.", usage:"antilink [on/off]" },
   antilocation: { key:"anti_location", label:"chặn chia sẻ vị trí", cardLabel:"Anti-Location", detail:"Chặn tin nhắn vị trí/bản đồ khi payload Zalo có kiểu location hoặc tọa độ.", usage:"antilocation [on/off]" },
   antiother: { key:"anti_other", label:"chặn payload lỗi / không xác định", cardLabel:"Anti-Other", detail:"Chặn riêng payload Zalo được đánh dấu unknown, unsupported hoặc error; không chặn tin nhắn bình thường.", usage:"antiother [on/off]" },
   antiphoto: { key:"anti_photo", label:"chặn gửi hình ảnh", cardLabel:"Anti-Photo", detail:"Chặn ảnh chat.photo / chat.image.", usage:"antiphoto [on/off]" },
@@ -19,7 +19,7 @@ const FEATURES = Object.freeze({
   antireaction: { key:"anti_reaction", label:"chống spam cảm xúc", cardLabel:"Anti-Reaction", detail:"Phát hiện hơn 5 reaction trong 10 giây; 3 lần cảnh cáo, tái phạm lần 4 sẽ kick. Zalo không hỗ trợ gỡ reaction của thành viên khác.", usage:"antireaction [on/off]" },
   antisex: { key:"anti_nude", label:"AI chặn nội dung nhạy cảm 18+", cardLabel:"Anti-Sex", detail:"AI kiểm tra ảnh; cảnh cáo 3 lần, tái phạm lần 4 sẽ kick.", usage:"antisex [on/off]" },
   antinude: { key:"anti_nude", label:"AI chặn nội dung nhạy cảm 18+", cardLabel:"Anti-Nude", detail:"AI kiểm tra ảnh; cảnh cáo 3 lần, tái phạm lần 4 sẽ kick.", usage:"antinude [on/off]" },
-  antispam: { key:"anti_sticker_spam", flags:["anti_spam","anti_sticker_spam"], label:"chặn spam tin nhắn và dội bom sticker", cardLabel:"Anti-Spam", detail:"Phát hiện hơn 5 tin nhắn chữ trong 5 giây và hơn 5 sticker trong 4 giây.", usage:"antispam [on/off]" },
+  antispam: { key:"anti_spam", label:"chặn spam tin nhắn", cardLabel:"Anti-Spam", detail:"Phát hiện hơn 5 tin nhắn trong 5 giây.", usage:"antispam [on/off]" },
   antistk: { key:"anti_sticker", label:"chặn mọi sticker", cardLabel:"Anti-Sticker", detail:"Không cho gửi sticker trong nhóm.", usage:"antistk [on/off]" },
   antistklag: { key:"anti_sticker_spam", label:"chặn spam sticker gây lag", cardLabel:"Anti-Sticker-Lag", detail:"Phát hiện hơn 5 sticker trong 4 giây và xóa loạt sticker.", usage:"antistklag [on/off]" },
   antitaghide: { key:"anti_taghide", label:"chặn nhắc tên ẩn", cardLabel:"Anti-Tag-Hide", detail:"Chặn mention được payload đánh dấu hidden hoặc có vị trí/độ dài không hợp lệ.", usage:"antitaghide [on/off]" },
@@ -136,4 +136,25 @@ async function runAntiToggle(featureName, context = {}) {
   });
 }
 
-module.exports = { FEATURES, runAntiToggle, sendAntiToggleNotice };
+function createAntiCommand(featureName) {
+  const spec = FEATURES[featureName];
+  if (!spec) throw new Error("Anti command không hợp lệ: " + String(featureName));
+
+  return {
+    config: {
+      name: featureName,
+      version: "1.0.0",
+      role: 0,
+      author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
+      description: spec.label,
+      category: "Anti",
+      usage: spec.usage,
+      cooldowns: 1
+    },
+    run(context) {
+      return runAntiToggle(featureName, context);
+    }
+  };
+}
+
+module.exports = { FEATURES, runAntiToggle, sendAntiToggleNotice  , createAntiCommand };
