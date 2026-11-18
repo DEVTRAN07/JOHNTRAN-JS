@@ -581,7 +581,7 @@ async function sendAntiMenu({ api, event, Threads }) {
     key:item.key,
     label:item.label,
     detail:item.detail,
-    command:item.command,
+    command:prefix + item.command.replace(/^\//, ""),
     icon:item.icon,
     tone:item.tone,
     enabled:data[item.key] === true
