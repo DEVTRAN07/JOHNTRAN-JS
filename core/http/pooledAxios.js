@@ -57,7 +57,10 @@ pooledAxios.interceptors.response.use(
     if (!IDEMPOTENT_METHODS.has(method)) return Promise.reject(error);
 
     config.__retryCount = config.__retryCount || 0;
-    if (config.__retryCount >= MAX_RETRIES) return Promise.reject(error);
+    const retryLimit = Number.isInteger(config.__retryLimit)
+      ? Math.max(0, Math.min(MAX_RETRIES, config.__retryLimit))
+      : MAX_RETRIES;
+    if (config.__retryCount >= retryLimit) return Promise.reject(error);
 
     if (!shouldRetry(error)) return Promise.reject(error);
 

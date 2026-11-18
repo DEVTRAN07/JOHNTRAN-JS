@@ -166,8 +166,8 @@ async function resolveMediaSource(api, event, quotedUrl) {
 
   const targetUid = getQuotedOwnerId(event);
   const avatarUrl = await getUserAvatar(api, targetUid, {
-    waitMs: 900,
-    fetchTimeoutMs: 1600,
+    waitMs: 1800,
+    fetchTimeoutMs: 2500,
     skipAvatarWarm: true
   });
   if (avatarUrl) return { url: avatarUrl, usingAvatar: true, targetUid };
@@ -191,8 +191,8 @@ async function processWithAvatarFallback(api, event, media) {
     if (media.usingAvatar || !isNotFoundError(error)) throw error;
 
     const avatarUrl = await getUserAvatar(api, media.targetUid, {
-      waitMs: 900,
-      fetchTimeoutMs: 1600,
+      waitMs: 1800,
+      fetchTimeoutMs: 2500,
       skipAvatarWarm: true
     });
     if (!avatarUrl) {

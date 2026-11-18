@@ -375,7 +375,7 @@ test("raw GitHub loader downloads one image lazily and reuses its local cache", 
   assert.equal(path.basename(file), "200_timekeepers_clock.png");
   assert.deepEqual(fs.readFileSync(file), png);
   assert.deepEqual(urls, [
-    "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/main/200_timekeepers_clock.png"
+    "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/745a7ad1d155d03bda4466a92e52c3c578f279ab/200_timekeepers_clock.png"
   ]);
 
   const cached = await service.ensureDecorationFile(200, {

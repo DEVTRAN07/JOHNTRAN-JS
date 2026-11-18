@@ -250,3 +250,33 @@ test("job queue reports average queue wait and execution time", async () => {
   assert.ok(after.avgWaitMs >= 0);
   assert.ok(after.avgRunMs >= 0);
 });
+
+
+test("reserved HTTP control-plane requests run while every media slot is occupied", async () => {
+  const { GLOBAL_CONCURRENCY, DEFAULT_LANES } = require("../core/jobQueue");
+  assert.equal(DEFAULT_LANES.http.controlPlane, true);
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const startedResolvers = [];
+  const started = Array.from({ length: GLOBAL_CONCURRENCY }, () => new Promise(resolve => startedResolvers.push(resolve)));
+  let startedCount = 0;
+  const mediaJobs = Array.from({ length: GLOBAL_CONCURRENCY }, (_, index) => enqueue(
+    "test-media-saturation", async () => {
+      startedCount++;
+      startedResolvers[index]();
+      await gate;
+      return index;
+    }, { concurrency: GLOBAL_CONCURRENCY, maxPending: GLOBAL_CONCURRENCY + 1 }
+  ));
+  try {
+    await Promise.all(started);
+    assert.equal(startedCount, GLOBAL_CONCURRENCY);
+    assert.equal(stats().global.active, GLOBAL_CONCURRENCY);
+    assert.equal(await enqueue("http", async () => "control-ready"), "control-ready");
+    assert.equal(stats().global.active, GLOBAL_CONCURRENCY);
+    assert.equal(stats().global.controlActive, 0);
+  } finally {
+    release();
+  }
+  await Promise.all(mediaJobs);
+});

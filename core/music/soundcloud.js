@@ -87,6 +87,42 @@ function extractClientId(source) {
   return null;
 }
 
+// Resolve a rotating SoundCloud client_id from current web bundles in parallel.
+// The old serial scan could spend 25s × 25 scripts before a search failed.
+const CLIENT_ID_SCRIPT_LIMIT = 8;
+const CLIENT_ID_SCRIPT_TIMEOUT_MS = 8000;
+const CLIENT_ID_HOME_TIMEOUT_MS = 9000;
+
+async function discoverClientIdFromScripts(scriptUrls, request = pooledAxios.get) {
+  const urls = [...new Set(Array.isArray(scriptUrls) ? scriptUrls : [])]
+    .slice(0, CLIENT_ID_SCRIPT_LIMIT);
+  if (!urls.length) return null;
+  const controller = new AbortController();
+  const attempts = urls.map(async scriptUrl => {
+    const response = await request(scriptUrl, {
+      timeout: CLIENT_ID_SCRIPT_TIMEOUT_MS,
+      signal: controller.signal,
+      __retryLimit: 0,
+      responseType: "text",
+      transformResponse: [(body) => body],
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }
+    });
+    const js = typeof response.data === "string"
+      ? response.data
+      : Buffer.from(response.data || []).toString("utf8");
+    const clientId = extractClientId(js) || extractClientId(scriptUrl);
+    if (!clientId) throw new Error("SoundCloud bundle không chứa client_id.");
+    return clientId;
+  });
+  try {
+    return await Promise.any(attempts);
+  } catch {
+    return null;
+  } finally {
+    controller.abort();
+  }
+}
+
 async function discoverClientId() {
   const configured = String(
     global.config?.music?.soundcloud_client_id ||
@@ -124,7 +160,8 @@ async function discoverClientId() {
       let home;
       try {
         const response = await pooledAxios.get(HOME_URL, {
-          timeout: 25000,
+          timeout: CLIENT_ID_HOME_TIMEOUT_MS,
+          __retryLimit: 0,
           responseType: "text",
           transformResponse: [(body) => body],
           headers: {
@@ -154,30 +191,17 @@ async function discoverClientId() {
         negativeUntil = 0;
         return fromHtml;
       }
-      const scriptUrls = scriptUrlsFromHtml(html).slice(0, 25);
-      for (const scriptUrl of scriptUrls) {
-        try {
-          const response = await pooledAxios.get(scriptUrl, {
-            timeout: 25000,
-            responseType: "text",
-            transformResponse: [(body) => body],
-            headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }
-          });
-          const js = typeof response.data === "string" ? response.data : Buffer.from(response.data || []).toString("utf8");
-          const clientId = extractClientId(js) || extractClientId(scriptUrl);
-          if (clientId) {
-            cachedClientId = clientId;
-            writeCachedClientId(clientId);
-            negativeUntil = 0;
-            return clientId;
-          }
-        } catch {
-          continue;
-        }
+      const scriptClientId = await discoverClientIdFromScripts(scriptUrlsFromHtml(html));
+      if (scriptClientId) {
+        cachedClientId = scriptClientId;
+        writeCachedClientId(scriptClientId);
+        negativeUntil = 0;
+        return scriptClientId;
       }
       try {
         const response = await pooledAxios.get("https://w.soundcloud.com/player/api.js", {
-          timeout: 20000,
+          timeout: 8000,
+          __retryLimit: 0,
           responseType: "text",
           transformResponse: [(body) => body],
           headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }
@@ -207,7 +231,11 @@ async function apiGet(apiPath, params = {}, retry = true) {
   const query = new URLSearchParams({ ...params, client_id: clientId });
   const url = API_BASE + apiPath + "?" + query.toString();
   try {
-    const response = await pooledAxios.get(url, { headers: { Accept: "application/json" } });
+    const response = await pooledAxios.get(url, {
+      timeout: 12000,
+      __retryLimit: 1,
+      headers: { Accept: "application/json" }
+    });
     const status = response.status;
     const data = response.data;
     if ((status === 401 || status === 403) && retry) {
@@ -358,7 +386,8 @@ async function resolveTranscodingUrl(transcoding, clientId, retryAuth = true) {
     streamUrl.searchParams.set("client_id", clientId);
 
     const response = await pooledAxios.get(streamUrl.toString(), {
-      timeout: 25000,
+      timeout: 12000,
+      __retryLimit: 0,
       maxRedirects: 0,
       validateStatus: (status) => status >= 200 && status < 400,
       headers: { Accept: "application/json, application/vnd.apple.mpegurl, audio/*, */*" }
@@ -393,42 +422,44 @@ async function resolveTranscodingUrl(transcoding, clientId, retryAuth = true) {
   }
 }
 
+function selectResolveCandidates(candidates) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  // Resolve only the best HLS stream plus one fallback; don't request every
+  // HLS/progressive variant serially for each selected song.
+  const hls = list.filter(item => item?.protocol === "hls").slice(0, 2);
+  if (hls.length) return hls;
+  const progressive = list.find(item => item?.protocol === "progressive");
+  return progressive ? [progressive] : [];
+}
+
 async function resolve(track) {
   const clientId = await discoverClientId();
   const data = await apiGet("/tracks/" + encodeURIComponent(track.id));
   const transcodings = data && data.media && data.media.transcodings ? data.media.transcodings : [];
-  const candidates = getTranscodingCandidates(transcodings);
+  const candidates = selectResolveCandidates(getTranscodingCandidates(transcodings));
   if (!candidates.length) {
     const error = new Error("Bài hát này không có luồng phát được (có thể bị giới hạn bản quyền hoặc khu vực).");
     error.notAvailable = true;
     throw error;
   }
 
-  const resolvedHls = [];
-  const resolveErrors = [];
-  for (const candidate of candidates) {
+  const attempts = await Promise.all(candidates.map(async candidate => {
     try {
-      const url = await resolveTranscodingUrl(candidate.item, clientId);
-      if (candidate.protocol === "hls") {
-        resolvedHls.push(url);
-        // Cần giữ thêm URL chất lượng thấp hơn để thử khi playlist 160k lỗi.
-        continue;
-      }
-      if (!resolvedHls.length) return url;
+      return { candidate, url: await resolveTranscodingUrl(candidate.item, clientId) };
     } catch (error) {
-      resolveErrors.push(error?.message || String(error));
+      return { candidate, error };
     }
-  }
-
-  if (resolvedHls.length) {
+  }));
+  const successful = attempts.filter(item => item.url);
+  if (successful.length) {
+    if (successful[0].candidate.protocol !== "hls") return successful[0].url;
     return {
-      url: resolvedHls[0],
+      url: successful[0].url,
       protocol: "hls",
-      fallbackUrls: [...new Set(resolvedHls.slice(1))]
+      fallbackUrls: [...new Set(successful.slice(1).map(item => item.url))]
     };
   }
-
-  const error = new Error(resolveErrors[0] || "SoundCloud không cung cấp URL stream hợp lệ.");
+  const error = attempts[0]?.error || new Error("SoundCloud không cung cấp URL stream hợp lệ.");
   error.notAvailable = true;
   throw error;
 }
@@ -438,5 +469,16 @@ module.exports = {
   label: SOURCE,
   search,
   resolve,
-  _test: { isValidClientId, scriptUrlsFromHtml, extractClientId, getTranscodingCandidates, pickTranscoding, extractResolvedStreamUrl }
+  _test: {
+    isValidClientId,
+    scriptUrlsFromHtml,
+    extractClientId,
+    getTranscodingCandidates,
+    selectResolveCandidates,
+    discoverClientIdFromScripts,
+    pickTranscoding,
+    extractResolvedStreamUrl,
+    CLIENT_ID_SCRIPT_LIMIT,
+    CLIENT_ID_SCRIPT_TIMEOUT_MS
+  }
 };

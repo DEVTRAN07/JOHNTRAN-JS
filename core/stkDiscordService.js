@@ -8,7 +8,7 @@ const stickerService = require("./stickerService");
 const catalog = require("./data/stkDiscord200.json");
 
 const RAW_BASE_URL = String(process.env.STK_DISCORD_RAW_BASE_URL ||
-  "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/main").replace(/\/+$/, "");
+  "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/745a7ad1d155d03bda4466a92e52c3c578f279ab").replace(/\/+$/, "");
 const DEFAULT_CACHE_ROOT = process.env.JT_PERSISTENT_DIR || path.join(__dirname, "..", "cache");
 const DECOR_DIR = path.resolve(process.env.STK_DISCORD_CACHE_DIR ||
   path.join(DEFAULT_CACHE_ROOT, "stk-discord"));

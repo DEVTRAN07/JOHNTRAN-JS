@@ -154,7 +154,7 @@ function parseOptions(args) {
   return options;
 }
 
-async function runMusic(providerName, { api, event, args, reply }) {
+async function runMusic(providerName, { api, event, args, reply, Threads: threadStore = Threads, threadData = null }) {
   const { threadId, type, data } = event;
   const provider = music.getProvider(providerName);
   const key = music.pickKey(threadId, data.uidFrom);
@@ -225,23 +225,27 @@ async function runMusic(providerName, { api, event, args, reply }) {
 
   music.setPending(key, providerName, tracks, query, 1);
 
+  // Listener đã nạp sẵn record nhóm. Không chờ một lượt đọc Supabase lạnh
+  // trước khi gửi danh sách kết quả SoundCloud.
   try {
-    const threadData = (await Threads.getData(threadId)).data || {};
-    if (threadData.menu_page) {
-      delete threadData.menu_page;
-      await Threads.setData(threadId, threadData);
+    const record = threadData || threadStore.getCachedData?.(threadId) || null;
+    if (record?.data?.menu_page) {
+      const nextData = { ...record.data };
+      delete nextData.menu_page;
+      Promise.resolve(threadStore.setData(threadId, nextData)).catch(() => {});
     }
-  } catch { /* ignore */ }
+  } catch { /* không để storage chặn việc gửi kết quả */ }
   if (options.quality) {
     const entry = music.getPending(key);
     if (entry) entry.quality = options.quality;
   }
 
   // Prefetch stream URLs for top 3 results in background
+  // Chỉ làm nóng luồng bài đầu tiên; prefetch ba bài cùng lúc tranh queue với
+  // yêu cầu chọn bài thực tế và các tác vụ media khác.
   setImmediate(() => {
-    for (const track of tracks.slice(0, 3)) {
-      music.resolve(providerName, track).catch(() => { /* ignore */ });
-    }
+    const firstTrack = tracks[0];
+    if (firstTrack) music.resolve(providerName, firstTrack).catch(() => { /* ignore */ });
   });
 
   return showResults(api, threadId, type, provider, query, tracks, 1);

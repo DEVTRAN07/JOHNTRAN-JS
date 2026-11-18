@@ -11,7 +11,7 @@ const DEFAULT_LANES = {
   gif: { concurrency: 1, maxPending: 12, maxInFlight: 13 },
   video: { concurrency: 1, maxPending: 8, maxInFlight: 9 },
   // Small/control-plane requests must not sit behind a large binary download.
-  http: { concurrency: 3, maxPending: 48, maxInFlight: 51 },
+  http: { concurrency: 3, maxPending: 48, maxInFlight: 51, controlPlane: true },
   asset: { concurrency: 2, maxPending: 32, maxInFlight: 34 },
   download: { concurrency: DOWNLOAD_CONCURRENCY, maxPending: 24, maxInFlight: DOWNLOAD_CONCURRENCY + 24 },
   "music-search": { concurrency: 2, maxPending: 40, maxInFlight: 42 },
@@ -25,6 +25,7 @@ const lanes = new Map();
 const GLOBAL_CONCURRENCY = positiveEnv("JT_JOB_GLOBAL_CONCURRENCY", 4);
 const GLOBAL_MAX_PENDING = positiveEnv("JT_JOB_GLOBAL_MAX_PENDING", 80);
 let globalActive = 0;
+let controlActive = 0;
 let globalPending = 0;
 let sequence = 0;
 
@@ -49,6 +50,8 @@ function getLane(name, options = {}) {
       concurrency: positiveInt(options.concurrency, defaults.concurrency),
       maxPending: positiveInt(options.maxPending, defaults.maxPending),
       maxInFlight: positiveInt(options.maxInFlight, defaults.maxInFlight),
+      // Small JSON/metadata requests must not sit behind media/FFmpeg jobs.
+      controlPlane: defaults.controlPlane === true,
       active: 0,
       pending: [],
       retrying: new Map(),
@@ -78,7 +81,8 @@ function insertByPriority(lane, job) {
 
 function releaseActive(lane, job) {
   lane.active = Math.max(0, lane.active - 1);
-  globalActive = Math.max(0, globalActive - 1);
+  if (lane.controlPlane) controlActive = Math.max(0, controlActive - 1);
+  else globalActive = Math.max(0, globalActive - 1);
   lane.running.delete(job.id);
 }
 
@@ -156,11 +160,15 @@ function runJob(lane, job) {
 }
 
 function drain(lane) {
-  while (globalActive < GLOBAL_CONCURRENCY && lane.active < lane.concurrency && lane.pending.length) {
+  while (
+    (lane.controlPlane || globalActive < GLOBAL_CONCURRENCY) &&
+    lane.active < lane.concurrency && lane.pending.length
+  ) {
     const job = lane.pending.shift();
     globalPending = Math.max(0, globalPending - 1);
     lane.active++;
-    globalActive++;
+    if (lane.controlPlane) controlActive++;
+    else globalActive++;
     job.startedAt = Date.now();
     const waitMs = Math.max(0, job.startedAt - job.queuedAt);
     lane.waitCount++;
@@ -175,7 +183,9 @@ function drainAll() {
   const entries = [...lanes.entries()];
   if (!entries.length) return;
   const offset = sequence++ % entries.length;
-  for (let index = 0; index < entries.length && globalActive < GLOBAL_CONCURRENCY; index++) {
+  // Visit every lane even when media slots are full. Each lane enforces its
+  // own bounded concurrency budget inside drain().
+  for (let index = 0; index < entries.length; index++) {
     const [, lane] = entries[(offset + index) % entries.length];
     drain(lane);
   }
@@ -241,6 +251,7 @@ function stats() {
       concurrency: lane.concurrency,
       maxPending: lane.maxPending,
       maxInFlight: lane.maxInFlight,
+      controlPlane: lane.controlPlane,
       completed: lane.completed,
       failed: lane.failed,
       rejected: lane.rejected,
@@ -276,6 +287,8 @@ function stats() {
   }));
   snapshot.global = {
     active: globalActive,
+    controlActive,
+    totalActive: globalActive + controlActive,
     pending: globalPending,
     concurrency: GLOBAL_CONCURRENCY,
     maxPending: GLOBAL_MAX_PENDING
