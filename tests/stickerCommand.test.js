@@ -5,14 +5,21 @@ const assert = require("node:assert/strict");
 const command = require("../plugins/commands/stk");
 const service = require("../core/stkDiscordService");
 
-test("/stk now exposes only the Python-style dis subcommand", () => {
+test("/stk defaults to the Discord menu and keeps the Python-style dis subcommand", () => {
   assert.equal(command.config.name, "stk");
   assert.equal(command.config.version, "2.0.0");
+  assert.match(command.config.usage, /stk \(menu\)/);
   assert.match(command.config.usage, /stk dis/);
   assert.doesNotMatch(command.config.usage, /list|find|random/i);
 });
 
-test("/stk dis without an index opens the menu", () => {
+test("/stk and /stk dis without an index open the menu", () => {
+  assert.deepEqual(command._test.parseArguments([]), {
+    help: false, menu: true, decorationId: null, error: null
+  });
+  assert.deepEqual(command._test.parseArguments([""]), {
+    help: false, menu: true, decorationId: null, error: null
+  });
   assert.deepEqual(command._test.parseArguments(["dis"]), {
     help: false, menu: true, decorationId: null, error: null
   });
@@ -101,6 +108,28 @@ test("/stk dis downloads the remote menu into cache and sends the cached file", 
   service.ensureMenuFile = async () => "/tmp/stk-discord-menu.jpg";
   try {
     await command.run({ api, event, args: ["dis"] });
+  } finally {
+    service.ensureMenuFile = originalEnsureMenu;
+  }
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0].attachments, ["/tmp/stk-discord-menu.jpg"]);
+  assert.match(sent[0].msg, /AVATAR DECORATION/);
+});
+
+
+test("/stk with no arguments sends the remote menu image", async () => {
+  const sent = [];
+  const api = {
+    async sendMessage(message) {
+      sent.push(message);
+      return { ok: true };
+    }
+  };
+  const event = { threadId: "stk-bare-test-thread", type: 1, data: {} };
+  const originalEnsureMenu = service.ensureMenuFile;
+  service.ensureMenuFile = async () => "/tmp/stk-discord-menu.jpg";
+  try {
+    await command.run({ api, event, args: [] });
   } finally {
     service.ensureMenuFile = originalEnsureMenu;
   }
