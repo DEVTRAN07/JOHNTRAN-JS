@@ -191,7 +191,7 @@ test("Anti link recalls a bot self-test message with undo instead of deleteMessa
     type: ThreadType.Group
   });
   assert.equal(calls.sent.length, 1, "one warning is sent");
-  assert.match(calls.sent[0].payload.msg, /link nguy hiểm/i);
+  assert.match(calls.sent[0].payload.msg, /URL không an toàn/i);
 });
 
 test("Anti link continues to moderate ordinary members while self testing is disabled", async () => {
