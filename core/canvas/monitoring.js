@@ -110,8 +110,10 @@ function renderStatsCard(data = {}) {
   const slow = (data.slowCommands || []).slice(0, 5).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
   const handlers = (data.slowHandlers || []).slice(0, 5).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
   const firstResponse = data.firstResponse || null;
+  const eventLoop = data.eventLoop || null;
   const listenerRows = [
     { left: "First response", right: firstResponse ? "P95 " + milliseconds(firstResponse.p95Ms) : "Chưa đủ mẫu" },
+    { left: "Event loop", right: eventLoop ? "P95 " + milliseconds(eventLoop.p95Ms) + " · P99 " + milliseconds(eventLoop.p99Ms) : "Chưa đủ mẫu" },
     ...(data.listenerStages || []).slice(0, 3).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }))
   ];
   const apiRows = (data.apiCalls || []).slice(0, 4).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));

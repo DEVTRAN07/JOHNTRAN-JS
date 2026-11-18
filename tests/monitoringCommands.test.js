@@ -26,6 +26,7 @@ test("/stats sends a Canvas attachment and retains its metrics data", async () =
   await stats.run({ api: makeApi(), event: { threadId: "stats-thread", type: 1 }, reply: { text: async v => { throw new Error(v); } } });
   const card = calls.find(v => v.type === "stats");
   assert.ok(card && card.data.daily && Array.isArray(card.data.caches));
+  assert.ok(card.data.eventLoop && typeof card.data.eventLoop.p95Ms === "number");
   assert.equal(sent[0].payload.ttlKind, "card");
   assert.equal(sent[0].threadId, "stats-thread");
   assert.ok(Array.isArray(sent[0].payload.attachments));

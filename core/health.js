@@ -142,4 +142,4 @@ function startHealthServer() {
   return server;
 }
 
-module.exports = { startHealthServer, healthPayload, requestHandler };
+module.exports = { startHealthServer, healthPayload, requestHandler, getEventLoopMetrics };
