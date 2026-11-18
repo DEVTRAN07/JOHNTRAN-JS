@@ -50,7 +50,6 @@ test("photo themes change only the wallpaper while all Canvas cards keep one cyb
   const ghepchu = fs.readFileSync(require.resolve("../core/canvas/ghepchu"), "utf8");
   assert.match(noituGuide, /theme\.paintBackground/);
   assert.ok(ghepchu.includes("ctx.globalAlpha = 0.58"));
-  assert.match(ghepchu, /ctx\\.globalAlpha = 0\\.58/);
   for (const relative of ["../core/canvas/index", "../core/canvas/monitoring", "../core/canvas/settings", "../core/canvas/profile"]) {
     const exporter = fs.readFileSync(require.resolve(relative), "utf8");
     assert.doesNotMatch(exporter, /withMacWindow/, relative + " must not wrap card images in a desktop window");
