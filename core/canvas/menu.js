@@ -20,22 +20,18 @@ function rounded(ctx, x, y, w, h, r) {
 
 function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
-  ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
   ctx.shadowColor = "rgba(0,5,16,.78)";
   ctx.shadowBlur = theme.S(bold ? 2.8 : 2);
   ctx.shadowOffsetY = theme.S(0.8);
-  const accentText = color === theme.PALETTE.accent || color === theme.PALETTE.accent2;
-  ctx.fillStyle = accentText ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : color;
-  ctx.textAlign = align || "left";
   ctx.textBaseline = "alphabetic";
-  let text = String(value == null ? "" : value);
-  if (maxWidth && ctx.measureText(text).width > maxWidth) {
-    while (text.length > 1 && ctx.measureText(text + "…").width > maxWidth) {
-      text = text.slice(0, -1);
-    }
-    text += "…";
-  }
-  ctx.fillText(text, x, y);
+  theme.drawMulticolorText(ctx, String(value == null ? "" : value), x, y, {
+    size,
+    family: bold ? "JT-Round-Bold" : "JT-Round",
+    color,
+    align: align || "left",
+    maxWidth,
+    multicolor: true
+  });
   ctx.restore();
 }
 

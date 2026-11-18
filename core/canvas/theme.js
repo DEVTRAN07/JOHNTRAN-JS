@@ -141,15 +141,16 @@ function foil(ctx, x, y, width) {
 function label(ctx, value, x, y, options = {}) {
   ensureTheme();
   const size = options.size || 15;
-  const color = options.randomColor === false
-    ? (options.color || PALETTE.accent)
-    : (options.color || randomTextColor(String(value) + ":" + x + ":" + y));
-  const align = options.align || "left";
-  ctx.font = font(size, "JT-Bold");
-  ctx.fillStyle = color;
-  ctx.textAlign = align;
-  ctx.fillText(sanitizeGlyphs(String(value || "").toUpperCase().split("").join("\u200a")), x, y);
-  ctx.textAlign = "left";
+  const color = options.color || PALETTE.accent;
+  const display = sanitizeGlyphs(String(value || "").toUpperCase().split("").join("\u200a"));
+  drawMulticolorText(ctx, display, x, y, {
+    size,
+    family: "JT-Bold",
+    color,
+    align: options.align || "left",
+    maxWidth: options.maxWidth,
+    multicolor: options.randomColor !== false
+  });
 }
 
 const WIDTH = Number(global.config?.canvas?.width) || 1280;
@@ -474,20 +475,73 @@ function randomTextColor(seed = "") {
 
 function text(ctx, value, x, y, options = {}) {
   ensureTheme();
+  const requestedColor = options.color || PALETTE.ink2;
+  const semanticColor = [PALETTE.green, PALETTE.red, PALETTE.gold].includes(requestedColor);
+  const multicolor = options.multicolor !== undefined
+    ? options.multicolor === true
+    : options.randomColor === true || (options.randomColor !== false && !semanticColor);
+  drawMulticolorText(ctx, value, x, y, {
+    size: options.size || 20,
+    family: options.family || "JT",
+    color: requestedColor,
+    align: options.align || "left",
+    maxWidth: options.maxWidth,
+    multicolor
+  });
+}
+
+function drawMulticolorText(ctx, value, x, y, options = {}) {
+  ensureTheme();
   const size = options.size || 20;
   const family = options.family || "JT";
-  const requestedColor = options.color || PALETTE.ink2;
-  const useRandomColor = options.randomColor === true ||
-    (options.randomColor !== false &&
-      [PALETTE.accent, PALETTE.accent2].includes(requestedColor));
-  const color = useRandomColor ? randomTextColor(String(value) + ":" + x + ":" + y) : requestedColor;
+  const baseColor = options.color || PALETTE.ink2;
   const align = options.align || "left";
-  ctx.font = font(size, family);
-  ctx.fillStyle = color;
-  ctx.textAlign = align;
   const safe = sanitizeGlyphs(value);
-  ctx.fillText(options.maxWidth ? truncate(ctx, safe, options.maxWidth) : safe, x, y);
+  ctx.font = font(size, family);
+  const display = options.maxWidth ? truncate(ctx, safe, options.maxWidth) : safe;
+  const useMulticolor = options.multicolor === true;
+
+  if (!useMulticolor) {
+    ctx.fillStyle = baseColor;
+    ctx.textAlign = align;
+    ctx.fillText(display, x, y);
+    ctx.textAlign = "left";
+    return { text: display, segments: 1, width: ctx.measureText(display).width };
+  }
+
+  // Tokenize words separately from spaces/punctuation. Word spans get a
+  // different bright brand color; separators keep the requested base color.
+  const tokens = display.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu) || [];
+  if (!tokens.length) return { text: display, segments: 0, width: 0 };
+
+  const totalWidth = tokens.reduce((sum, token) => sum + ctx.measureText(token).width, 0);
+  let cursor = align === "center" ? x - totalWidth / 2
+    : align === "right" ? x - totalWidth : x;
+  let previousColorIndex = -1;
+  let wordIndex = 0;
+  const seed = String(options.colorSeed ?? display) + ":" + x + ":" + y;
   ctx.textAlign = "left";
+
+  for (const token of tokens) {
+    const width = ctx.measureText(token).width;
+    if (/[\p{L}\p{N}]/u.test(token)) {
+      let colorIndex = RANDOM_TEXT_COLORS.indexOf(randomTextColor(seed + ":" + wordIndex));
+      if (colorIndex < 0) colorIndex = 0;
+      // A sentence should visibly alternate, even with an unlucky hash sequence.
+      if (RANDOM_TEXT_COLORS.length > 1 && colorIndex === previousColorIndex) {
+        colorIndex = (colorIndex + 1) % RANDOM_TEXT_COLORS.length;
+      }
+      previousColorIndex = colorIndex;
+      ctx.fillStyle = RANDOM_TEXT_COLORS[colorIndex];
+      wordIndex++;
+    } else {
+      ctx.fillStyle = baseColor;
+    }
+    if (token.trim()) ctx.fillText(token, cursor, y);
+    cursor += width;
+  }
+  ctx.textAlign = "left";
+  return { text: display, segments: wordIndex, width: totalWidth };
 }
 
 function rgba(hex, alpha) {
@@ -541,7 +595,7 @@ function save(canvas, prefix) {
 
 module.exports = {
   PALETTE, WIDTH, S, font, FONT_FAMILIES, initFonts, roundRect, truncate,
-  paintBackground, panel, button, text, newCanvas, save, foil, label,
+  paintBackground, panel, button, text, drawMulticolorText, newCanvas, save, foil, label,
   THEME_STYLE, randomAccent, RANDOM_ACCENTS, getCardPalette,
   reload: resolveTheme, ensureTheme, sanitizeGlyphs, mixHex, rgba,
   randomTextColor, RANDOM_TEXT_COLORS, sharpenPhotoImageData

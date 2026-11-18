@@ -54,8 +54,9 @@ function drawFallbackCover(ctx, x, y, size, index) {
   ctx.font = theme.font(42, "JT-Display-Bold"); ctx.fillStyle = "rgba(255,255,255,.92)";
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
   ctx.fillText("♫", x + S(18), y + size * .72);
-  ctx.font = theme.font(8, "JT-Mono-Bold"); ctx.fillStyle = "rgba(255,255,255,.72)";
-  ctx.fillText("JOHNTRAN  /  MUSIC", x + S(18), y + size - S(18));
+  theme.drawMulticolorText(ctx, "JOHNTRAN  /  MUSIC", x + S(18), y + size - S(18), {
+    size: 8, family: "JT-Mono-Bold", color: "rgba(255,255,255,.72)", multicolor: true
+  });
   ctx.restore();
 }
 
