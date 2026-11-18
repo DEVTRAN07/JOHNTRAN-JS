@@ -15,7 +15,7 @@ function isAdultVideoRequest(args) {
 }
 
 function cleanDisplayText(value, maxLength = 180) {
-  return String(value || "").replace(/[\\u0000-\\u001f\\u007f]/g, " ").replace(/\\s+/g, " ").trim().slice(0, maxLength);
+  return String(value || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
 function buildAdultVideoApiUrl(args = []) {
@@ -51,7 +51,7 @@ function formatAdultVideoResults(items, query = "") {
       duration ? "   ⏱ " + duration : "",
       studio ? "   🏷 " + studio : "",
       "   ▶ Xem: " + ADULT_PLAYER_BASE + id + "/"
-    ].filter(Boolean).join("\\n");
+    ].filter(Boolean).join("\n");
   });
   const heading = query ? "🔎 TÌM VIDEO 18+ · " + cleanDisplayText(query, 80) : "🎲 VIDEO 18+ NGẪU NHIÊN";
   return [
@@ -62,7 +62,7 @@ function formatAdultVideoResults(items, query = "") {
     ...(rows.length ? rows : ["Không tìm thấy video phù hợp. Thử từ khóa khác."]),
     "━━━━━━━━━━━━━━━━━━",
     "Nguồn dữ liệu/player: AdultEmbed · https://adultembed.com/"
-  ].join("\\n");
+  ].join("\n");
 }
 
 async function runAdultVideo({ api, event, args }) {
