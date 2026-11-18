@@ -11,13 +11,19 @@ test("antilink recognizes Zalo group invitation URLs", () => {
 });
 
 test("antilink delegates unsafe URL decisions to Zalo scanURL", async () => {
+  // The production cache intentionally reuses a verdict per URL. Clear it
+  // between differently configured test scanners so this test verifies the
+  // delegation contract rather than cache-hit behavior.
+  anti._test.urlScanCache.clear();
   assert.equal(await anti._test.isUnsafeLink("https://zalo.me/g/test", {}), true);
   assert.equal(await anti._test.isUnsafeLink("https://example.com", {
     async scanURL() { return { isSafe: false }; }
   }), true);
+  anti._test.urlScanCache.clear();
   assert.equal(await anti._test.isUnsafeLink("https://example.com", {
     async scanURL() { return { isSafe: true }; }
   }), false);
+  anti._test.urlScanCache.clear();
 });
 
 test("antinude requires a high sexual image score to trigger enforcement", () => {

@@ -661,4 +661,4 @@ async function start({ api, port = 3901, token } = {}) {
   return finalPort;
 }
 
-module.exports = { start, record, recordIncoming, getMessages, contentToText };
+module.exports = { start, record, recordIncoming, getMessages, contentToText, MAX_PANEL_MESSAGE_TEXT_LENGTH };
