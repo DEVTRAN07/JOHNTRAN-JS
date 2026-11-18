@@ -4,6 +4,8 @@ const { wrapApi, DEFAULT_AUTO_RECALL_MS } = require("../core/message");
 const { sendMessageFactory } = require("../vendor/zalo-client/dist/cjs/api/sendMessage.cjs");
 const { encodeAES, decodeAES } = require("../vendor/zalo-client/dist/cjs/core/crypto.cjs");
 const { CookieJar } = require("tough-cookie");
+const { TextStyle } = require("zalo-client");
+const RANDOM_COLORS = new Set([TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green]);
 
 test("CommonJS sendMessage returns the same cliMsgId it sent to Zalo", async () => {
   const secretKey = Buffer.alloc(16, 1).toString("base64");
@@ -178,7 +180,10 @@ test("legacy ttl becomes a local recall delay and is removed from the Zalo paylo
 
     await wrapped.sendMessage({ msg: "expires locally", ttl: 2500 });
 
-    assert.deepEqual(sent, [{ msg: "expires locally" }]);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].msg, "expires locally");
+    assert.equal("ttl" in sent[0], false);
+    assert.ok(sent[0].styles.some(style => RANDOM_COLORS.has(style.st)));
     assert.equal(scheduled.length, 1);
     assert.equal(scheduled[0].delay, 2500);
     await scheduled[0].callback();
@@ -245,7 +250,9 @@ test("zero recall delay disables local recall without sending a TTL field", asyn
 
     await wrapped.sendMessage({ msg: "keep this", recallAfterMs: 0 });
 
-    assert.deepEqual(sentPayload, { msg: "keep this" });
+    assert.equal(sentPayload.msg, "keep this");
+    assert.equal("ttl" in sentPayload, false);
+    assert.ok(sentPayload.styles.some(style => RANDOM_COLORS.has(style.st)));
     assert.equal(scheduledCount, 0);
   } finally {
     global.setTimeout = originalSetTimeout;
