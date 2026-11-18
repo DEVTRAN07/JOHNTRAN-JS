@@ -27,14 +27,6 @@ const { consumeCooldown } = require("../runtime/middleware/cooldown");
 const { dispatchCommand } = require("../runtime/dispatcher");
 const { canRunCommandInGroup } = require("../runtime/groupBotState");
 
-function isPrivateAdultVideoInvocation(messageText, prefix, threadType, ThreadType) {
-  if (threadType !== ThreadType.User || typeof messageText !== "string" ||
-      typeof prefix !== "string" || !prefix || !messageText.startsWith(prefix)) return false;
-  const [name, mode] = messageText.slice(prefix.length).trim().split(/\s+/);
-  return ["vd", "getvd", "getvideo"].includes(String(name || "").toLowerCase()) &&
-    String(mode || "").toLowerCase() === "18+";
-}
-
 async function runCommandPipeline(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
   const config = global.config;
 
@@ -45,8 +37,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   const type = event?.type;
   const UIDUsage = event?.data?.uidFrom;
 
-  const privateAdultVideoInvocation = isPrivateAdultVideoInvocation(messageText, prefix, type, ThreadType);
-  if (type == ThreadType.User && config.allow_private_command === false && !privateAdultVideoInvocation) {
+  if (type == ThreadType.User && config.allow_private_command === false) {
     return;
   }
 
@@ -244,4 +235,3 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
 
 module.exports = handleCommand;
 module.exports._runCommandPipeline = runCommandPipeline;
-module.exports._isPrivateAdultVideoInvocation = isPrivateAdultVideoInvocation;
