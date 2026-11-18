@@ -27,10 +27,11 @@ function makeEvent(options = {}) {
 
 function makeApi(options = {}) {
   const groupInfo = options.groupInfo === undefined
-    ? { creatorId: "owner", adminIds: [] }
+    ? { creatorId: "bot-id", adminIds: [] }
     : options.groupInfo;
   const calls = { lookups: 0, deleted: [], kicked: [], sent: [], scanned: [] };
   const api = {
+    getOwnId() { return "bot-id"; },
     async getGroupInfo(threadId) {
       calls.lookups++;
       return { gridInfoMap: { [threadId]: groupInfo } };
@@ -100,12 +101,12 @@ test("Anti link also moderates the group creator and deputies; no role lookup ca
   }));
   assert.equal(admin.calls.deleted.length, 2);
   assert.equal(admin.calls.sent.length, 2);
-  assert.equal(admin.calls.lookups, 0, "moderation must not ask for admin exemptions");
+  assert.equal(admin.calls.lookups, 1, "the bot QTV role is checked once and cached for the event burst");
 
   const unknown = makeApi({ groupInfo: null });
   await run({ anti_link: true }, unknown.api, makeEvent({ content: "https://member-link.example" }));
-  assert.equal(unknown.calls.deleted.length, 1);
-  assert.equal(unknown.calls.sent.length, 1);
+  assert.equal(unknown.calls.deleted.length, 0, "unknown bot role must fail closed");
+  assert.equal(unknown.calls.sent.length, 0, "a group without verified bot QTV stays silent");
 });
 
 test("antilink uses Zalo scanURL and only deletes unsafe URLs", async () => {
@@ -259,6 +260,34 @@ test("antirecall prepares temp folder before restoring a shared file", async () 
     http.request = originalRequest;
     delete getMessageCache()[cliMsgId];
   }
+});
+
+test("all Anti modes stay silent when the bot is not a group owner or deputy", async () => {
+  const { api, calls } = makeApi({
+    groupInfo: { creatorId: "group-owner", adminIds: ["group-deputy"] }
+  });
+  const threadData = {
+    anti_nude: true,
+    anti_undo: true,
+    anti_danger_link: true,
+    anti_sticker_spam: true,
+    anti_link: true,
+    anti_spam: true
+  };
+
+  await run(threadData, api, makeEvent({ content: "https://danger.example" }));
+  await run(threadData, api, makeEvent({
+    msgType: "chat.sticker",
+    content: { id: 1, catId: 1 },
+    cliMsgId: "no-key-sticker",
+    msgId: "no-key-sticker"
+  }));
+
+  assert.equal(calls.deleted.length, 0);
+  assert.equal(calls.kicked.length, 0);
+  assert.equal(calls.sent.length, 0);
+  assert.equal(calls.scanned.length, 0);
+  assert.equal(calls.lookups, 1, "bot role lookup is cached during the event burst");
 });
 
 test("legacy anti_spam also deletes the sixth rapid text message from the group owner", async () => {
