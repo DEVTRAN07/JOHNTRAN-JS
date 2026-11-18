@@ -65,7 +65,7 @@ function installAntiRuntime({ threadId, initialData }) {
   };
 
   Threads.getCachedData = id => id === threadId
-    ? { threadId, data: { bot_enabled: true } }
+    ? { threadId, data: { ...state, bot_enabled: true } }
     : null;
   Threads.getData = async id => {
     calls.getData++;
