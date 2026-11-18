@@ -108,8 +108,7 @@ function sanitizeGlyphs(value) {
   for (const [emoji, replacement] of Object.entries(GLYPH_FALLBACK)) {
     if (output.includes(emoji)) output = output.split(emoji).join(replacement);
   }
-  return output
-    .replace(/[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{2600}-\u{26CF}\u{2700}-\u{27BF}]/gu, "");
+  return output;
 }
 
 const RANDOM_ACCENTS = [
@@ -450,11 +449,14 @@ function button(ctx, x, y, width, height, value, color) {
   ctx.lineWidth = S(1.3);
   ctx.stroke();
   ctx.globalAlpha = 1;
-  ctx.font = font(13, "JT-Bold");
-  ctx.fillStyle = color;
-  ctx.textAlign = "center";
-  ctx.fillText(sanitizeGlyphs(value), x + width / 2, y + height / 2 + S(4));
-  ctx.textAlign = "left";
+  drawMulticolorText(ctx, value, x + width / 2, y + height / 2 + S(4), {
+    size: 13,
+    family: "JT-Bold",
+    color,
+    align: "center",
+    maxWidth: Math.max(1, width - S(12)),
+    multicolor: true
+  });
 }
 
 const RANDOM_TEXT_COLORS = Object.freeze([
