@@ -2,6 +2,12 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { isPanelRequestAuthorized } = require("../utils/tokenSecurity");
+const { monitorEventLoopDelay } = require("node:perf_hooks");
+
+// Observe Node event-loop pressure so CPU-bound work and blocking callbacks
+// can be distinguished from Zalo/HTTP network latency in protected metrics.
+const eventLoopHistogram = monitorEventLoopDelay({ resolution: 20 });
+eventLoopHistogram.enable();
 
 const START_TIME = Date.now();
 
@@ -37,14 +43,34 @@ function healthPayload() {
   };
 }
 
+function getEventLoopMetrics() {
+  const toMs = value => Number.isFinite(value) ? Number((value / 1e6).toFixed(2)) : 0;
+  const snapshot = {
+    minMs: toMs(eventLoopHistogram.min),
+    maxMs: toMs(eventLoopHistogram.max),
+    meanMs: toMs(eventLoopHistogram.mean),
+    p95Ms: toMs(eventLoopHistogram.percentile(95)),
+    p99Ms: toMs(eventLoopHistogram.percentile(99))
+  };
+  eventLoopHistogram.reset();
+  return snapshot;
+}
+
 function metricsPayload() {
   const metrics = safe(() => require("./metrics"), null);
   const { allStats } = safe(() => require("./cache"), { allStats: () => ({}) });
+  const jobQueues = safe(() => require("./jobQueue").stats(), {});
   return {
     ...healthPayload(),
     today: safe(() => metrics?.getDayStats(), null),
     topCommands: safe(() => metrics?.topCommands(), []),
+    // These in-memory samples already exist; expose them so operations can
+    // identify which commands and handlers dominate P95 latency.
     pipelineLatency: safe(() => metrics?.getLatencyStats?.(), null),
+    commandLatency: safe(() => metrics?.getCommandLatencyStats?.(15), []),
+    commandExecutionLatency: safe(() => metrics?.getCommandExecutionLatencyStats?.(15), []),
+    eventLoop: safe(getEventLoopMetrics, null),
+    jobQueues,
     cache: allStats()
   };
 }
