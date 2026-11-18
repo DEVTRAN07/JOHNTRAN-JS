@@ -26,7 +26,15 @@ const RANDOM_TEXT_COLORS = Object.freeze([
 const RANDOM_TEXT_COLOR_SET = new Set(RANDOM_TEXT_COLORS);
 
 function overlapsRange(start, end, ranges) {
-  return ranges.some(range => start < range.end && range.start < end);
+  return ranges.some(range => {
+    const rangeStart = Number(range?.start);
+    const rangeLength = Number(range?.len);
+    const rangeEnd = Number.isFinite(Number(range?.end))
+      ? Number(range.end)
+      : rangeStart + rangeLength;
+    return Number.isFinite(rangeStart) && Number.isFinite(rangeEnd) &&
+      start < rangeEnd && rangeStart < end;
+  });
 }
 
 function randomColorStyles(message, options = {}) {
