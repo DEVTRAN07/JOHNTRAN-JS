@@ -12,15 +12,19 @@ workerRender.renderCanvas = async (type, data) => {
 };
 const { FEATURES, runAntiToggle } = require("../core/runtime/antiToggle");
 
-function makeContext({ requesterId = "group-owner", botRole = "owner", initial = {} } = {}) {
+function makeContext({ requesterId = "group-owner", requesterRole = "admin", botRole = "owner", initial = {} } = {}) {
   const calls = { saved: null, sent: [] };
   const api = {
+    getOwnId() { return "bot-id"; },
     async getGroupInfo(threadId) {
       return {
         gridInfoMap: {
           [threadId]: {
-            creatorId: botRole === "owner" ? requesterId : "another-owner",
-            adminIds: botRole === "deputy" ? [requesterId] : []
+            creatorId: botRole === "owner" ? "bot-id" : "group-owner",
+            adminIds: [
+              ...(botRole === "deputy" ? ["bot-id"] : []),
+              ...(requesterRole === "admin" && requesterId !== (botRole === "owner" ? "bot-id" : "group-owner") ? [requesterId] : [])
+            ]
           }
         }
       };
@@ -83,11 +87,31 @@ test("all dedicated Anti commands map to the correct persisted group flags", asy
 test("Anti toggles reject non-admin requesters without saving settings", async () => {
   const { context, calls } = makeContext({
     requesterId: "ordinary-member",
-    botRole: "member"
+    requesterRole: "member",
+    botRole: "owner"
   });
   await runAntiToggle("antilink", context);
   assert.equal(calls.saved, null);
   assert.match(calls.sent[0].payload.msg, /Chỉ trưởng nhóm hoặc phó nhóm/i);
+});
+
+test("Anti status warns when a previously enabled protection loses bot QTV", async () => {
+  const { context, calls } = makeContext({
+    requesterId: "group-owner",
+    botRole: "member",
+    initial: { anti_link: true }
+  });
+  context.args = [];
+  await runAntiToggle("antilink", context);
+  assert.match(calls.sent[0].payload.msg, /ĐANG BẬT/);
+  assert.match(calls.sent[0].payload.msg, /bot hiện không có QTV/i);
+});
+
+test("Anti cannot be enabled when the bot account is not a group owner or deputy", async () => {
+  const { context, calls } = makeContext({ requesterId: "group-owner", botRole: "member" });
+  await runAntiToggle("antilink", context);
+  assert.equal(calls.saved, null);
+  assert.match(calls.sent[0].payload.msg, /bot chưa có quyền QTV/i);
 });
 
 test("antinude cannot be enabled without an OpenAI API key", async () => {

@@ -25,6 +25,23 @@ test("QR moderation requires an explicit QR marker and never guesses from a norm
   assert.equal(kind({msgType:"chat.photo",content:{qrCode:true,href:"https://cdn.example/qr.png"}}), "qr");
 });
 
+test("Anti-QR decodes QR pixels from image buffers and ignores ordinary images", async () => {
+  const QRCode = require("qrcode");
+  const Jimp = require("jimp");
+  const qrBuffer = await QRCode.toBuffer("https://example.com/anti-qr", { width: 256, margin: 2 });
+  assert.equal(await anti._test.decodeQrFromImageBuffer(qrBuffer), "https://example.com/anti-qr");
+
+  const blank = new Jimp(64, 64, 0xffffffff);
+  const blankBuffer = await blank.getBufferAsync(Jimp.MIME_PNG);
+  assert.equal(await anti._test.decodeQrFromImageBuffer(blankBuffer), null);
+
+  const qrClient = { async getBuffer() { return { buffer: qrBuffer, contentType: "image/png" }; } };
+  const plainClient = { async getBuffer() { return { buffer: blankBuffer, contentType: "image/png" }; } };
+  const image = { msgType: "chat.photo", content: { href: "https://cdn.example/image.png" } };
+  assert.equal(await anti._test.imageContainsQr(image, { httpClient: qrClient }), true);
+  assert.equal(await anti._test.imageContainsQr(image, { httpClient: plainClient }), false);
+});
+
 test("Anti-Word normalizes Vietnamese and checks the configured word list", () => {
   const find = anti._test.findAntiBadWord;
   assert.ok(find({msgType:"webchat",content:"Địt mẹ"}));
