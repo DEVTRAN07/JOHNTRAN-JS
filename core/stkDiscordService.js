@@ -7,15 +7,21 @@ const { execFile } = require("node:child_process");
 const stickerService = require("./stickerService");
 const catalog = require("./data/stkDiscord200.json");
 
-const DECOR_DIR = path.join(__dirname, "..", "data", "discord_decor");
+const RAW_BASE_URL = String(process.env.STK_DISCORD_RAW_BASE_URL ||
+  "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/main").replace(/\/+$/, "");
+const DECOR_DIR = path.join(__dirname, "..", "cache", "stk-discord");
 const TMP_DIR = path.join(__dirname, "..", "cache", "temp");
 const CANVAS_SIZE = 288;
 const AVATAR_SIZE = 240;
 const OFFSET = 24;
 const MAX_OUTPUT_BYTES = 512 * 1024;
 const MAX_DECORATION_BYTES = 10 * 1024 * 1024;
+const MAX_MENU_BYTES = 8 * 1024 * 1024;
+const DEFAULT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const REMOTE_TIMEOUT_MS = 20000;
 const ANIMATION_SECONDS = 5;
 const DEFAULT_FPS = 15;
+const remoteDownloads = new Map();
 
 function getDecoration(id) {
   const number = Number(id);
@@ -79,6 +85,156 @@ function getAssetStatus(directory = DECOR_DIR) {
     missingCount: missing.length,
     missing
   };
+}
+
+
+function isValidImageBuffer(buffer, fileName) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  const extension = path.extname(String(fileName || "")).toLowerCase();
+  if (extension === ".png") {
+    return buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  }
+  if (extension === ".jpg" || extension === ".jpeg") {
+    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  if (extension === ".gif") {
+    return buffer.subarray(0, 6).toString() === "GIF87a" ||
+      buffer.subarray(0, 6).toString() === "GIF89a";
+  }
+  if (extension === ".webp") {
+    return buffer.subarray(0, 4).toString() === "RIFF" &&
+      buffer.subarray(8, 12).toString() === "WEBP";
+  }
+  return false;
+}
+
+function buildRawAssetUrl(fileName, baseUrl = RAW_BASE_URL) {
+  const safeName = String(fileName || "");
+  if (!safeName || path.basename(safeName) !== safeName || safeName.includes("..")) {
+    throw new Error("Tên tài nguyên STK không hợp lệ.");
+  }
+  return String(baseUrl || RAW_BASE_URL).replace(/\/+$/, "") + "/" +
+    encodeURIComponent(safeName);
+}
+
+async function ensureRemoteAsset(fileName, options = {}) {
+  const safeName = String(fileName || "");
+  const url = buildRawAssetUrl(safeName, options.rawBaseUrl || RAW_BASE_URL);
+  const directory = path.resolve(options.directory || DECOR_DIR);
+  const targetPath = path.join(directory, safeName);
+  const maxBytes = Number.isFinite(options.maxBytes) ? options.maxBytes : MAX_DECORATION_BYTES;
+  const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : DEFAULT_CACHE_TTL_MS;
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : REMOTE_TIMEOUT_MS;
+  const fetchImpl = options.fetchImpl || global.fetch;
+
+  if (typeof fetchImpl !== "function") {
+    throw new Error("Node.js hiện tại không hỗ trợ fetch để tải tài nguyên STK từ GitHub.");
+  }
+  await fs.promises.mkdir(directory, { recursive: true });
+
+  let cachedStat = null;
+  try {
+    cachedStat = await fs.promises.stat(targetPath);
+    if (!cachedStat.isFile() || cachedStat.size <= 0 || cachedStat.size > maxBytes) {
+      cachedStat = null;
+    }
+  } catch {
+    cachedStat = null;
+  }
+
+  const hasUsableCache = Boolean(cachedStat);
+  const isFresh = hasUsableCache && ttlMs > 0 &&
+    (Date.now() - cachedStat.mtimeMs) < ttlMs;
+  if (isFresh) return targetPath;
+
+  const cacheKey = directory + "::" + safeName;
+  const existingDownload = remoteDownloads.get(cacheKey);
+  if (existingDownload) return existingDownload;
+
+  const pending = (async () => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      let response;
+      try {
+        response = await fetchImpl(url, {
+          method: "GET",
+          signal: controller.signal,
+          headers: { "User-Agent": "JOHNTRAN-JS-STK" }
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!response || !response.ok) {
+        const status = Number(response && response.status || 0);
+        throw new Error("HTTP " + (status || "không xác định"));
+      }
+
+      const contentLength = Number(response.headers && response.headers.get
+        ? response.headers.get("content-length") || 0 : 0);
+      if (contentLength > maxBytes) {
+        throw new Error("Tệp nguồn vượt giới hạn " + maxBytes + " byte.");
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (!buffer.length || buffer.length > maxBytes) {
+        throw new Error("Tệp tải về rỗng hoặc vượt giới hạn " + maxBytes + " byte.");
+      }
+      if (!isValidImageBuffer(buffer, safeName)) {
+        throw new Error("Dữ liệu tải về không đúng định dạng ảnh " +
+          path.extname(safeName) + ".");
+      }
+
+      const temporaryPath = targetPath + ".tmp-" + process.pid + "-" +
+        crypto.randomBytes(5).toString("hex");
+      try {
+        await fs.promises.writeFile(temporaryPath, buffer, { flag: "wx" });
+        await fs.promises.rename(temporaryPath, targetPath);
+      } finally {
+        try { await fs.promises.rm(temporaryPath, { force: true }); } catch {}
+      }
+      return targetPath;
+    } catch (error) {
+      if (hasUsableCache) {
+        console.warn("[stk] GitHub raw không truy cập được; dùng cache cũ " +
+          safeName + ": " + String(error && error.message || error));
+        return targetPath;
+      }
+      const wrapped = new Error(
+        "Không tải được " + safeName + " từ kho Discord-decor trên GitHub (" +
+        url + "): " + String(error && error.message || error)
+      );
+      wrapped.code = "STK_REMOTE_ASSET_DOWNLOAD_FAILED";
+      wrapped.cause = error;
+      throw wrapped;
+    }
+  })();
+
+  remoteDownloads.set(cacheKey, pending);
+  try {
+    return await pending;
+  } finally {
+    if (remoteDownloads.get(cacheKey) === pending) remoteDownloads.delete(cacheKey);
+  }
+}
+
+function ensureDecorationFile(id, options = {}) {
+  const decoration = getDecoration(id);
+  if (!decoration) {
+    return Promise.reject(new RangeError("Số thứ tự khung phải từ 1 đến 200."));
+  }
+  return ensureRemoteAsset(decoration.file, {
+    ...options,
+    maxBytes: Number.isFinite(options.maxBytes) ? options.maxBytes : MAX_DECORATION_BYTES
+  });
+}
+
+function ensureMenuFile(options = {}) {
+  return ensureRemoteAsset("menu.jpg", {
+    ...options,
+    maxBytes: Number.isFinite(options.maxBytes) ? options.maxBytes : MAX_MENU_BYTES
+  });
 }
 
 function isAnimatedBuffer(buffer, extension = "") {
@@ -272,7 +428,7 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
   const normalizedUrl = stickerService.normalizeSourceUrl(mediaUrl);
   if (!normalizedUrl) throw new Error("Không tìm thấy URL ảnh/sticker hợp lệ.");
 
-  const decorationPath = findDecorationFile(decorationId);
+  const decorationPath = await ensureDecorationFile(decorationId);
   stickerService.registerStickerApi(api);
   fs.mkdirSync(TMP_DIR, { recursive: true });
 
@@ -325,17 +481,26 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
 }
 
 module.exports = {
+  RAW_BASE_URL,
   DECOR_DIR,
   TMP_DIR,
   CANVAS_SIZE,
   AVATAR_SIZE,
   OFFSET,
   MAX_OUTPUT_BYTES,
+  MAX_DECORATION_BYTES,
+  MAX_MENU_BYTES,
+  DEFAULT_CACHE_TTL_MS,
   catalog,
   getDecoration,
   resolveDecorationFile,
   findDecorationFile,
   getAssetStatus,
+  isValidImageBuffer,
+  buildRawAssetUrl,
+  ensureRemoteAsset,
+  ensureDecorationFile,
+  ensureMenuFile,
   isAnimatedBuffer,
   inputArgs,
   buildFilterGraph,
