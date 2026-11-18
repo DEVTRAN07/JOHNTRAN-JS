@@ -437,6 +437,69 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
   throw lastError || new Error("Không thể tạo sticker Discord.");
 }
 
+
+/**
+ * Fast path for a static avatar + static PNG decoration.
+ * Canvas composites one 288px frame in-process, avoiding an FFmpeg spawn.
+ * Returns null when the PNG would exceed Zalo's sticker size limit so the
+ * normal WebP encoder can still handle/compress it.
+ */
+async function createStaticPng(sourceBuffer, decorationBufferOrPath) {
+  const { createCanvas, loadImage } = require("canvas");
+  const decorationBuffer = Buffer.isBuffer(decorationBufferOrPath)
+    ? decorationBufferOrPath
+    : fs.readFileSync(decorationBufferOrPath);
+  const [avatar, frame] = await Promise.all([
+    loadImage(sourceBuffer),
+    loadImage(decorationBuffer)
+  ]);
+
+  const canvas = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+  // Match the Discord crop: cover the 240px avatar slot and clip it to a circle.
+  const avatarScale = Math.max(AVATAR_SIZE / avatar.width, AVATAR_SIZE / avatar.height);
+  const avatarWidth = avatar.width * avatarScale;
+  const avatarHeight = avatar.height * avatarScale;
+  const avatarX = OFFSET + (AVATAR_SIZE - avatarWidth) / 2;
+  const avatarY = OFFSET + (AVATAR_SIZE - avatarHeight) / 2;
+  context.save();
+  context.beginPath();
+  context.arc(CANVAS_SIZE / 2, CANVAS_SIZE / 2, AVATAR_SIZE / 2, 0, Math.PI * 2);
+  context.clip();
+  context.drawImage(avatar, avatarX, avatarY, avatarWidth, avatarHeight);
+  context.restore();
+
+  // Keep the frame's aspect ratio and transparent padding, as in the FFmpeg path.
+  const frameScale = Math.min(CANVAS_SIZE / frame.width, CANVAS_SIZE / frame.height);
+  const frameWidth = frame.width * frameScale;
+  const frameHeight = frame.height * frameScale;
+  context.drawImage(
+    frame,
+    (CANVAS_SIZE - frameWidth) / 2,
+    (CANVAS_SIZE - frameHeight) / 2,
+    frameWidth,
+    frameHeight
+  );
+
+  const buffer = canvas.toBuffer("image/png", { compressionLevel: 1 });
+  if (!buffer.length || buffer.length > MAX_OUTPUT_BYTES) return null;
+
+  const outputPath = makeTempName("stk_dis_fast", ".png");
+  fs.writeFileSync(outputPath, buffer);
+  return {
+    path: outputPath,
+    buffer,
+    width: CANVAS_SIZE,
+    height: CANVAS_SIZE,
+    size: buffer.length,
+    animated: false,
+    format: "png",
+    renderer: "canvas-static"
+  };
+}
+
 function extractUploadedUrl(uploaded) {
   const root = uploaded && typeof uploaded === "object" ? uploaded : {};
   const data = root.data && typeof root.data === "object" && !Array.isArray(root.data)
@@ -504,15 +567,33 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
       throw new Error("Không nhận diện được định dạng ảnh/video. Hỗ trợ PNG, JPG, GIF, WebP, MP4, MOV và WebM.");
     }
 
-    sourcePath = makeTempName("stk_source", extension);
-    fs.writeFileSync(sourcePath, source.buffer);
+    const frameBuffer = fs.readFileSync(decorationPath);
+    const staticFastPath =
+      /\\.(png|jpe?g)$/i.test(extension) &&
+      !isAnimatedBuffer(source.buffer, extension) &&
+      /\\.png$/i.test(path.extname(decorationPath)) &&
+      !isAnimatedBuffer(frameBuffer, path.extname(decorationPath));
 
-    currentStage = "ffmpeg";
-    const output = await measureStage(
-      "ffmpegRender",
-      () => createWebp(sourcePath, source.buffer, extension, decorationPath),
-      timings
-    );
+    currentStage = staticFastPath ? "canvas-static" : "ffmpeg";
+    const output = await measureStage("render", async () => {
+      if (staticFastPath) {
+        try {
+          const fastOutput = await createStaticPng(source.buffer, frameBuffer);
+          if (fastOutput) {
+            console.info("[stk] renderer=canvas-static");
+            return fastOutput;
+          }
+          console.warn("[stk] Canvas PNG vượt giới hạn; chuyển sang WebP encoder.");
+        } catch (error) {
+          console.warn("[stk] Canvas fast path không dùng được; chuyển sang FFmpeg: " +
+            String(error && error.message || error));
+        }
+      }
+
+      sourcePath = makeTempName("stk_source", extension);
+      fs.writeFileSync(sourcePath, source.buffer);
+      return createWebp(sourcePath, source.buffer, extension, decorationPath);
+    }, timings);
     outputPath = output.path;
 
     if (typeof api.uploadStickerImage !== "function" ||
@@ -532,8 +613,8 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
     const quote = getReplyQuote(event);
     currentStage = "zalo-send";
     const sent = await measureStage("zaloSend", () => api.sendCustomStickerUrl({
-      staticImgUrl: stickerService.buildStickerUrl(String(cdnUrl), true),
-      animationImgUrl: stickerService.buildStickerUrl(String(cdnUrl), true),
+      staticImgUrl: stickerService.buildStickerUrl(String(cdnUrl), output.format === "webp"),
+      animationImgUrl: stickerService.buildStickerUrl(String(cdnUrl), output.format === "webp"),
       threadId: event.threadId,
       threadType: event.type,
       reply: quote?.msgId || null,
@@ -598,6 +679,7 @@ module.exports = {
   inputArgs,
   buildFilterGraph,
   createWebp,
+  createStaticPng,
   extractUploadedUrl,
   processDiscordSticker
 };
