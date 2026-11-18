@@ -581,7 +581,7 @@ async function sendAntiMenu({ api, event, Threads }) {
     key:item.key,
     label:item.label,
     detail:item.detail,
-    command:item.command,
+    command:prefix + item.command.replace(/^\//, ""),
     icon:item.icon,
     tone:item.tone,
     enabled:data[item.key] === true
@@ -590,15 +590,12 @@ async function sendAntiMenu({ api, event, Threads }) {
   let imagePath = null;
   try {
     imagePath = await renderCanvas("anti-protection-v2", { items, prefix });
+    // The image already contains all six live statuses and concise usage
+    // guidance. Send one caption with it; do not repeat the same table as text.
     await api.sendMessage({
-      msg:"🛡️ BẢO VỆ NHÓM · ANTI-PROTECTION V2",
+      msg:"🛡️ ANTI-PROTECTION V2",
       attachments:[imagePath],
       ttlKind:"card"
-    }, event.threadId, event.type);
-
-    // Gửi phần hướng dẫn riêng sau ảnh để thứ tự hiển thị luôn là ảnh trước, nội dung sau.
-    await api.sendMessage({
-      msg:buildAntiMenuText(data, prefix)
     }, event.threadId, event.type);
   } catch (error) {
     console.error("[ANTI_MENU_V2] Canvas mới không render được:", error?.stack || error);

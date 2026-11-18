@@ -24,9 +24,9 @@ function backdrop(ctx, width, height, p) {
 }
 function panel(ctx, x, y, w, h, p, colors) {
   const c = colors || p.card; rounded(ctx, x, y, w, h, S(12));
-  ctx.save(); ctx.shadowColor = "rgba(0,0,0,.24)"; ctx.shadowBlur = S(8); ctx.shadowOffsetY = S(3);
+  ctx.save(); ctx.shadowColor = "rgba(0,0,0,.14)"; ctx.shadowBlur = S(5); ctx.shadowOffsetY = S(2);
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
-  g.addColorStop(0, theme.rgba(c[0], .66)); g.addColorStop(1, theme.rgba(c[1], .72)); ctx.fillStyle = g; ctx.fill(); ctx.restore();
+  g.addColorStop(0, theme.rgba(c[0], .34)); g.addColorStop(1, theme.rgba(c[1], .38)); ctx.fillStyle = g; ctx.fill(); ctx.restore();
   rounded(ctx, x, y, w, h, S(12)); ctx.strokeStyle = p.cardBorder; ctx.lineWidth = Math.max(1, S(.8)); ctx.stroke();
 }
 function header(ctx, title, subtitle, meta, p) {

@@ -52,7 +52,7 @@ test("Anti-Protection canvas renders the six live moderation features with statu
     assert.ok(buffer.length > 1000);
     assert.equal(buffer.subarray(0,8).toString("hex"), "89504e470d0a1a0a");
     assert.equal(buffer.readUInt32BE(16), 750, "Anti V2 should use the configured 750px Canvas width");
-    assert.equal(buffer.readUInt32BE(20), 720, "Anti V2 must be the dedicated full-height image, not the old short Mac-window card");
+    assert.ok(buffer.readUInt32BE(20) >= 400 && buffer.readUInt32BE(20) <= 520, "Anti V2 should stay compact so the theme is not buried under a tall opaque status panel");
   } finally {
     try { fs.unlinkSync(file); } catch {}
   }

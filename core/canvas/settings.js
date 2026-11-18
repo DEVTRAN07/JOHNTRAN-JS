@@ -22,6 +22,9 @@ function safeText(ctx, value, maxWidth) {
 function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
   ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
+  ctx.shadowColor = "rgba(0,5,16,.82)";
+  ctx.shadowBlur = theme.S(bold ? 2.1 : 1.3);
+  ctx.shadowOffsetY = theme.S(0.6);
   const accentText = color === theme.PALETTE.accent || color === theme.PALETTE.accent2;
   ctx.fillStyle = accentText ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : color;
   ctx.textAlign = align || "left";
@@ -317,41 +320,37 @@ function renderAntiProtectionCardV2(data = {}) {
   const gapX = S(12);
   const gapY = S(10);
   const bannerY = S(18);
-  const bannerH = S(88);
-  const cardH = S(88);
+  const bannerH = S(70);
+  const cardH = S(76);
   const startY = bannerY + bannerH + S(16);
   const cardW = (W - margin * 2 - gapX) / columns;
-  const infoY = startY + rows * cardH + Math.max(0, rows - 1) * gapY + S(15);
-  // Keep the full-height Anti board, and let the QTV guidance panel use the
-  // remaining vertical room instead of leaving an empty blank area below.
-  const footerY = Math.max(infoY + S(132) + S(25), S(720) - S(30));
-  const infoH = footerY - infoY - S(25);
-  const height = footerY + S(30);
+  const infoY = startY + rows * cardH + Math.max(0, rows - 1) * gapY + S(14);
+  // Keep the permission guidance as lightweight text over the photo instead
+  // of another large opaque panel. The board height now follows its content.
+  const footerY = infoY + S(70);
+  const height = footerY + S(24);
 
   const result = theme.newCanvas(W, height);
   const ctx = result.ctx;
   theme.paintBackground(ctx, W, height);
 
-  // Header: raised module inside the shared menu-style shell.
+  // Header is a light translucent title strip; the photo remains visible below.
   theme.panel(ctx, margin, bannerY, W - margin * 2, bannerH, S(16), palette.accent);
   const iconX = margin + S(15);
-  const iconY = bannerY + S(17);
-  theme.roundRect(ctx, iconX, iconY, S(53), S(53), S(12));
+  const iconY = bannerY + S(13);
+  theme.roundRect(ctx, iconX, iconY, S(44), S(44), S(11));
   ctx.fillStyle = palette.infoFill;
   ctx.fill();
   ctx.strokeStyle = palette.border;
   ctx.lineWidth = Math.max(1, S(1));
   ctx.stroke();
-  drawText(ctx, "+", iconX + S(26.5), iconY + S(37), 31, palette.accent, true, "center");
+  drawText(ctx, "+", iconX + S(22), iconY + S(31), 26, palette.accent, true, "center");
 
-  drawText(ctx, "BẢO VỆ NHÓM · ANTI-PROTECTION",
-    margin + S(82), bannerY + S(34), 8.5, palette.accent, true,
+  drawText(ctx, "BẢO VỆ NHÓM",
+    margin + S(82), bannerY + S(39), 20, palette.text, true,
     "left", W - margin * 2 - S(210));
-  drawText(ctx, "Trung tâm Anti",
-    margin + S(82), bannerY + S(59), 21, palette.text, true,
-    "left", W - margin * 2 - S(210));
-  drawText(ctx, "TRẠNG THÁI CÁC CHẾ ĐỘ TRONG NHÓM",
-    margin + S(82), bannerY + S(76), 8, palette.muted, true,
+  drawText(ctx, "6 CHẾ ĐỘ · TRẠNG THÁI ON / OFF",
+    margin + S(82), bannerY + S(56), 8.5, palette.muted, true,
     "left", W - margin * 2 - S(210));
 
   const activeCount = items.filter(item => item.enabled === true).length;
@@ -376,9 +375,9 @@ function renderAntiProtectionCardV2(data = {}) {
     const y = startY + row * (cardH + gapY);
     theme.panel(ctx, x, y, cardW, cardH, S(13), palette.accent);
 
-    const iconX = x + S(12);
-    const iconY = y + S(21);
-    const iconSize = S(43);
+    const iconX = x + S(11);
+    const iconY = y + S(18);
+    const iconSize = S(39);
     theme.roundRect(ctx, iconX, iconY, iconSize, iconSize, S(11));
     ctx.fillStyle = String(item.tone || palette.accent);
     ctx.fill();
@@ -386,17 +385,17 @@ function renderAntiProtectionCardV2(data = {}) {
     ctx.lineWidth = Math.max(1, S(.7));
     ctx.stroke();
     drawText(ctx, item.icon || "•", iconX + iconSize / 2,
-      iconY + S(27), 13, "#ffffff", true, "center", iconSize - S(5));
+      iconY + S(25), 12, "#ffffff", true, "center", iconSize - S(5));
 
-    const textX = x + S(65);
-    const textWidth = cardW - S(143);
+    const textX = x + S(58);
+    const textWidth = cardW - S(125);
     drawText(ctx, item.label || item.key || "Anti",
-      textX, y + S(31), 11.3, palette.text, true, "left", textWidth);
-    drawText(ctx, item.detail || "Chế độ bảo vệ nhóm",
-      textX, y + S(49), 7.6, palette.muted, false, "left", textWidth);
+      textX, y + S(28), 10.5, palette.text, true, "left", textWidth);
+    drawText(ctx, String(item.command || item.detail || "Anti").trim() + " on|off",
+      textX, y + S(44), 7.1, palette.muted, false, "left", textWidth);
     const enabled = item.enabled === true;
     drawText(ctx, enabled ? "✓ ĐANG BẬT" : "○ ĐANG TẮT",
-      textX, y + S(68), 7.5, enabled ? palette.green : palette.muted,
+      textX, y + S(62), 7.4, enabled ? palette.green : palette.muted,
       true, "left", textWidth);
 
     if (enabled) {
@@ -417,8 +416,8 @@ function renderAntiProtectionCardV2(data = {}) {
       ctx.stroke();
     }
 
-    const switchW = S(41), switchH = S(23);
-    const switchX = x + cardW - S(53);
+    const switchW = S(36), switchH = S(21);
+    const switchX = x + cardW - S(47);
     const switchY = y + (cardH - switchH) / 2;
     theme.roundRect(ctx, switchX, switchY, switchW, switchH, switchH / 2);
     ctx.fillStyle = enabled ? palette.accent : "rgba(255,255,255,.08)";
@@ -428,47 +427,29 @@ function renderAntiProtectionCardV2(data = {}) {
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(
-      enabled ? switchX + switchW - S(12) : switchX + S(12),
+      enabled ? switchX + switchW - S(11) : switchX + S(11),
       switchY + switchH / 2,
-      S(8.5), 0, Math.PI * 2
+      S(7.5), 0, Math.PI * 2
     );
     ctx.fillStyle = "#f5f8ff";
     ctx.fill();
   });
 
-  // Permission note uses the same nested glass-panel treatment as the menu.
-  theme.panel(ctx, margin, infoY, W - margin * 2, infoH, S(14), palette.accent);
-  drawText(ctx, "QTV BOX  /  ĐIỀU KIỆN ĐỂ ANTI HOẠT ĐỘNG",
-    margin + S(17), infoY + S(28), 9, palette.accent, true);
-  drawText(ctx, "Bot phải là trưởng nhóm hoặc phó nhóm Zalo để Anti chạy.",
-    margin + S(17), infoY + S(60), 13, palette.text, true,
-    "left", W - margin * 2 - S(34));
-  drawText(ctx, "Bot không có QTV: Anti tự bỏ qua mọi chế độ, không quét / xóa / cảnh báo.",
-    margin + S(17), infoY + S(90), 9.2, palette.muted, false,
-    "left", W - margin * 2 - S(34));
+  // Permission guidance is rendered directly over the wallpaper,
+  // avoiding a second large panel that used to hide most of the photo.
+  drawText(ctx, "ĐIỀU KIỆN: BOT PHẢI LÀ TRƯỞNG NHÓM / PHÓ NHÓM (QTV BOX).",
+    margin + S(2), infoY + S(17), 8.5, palette.accent, true,
+    "left", W - margin * 2 - S(8));
+  drawText(ctx, "Không có QTV: Anti tự bỏ qua; có QTV trở lại sẽ chạy theo cấu hình đã lưu.",
+    margin + S(2), infoY + S(36), 8.1, palette.muted, false,
+    "left", W - margin * 2 - S(8));
+  drawText(ctx, "Mọi thành viên đều chịu Anti · Chỉ QTV nhóm được thay đổi cấu hình.",
+    margin + S(2), infoY + S(54), 8.1, palette.ink2, false,
+    "left", W - margin * 2 - S(8));
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(margin + S(17), infoY + S(111));
-  ctx.lineTo(W - margin - S(17), infoY + S(111));
-  ctx.strokeStyle = palette.cardBorder;
-  ctx.lineWidth = Math.max(1, S(.8));
-  ctx.stroke();
-  ctx.restore();
-
-  drawText(ctx, "Khi bot được cấp QTV trở lại, Anti tự chạy theo cấu hình đã lưu.",
-    margin + S(17), infoY + S(143), 9.2, palette.ink2, false,
-    "left", W - margin * 2 - S(34));
-  drawText(ctx, "Tất cả thành viên, kể cả trưởng nhóm và phó nhóm, đều chịu quy tắc Anti.",
-    margin + S(17), infoY + S(174), 9.2, palette.ink2, false,
-    "left", W - margin * 2 - S(34));
-  drawText(ctx, "Chỉ trưởng nhóm hoặc phó nhóm mới được bật / tắt các chế độ Anti.",
-    margin + S(17), infoY + S(205), 9.2, palette.ink2, false,
-    "left", W - margin * 2 - S(34));
-
-  drawText(ctx, "JOHNTRAN  ·  ANTI-PROTECTION V2",
+  drawText(ctx, "JOHNTRAN  ·  ANTI-PROTECTION",
     margin + S(2), footerY, 8, palette.muted, true);
-  drawText(ctx, "LIVE GROUP STATUS",
+  drawText(ctx, "LIVE STATUS",
     W - margin - S(2), footerY, 7.5, palette.accent, true, "right");
 
   const output = path.join(os.tmpdir(),
