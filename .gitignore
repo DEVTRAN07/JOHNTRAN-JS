@@ -31,6 +31,8 @@ __pycache__/
 core/assets/cache/
 assets/cache/media/
 assets/cache/sticker/
+cache/stk-discord/
+cache/temp/
 *.tmp
 *.scratch
 *.session
