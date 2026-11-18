@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
-const { createCanvas } = require("canvas");
+const { createCanvas, loadImage } = require("canvas");
 const service = require("../core/stkDiscordService");
 const stickerService = require("../core/stickerService");
 
@@ -64,6 +64,46 @@ test("Discord STK compositor produces a transparent 288px WebP with a circular a
   fs.rmSync(output.path, { force: true });
 });
 
+
+
+test("static Discord STK Canvas fast path renders a circular avatar and transparent corners", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-static-fast-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const avatarCanvas = createCanvas(180, 120);
+  const avatarContext = avatarCanvas.getContext("2d");
+  avatarContext.fillStyle = "#ef4b42";
+  avatarContext.fillRect(0, 0, 180, 120);
+  const avatarBuffer = avatarCanvas.toBuffer("image/png");
+
+  const frameCanvas = createCanvas(288, 288);
+  const frameContext = frameCanvas.getContext("2d");
+  frameContext.clearRect(0, 0, 288, 288);
+  frameContext.strokeStyle = "#7e57ff";
+  frameContext.lineWidth = 10;
+  frameContext.strokeRect(14, 14, 260, 260);
+  const frameBuffer = frameCanvas.toBuffer("image/png");
+
+  const output = await service.createStaticPng(avatarBuffer, frameBuffer);
+  assert.ok(output, "the small static sticker should fit the upload size limit");
+  assert.equal(output.format, "png");
+  assert.equal(output.renderer, "canvas-static");
+  assert.equal(output.width, 288);
+  assert.equal(output.height, 288);
+  assert.ok(output.size > 100 && output.size <= service.MAX_OUTPUT_BYTES);
+  assert.equal(output.buffer.subarray(1, 4).toString(), "PNG");
+
+  const rendered = await loadImage(output.buffer);
+  const checkCanvas = createCanvas(288, 288);
+  const checkContext = checkCanvas.getContext("2d");
+  checkContext.drawImage(rendered, 0, 0);
+  assert.equal(checkContext.getImageData(0, 0, 1, 1).data[3], 0,
+    "canvas corner remains transparent");
+  assert.equal(checkContext.getImageData(144, 144, 1, 1).data[3], 255,
+    "avatar centre remains opaque");
+
+  fs.rmSync(output.path, { force: true });
+});
 
 test("STK asset inventory resolves exact and alternate frame names", t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-assets-"));
