@@ -22,6 +22,19 @@ const attachmentUrlType = {
     video: "asyncfile/msg?",
     others: "asyncfile/msg?",
 };
+function isCanvasImageAttachment(source) {
+    const rawName = typeof source == "string" ? source : source?.filename;
+    const fileName = String(rawName || "").split(/[\\/]/).pop();
+    return /^jt_.+_\\d+_[a-z0-9]{4}\\.png$/i.test(fileName);
+}
+function photoQualityMetadata(isOriginal) {
+    return isOriginal
+        ? {
+            is_original: 1,
+            jcp: JSON.stringify({ is_original: 1, isOriginal: 1 }),
+        }
+        : { jcp: '{\\"convertible\\":\\"jxl\\"}' };
+}
 function prepareQMSGAttach(quote) {
     const quoteData = quote;
     if (typeof quoteData.content == "string")
@@ -268,7 +281,10 @@ const sendMessageFactory = factory.apiFactory()((api, ctx, utils$1) => {
         const isMentionsValid = mentionsFinal.length > 0 && isGroupMessage && attachments.length == 1;
         const isMultiFile = attachments.length > 1;
         let clientId = outerClientId || Date.now();
+        let sourceIndex = 0;
         for (const attachment of uploadAttachment) {
+            const isCanvasOriginal = isCanvasImageAttachment(attachments[sourceIndex]);
+            sourceIndex += 1;
             let data;
             const usedClientId = clientId;
             clientId++;
@@ -292,7 +308,7 @@ const sendMessageFactory = factory.apiFactory()((api, ctx, utils$1) => {
                             hdSize: String(attachment.totalSize),
                             zsource: -1,
                             ttl: ttl !== null && ttl !== void 0 ? ttl : 0,
-                            jcp: '{"convertible":"jxl"}',
+                            ...photoQualityMetadata(isCanvasOriginal),
                             groupLayoutId: isMultiFile ? groupLayoutId : undefined,
                             isGroupLayout: isMultiFile ? 1 : undefined,
                             idInGroup: isMultiFile ? indexInGroupLayout++ : undefined,
@@ -475,3 +491,4 @@ const sendMessageFactory = factory.apiFactory()((api, ctx, utils$1) => {
 });
 
 exports.sendMessageFactory = sendMessageFactory;
+exports._test = Object.freeze({ isCanvasImageAttachment, photoQualityMetadata });
