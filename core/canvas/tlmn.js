@@ -8,7 +8,9 @@ function drawText(ctx, text, x, y, scale, options = {}) {
   const size = Math.max(9, Math.round((options.size || 18) * scale));
   ctx.save();
   ctx.font = (options.weight || 700) + " " + size + "px " + (options.family || "Arial, sans-serif");
-  ctx.fillStyle = options.color || theme.PALETTE.ink;
+  const requestedColor = options.color || theme.PALETTE.ink;
+  ctx.fillStyle = [theme.PALETTE.accent, theme.PALETTE.accent2].includes(requestedColor)
+    ? theme.randomTextColor(String(text) + ":" + x + ":" + y) : requestedColor;
   ctx.textAlign = options.align || "left";
   ctx.textBaseline = options.baseline || "alphabetic";
   if (options.maxWidth) ctx.fillText(String(text ?? ""), x, y, options.maxWidth);
