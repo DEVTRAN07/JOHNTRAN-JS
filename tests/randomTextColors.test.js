@@ -15,7 +15,7 @@ const COLOR_STYLES = new Set([
 ]);
 
 const SAMPLE =
-  "🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
+  "🤖 Chào chủ nhân!\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
 
 test("bot text receives random Zalo colors per visible token without changing any text", () => {
   const output = styledText.randomize(SAMPLE, { random: () => 0.5 });
