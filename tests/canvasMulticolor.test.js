@@ -81,8 +81,8 @@ test("semantic accent text is multicolor by default, with an explicit solid-colo
     size: 20,
     color: theme.PALETTE.green
   });
-  const words = draws.filter(item => /[\\p{L}\\p{N}]/u.test(item.value));
-  assert.equal(words.length, 3);
+  const words = draws.filter(item => /[\p{L}\p{N}]/u.test(item.value));
+  assert.equal(words.length, 4);
   assert.ok(words.every(item => theme.RANDOM_TEXT_COLORS.includes(item.color)));
   assert.ok(new Set(words.map(item => item.color)).size > 1);
 });
