@@ -84,7 +84,7 @@ test("Anti-Protection panel exposes every real persisted Anti mode and matching 
   assert.ok(v4css.includes(".anti-protection-switch input:checked+span"), "switch must visibly reflect enabled state");
 
   const registryStart = js.indexOf("const ANTI_PROTECTION_ITEMS = Object.freeze([");
-  const registryEnd = js.indexOf("\\n]);", registryStart);
+  const registryEnd = js.indexOf("\n]);", registryStart);
   assert.ok(registryStart >= 0 && registryEnd > registryStart, "panel Anti registry must exist");
   const registry = js.slice(registryStart, registryEnd);
   const panelKeys = Array.from(registry.matchAll(/key:"([^"]+)"/g), match => match[1]);
@@ -100,7 +100,7 @@ test("Anti-Protection panel exposes every real persisted Anti mode and matching 
   assert.ok(registry.includes("OPENAI_API_KEY"), "AI moderation dependency must be visible");
   assert.ok(html.includes("0/21 chế độ đang bật"), "initial count must match the complete Anti registry");
   assert.ok(html.includes("quyền trưởng/phó nhóm"), "panel must explain the bot role needed for enforcement");
-});;
+});
 
 test("panel frontend is self-hosted and has no external runtime dependency", () => {
   assert.match(html, /href="panel\.css"/);
