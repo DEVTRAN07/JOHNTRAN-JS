@@ -35,6 +35,24 @@ test("checks bot key by its own Zalo UID and caches the group lookup", async () 
   assert.deepEqual(calls, { ownId: 1, groupInfo: 1 });
 });
 
+test("bypasses the message adapter's long-lived group-info cache", async () => {
+  let rawLookups = 0;
+  const rawApi = {
+    getOwnId() { return "bot"; },
+    async getGroupInfo(groupId) {
+      rawLookups++;
+      return { gridInfoMap: { [groupId]: { creatorId: "owner", adminIds: ["bot"] } } };
+    }
+  };
+  const wrappedApi = Object.create(rawApi);
+  wrappedApi.getGroupInfo = async () => ({
+    gridInfoMap: { "group-raw": { creatorId: "owner", adminIds: [] } }
+  });
+
+  assert.equal(await hasBotGroupKey(wrappedApi, "group-raw"), true);
+  assert.equal(rawLookups, 1, "the underlying Zalo API must be read instead of a stale wrapper cache");
+});
+
 test("collects all joined groups and returns the bot's QTV group names", async () => {
   const requested = [];
   const api = {
