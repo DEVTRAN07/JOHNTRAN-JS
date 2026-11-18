@@ -48,7 +48,7 @@ function drawPlayingCard(ctx, card, x, y, w, h, scale, options = {}) {
 
 function drawSeat(ctx, item, x, y, w, h, scale, index, isTurn) {
   const px = value => Math.round(value * scale);
-  const p = theme.PALETTE;
+  const p = { ...theme.PALETTE, ...theme.getCardPalette() };
   const active = Boolean(item && isTurn);
   roundPanel(ctx, x, y, w, h, px(16),
     active ? "rgba(17,74,115,.96)" : "rgba(8,22,39,.94)",
@@ -155,7 +155,7 @@ function seatLayout(playerCount) {
 }
 
 function renderTable(ctx, width, height, scale, data) {
-  const p = theme.PALETTE;
+  const p = { ...theme.PALETTE, ...theme.getCardPalette() };
   const room = data.room || {};
   const players = Array.isArray(room.players) ? room.players : [];
   const px = value => Math.round(value * scale);
@@ -302,7 +302,7 @@ function renderTable(ctx, width, height, scale, data) {
 }
 
 function renderHand(ctx, width, height, scale, data) {
-  const p = theme.PALETTE;
+  const p = { ...theme.PALETTE, ...theme.getCardPalette() };
   const room = data.room || {};
   const player = data.player || {};
   const hand = Array.isArray(data.hand) ? data.hand : [];
