@@ -518,7 +518,7 @@ function createResultCacheKey(mediaUrl, decorationId) {
   const normalizedUrl = stickerService.normalizeSourceUrl(mediaUrl);
   if (!normalizedUrl) throw new Error("Không tạo được khóa cache STK từ URL media.");
   return crypto.createHash("sha256")
-    .update("stk-discord-v1\\0" + String(decorationId) + "\\0" + normalizedUrl)
+    .update("stk-discord-v1\0" + String(decorationId) + "\0" + normalizedUrl)
     .digest("hex");
 }
 
@@ -616,7 +616,7 @@ function deleteStickerResultCache(key, options = {}) {
 
 function isExpiredCdnError(error) {
   const status = Number(error?.status || error?.statusCode || error?.response?.status);
-  return status === 404 || /HTTP\\s*404|\\b404\\b|not found|expired|hết hạn/i.test(
+  return status === 404 || /HTTP\s*404|\b404\b|not found|expired|hết hạn/i.test(
     String(error?.message || error || "")
   );
 }
