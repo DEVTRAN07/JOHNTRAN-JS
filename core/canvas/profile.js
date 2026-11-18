@@ -223,6 +223,7 @@ async function renderProfile(o = {}) {
 
   const canvas = createCanvas(WIDTH, H);
   const ctx = canvas.getContext("2d");
+  ctx.__jtRenderSeed = Math.floor(Math.random() * 0x7fffffff);
   ctx.quality = "best";
   await paintBase(ctx, skin, WIDTH, H, o.avatar);
 
@@ -278,6 +279,7 @@ async function renderAvatarCard(o = {}) {
 
   const canvas = createCanvas(WIDTH, H);
   const ctx = canvas.getContext("2d");
+  ctx.__jtRenderSeed = Math.floor(Math.random() * 0x7fffffff);
   ctx.quality = "best";
   await paintBase(ctx, skin, WIDTH, H, o.avatar);
 
