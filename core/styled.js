@@ -46,7 +46,7 @@ function randomColorStyles(message, options = {}) {
 
   // Every visible token, including @mentions, receives a color. Mention metadata
   // is carried separately by Zalo and remains untouched. Offsets are UTF-16 units.
-  for (const match of text.matchAll(/\\S+/gu)) {
+  for (const match of text.matchAll(/\S+/gu)) {
     const start = match.index ?? 0;
     const len = match[0].length;
     const available = RANDOM_TEXT_COLORS.filter(color => color !== previousColor);
