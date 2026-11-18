@@ -46,7 +46,8 @@ Reply to an image, GIF, or video, then use:
 
 - `/stk list [page]`: browse the catalog, 15 entries per page.
 - `/stk find <keyword>`: search by name or collection.
-- `/stk <decoration-id>`: apply the selected decoration.
+- `/stk <number>`: apply the selected decoration by its 1-based numeric ID as shown in `/stk list` or `/stk find`. Numeric IDs refer to the same position in the full bundled catalog across pages and search results.
+- The stable string decoration ID remains internal and is still returned by the JSON API endpoints.
 - `/stk random`: choose a random decoration from the local manifest.
 
 The five old custom frames (Discord Classic/Nitro/Midnight/Neon/Hologram) have been removed from the command and renderer.
