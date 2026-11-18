@@ -630,7 +630,8 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
       " frameCache=" + (timings.frameCache ?? "-") + "ms" +
       " frameDownload=" + (timings.frameDownload ?? "-") + "ms" +
       " mediaDownload=" + timings.mediaDownload + "ms" +
-      " ffmpeg=" + timings.ffmpegRender + "ms" +
+      " render=" + timings.render + "ms" +
+      " renderer=" + (output.renderer || (output.format === "webp" ? "ffmpeg-webp" : "png")) +
       " upload=" + timings.zaloUpload + "ms" +
       " send=" + timings.zaloSend + "ms" +
       " total=" + timings.totalMs + "ms"
