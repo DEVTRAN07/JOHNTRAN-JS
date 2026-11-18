@@ -20,6 +20,7 @@ support_bot:
   - ""
 allow_private_command: false # false = bot BỎ QUA toàn bộ tin nhắn riêng (chỉ hoạt động trong nhóm)
 allow_self_command: true # true = bot chạy lệnh từ tin do CHÍNH acc bot gửi (test bot bằng acc bot). Tắt nếu không muốn bot tự thực thi tin nhắn của chính nó
+allow_self_anti: true # true = áp dụng Anti cả với tin do chính tài khoản bot gửi để tự kiểm thử; echo do Anti tạo sẽ được bỏ qua.
 
 # Bảo mật: lệnh nhạy (role 2 = admin bot) chỉ cho phép chạy trong nhóm đã
 # đăng ký làm admin group qua Panel. Giảm bề mặt tấn công khi uidFrom có thể

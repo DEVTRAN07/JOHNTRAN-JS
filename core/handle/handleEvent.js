@@ -13,6 +13,21 @@ function isGroupEventPayload(eventType, eventData) {
     (eventType === "undo" && eventData?.isGroup === true);
 }
 
+function getDispatchSources(eventType, eventData, isSelf, events, commands) {
+  const isSelfUndo = eventType === "undo" &&
+    (isSelf === true || eventData?.isSelf === true);
+  if (!isSelfUndo) return { events, commands };
+
+  // Bot self-undo is a test-only path: dispatch it exclusively to Anti.
+  const antiCommand = commands?.get?.("anti");
+  return {
+    events: new Map(),
+    commands: typeof antiCommand?.handleEvent === "function"
+      ? new Map([["anti", antiCommand]])
+      : new Map()
+  };
+}
+
 async function handleEvent(eventType, eventData, api, isSelf = false) {
   // Safety net: suppress every event source when this group has disabled the bot.
   // Use the synchronous hot cache so the event path never waits for a database round-trip.
@@ -57,9 +72,18 @@ async function handleEvent(eventType, eventData, api, isSelf = false) {
     }
   }
 
+  const selfUndo = eventType === "undo" &&
+    (isSelf === true || eventData?.isSelf === true);
+  if (selfUndo && global.config?.allow_self_anti !== true) {
+    return { eventModules: 0, commandModules: 0 };
+  }
+  const sources = getDispatchSources(
+    eventType, eventData, isSelf, global.client?.events, global.client?.commands
+  );
+
   return dispatchEvent({
-    events: global.client?.events,
-    commands: global.client?.commands,
+    events: sources.events,
+    commands: sources.commands,
     eventType,
     onEventModule(eventModule, name) {
       const context = createEventContext({
@@ -102,4 +126,4 @@ async function handleEvent(eventType, eventData, api, isSelf = false) {
 
 module.exports = handleEvent;
 
-module.exports._test = { isGroupEventPayload };
+module.exports._test = { isGroupEventPayload, getDispatchSources };

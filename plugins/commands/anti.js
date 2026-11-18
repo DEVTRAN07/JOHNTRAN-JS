@@ -6,7 +6,126 @@ const http = require("../../core/http");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
 const fsSync = require("fs");
-const { hasBotGroupKey } = require("../../core/runtime/botGroupKey");
+const { getBotGroupRole } = require("../../core/runtime/botGroupKey");
+
+const ANTI_SELF_ECHO_TTL_MS = 60_000;
+const ANTI_SELF_ECHO_LIMIT = 3000;
+const antiSelfEchoes = new Map();
+const antiSkipLogAt = new Map();
+
+function normalizeEchoText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function echoKeysFromPayload(threadId, payload) {
+  const keys = [];
+  const add = (kind, value) => {
+    const normalized = normalizeEchoText(value);
+    if (normalized) keys.push(String(threadId) + ":" + kind + ":" + normalized);
+  };
+  const seen = new Set();
+  const visit = (value, depth = 0) => {
+    if (value == null || depth > 5) return;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (/^https?:\/\//i.test(trimmed)) add("url", trimmed);
+      else add("text", trimmed);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    if (typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    for (const field of ["msg", "text", "title", "description", "href", "url", "link", "videoUrl", "voiceUrl"]) {
+      if (value[field] != null) visit(value[field], depth + 1);
+    }
+    for (const field of ["msgId", "cliMsgId"]) {
+      if (value[field] != null) add(field, value[field]);
+    }
+    for (const field of ["message", "attachment", "attachments", "data", "content"]) {
+      if (value[field] != null) visit(value[field], depth + 1);
+    }
+  };
+  visit(payload);
+  return [...new Set(keys)];
+}
+
+function pruneAntiSelfEchoes(now = Date.now()) {
+  for (const [key, expiresAt] of antiSelfEchoes) {
+    if (expiresAt <= now) antiSelfEchoes.delete(key);
+  }
+  while (antiSelfEchoes.size > ANTI_SELF_ECHO_LIMIT) {
+    antiSelfEchoes.delete(antiSelfEchoes.keys().next().value);
+  }
+}
+
+function rememberAntiSelfEcho(threadId, payload) {
+  const keys = echoKeysFromPayload(threadId, payload);
+  const expiresAt = Date.now() + ANTI_SELF_ECHO_TTL_MS;
+  pruneAntiSelfEchoes();
+  for (const key of keys) antiSelfEchoes.set(key, expiresAt);
+  return keys;
+}
+
+function forgetAntiSelfEchoes(keys) {
+  for (const key of Array.isArray(keys) ? keys : []) antiSelfEchoes.delete(key);
+}
+
+function isAntiGeneratedSelfEcho(event, consume = true) {
+  const data = event?.data || {};
+  const threadId = String(event?.threadId || "");
+  if (!threadId) return false;
+  pruneAntiSelfEchoes();
+  let matched = false;
+  for (const key of echoKeysFromPayload(threadId, data)) {
+    if (!antiSelfEchoes.has(key)) continue;
+    if (consume) antiSelfEchoes.delete(key);
+    matched = true;
+  }
+  return matched;
+}
+
+function shouldSkipSelfEvent(context = {}) {
+  const event = context.event || {};
+  const userId = String(event?.data?.uidFrom || "");
+  if (userId === "0") return true;
+  const isSelf = context.isSelf === true || event.isSelf === true;
+  if (!isSelf) return false;
+  if (isAntiGeneratedSelfEcho(event)) return true;
+  return global.config?.allow_self_anti !== true;
+}
+
+function logAntiSkip(threadId, reason) {
+  const key = String(threadId || "") + ":" + String(reason || "");
+  const now = Date.now();
+  const previous = antiSkipLogAt.get(key) || 0;
+  if (now - previous < 30_000) return;
+  antiSkipLogAt.set(key, now);
+  if (antiSkipLogAt.size > 1000) antiSkipLogAt.delete(antiSkipLogAt.keys().next().value);
+  console.warn("[ANTI] Bỏ qua nhóm " + String(threadId || "?") + ": " + reason);
+}
+
+async function sendAntiAction(api, method, payload, threadId, type) {
+  if (typeof api?.[method] !== "function") {
+    throw new Error("Zalo API " + method + " không khả dụng");
+  }
+  const echoKeys = rememberAntiSelfEcho(threadId, payload);
+  try {
+    const response = await api[method](payload, threadId, type);
+    rememberAntiSelfEcho(threadId, response);
+    return response;
+  } catch (error) {
+    forgetAntiSelfEchoes(echoKeys);
+    throw error;
+  }
+}
+
+function sendAntiMessage(api, payload, threadId, type) {
+  const body = typeof payload === "string" ? { msg: payload } : payload;
+  return sendAntiAction(api, "sendMessage", body, threadId, type);
+}
 
 module.exports.config = {
   name: "anti",
@@ -43,7 +162,7 @@ async function handlePhoto(messageCache, tempPath, name, timeSend, timeUndo, thr
   const message = messageCache.content.title || "";
   const msgBody = formatUndoMessage(name, timeSend, timeUndo, message);
 
-  await api.sendMessage({ msg: msgBody, attachments: [tempFilePath] }, threadId, type);
+  await sendAntiMessage(api, { msg: msgBody, attachments: [tempFilePath] }, threadId, type);
   return tempFilePath;
 }
 
@@ -51,30 +170,66 @@ async function handlePhoto(messageCache, tempPath, name, timeSend, timeUndo, thr
 const nudeModerationInFlight = new Set();
 const OPENAI_MODERATION_URL = "https://api.openai.com/v1/moderations";
 
+
 function extractMessageUrls(data) {
-  const content = data?.content;
   const candidates = [];
+  const seen = new Set();
   const addText = (value) => {
     if (typeof value !== "string" || !value) return;
     candidates.push(...(value.match(/https?:\/\/[^\s<>"']+/gi) || []));
   };
-
-  if (data?.msgType === "chat.recommended" && content?.action === "recommended.link" && content.href) {
-    candidates.push(String(content.href));
-  }
-  if (typeof content === "string") {
-    addText(content);
-  } else if (content && typeof content === "object") {
-    for (const field of ["href", "url", "link"]) {
-      if (typeof content[field] === "string" && /^https?:\/\//i.test(content[field])) {
-        candidates.push(content[field]);
+  const visit = (value, depth = 0) => {
+    if (value == null || depth > 6) return;
+    if (typeof value === "string") { addText(value); return; }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    if (typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    const fields = ["href", "url", "link", "src", "oriUrl", "ori_url", "text", "title", "description", "content", "msg"];
+    for (const field of fields) {
+      if (value[field] != null) visit(value[field], depth + 1);
+    }
+    for (const [field, nested] of Object.entries(value)) {
+      if (!fields.includes(field) &&
+          (typeof nested === "string" || Array.isArray(nested) || (nested && typeof nested === "object"))) {
+        visit(nested, depth + 1);
       }
     }
-    addText(content.title);
-    addText(content.description);
+  };
+
+  visit(data?.content);
+  visit(data?.propertyExt);
+  visit(data?.quote);
+  visit(data?.href);
+  visit(data?.msg);
+  visit(data?.text);
+
+  if (data?.msgType === "chat.recommended" &&
+      data?.content?.action === "recommended.link" &&
+      data.content.href) {
+    candidates.push(String(data.content.href));
   }
-  addText(data?.text);
-  return [...new Set(candidates.map(url => url.replace(/[),.!?;:]+$/, "")).filter(Boolean))];
+
+  const urls = [];
+  const unique = new Set();
+  for (const raw of candidates) {
+    const url = String(raw || "").replace(/[.,;:!?]+$/g, "").replace(/[)}\]]+$/g, "");
+    if (!/^https?:\/\//i.test(url)) continue;
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:"].includes(parsed.protocol)) continue;
+      // Validate with URL, but preserve the exact submitted URL.
+      // Zalo scanURL and platform providers may compare/resolve the original string.
+      const normalized = url;
+      if (!unique.has(normalized)) {
+        unique.add(normalized);
+        urls.push(normalized);
+      }
+    } catch { /* URL không hợp lệ */ }
+  }
+  return urls;
 }
 
 function isGroupInviteUrl(rawUrl) {
@@ -192,11 +347,44 @@ function buildDeleteDestination(event) {
   };
 }
 
-async function deleteGroupMessage(api, event) {
+async function isBotAuthoredMessage(api, event) {
+  if (event?.isSelf === true) return true;
+  if (typeof api?.getOwnId !== "function") return false;
+  try {
+    const ownId = String(await api.getOwnId() || "");
+    return Boolean(ownId && ownId === String(event?.data?.uidFrom || ""));
+  } catch {
+    return false;
+  }
+}
+
+async function deleteGroupMessage(api, event, options = {}) {
+  const destination = buildDeleteDestination(event);
+
+  // zalo-client explicitly rejects deleteMessage(..., false) for a message
+  // sent by the logged-in bot account. Zalo requires the undo endpoint for
+  // that case; regular members' messages still use group deleteMessage.
+  const isBotMessage = options.isBotMessage === true ||
+    await isBotAuthoredMessage(api, event);
+
+  if (isBotMessage) {
+    if (typeof api?.undo !== "function") {
+      throw new Error("Zalo API undo không khả dụng để thu hồi tin nhắn do bot gửi");
+    }
+    return api.undo(
+      {
+        msgId: destination.data.msgId,
+        cliMsgId: destination.data.cliMsgId
+      },
+      destination.threadId,
+      ThreadType.Group
+    );
+  }
+
   if (typeof api?.deleteMessage !== "function") {
     throw new Error("Zalo API deleteMessage không khả dụng");
   }
-  return api.deleteMessage(buildDeleteDestination(event), false);
+  return api.deleteMessage(destination, false);
 }
 
 async function kickGroupMember(api, userId, threadId) {
@@ -232,16 +420,35 @@ module.exports.handleEvent = async function (context = {}) {
   const Threads = context.Threads;
   const data = event.data || {};
   const threadId = String(event.threadId || "");
-  const userId = String(data.uidFrom || "");
-  const name = data.dName || "Bạn";
+  const undoCliMsgId = eventType === "undo"
+    ? (data.content?.cliMsgId ?? data.cliMsgId)
+    : null;
+  const cachedUndoMessage = undoCliMsgId == null
+    ? null
+    : getMessageCache()[String(undoCliMsgId)];
+  const userId = String(data.uidFrom || (eventType === "undo" ? cachedUndoMessage?.uidFrom : "") || "");
+  const name = data.dName || (eventType === "undo" ? cachedUndoMessage?.dName : "") || "Bạn";
   const isGroup = event.type === ThreadType.Group || event.isGroup === true;
 
-  if (!isGroup || !threadId || !userId) return;
-  if (context.isSelf === true || event.isSelf === true || userId === "0") return;
+  if (!isGroup || !threadId || (!userId && eventType !== "undo")) return;
+  if (eventType === "undo" && !userId) {
+    logAntiSkip(threadId, "sự kiện thu hồi không có uid người gửi và không tìm thấy bản tin trong cache");
+    return;
+  }
+  if (shouldSkipSelfEvent(context)) {
+    logAntiSkip(threadId, "tin do bot gửi bị chặn bởi allow_self_anti hoặc là phản hồi Anti do bot tạo");
+    return;
+  }
 
-  // Anti is available only when the bot account itself is the group owner or a deputy.
-  // Unknown role data fails closed and stays silent; sender/admin status is irrelevant.
-  if (!(await hasBotGroupKey(api, threadId))) return;
+  // Anti requires the BOT account to be a verified group owner/deputy.
+  // This is independent from the sender: admins and the bot account itself are still moderated.
+  let botRole = "unknown";
+  try { botRole = await getBotGroupRole(api, threadId); }
+  catch (error) { logAntiSkip(threadId, "không xác minh được key QTV của bot: " + (error?.message || error)); return; }
+  if (botRole !== "owner" && botRole !== "deputy") {
+    logAntiSkip(threadId, "tài khoản bot chưa được xác minh là trưởng/phó nhóm (role=" + botRole + ")");
+    return;
+  }
   if (typeof Threads?.getData !== "function") return;
 
   let threadData;
@@ -262,7 +469,8 @@ module.exports.handleEvent = async function (context = {}) {
   // Anti rules apply uniformly to every human group member, including
   // the group owner and deputies. QTV privilege is enforced only by the
   // command that changes Anti settings, never by message moderation.
-  const sendNotice = (message) => api.sendMessage(
+  const sendNotice = (message) => sendAntiMessage(
+    api,
     createMentionMessage(message, name, userId),
     threadId,
     ThreadType.Group
@@ -273,15 +481,17 @@ module.exports.handleEvent = async function (context = {}) {
   try {
     // Undo payload from zalo-client has isGroup=true and no ThreadType field.
     if (threadData.anti_undo === true && eventType === "undo") {
-      const undoCliMsgId = data.content?.cliMsgId ?? data.cliMsgId;
       if (undoCliMsgId == null) return;
-      const cached = getMessageCache()[String(undoCliMsgId)];
-      if (!cached || (cached.threadId && String(cached.threadId) !== threadId)) return;
+      const cached = cachedUndoMessage;
+      if (!cached || (cached.threadId && String(cached.threadId) !== threadId)) {
+        logAntiSkip(threadId, "không tìm thấy tin gốc trong cache để khôi phục (cliMsgId=" + String(undoCliMsgId) + ")");
+        return;
+      }
 
       const timeSend = cached.timestamp || cached.ts || Date.now();
       const timeUndo = data.ts || Date.now();
-      const sendUndoMessage = (msg, extra) => api.sendMessage(
-        { msg, ...(extra || {}) }, threadId, ThreadType.Group
+      const sendUndoMessage = (msg, extra) => sendAntiMessage(
+        api, { msg, ...(extra || {}) }, threadId, ThreadType.Group
       );
 
       switch (cached.msgType) {
@@ -297,7 +507,7 @@ module.exports.handleEvent = async function (context = {}) {
           const params = parseVideoParams(content.params);
           await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
           if (content.href && typeof api.sendVideo === "function") {
-            await api.sendVideo({
+            await sendAntiAction(api, "sendVideo", {
               videoUrl: content.href,
               thumbnailUrl: content.thumb,
               duration: Number(params.duration) || 0,
@@ -311,7 +521,7 @@ module.exports.handleEvent = async function (context = {}) {
           const content = cached.content || {};
           await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
           if (typeof api.sendSticker === "function") {
-            await api.sendSticker({
+            await sendAntiAction(api, "sendSticker", {
               id: content.id,
               cateId: content.catId ?? content.cateId,
               type: content.type
@@ -323,7 +533,7 @@ module.exports.handleEvent = async function (context = {}) {
           const voiceUrl = cached.content?.href;
           await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
           if (voiceUrl && typeof api.sendVoice === "function") {
-            await api.sendVoice({ voiceUrl }, threadId, ThreadType.Group);
+            await sendAntiAction(api, "sendVoice", { voiceUrl }, threadId, ThreadType.Group);
           }
           break;
         }
@@ -332,13 +542,13 @@ module.exports.handleEvent = async function (context = {}) {
           const href = content.href || "";
           if (content.action === "recommended.link" && typeof api.sendLink === "function") {
             const title = String(content.title || "").replace(href, "").trim();
-            await api.sendLink({
+            await sendAntiAction(api, "sendLink", {
               msg: formatUndoMessage(name, timeSend, timeUndo, title),
               link: href
             }, threadId, ThreadType.Group);
           } else if (content.action === "recommended.user" && typeof api.sendCard === "function") {
             await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
-            await api.sendCard({ userId: content.params }, threadId, ThreadType.Group);
+            await sendAntiAction(api, "sendCard", { userId: content.params }, threadId, ThreadType.Group);
           }
           break;
         }
@@ -356,7 +566,7 @@ module.exports.handleEvent = async function (context = {}) {
           }
           const tempFilePath = path.join(tempPath, fileName);
           await fs.writeFile(tempFilePath, response.body);
-          await api.sendMessage({
+          await sendAntiMessage(api, {
             msg: formatUndoMessage(name, timeSend, timeUndo, cached.content.title || ""),
             attachments: [tempFilePath]
           }, threadId, ThreadType.Group);
@@ -393,14 +603,19 @@ module.exports.handleEvent = async function (context = {}) {
             if (moderation.explicit) {
               let deleteError = null;
               let kickError = null;
-              try { await deleteGroupMessage(api, event); }
+              const botAuthored = await isBotAuthoredMessage(api, event);
+              try { await deleteGroupMessage(api, event, { isBotMessage: botAuthored }); }
               catch (error) { deleteError = error; }
-              try { await kickGroupMember(api, userId, threadId); }
-              catch (error) { kickError = error; }
+              // Self-test mode must never remove the bot account from its own group.
+              if (!botAuthored) {
+                try { await kickGroupMember(api, userId, threadId); }
+                catch (error) { kickError = error; }
+              }
 
               const actions = [];
-              actions.push(deleteError ? "chưa xóa được ảnh" : "đã xóa ảnh");
-              actions.push(kickError ? "chưa kick được thành viên" : "đã kick thành viên");
+              actions.push(deleteError ? "chưa thu hồi/xóa được ảnh" : (botAuthored ? "đã thu hồi ảnh thử nghiệm" : "đã xóa ảnh"));
+              if (botAuthored) actions.push("bỏ qua kick tài khoản bot khi tự kiểm tra");
+              else actions.push(kickError ? "chưa kick được thành viên" : "đã kick thành viên");
               return sendNotice(
                 "⛔ AI phát hiện ảnh vi phạm (điểm sexual " +
                 Math.round(moderation.score * 100) + "%). {member}: " +
@@ -533,7 +748,13 @@ module.exports._test = {
   getImageUrl,
   isPhotoMessage,
   isStickerMessage,
+  shouldSkipSelfEvent,
+  isAntiGeneratedSelfEcho,
+  rememberAntiSelfEcho,
+  clearAntiSelfEchoes: () => antiSelfEchoes.clear(),
   buildDeleteDestination,
+  isBotAuthoredMessage,
+  deleteGroupMessage,
   kickGroupMember
 };
 
