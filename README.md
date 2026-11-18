@@ -588,3 +588,7 @@ npm run tui
 - **System Monitor:** CPU, RAM, disk, network, Node.js và uptime.
 
 Điều khiển bằng phím mũi tên hoặc `j/k`, `Enter`, `N` tạo bot, `Q` thoát. TUI cần Terminal tương tác; không chạy TUI trong tiến trình Render web service. Web Panel vẫn hoạt động độc lập như trước.
+
+## STK Discord Decorations API
+
+The `/stk` command can browse the cached Discord avatar decoration catalog, search by keyword, apply a decoration by ID, or choose a random decoration. API documentation: [docs/STK-DECORATIONS-API.md](docs/STK-DECORATIONS-API.md).
