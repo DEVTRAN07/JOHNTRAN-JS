@@ -245,6 +245,8 @@ function stats() {
       failed: lane.failed,
       rejected: lane.rejected,
       retried: lane.retried,
+      waitCount: lane.waitCount,
+      runCount: lane.runCount,
       avgWaitMs: lane.waitCount ? Number((lane.waitTotalMs / lane.waitCount).toFixed(2)) : 0,
       maxWaitMs: lane.waitMaxMs,
       avgRunMs: lane.runCount ? Number((lane.runTotalMs / lane.runCount).toFixed(2)) : 0,
