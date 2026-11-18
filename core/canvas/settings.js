@@ -10,15 +10,6 @@ const S = theme.S;
 const W = theme.WIDTH;
 const PAD = 28;
 
-function safeText(ctx, value, maxWidth) {
-  let result = theme.sanitizeGlyphs(String(value == null ? "" : value));
-  if (!maxWidth || ctx.measureText(result).width <= maxWidth) return result;
-  while (result.length > 1 && ctx.measureText(result + "…").width > maxWidth) {
-    result = result.slice(0, -1);
-  }
-  return result + "…";
-}
-
 function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
   ctx.shadowColor = "rgba(0,5,16,.82)";
