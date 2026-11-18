@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
+const { ThreadType } = require("zalo-client");
 
 const noituPath = require.resolve("../plugins/commands/noitu");
 const tlmnPath = require.resolve("../plugins/commands/tlmn");
@@ -60,6 +61,24 @@ test("plain text messages reach TLMN after Nối Từ declines them", async () =
   assert.equal(calls.tlmn[0].Users, Users);
   assert.equal(calls.tlmn[0].Threads, Threads);
   assert.equal(calls.tlmn[0].isSelf, false);
+});
+
+test("private messages skip group-only game dispatch entirely", async () => {
+  calls.noitu.length = 0;
+  calls.tlmn.length = 0;
+  global.config = { allow_self_command: true };
+
+  const consumed = await listener.dispatchActiveGameMessage({
+    api: {},
+    event: { type: ThreadType.User, threadId: "user-1", data: { uidFrom: "player-1", content: "hello" } },
+    Users: {},
+    Threads: {},
+    isSelf: false
+  });
+
+  assert.equal(consumed, false);
+  assert.equal(calls.noitu.length, 0);
+  assert.equal(calls.tlmn.length, 0);
 });
 
 test("self-account plain text is ignored unless allow_self_command is enabled", async () => {
