@@ -43,6 +43,10 @@ function healthPayload() {
   };
 }
 
+function stopEventLoopMonitor() {
+  eventLoopHistogram.disable();
+}
+
 function getEventLoopMetrics() {
   const toMs = value => Number.isFinite(value) ? Number((value / 1e6).toFixed(2)) : 0;
   const snapshot = {
@@ -139,4 +143,4 @@ function startHealthServer() {
   return server;
 }
 
-module.exports = { startHealthServer, healthPayload, requestHandler };
+module.exports = { startHealthServer, healthPayload, requestHandler, stopEventLoopMonitor };
