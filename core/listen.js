@@ -15,7 +15,6 @@ const {
 const Threads = require("./controller/controllerThreads");
 const Users = require("./runtime/services/userService");
 const panelBridge = require("./panelBridge");
-const { getRequesterProfile } = require("./runtime/requesterProfile");
 const { vietnamDateKey, isGroupMessage } = require("./topchat/stats");
 const {
   HISTORY_PAGE_DELAY_MS,
@@ -266,12 +265,6 @@ function startListening(api) {
 
     // Every group starts OFF. Only /bot on and /bot status pass until enabled.
     if (isGroupThread && !groupBotEnabled && !(canRunCommand && isBotControlCommand)) return;
-
-    // OFF groups do not trigger profile/avatar lookups. Active groups and
-    // private conversations retain the single-flight TTL-cached prefetch.
-    if (groupBotEnabled && !event.isSelf && event?.data?.uidFrom) {
-      void getRequesterProfile(api, event).catch(() => {});
-    }
 
     const dispatchMessageEvents = (dispatchOptions = {}) => {
       if (isGroupThread && !groupBotEnabled) return;

@@ -1,6 +1,7 @@
 // Tự động kick thành viên vi phạm từ cấm (lưu theo nhóm trong DB)
 const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
 const { runThreadQueue } = require("../../core/runtime/threadQueue");
+const { ThreadType } = require("zalo-client");
 
 module.exports.config = {
   name: "autokick",
@@ -13,7 +14,8 @@ module.exports.config = {
   category: "Nhóm",
   usage: "autokick [on|off|add|del|list]",
   cooldowns: 2,
-  dependencies: {}
+  dependencies: {},
+  event_type: ["message"]
 };
 
 async function getConfig(threadId) {
@@ -93,31 +95,55 @@ module.exports.run = async function ({ api, event, args }) {
   }, threadId, type);
 };
 
-module.exports.handleEvent = async function ({ api, event, Threads }) {
-  const { threadId, type, data } = event;
+async function readThreadData(Threads, threadId) {
+  let record = null;
+  try { record = Threads?.getCachedData?.(String(threadId)) || null; } catch {}
+  if (!record) record = await Threads.getData(threadId);
+  return record?.data || record || {};
+}
+
+function findMatchingWord(words, content) {
+  if (!Array.isArray(words) || !content) return null;
+  return words.find(word => String(word || "").trim() &&
+    new RegExp(`(^|\\s)${escapeRegExp(word)}(\\s|$)`, "i").test(content)
+  ) || null;
+}
+
+module.exports.handleEvent = async function ({
+  api, event, Threads, eventType = "message", isSelf = false
+} = {}) {
+  if (eventType !== "message" || isSelf || event?.isSelf) return;
+  const { threadId, type, data } = event || {};
+  if (!threadId || (type !== ThreadType.Group && type !== 1)) return;
+
   const content = String(data?.content || "").toLowerCase();
   const uid = String(data?.uidFrom || "");
-  if (!threadId || !uid || !content) return;
+  if (!uid || !content) return;
 
-  const botAdmins = (global.users?.admin || []).map(String);
-  const supports = (global.users?.support || []).map(String);
-  if (botAdmins.includes(uid) || supports.includes(uid)) return;
+  const botAdmins = new Set((global.users?.admin || []).map(String));
+  const supports = new Set((global.users?.support || []).map(String));
+  if (botAdmins.has(uid) || supports.has(uid)) return;
+
+  // Most messages stop here: no admin API call and no serialized group lock.
+  const snapshot = await readThreadData(Threads, threadId);
+  const currentAutoKick = snapshot.auto_kick;
+  if (!currentAutoKick?.enabled || !Array.isArray(currentAutoKick.words) ||
+      currentAutoKick.words.length === 0) return;
+  const candidate = findMatchingWord(currentAutoKick.words, content);
+  if (!candidate) return;
+
+  // Verify group role only after the message actually matches a configured word.
   if (await getGroupAdminState(api, threadId, uid) !== false) return;
 
   return runThreadQueue(threadId, async () => {
-    const record = await Threads.getData(threadId);
-    const groupData = { ...(record?.data || {}) };
+    const groupData = { ...(await readThreadData(Threads, threadId)) };
     const autoKick = {
       ...(groupData.auto_kick || {}),
       words: Array.isArray(groupData.auto_kick?.words) ? [...groupData.auto_kick.words] : [],
       violations: { ...(groupData.auto_kick?.violations || {}) }
     };
-    if (!autoKick.enabled || autoKick.words.length === 0) return;
-
-    const found = autoKick.words.find(word =>
-      new RegExp(`(^|\\s)${escapeRegExp(word)}(\\s|$)`, "i").test(content)
-    );
-    if (!found) return;
+    const found = findMatchingWord(autoKick.words, content);
+    if (!autoKick.enabled || !found) return;
 
     const currentWarnings = Math.min(3, Math.max(0, Math.floor(Number(autoKick.violations[uid]) || 0)));
     const save = Threads.setDataAndWait || Threads.setData;
@@ -132,8 +158,6 @@ module.exports.handleEvent = async function ({ api, event, Threads }) {
       }, threadId, type);
     }
 
-    // Keep the three warnings while retrying the kick. A failed API call must
-    // not reset or inflate the counter and the next offence retries the kick.
     autoKick.violations[uid] = 3;
     groupData.auto_kick = autoKick;
     try {

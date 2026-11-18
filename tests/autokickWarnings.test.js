@@ -10,9 +10,10 @@ function makeFixture(removeUserFromGroup) {
   const groupData = {
     auto_kick: { enabled: true, words: ["spamword"], violations: {} }
   };
-  const calls = { kicked: [], sent: [] };
+  const calls = { kicked: [], sent: [], groupInfo: 0 };
   const api = {
     async getGroupInfo(gid) {
+      calls.groupInfo++;
       return {
         gridInfoMap: {
           [gid]: { creatorId: "owner", adminIds: ["bot-id"] }
@@ -29,6 +30,7 @@ function makeFixture(removeUserFromGroup) {
     }
   };
   const Threads = {
+    getCachedData() { return { data: groupData }; },
     async getData() { return { data: groupData }; },
     async setDataAndWait(_gid, next) {
       for (const key of Object.keys(groupData)) delete groupData[key];
@@ -105,6 +107,22 @@ test("autokick treats regular-expression punctuation literally in banned words",
     await violate(fixture, 2, "promo.code");
     assert.equal(fixture.calls.sent.length, 1, "the exact configured word should be detected");
     assert.equal(fixture.groupData.auto_kick.violations["member-id"], 1);
+  } finally {
+    if (previousUsers === undefined) delete global.users;
+    else global.users = previousUsers;
+  }
+});
+
+
+test("autokick does not call Zalo group-admin API for ordinary non-matching messages", async () => {
+  const previousUsers = global.users;
+  global.users = { admin: [], support: [] };
+  const fixture = makeFixture();
+  try {
+    await violate(fixture, 99, "xin chao moi nguoi");
+    assert.equal(fixture.calls.groupInfo, 0, "non-matching text must stop before group-admin lookup");
+    assert.equal(fixture.calls.sent.length, 0);
+    assert.equal(fixture.calls.kicked.length, 0);
   } finally {
     if (previousUsers === undefined) delete global.users;
     else global.users = previousUsers;

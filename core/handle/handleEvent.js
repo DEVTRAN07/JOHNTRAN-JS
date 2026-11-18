@@ -82,11 +82,21 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
   const sources = getDispatchSources(
     eventType, eventData, isSelf, global.client?.events, global.client?.commands
   );
-  const commandSources = dispatchOptions.skipAnti === true
-    ? new Map([...sources.commands].filter(([name, command]) =>
-        String(name).toLowerCase() !== "anti" &&
-        String(command?.config?.name || "").toLowerCase() !== "anti"
-      ))
+  const skipAntiHandler = dispatchOptions.skipAnti === true;
+  const skipNoituHandler = dispatchOptions.skipGameConsumers === true;
+  const commandSources = skipAntiHandler || skipNoituHandler
+    ? new Map([...sources.commands].filter(([name, command]) => {
+        const key = String(name || command?.config?.name || "").toLowerCase();
+        if (skipAntiHandler && (key === "anti" || String(command?.config?.name || "").toLowerCase() === "anti")) {
+          return false;
+        }
+        // The listener already ran the active-game consumer before dispatching
+        // passive message plugins. Do not invoke the same Nối Từ consumer twice.
+        if (skipNoituHandler && (key === "noitu" || String(command?.config?.name || "").toLowerCase() === "noitu")) {
+          return false;
+        }
+        return true;
+      }))
     : sources.commands;
 
   return dispatchEvent({

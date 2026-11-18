@@ -30,7 +30,8 @@ module.exports.config = {
   category: "Game",
   usage: "nt [go|classic|gc|q|room|bxh|check|words|on|off|reset]",
   cooldowns: 0,
-  dependencies: {}
+  dependencies: {},
+  event_type: ["message"]
 };
 
 const isAdmin = uid => (global.users?.admin || []).map(String).includes(String(uid));

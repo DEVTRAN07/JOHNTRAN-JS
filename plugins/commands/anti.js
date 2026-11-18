@@ -139,7 +139,8 @@ module.exports.config = {
   category: "Anti",
   usage: "anti [link|undo|spam] [on|off]",
   preferCommandOnBare: true,
-  cooldowns: 2
+  cooldowns: 2,
+  event_type: ["message", "undo", "reaction", "group_event"]
 };
 
 const baseUndoMsg = `👤 {name} đã thu hồi tin nhắn sau...\n` +
@@ -669,6 +670,15 @@ async function enforceAntiViolation({ api, event, Threads, sendNotice, userId, r
   return { consumed: true, moderated: true };
 }
 
+function getRelevantAntiProtectionKeys(eventType) {
+  if (eventType === "group_event") return ["anti_join"];
+  if (eventType === "reaction") return ["anti_reaction"];
+  if (eventType === "undo") return ["anti_undo"];
+  return ANTI_PROTECTION_KEYS.filter(key =>
+    key !== "anti_join" && key !== "anti_reaction" && key !== "anti_undo"
+  );
+}
+
 async function handleAntiEvent(context = {}) {
   const event = context.event || {};
   // Legacy direct callers historically passed only event/api/Threads.
@@ -705,15 +715,6 @@ async function handleAntiEvent(context = {}) {
     return;
   }
 
-  // Anti requires the BOT account to be a verified group owner/deputy.
-  // This is independent from the sender: admins and the bot account itself are still moderated.
-  let botRole = "unknown";
-  try { botRole = await getBotGroupRole(api, threadId); }
-  catch (error) { logAntiSkip(threadId, "không xác minh được key QTV của bot: " + (error?.message || error)); return; }
-  if (botRole !== "owner" && botRole !== "deputy") {
-    logAntiSkip(threadId, "tài khoản bot chưa được xác minh là trưởng/phó nhóm (role=" + botRole + ")");
-    return;
-  }
   if (typeof Threads?.getCachedData !== "function" &&
       typeof Threads?.getData !== "function") return;
 
@@ -740,7 +741,17 @@ async function handleAntiEvent(context = {}) {
     return;
   }
 
-  if (!ANTI_PROTECTION_KEYS.some(key => threadData[key] === true)) return;
+  const relevantKeys = getRelevantAntiProtectionKeys(eventType);
+  if (!relevantKeys.some(key => threadData[key] === true)) return;
+
+  // Only groups with the matching protection enabled need a live bot-key check.
+  let botRole = "unknown";
+  try { botRole = await getBotGroupRole(api, threadId); }
+  catch (error) { logAntiSkip(threadId, "không xác minh được key QTV của bot: " + (error?.message || error)); return; }
+  if (botRole !== "owner" && botRole !== "deputy") {
+    logAntiSkip(threadId, "tài khoản bot chưa được xác minh là trưởng/phó nhóm (role=" + botRole + ")");
+    return;
+  }
 
   // Anti rules apply uniformly to every human group member, including
   // the group owner and deputies. QTV privilege is enforced only by the
@@ -1426,5 +1437,18 @@ module.exports.run = async function ({ api, event, args, Threads }) {
 module.exports.handleEvent = function (context = {}) {
   const threadId = String(context.event?.threadId || "");
   if (!threadId) return Promise.resolve();
+
+  // Hot cached settings let us skip queueing and all role/API checks when the
+  // relevant Anti protection is OFF for this kind of event.
+  try {
+    const record = context.Threads?.getCachedData?.(threadId);
+    if (record) {
+      const source = record?.data || record;
+      const eventType = context.eventType || "message";
+      const relevantKeys = getRelevantAntiProtectionKeys(eventType);
+      if (!relevantKeys.some(key => source?.[key] === true)) return Promise.resolve();
+    }
+  } catch { /* the serialized path below retains the safe fallback */ }
+
   return runThreadQueue(threadId, () => handleAntiEvent(context));
 };

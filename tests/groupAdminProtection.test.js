@@ -7,8 +7,10 @@ const autokick = require("../plugins/commands/autokick");
 const guard = require("../plugins/events/guard");
 
 test("group-admin lookup distinguishes creator, deputy and ordinary member", async () => {
+  let lookupCount = 0;
   const api = {
     async getGroupInfo() {
+      lookupCount++;
       return { gridInfoMap: { group: { creatorId: 1, adminIds: [2, "3"] } } };
     }
   };
@@ -16,6 +18,7 @@ test("group-admin lookup distinguishes creator, deputy and ordinary member", asy
   assert.equal(await getGroupAdminState(api, "group", 2), true);
   assert.equal(await getGroupAdminState(api, "group", 3), true);
   assert.equal(await getGroupAdminState(api, "group", "member"), false);
+  assert.equal(lookupCount, 1, "one group-info request should serve all checks in the short cache window");
 });
 
 test("group-admin lookup returns unknown for partial metadata or API failures", async () => {

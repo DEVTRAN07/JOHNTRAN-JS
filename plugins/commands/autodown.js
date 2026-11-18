@@ -14,7 +14,8 @@ module.exports.config = {
   category: "Tiện ích",
   usage: "autodown on|off|status",
   cooldowns: 3,
-  dependencies: {}
+  dependencies: {},
+  event_type: ["message"]
 };
 
 const DEFAULTS = {
@@ -466,21 +467,25 @@ module.exports.handleEvent = async function ({ api, event, eventType, isSelf, Th
 
     if (isCommandMessage(event?.data?.content, event)) return;
 
-    const threadData = (await Threads.getData(threadId)).data || {};
+    // Cheap reject path: ordinary text and unsupported URLs must not touch
+    // Supabase/Thread storage or reserve a download slot.
+    const urls = extractUrls(event?.data?.content, event);
+    if (!urls.length) return;
+    const supportedPlatforms = new Set(["tiktok", "facebook", "instagram", "youtube", "twitter"]);
+    const supportedUrls = urls.filter(url => supportedPlatforms.has(detectPlatform(url)));
+    if (!supportedUrls.length) return;
+
+    let record = null;
+    try { record = Threads?.getCachedData?.(threadId) || null; } catch {}
+    if (!record) record = await Threads.getData(threadId);
+    const threadData = record?.data || record || {};
     const enabled = threadData?.autodown === true || threadData?.autodown?.enabled === true;
     if (!enabled) return;
 
-    const urls = extractUrls(event?.data?.content, event);
-    if (!urls.length) return;
-
     let eventErrorSent = false;
-    let attemptedSupported = false;
 
-    for (const rawUrl of urls) {
+    for (const rawUrl of supportedUrls) {
       const platform = detectPlatform(rawUrl);
-      const supported = ["tiktok", "facebook", "instagram", "youtube", "twitter"].includes(platform);
-      if (!supported) continue;
-      attemptedSupported = true;
 
       const key = `${platform}:${urlKey(rawUrl)}`;
       const cached = cacheGet(key);
@@ -525,7 +530,6 @@ module.exports.handleEvent = async function ({ api, event, eventType, isSelf, Th
       }
     }
 
-    void attemptedSupported;
   } catch (err) {
     try { console.error("[autodown.handleEvent]", err?.message || err); } catch {}
   }

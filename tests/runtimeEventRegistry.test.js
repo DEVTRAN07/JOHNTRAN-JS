@@ -67,3 +67,32 @@ test("listener registration can be claimed only once per API instance", () => {
   assert.equal(claimListenerRegistration({}), true);
   assert.equal(claimListenerRegistration(null), false);
 });
+
+
+test("command event handlers run only for their declared event types", async () => {
+  const called = [];
+  const events = new Map();
+  const commands = new Map([
+    ["anti", { config: { event_type: ["message", "reaction", "undo", "group_event"] }, handleEvent() {} }],
+    ["autodown", { config: { event_type: ["message"] }, handleEvent() {} }],
+    ["autokick", { config: { event_type: ["message"] }, handleEvent() {} }],
+    ["legacy", { handleEvent() {} }]
+  ]);
+
+  const reaction = dispatchEvent({
+    events, commands, eventType: "reaction",
+    onCommandModule: async (_module, name) => { called.push(name); }
+  });
+  assert.equal(reaction.commandModules, 2, "Anti and untyped legacy handlers match reaction");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(called, ["anti", "legacy"]);
+
+  called.length = 0;
+  const message = dispatchEvent({
+    events, commands, eventType: "message",
+    onCommandModule: async (_module, name) => { called.push(name); }
+  });
+  assert.equal(message.commandModules, 4);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(called, ["anti", "autodown", "autokick", "legacy"]);
+});

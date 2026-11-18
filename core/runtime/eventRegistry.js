@@ -27,7 +27,11 @@ function buildRegistry(events, commands) {
   if (commands && typeof commands[Symbol.iterator] === "function") {
     for (const [name, module] of commands) {
       if (typeof module?.handleEvent === "function") {
-        commandHandlers.push({ name, module });
+        const configuredTypes = module?.config?.event_type;
+        const eventTypes = Array.isArray(configuredTypes)
+          ? new Set(configuredTypes.filter(type => typeof type === "string" && type))
+          : null;
+        commandHandlers.push({ name, module, eventTypes });
       }
     }
   }
@@ -69,7 +73,10 @@ function dispatchEvent({
       .catch((error) => onError(error, "event", entry.name));
   }
 
+  let commandModules = 0;
   for (const entry of registry.commandHandlers) {
+    if (entry.eventTypes && !entry.eventTypes.has(eventType)) continue;
+    commandModules++;
     Promise.resolve()
       .then(() => onCommandModule?.(entry.module, entry.name))
       .catch((error) => onError(error, "command", entry.name));
@@ -77,7 +84,7 @@ function dispatchEvent({
 
   return {
     eventModules: eventModules.length,
-    commandModules: registry.commandHandlers.length
+    commandModules
   };
 }
 

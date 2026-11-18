@@ -1,6 +1,7 @@
 "use strict";
 
 const { TRIT, fromBoolean, isTrue } = require("../trit");
+const { getGroupAdminState } = require("../groupAdmin");
 
 /**
  * Permission checks used by the command pipeline.
@@ -64,44 +65,29 @@ function checkGroupPermissions({
   isSupport = false,
   logger = console
 } = {}) {
-  // Most commands take this fast path: no API request and no Promise.
+  // Most commands take this synchronous path: no API request and no Promise.
   if (!isGroup || !threadInfo?.box_only || isBotAdmin) {
     return evaluateGroupPermissions({ isGroup, threadInfo, isBotAdmin, isSupport });
   }
 
-  let groupInfoRequest;
-  try {
-    groupInfoRequest = api.getGroupInfo(threadId);
-  } catch (error) {
-    logger.log?.("Không thể lấy thông tin nhóm từ API: " + error.message, "warn");
-    return evaluateGroupPermissions({
-      isGroup, threadInfo, isBotAdmin, isSupport, groupAdminState: TRIT.UNKNOWN
+  const applyGroupAdminState = state => evaluateGroupPermissions({
+    isGroup,
+    threadInfo,
+    isBotAdmin,
+    isSupport,
+    groupAdminState: state === true
+      ? TRIT.TRUE
+      : state === false ? TRIT.FALSE : TRIT.UNKNOWN
+  });
+
+  // The short-lived per-session cache also coalesces simultaneous command
+  // checks that need the same group's creator/deputy list.
+  return getGroupAdminState(api, threadId, UIDUsage)
+    .then(applyGroupAdminState)
+    .catch(error => {
+      logger.log?.("Không thể lấy thông tin nhóm từ API: " + (error?.message || error), "warn");
+      return applyGroupAdminState(null);
     });
-  }
-
-  const applyGroupInfo = (info) => {
-    const groupInfo = info?.gridInfoMap?.[threadId];
-    return evaluateGroupPermissions({
-      isGroup,
-      threadInfo,
-      isBotAdmin,
-      isSupport,
-      groupAdminState: resolveGroupAdminState(groupInfo, UIDUsage)
-    });
-  };
-
-  if (groupInfoRequest && typeof groupInfoRequest.then === "function") {
-    return Promise.resolve(groupInfoRequest)
-      .then(applyGroupInfo)
-      .catch((error) => {
-        logger.log?.("Không thể lấy thông tin nhóm từ API: " + error.message, "warn");
-        return evaluateGroupPermissions({
-          isGroup, threadInfo, isBotAdmin, isSupport, groupAdminState: TRIT.UNKNOWN
-        });
-      });
-  }
-
-  return applyGroupInfo(groupInfoRequest);
 }
 
 module.exports = {
