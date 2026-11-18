@@ -30,6 +30,7 @@ const fs = require("fs");
 const path = require("path");
 const MAX_PER_THREAD = 200;
 const MAX_THREADS = 30;
+const MAX_PANEL_MESSAGE_TEXT_LENGTH = 1200;
 const CACHE_FILE = path.join(__dirname, "..", "data", "panel_chat.json");
 // Zalo không trả memberIds cho nhóm lớn → người dùng tự đánh dấu
 // nhóm bot CẦM KEY qua Panel. File được cache ngắn hạn trong tiến trình bot.
@@ -104,7 +105,12 @@ function record(threadId, message) {
   const key = String(threadId);
   const list = ring.get(key) || [];
   touchThread(key, list);
-  list.push({ ts: Date.now(), ...message });
+  const safeMessage = { ...(message || {}) };
+  if (typeof safeMessage.text === "string" &&
+      safeMessage.text.length > MAX_PANEL_MESSAGE_TEXT_LENGTH) {
+    safeMessage.text = safeMessage.text.slice(0, MAX_PANEL_MESSAGE_TEXT_LENGTH - 1) + "…";
+  }
+  list.push({ ts: Date.now(), ...safeMessage });
   if (list.length > MAX_PER_THREAD) list.splice(0, list.length - MAX_PER_THREAD);
   schedulePersist();
 }

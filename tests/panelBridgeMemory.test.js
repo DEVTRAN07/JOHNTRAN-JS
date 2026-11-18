@@ -30,3 +30,13 @@ test("panel chat memory keeps only the latest 200 messages per conversation", ()
   assert.equal(messages[0].text, "message-5");
   assert.equal(messages[messages.length - 1].text, "message-204");
 });
+
+
+test("panel chat preview caps long message text before it enters the persisted ring", () => {
+  const { MAX_PANEL_MESSAGE_TEXT_LENGTH } = require("../core/panelBridge");
+  const threadId = "panel-long-message-" + process.pid + "-" + Date.now();
+  record(threadId, { text: "x".repeat(MAX_PANEL_MESSAGE_TEXT_LENGTH * 20) });
+  const [message] = getMessages(threadId, 1);
+  assert.equal(message.text.length, MAX_PANEL_MESSAGE_TEXT_LENGTH);
+  assert.ok(message.text.endsWith("…"));
+});
