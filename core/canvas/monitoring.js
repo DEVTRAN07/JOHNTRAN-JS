@@ -105,12 +105,17 @@ function renderStatsCard(data = {}) {
   const top = (data.topCommands || []).slice(0, 5).map((v, i) => ({ left: (i + 1) + ". " + v[0], right: v[1] + " lần" }));
   const slow = (data.slowCommands || []).slice(0, 5).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
   const handlers = (data.slowHandlers || []).slice(0, 5).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
+  const firstResponses = (data.firstResponses || []).slice(0, 5).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
+  const zaloSend = data.zaloSend || {};
+  const sendRows = zaloSend.count ? [{ left: "Zalo send RTT", right: "P95 " + milliseconds(zaloSend.p95Ms) }] : [];
   const caches = (data.caches || []).slice(0, 10);
   const topH = sectionHeight(top.length), slowH = sectionHeight(Math.max(slow.length, handlers.length), 26);
+  const responseH = sectionHeight(Math.max(firstResponses.length, sendRows.length), 26);
   const cacheH = S(42 + Math.max(1, Math.ceil(caches.length / 2)) * 39 + 13);
   let y = 96;
   const metricY = y; y += 95;
   const activityY = y; y += 62;
+  const responseY = y; y += responseH + 12;
   const topY = y; y += topH + 12;
   const slowY = y; y += slowH + 12;
   const cacheY = y; y += cacheH + 42;
@@ -130,6 +135,8 @@ function renderStatsCard(data = {}) {
       text(ctx, v[0], x + S(12), S(activityY + 19), 8, p.muted, true);
       text(ctx, String(v[1]), x + S(12), S(activityY + 38), 13, p.text, true);
     });
+  compactSection(ctx, S(PAD), S(responseY), halfWidth(full), "PHẢN HỒI ĐẦU TIÊN", firstResponses, p);
+  compactSection(ctx, S(PAD) + halfWidth(full) + S(10), S(responseY), halfWidth(full), "ZALO SEND RTT", sendRows, p);
   listSection(ctx, S(PAD), S(topY), full, "TOP LỆNH", top, p, "TẦN SUẤT SỬ DỤNG", "Chưa có dữ liệu");
   const half = (full - S(10)) / 2;
   compactSection(ctx, S(PAD), S(slowY), half, "LỆNH CHẬM · TOÀN BỘ", slow, p);
