@@ -25,7 +25,7 @@ const attachmentUrlType = {
 function isCanvasImageAttachment(source) {
     const rawName = typeof source == "string" ? source : source?.filename;
     const fileName = String(rawName || "").split(/[\\/]/).pop();
-    return /^jt_.+_\\d+_[a-z0-9]{4}\\.png$/i.test(fileName);
+    return /^jt_.+_\d+_[a-z0-9]{4}\.png$/i.test(fileName);
 }
 function photoQualityMetadata(isOriginal) {
     return isOriginal
@@ -33,7 +33,7 @@ function photoQualityMetadata(isOriginal) {
             is_original: 1,
             jcp: JSON.stringify({ is_original: 1, isOriginal: 1 }),
         }
-        : { jcp: '{\\"convertible\\":\\"jxl\\"}' };
+        : { jcp: JSON.stringify({ convertible: "jxl" }) };
 }
 function prepareQMSGAttach(quote) {
     const quoteData = quote;
