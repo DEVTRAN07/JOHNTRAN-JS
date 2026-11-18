@@ -220,7 +220,6 @@ function startListening(api) {
 
   // ===== Xử lý 1 tin nhắn (dùng chung cho realtime và backfill sau reconnect) =====
   const onMessage = async (event, options = {}) => {
-    if (options.skipCommandExecution !== true) messageTiming.markReceived(event);
     // allow_private_command: false → bỏ qua HOÀN TOÀN tin riêng (cả lệnh lẫn auto-reply)
     if (event.type === ThreadType.User && global.config.allow_private_command === false) {
       return;
@@ -362,6 +361,7 @@ function startListening(api) {
   };
 
   const handleIncoming = (event, options = {}) => {
+    if (options.skipCommandExecution !== true) messageTiming.markReceived(event);
     // Observe the raw SDK event before duplicate/self filters so /topchat can
     // distinguish "listener received nothing" from "self/duplicate was skipped".
     const topchatCounter = require("../plugins/events/topchatCounter");
