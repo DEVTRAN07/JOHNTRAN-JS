@@ -75,7 +75,7 @@ test("Guard removes Zalo group invite links including Markdown URLs and kicks on
       isSelf: false
     });
     assert.equal(fixture.calls.kicked.length, 0, "first three offences are warnings");
-    assert.equal(fixture.data.guardWarn_member-id, undefined);
+    assert.equal(fixture.data["guardWarn_member-id"], strike);
   }
   assert.equal(fixture.calls.deleted.length, 3);
   assert.equal(fixture.calls.sent.length, 3);
