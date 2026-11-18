@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const menuPalette = require("../../core/canvas/menuPalette");
+const brandTheme = require("../../core/canvas/brandTheme");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 
 module.exports.config = {
@@ -10,24 +11,24 @@ module.exports.config = {
   version: "2.0.0",
   role: 2,
   author: "JOHNTRAN",
-  description: "Chỉnh màu /menu và các thẻ thư mục",
+  description: "Đồng bộ theme cho menu và toàn bộ Canvas của bot",
   category: "Hệ thống",
-  usage: "theme [preset|#RRGGBB|reset]",
+  usage: "theme [preset|#RRGGBB|reset] (áp dụng toàn bộ Canvas)",
   cooldowns: 2,
   dependencies: { canvas: "" }
 };
 
 function buildText(current, presets) {
   return [
-    "🎨 THEME MENU · JOHNTRAN",
+    "🎨 JOHNTRAN · UNIFIED CANVAS THEME",
     "Đang dùng: " + current.label + " · " + current.accent,
     "",
     "Preset có sẵn:",
     ...presets.map(item => "• " + item.name + " — " + item.label + " (" + item.accent + ")"),
     "",
-    "Đổi theme: /theme ocean",
+    "Đổi theme toàn hệ thống: /theme ocean",
     "Màu tuỳ chỉnh: /theme #RRGGBB",
-    "Khôi phục mặc định: /theme reset",
+    "Khôi phục Blue Neon: /theme reset",
     "Chỉ quản trị viên bot được đổi theme."
   ].join("\n");
 }
@@ -39,7 +40,7 @@ function cleanupLater(filePath) {
 }
 
 async function sendThemeCard(api, event) {
-  const current = menuPalette.getThemeInfo();
+  const current = brandTheme.getThemeInfo();
   const presets = menuPalette.getPresetList();
   const fallback = buildText(current, presets);
   let imagePath;
@@ -67,7 +68,7 @@ module.exports.run = async function ({ api, event, args = [] }) {
       "✅ ĐÃ ĐỔI THEME THÀNH CÔNG",
       "Giao diện: " + selected.label,
       "Màu nhấn: " + selected.accent,
-      "Màu mới chỉ áp dụng cho /menu và các thẻ thư mục.",
+      "Màu mới đồng bộ cho /menu, folder, Anti, status, hồ sơ, nhạc và tất cả Canvas.",
       "Các Canvas khác giữ giao diện mặc định, không dùng ảnh nền theme.",
       "Dữ liệu theme được lưu lại sau khi bot khởi động lại."
     ].join("\n");
