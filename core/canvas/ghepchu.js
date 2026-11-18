@@ -428,7 +428,7 @@ async function renderGhepChu(data = {}) {
     // The master artwork remains recognizable, but no longer fully covers
     // the selected wallpaper beneath it.
     ctx.save();
-    ctx.globalAlpha = 0.64;
+    ctx.globalAlpha = 0.58;
     ctx.drawImage(template, 0, 0, WIDTH, HEIGHT);
     ctx.restore();
   } else drawFallbackTemplate(ctx);
