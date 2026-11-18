@@ -56,6 +56,7 @@ test("Discord STK compositor produces a transparent 288px WebP with a circular a
   const pixelAlpha = (x, y) => decoded.stdout[(y * 288 + x) * 4 + 3];
   assert.equal(pixelAlpha(0, 0), 0, "canvas corner remains transparent");
   assert.equal(pixelAlpha(144, 144), 255, "avatar centre remains opaque");
-  assert.ok(pixelAlpha(24, 24) > 0, "avatar is placed at the Python offset");
+  assert.equal(pixelAlpha(24, 144), 0, "avatar left edge begins at x=24");
+  assert.ok(pixelAlpha(36, 144) > 0, "avatar is placed at the Python offset");
   fs.rmSync(output.path, { force: true });
 });
