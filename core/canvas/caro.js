@@ -20,7 +20,9 @@ function drawText(ctx, value, x, y, scale, options = {}) {
   const size = Math.max(8, Math.round((options.size || 18) * scale));
   ctx.save();
   ctx.font = (options.weight || 600) + " " + size + "px " + (options.family || "Arial, sans-serif");
-  ctx.fillStyle = options.color || theme.PALETTE.ink2;
+  const requestedColor = options.color || theme.PALETTE.ink2;
+  ctx.fillStyle = [theme.PALETTE.accent, theme.PALETTE.accent2].includes(requestedColor)
+    ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : requestedColor;
   ctx.textAlign = options.align || "left";
   ctx.textBaseline = options.baseline || "alphabetic";
   ctx.shadowColor = options.shadow ? "rgba(0,0,0,.45)" : "transparent";
