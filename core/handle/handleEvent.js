@@ -88,10 +88,16 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
   const sources = getDispatchSources(
     eventType, eventData, isSelf, global.client?.events, global.client?.commands
   );
-  const eventSources = dispatchOptions.skipTopchatCounter === true
+  const skipTopchatCounter = dispatchOptions.skipTopchatCounter === true;
+  const skipGameEventModules = dispatchOptions.skipGameConsumers === true;
+  const eventSources = skipTopchatCounter || skipGameEventModules
     ? new Map([...sources.events].filter(([name, eventModule]) => {
         const key = String(name || eventModule?.config?.name || "").toLowerCase();
-        return key !== "topchatcounter";
+        if (skipTopchatCounter && key === "topchatcounter") return false;
+        // The listener already ran both game consumers before passive events.
+        // Keep Caro/Sâm event modules because they are not part of that fast path.
+        if (skipGameEventModules && (key === "noitu" || key === "tlmn")) return false;
+        return true;
       }))
     : sources.events;
   const skipAntiHandler = dispatchOptions.skipAnti === true;

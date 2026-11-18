@@ -8,6 +8,7 @@ const noituCommand = require("../plugins/commands/noitu");
 
 test("active Nối Từ event replies use the shared recall-clock wrapper", async () => {
   const originalHandler = noituCommand.handleEvent;
+  const originalHasActiveGame = noituCommand.hasActiveGameForThread;
   const originalSetTimeout = global.setTimeout;
   const scheduled = [];
   const reactions = [];
@@ -30,6 +31,7 @@ test("active Nối Từ event replies use the shared recall-clock wrapper", asyn
     async undo() {}
   };
 
+  noituCommand.hasActiveGameForThread = () => true; // simulate an active session
   noituCommand.handleEvent = async ({ api, event }) => {
     assert.notEqual(api, rawApi, "the early Nối Từ consumer must not receive the raw API");
     assert.equal(Object.prototype.hasOwnProperty.call(api, "sendMessage"), true);
@@ -64,6 +66,7 @@ test("active Nối Từ event replies use the shared recall-clock wrapper", asyn
     assert.ok(scheduled.some(timer => timer.delay === 1500), "the reply is still scheduled for recall");
   } finally {
     noituCommand.handleEvent = originalHandler;
+    noituCommand.hasActiveGameForThread = originalHasActiveGame;
     global.setTimeout = originalSetTimeout;
   }
 });

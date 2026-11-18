@@ -80,3 +80,45 @@ test("Nối Từ group setting check reuses a supplied thread snapshot", () => {
   }), false);
   assert.equal(cacheReads, 0);
 });
+
+
+test("handleEvent skips duplicate noitu/tlmn event wrappers after listener game dispatch", async () => {
+  const previousClient = global.client;
+  const Threads = require("../core/runtime/services/threadService");
+  const originalGetCachedData = Threads.getCachedData;
+  const snapshot = {
+    threadId: "handle-event-skip-games",
+    data: { bot_enabled: true }
+  };
+  const called = [];
+  const moduleFor = name => ({
+    config: { event_type: ["message"] },
+    async run() { called.push(name); }
+  });
+
+  Threads.getCachedData = () => {
+    throw new Error("listener snapshot should be reused");
+  };
+  global.client = {
+    events: new Map([
+      ["noitu", moduleFor("noitu")],
+      ["tlmn", moduleFor("tlmn")],
+      ["caro", moduleFor("caro")],
+      ["sam", moduleFor("sam")]
+    ]),
+    commands: new Map()
+  };
+
+  try {
+    await handleEvent("message", {
+      threadId: snapshot.threadId,
+      type: ThreadType.Group,
+      data: { uidFrom: "member-1", content: "hello" }
+    }, {}, false, { threadData: snapshot, skipGameConsumers: true });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(called, ["caro", "sam"]);
+  } finally {
+    global.client = previousClient;
+    Threads.getCachedData = originalGetCachedData;
+  }
+});
