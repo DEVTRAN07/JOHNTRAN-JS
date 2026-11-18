@@ -65,7 +65,7 @@ test("autokick gives three warnings and kicks only on the fourth matching messag
       await violate(fixture, strike);
       assert.equal(fixture.calls.kicked.length, 0);
       assert.equal(fixture.groupData.auto_kick.violations["member-id"], strike);
-      assert.match(fixture.calls.sent[strike - 1].payload.msg, new RegExp("cảnh cáo " + strike + "/3", "i"));
+      assert.match(fixture.calls.sent[strike - 1].payload.msg, new RegExp("lần " + strike + "/3", "i"));
     }
     await violate(fixture, 4);
     assert.equal(fixture.calls.kicked.length, 1);
