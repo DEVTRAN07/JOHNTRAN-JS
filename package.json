@@ -14,7 +14,8 @@
     "build:native": "node native/build.js",
     "tui": "node tui.js",
     "verify:deployment": "node scripts/verify-deployment.js",
-    "migrate:supabase": "node scripts/migrate-json-to-supabase.js"
+    "migrate:supabase": "node scripts/migrate-json-to-supabase.js",
+    "check:stk-assets": "node scripts/check-stk-assets.js"
   },
   "keywords": [
     "zalo",
