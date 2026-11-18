@@ -135,3 +135,25 @@ test("metrics expose bounded latency summaries per command", () => {
   assert.equal(metrics.getCommandLatencyStats(2)[1].avgMs, 30);
   metrics.dispose();
 });
+
+test("metrics isolate listener stages, first response and Zalo API latency", () => {
+  const backend = createFakeDb();
+  const metrics = createMetricsStore(backend, { flushDelayMs: 60000 });
+  const event = { threadId: "group-1", data: { cliMsgId: "message-1", msgId: "server-1" } };
+
+  assert.equal(metrics.trackIncomingMessage(event, 100), true);
+  assert.equal(metrics.trackFirstResponseLatency(event, 245), true);
+  assert.equal(metrics.trackFirstResponseLatency(event, 300), false);
+  metrics.trackListenerStageLatency("thread-data", 15);
+  metrics.trackListenerStageLatency("receive-to-command", 24);
+  metrics.trackZaloApiLatency("sendMessage", 80);
+  metrics.trackZaloApiLatency("addReaction", 120);
+
+  const firstResponse = metrics.getFirstResponseLatencyStats();
+  assert.equal(firstResponse.count, 1);
+  assert.equal(firstResponse.p50Ms, 145);
+  assert.equal(metrics.getListenerStageLatencyStats(5).length, 2);
+  assert.deepEqual(metrics.getZaloApiLatencyStats(5).map(item => item.command), ["addreaction", "sendmessage"]);
+  assert.equal(backend.writes.length, 0);
+  metrics.dispose();
+});
