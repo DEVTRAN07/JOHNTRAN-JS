@@ -246,15 +246,9 @@ module.exports.run = async function ({ api, event, args }) {
   }
 
   const quotedUrl = getQuotedMediaUrl(event);
-  const targetUid = getQuotedOwnerId(event);
-  let media;
-  try {
-    media = await resolveMediaSource(api, event, quotedUrl);
-  } catch (error) {
-    return safeSend(api, event, "⚠️ " + String(error?.message || error));
-  }
-  media.decorationId = options.decorationId;
 
+  // Emit the progress reaction/text before avatar lookup or media download,
+  // matching the immediate acknowledgement in the Python implementation.
   const profile = await getRequesterProfile(api, event, { skipAvatarWarm: true });
   const uid = getAuthorId(event);
   const tag = "@" + String(profile?.requesterName || "Bạn");
@@ -275,7 +269,11 @@ module.exports.run = async function ({ api, event, args }) {
   ].join(":");
 
   try {
-    await enqueue("sticker", () => processWithAvatarFallback(api, event, media), {
+    await enqueue("sticker", async () => {
+      const media = await resolveMediaSource(api, event, quotedUrl);
+      media.decorationId = options.decorationId;
+      return processWithAvatarFallback(api, event, media);
+    }, {
       key: jobKey,
       label: "STK Discord · #" + options.decorationId,
       retries: 0
