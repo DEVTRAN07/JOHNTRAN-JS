@@ -6,55 +6,37 @@ const { createCanvas, loadImage } = require("canvas");
 const { test } = require("node:test");
 const theme = require("../core/canvas/theme");
 const brandTheme = require("../core/canvas/brandTheme");
-const menuPalette = require("../core/canvas/menuPalette");
+const themeBackgrounds = require("../core/canvas/themeBackgrounds");
 const profileCard = require("../core/canvas/profileCard");
 const { renderCardToFile } = require("../core/canvas");
 const menuCanvas = require("../core/canvas/menu");
 const musicCanvas = require("../core/canvas/music");
 
-test("menu color themes are shared by every Canvas card", t => {
+test("photo themes change only the wallpaper while all Canvas cards keep one cyber palette", t => {
   theme.reload();
-  const directory = fs.mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "johntran-unified-canvas-theme-"));
-  const file = require("node:path").join(directory, "menu-theme.json");
-  const originalGetPalette = brandTheme.getPalette;
-  const originalSignature = brandTheme.signature;
-  t.after(() => {
-    brandTheme.getPalette = originalGetPalette;
-    brandTheme.signature = originalSignature;
-    brandTheme.clearCache?.(file);
-    theme.reload();
-    fs.rmSync(directory, { recursive: true, force: true });
-  });
-
-  // Point the shared theme resolver at an isolated temporary selection.
-  brandTheme.getPalette = () => originalGetPalette(file);
-  brandTheme.signature = () => originalSignature(file);
-  menuPalette.setTheme("purple", file);
-  theme.reload();
-
   const menu = menuCanvas._test.getMainMenuPalette();
   const card = theme.getCardPalette();
-  assert.equal(menuPalette.getThemeInfo(file).name, "purple");
-  assert.equal(theme.PALETTE.accent, "#c4a4ff");
-  assert.equal(theme.PALETTE.bg0, "#100b1d");
+  assert.equal(menu.label, "JOHNTRAN · Aurora Cyber");
+  assert.equal(menu.accent, "#62dcff");
   assert.equal(card.accent, menu.accent);
-  assert.equal(card.background[0], menu.background[0]);
   assert.deepEqual(card.panel, menu.panel);
   assert.deepEqual(card.card, menu.card);
-
-  // Switching themes changes menu and non-menu Canvas together.
-  menuPalette.setTheme("#12abef", file);
-  theme.reload();
-  assert.equal(menuCanvas._test.getMainMenuPalette().accent, "#12abef");
-  assert.equal(theme.getCardPalette().accent, "#12abef");
+  assert.equal(themeBackgrounds.normalizeSelection("1"), "1");
+  assert.equal(themeBackgrounds.normalizeSelection("2"), "2");
+  assert.equal(themeBackgrounds.normalizeSelection("3"), "3");
+  assert.equal(themeBackgrounds.normalizeSelection("reset"), "random");
 
   const source = fs.readFileSync(require.resolve("../core/canvas/theme"), "utf8");
+  const backgroundSource = fs.readFileSync(require.resolve("../core/canvas/themeBackgrounds"), "utf8");
   const legacyProfile = fs.readFileSync(require.resolve("../core/canvas/profile"), "utf8");
   const macWindow = fs.readFileSync(require.resolve("../core/canvas/macWindow"), "utf8");
-  assert.doesNotMatch(source, /^const menuPalette\s*=/m);
+  assert.match(source, /themeBackgrounds\.getActiveImage/);
+  assert.match(source, /globalCompositeOperation = "screen"/);
+  assert.match(backgroundSource, /hinh-nen-gai-xinh-sexy-27\.jpg/);
+  assert.match(backgroundSource, /hinh-nen-gai-xinh-sexy-18\.jpg/);
+  assert.match(backgroundSource, /hinh-nen-gai-xinh-sexy-16\.jpg/);
   assert.ok(!source.includes("BG_IMAGE"));
   assert.ok(!source.includes("theme.jpg"));
-  assert.ok(!source.includes("loadImage"));
   assert.ok(!macWindow.includes("menuPalette"));
   assert.ok(!macWindow.includes("theme.jpg"));
   assert.doesNotMatch(source, /withMacWindow/);
