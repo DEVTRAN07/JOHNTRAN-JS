@@ -7,6 +7,7 @@ const Threads = require("../runtime/services/threadService");
 const { dispatchEvent } = require("../runtime/eventRegistry");
 const { createEventContext } = require("../runtime/eventContext");
 const { isEnabled: isGroupBotEnabled } = require("../runtime/groupBotState");
+const messageTiming = require("../runtime/messageTiming");
 
 function isGroupEventPayload(eventType, eventData) {
   return eventData?.type === ThreadType.Group ||
@@ -104,6 +105,7 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
     commands: commandSources,
     eventType,
     onEventModule(eventModule, name) {
+      messageTiming.markCommand(eventData, name);
       const context = createEventContext({
         api, eventData, name, eventType, ThreadType, wrapForEvent
       });
@@ -120,6 +122,7 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
       });
     },
     onCommandModule(commandModule, name) {
+      messageTiming.markCommand(eventData, name);
       const context = createEventContext({
         api, eventData, name, eventType, ThreadType, wrapForEvent
       });
