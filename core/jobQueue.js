@@ -14,8 +14,10 @@ const DEFAULT_LANES = {
   http: { concurrency: 3, maxPending: 48, maxInFlight: 51, controlPlane: true },
   asset: { concurrency: 2, maxPending: 32, maxInFlight: 34 },
   download: { concurrency: DOWNLOAD_CONCURRENCY, maxPending: 24, maxInFlight: DOWNLOAD_CONCURRENCY + 24 },
-  "music-search": { concurrency: 2, maxPending: 40, maxInFlight: 42 },
-  "music-resolve": { concurrency: 2, maxPending: 24, maxInFlight: 26 },
+  // SoundCloud search/stream URL resolution are short metadata requests,
+  // not binary media jobs. Keep them available while FFmpeg/downloads run.
+  "music-search": { concurrency: 2, maxPending: 40, maxInFlight: 42, controlPlane: true },
+  "music-resolve": { concurrency: 2, maxPending: 24, maxInFlight: 26, controlPlane: true },
   "music-audio": { concurrency: 1, maxPending: 12, maxInFlight: 13 },
   canvas: { concurrency: 1, maxPending: 16, maxInFlight: 17 },
   media: { concurrency: 1, maxPending: 20, maxInFlight: 21 }

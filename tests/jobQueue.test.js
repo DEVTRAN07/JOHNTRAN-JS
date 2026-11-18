@@ -255,6 +255,8 @@ test("job queue reports average queue wait and execution time", async () => {
 test("reserved HTTP control-plane requests run while every media slot is occupied", async () => {
   const { GLOBAL_CONCURRENCY, DEFAULT_LANES } = require("../core/jobQueue");
   assert.equal(DEFAULT_LANES.http.controlPlane, true);
+  assert.equal(DEFAULT_LANES["music-search"].controlPlane, true);
+  assert.equal(DEFAULT_LANES["music-resolve"].controlPlane, true);
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   const startedResolvers = [];
