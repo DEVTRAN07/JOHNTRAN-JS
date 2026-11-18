@@ -86,3 +86,35 @@ test("expired-media detection is limited to 404/not-found errors", () => {
   assert.equal(command._test.isNotFoundError(new Error("HTTP 404 Not Found")), true);
   assert.equal(command._test.isNotFoundError(new Error("network timeout")), false);
 });
+
+
+test("/stk dis explains missing local menu and frame resources", async () => {
+  const sent = [];
+  const api = {
+    async sendMessage(message) {
+      sent.push(message);
+      return { ok: true };
+    }
+  };
+  const event = { threadId: "stk-test-thread", type: 1, data: {} };
+  await command.run({ api, event, args: ["dis"] });
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].msg, /Chưa có ảnh menu/);
+  assert.match(sent[0].msg, /Kho khung đã có:/);
+  assert.match(sent[0].msg, /data\/discord_decor\/menu\.jpg/);
+});
+
+test("/stk dis rejects a missing selected local decoration with its expected filename", async () => {
+  const sent = [];
+  const api = {
+    async sendMessage(message) {
+      sent.push(message);
+      return { ok: true };
+    }
+  };
+  const event = { threadId: "stk-test-thread", type: 1, data: {} };
+  await command.run({ api, event, args: ["dis", "200"] });
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].msg, /khung #200/);
+  assert.match(sent[0].msg, /200_timekeepers_clock\.png/);
+});
