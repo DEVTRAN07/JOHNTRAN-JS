@@ -147,7 +147,8 @@ function label(ctx, value, x, y, options = {}) {
     color,
     align: options.align || "left",
     maxWidth: options.maxWidth,
-    multicolor: options.randomColor !== false
+    multicolor: options.randomColor !== false &&
+      ![PALETTE.green, PALETTE.red, PALETTE.gold].includes(color)
   });
 }
 
@@ -477,9 +478,10 @@ function randomTextColor(seed = "") {
 function text(ctx, value, x, y, options = {}) {
   ensureTheme();
   const requestedColor = options.color || PALETTE.ink2;
+  const semanticColor = [PALETTE.green, PALETTE.red, PALETTE.gold].includes(requestedColor);
   const multicolor = options.multicolor !== undefined
     ? options.multicolor === true
-    : options.randomColor !== false;
+    : options.randomColor !== false && !semanticColor;
   return drawMulticolorText(ctx, value, x, y, {
     size: options.size || 20,
     family: options.family || "JT",
