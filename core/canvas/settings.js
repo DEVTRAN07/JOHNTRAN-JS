@@ -261,7 +261,7 @@ function renderAntiProtectionCardV2(data = {}) {
   const infoY = startY + rows * cardH + Math.max(0, rows - 1) * gapY + S(15);
   const infoH = S(132);
   const footerY = infoY + infoH + S(25);
-  const height = footerY + S(30);
+  const height = Math.max(S(720), footerY + S(30));
 
   const result = theme.newCanvas(W, height);
   const ctx = result.ctx;
