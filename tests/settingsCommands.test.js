@@ -123,6 +123,6 @@ test("theme fallback message lists photo choices and random mode", () => {
     ]
   );
   assert.match(output, /PHOTO THEME LIBRARY/);
-  assert.match(output, /\\/theme 1/);
-  assert.match(output, /\\/theme random/);
+  assert.ok(output.includes("/theme 1"));
+  assert.ok(output.includes("/theme random"));
 });
