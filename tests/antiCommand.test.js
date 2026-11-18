@@ -54,7 +54,7 @@ test("bare /anti sends one Anti-Protection image with no duplicate plaintext tab
     ], "the /anti image must mirror the exact group flags also managed by Panel");
     assert.equal(sent.length, 1, "the image and its caption are the only message when Canvas succeeds");
     assert.deepEqual(sent[0].payload.attachments, [rendered[0].file]);
-    assert.match(sent[0].payload.msg, /BẢO VỆ NHÓM · TRẠNG THÁI HIỆN TẠI/);
+    assert.match(sent[0].payload.msg, /ANTI-PROTECTION V2/);
     assert.equal(sent[0].payload.ttlKind, "card");
   } finally {
     for (const item of rendered) {
