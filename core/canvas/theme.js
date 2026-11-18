@@ -4,6 +4,7 @@ const os = require("os");
 const path = require("path");
 const { createCanvas, registerFont } = require("canvas");
 const brandTheme = require("./brandTheme");
+const themeBackgrounds = require("./themeBackgrounds");
 const PALETTE = {};
 const THEME_STYLE = {};
 
@@ -140,7 +141,9 @@ function foil(ctx, x, y, width) {
 function label(ctx, value, x, y, options = {}) {
   ensureTheme();
   const size = options.size || 15;
-  const color = options.color || PALETTE.accent;
+  const color = options.randomColor === false
+    ? (options.color || PALETTE.accent)
+    : (options.color || randomTextColor(String(value) + ":" + x + ":" + y));
   const align = options.align || "left";
   ctx.font = font(size, "JT-Bold");
   ctx.fillStyle = color;
@@ -217,94 +220,130 @@ function paintBackground(ctx, width, height) {
   initFonts();
   ensureTheme();
   const palette = getCardPalette();
+  const image = themeBackgrounds.getActiveImage();
 
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, palette.background[0]);
-  gradient.addColorStop(0.42, palette.background[1]);
-  gradient.addColorStop(0.70, palette.background[2]);
-  gradient.addColorStop(1, palette.background[3]);
-  ctx.fillStyle = gradient;
+  // Layer 0: full-bleed photo. Cover-crop preserves the source's sharpness
+  // and avoids stretching portrait wallpapers across the Canvas.
+  if (image) {
+    const scale = Math.max(width / image.width, height / image.height);
+    const drawWidth = image.width * scale;
+    const drawHeight = image.height * scale;
+    ctx.drawImage(
+      image,
+      (width - drawWidth) / 2,
+      (height - drawHeight) / 2,
+      drawWidth,
+      drawHeight
+    );
+  } else {
+    const fallback = ctx.createLinearGradient(0, 0, width, height);
+    fallback.addColorStop(0, "#030914");
+    fallback.addColorStop(0.46, "#102b4b");
+    fallback.addColorStop(1, "#040d1d");
+    ctx.fillStyle = fallback;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  // Layer 1: transparent navy veil; it darkens photography without hiding it.
+  const veil = ctx.createLinearGradient(0, 0, width, height);
+  veil.addColorStop(0, "rgba(2,8,20,.38)");
+  veil.addColorStop(0.48, "rgba(3,12,29,.53)");
+  veil.addColorStop(1, "rgba(2,7,18,.62)");
+  ctx.fillStyle = veil;
   ctx.fillRect(0, 0, width, height);
 
-  const glow = (cx, cy, radius, color) => {
+  const glow = (cx, cy, radius, color, alpha = 1) => {
     const effect = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
     effect.addColorStop(0, color);
     effect.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = effect;
     ctx.fillRect(0, 0, width, height);
+    ctx.restore();
   };
-  glow(width * 0.16, height * 0.05, width * 0.50, palette.glow[0]);
-  glow(width * 0.88, height * 0.16, width * 0.42, palette.glow[1]);
-  glow(width * 0.28, height * 0.98, width * 0.52, palette.glow[1]);
-  glow(width * 0.92, height * 0.90, width * 0.50, palette.glow[0]);
 
-  // Same restrained star field and vignette as the current main menu.
+  // Layer 2: Aurora borealis light pools and curved neon ribbons.
   ctx.save();
-  for (let i = 0; i < 64; i++) {
+  ctx.globalCompositeOperation = "screen";
+  glow(width * 0.13, height * 0.08, width * 0.58, "rgba(22,214,255,.56)", 0.42);
+  glow(width * 0.83, height * 0.17, width * 0.52, "rgba(126,94,255,.52)", 0.34);
+  glow(width * 0.50, height * 0.98, width * 0.66, "rgba(28,255,207,.36)", 0.28);
+  glow(width * 0.96, height * 0.78, width * 0.34, "rgba(49,157,255,.45)", 0.26);
+
+  const ribbon = (y, bend, color, alpha, lineWidth) => {
+    const gradient = ctx.createLinearGradient(0, y - height * 0.12, width, y + height * 0.16);
+    gradient.addColorStop(0, "rgba(0,0,0,0)");
+    gradient.addColorStop(0.22, color);
+    gradient.addColorStop(0.58, color);
+    gradient.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.beginPath();
+    ctx.moveTo(-width * 0.08, y);
+    ctx.bezierCurveTo(
+      width * 0.24, y - bend,
+      width * 0.58, y + bend,
+      width * 1.08, y - height * 0.08
+    );
+    ctx.strokeStyle = gradient;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = S(lineWidth);
+    ctx.lineCap = "round";
+    ctx.shadowColor = color;
+    ctx.shadowBlur = S(26);
+    ctx.stroke();
+  };
+  ribbon(height * 0.19, height * 0.17, "rgba(36,219,255,.40)", 0.20, 38);
+  ribbon(height * 0.34, height * 0.13, "rgba(129,112,255,.38)", 0.15, 30);
+  ribbon(height * 0.73, height * 0.12, "rgba(35,255,210,.34)", 0.14, 34);
+  ctx.restore();
+
+  // Fine stars and edge vignette add depth but leave the photograph visible.
+  ctx.save();
+  for (let i = 0; i < 72; i++) {
     const x = (i * 173 + 47) % width;
     const y = (i * 97 + 31) % height;
-    const radius = i % 9 === 0 ? S(1.15) : S(0.55);
-    const alpha = i % 4 === 0 ? 0.30 : 0.15;
+    const radius = i % 11 === 0 ? S(1.25) : S(0.55);
     ctx.beginPath();
     ctx.arc(x, y, Math.max(0.45, radius), 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(190,225,255," + alpha + ")";
+    ctx.fillStyle = i % 3 === 0
+      ? "rgba(164,244,255,.42)"
+      : "rgba(223,239,255,.20)";
     ctx.fill();
   }
+
   const vignette = ctx.createRadialGradient(
-    width * 0.5, height * 0.45, height * 0.18,
-    width * 0.5, height * 0.45, width * 0.78
+    width * 0.5, height * 0.45, height * 0.16,
+    width * 0.5, height * 0.45, width * 0.82
   );
   vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, "rgba(0,4,14,.42)");
+  vignette.addColorStop(1, "rgba(0,5,16,.48)");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
 
-  // Layer 2: the same raised glass shell used by the main menu.
-  const inset = S(11);
-  const x = inset, y = inset;
-  const shellW = width - inset * 2, shellH = height - inset * 2;
-  roundRect(ctx, x, y, shellW, shellH, S(18));
+  // A thin cyber-cyan perimeter is the only full-frame solid edge.
+  const inset = S(5);
+  roundRect(ctx, inset, inset, width - inset * 2, height - inset * 2, S(16));
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,.48)";
-  ctx.shadowBlur = S(24);
-  ctx.shadowOffsetY = S(9);
-  const shell = ctx.createLinearGradient(x, y, x + shellW, y + shellH);
-  shell.addColorStop(0, palette.panel[0]);
-  shell.addColorStop(0.48, "#0b2039");
-  shell.addColorStop(1, palette.panel[1]);
-  ctx.fillStyle = shell;
-  ctx.fill();
+  ctx.shadowColor = "rgba(40,220,255,.72)";
+  ctx.shadowBlur = S(8);
+  ctx.strokeStyle = "rgba(91,226,255,.42)";
+  ctx.lineWidth = Math.max(1, S(0.9));
+  ctx.stroke();
   ctx.restore();
-  roundRect(ctx, x, y, shellW, shellH, S(18));
-  ctx.strokeStyle = palette.border;
-  ctx.lineWidth = Math.max(1, S(1.15));
-  ctx.stroke();
-  roundRect(ctx, x + S(3), y + S(3), shellW - S(6), shellH - S(6), S(15));
-  ctx.strokeStyle = "rgba(220,244,255,.10)";
-  ctx.lineWidth = Math.max(1, S(.75));
-  ctx.stroke();
-
-  const topGlow = ctx.createLinearGradient(x + S(25), y, x + shellW - S(25), y);
-  topGlow.addColorStop(0, "rgba(98,220,255,0)");
-  topGlow.addColorStop(0.48, rgba(palette.accent, 0.42));
-  topGlow.addColorStop(1, "rgba(98,220,255,0)");
-  ctx.fillStyle = topGlow;
-  ctx.fillRect(x + S(24), y + S(1), shellW - S(48), Math.max(1, S(1.2)));
 }
-
 function panel(ctx, x, y, width, height, radius = THEME_STYLE.panelRadius, accent = PALETTE.accent) {
   ensureTheme();
   const palette = getCardPalette();
   ctx.save();
   roundRect(ctx, x, y, width, height, radius);
-  ctx.shadowColor = "rgba(0,0,0,.34)";
+  ctx.shadowColor = "rgba(0,0,0,.46)";
   ctx.shadowBlur = S(16);
   ctx.shadowOffsetY = S(6);
   const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
-  gradient.addColorStop(0, palette.card[0]);
-  gradient.addColorStop(0.52, mixHex(palette.card[0], "#ffffff", 0.025));
-  gradient.addColorStop(1, palette.card[1]);
+  gradient.addColorStop(0, rgba(palette.card[0], 0.70));
+  gradient.addColorStop(0.52, rgba(mixHex(palette.card[0], "#ffffff", 0.025), 0.66));
+  gradient.addColorStop(1, rgba(palette.card[1], 0.72));
   ctx.fillStyle = gradient;
   ctx.fill();
   ctx.restore();
@@ -352,11 +391,30 @@ function button(ctx, x, y, width, height, value, color) {
   ctx.textAlign = "left";
 }
 
+const RANDOM_TEXT_COLORS = Object.freeze([
+  "#65e8ff", "#a1d9ff", "#8dffe8", "#c3a5ff",
+  "#ffaddd", "#82b7ff", "#e6f7ff"
+]);
+
+function randomTextColor(seed = "") {
+  const value = String(seed) + ":" + String(themeBackgrounds.getRenderSeed());
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return RANDOM_TEXT_COLORS[(hash >>> 0) % RANDOM_TEXT_COLORS.length];
+}
+
 function text(ctx, value, x, y, options = {}) {
   ensureTheme();
   const size = options.size || 20;
   const family = options.family || "JT";
-  const color = options.color || PALETTE.ink2;
+  const requestedColor = options.color || PALETTE.ink2;
+  const useRandomColor = options.randomColor === true ||
+    (options.randomColor !== false &&
+      [PALETTE.accent, PALETTE.accent2].includes(requestedColor));
+  const color = useRandomColor ? randomTextColor(String(value) + ":" + x + ":" + y) : requestedColor;
   const align = options.align || "left";
   ctx.font = font(size, family);
   ctx.fillStyle = color;
@@ -419,5 +477,6 @@ module.exports = {
   PALETTE, WIDTH, S, font, FONT_FAMILIES, initFonts, roundRect, truncate,
   paintBackground, panel, button, text, newCanvas, save, foil, label,
   THEME_STYLE, randomAccent, RANDOM_ACCENTS, getCardPalette,
-  reload: resolveTheme, ensureTheme, sanitizeGlyphs, mixHex
+  reload: resolveTheme, ensureTheme, sanitizeGlyphs, mixHex, rgba,
+  randomTextColor, RANDOM_TEXT_COLORS
 };
