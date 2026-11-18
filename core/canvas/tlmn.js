@@ -10,15 +10,14 @@ function drawText(ctx, text, x, y, scale, options = {}) {
   ctx.font = (options.weight || 700) + " " + size + "px " + (options.family || "Arial, sans-serif");
   const requestedColor = options.color || theme.PALETTE.ink;
   const value = String(text ?? "");
-  const words = value.match(/[\p{L}\p{N}]+/gu) || [];
-  const semanticColor = [theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(requestedColor);
+  const words = value.match(/[\p{L}\p{M}\p{N}]+/gu) || [];
   theme.drawMulticolorText(ctx, value, x, y, {
     font: ctx.font,
     color: requestedColor,
     align: options.align || "left",
     baseline: options.baseline || "alphabetic",
     maxWidth: options.maxWidth,
-    multicolor: !semanticColor && (words.length > 1 || words.some(word => Array.from(word).length > 1))
+    multicolor: words.length > 1 || words.some(word => theme.splitGraphemes(word).length > 1)
   });
   ctx.restore();
 }
