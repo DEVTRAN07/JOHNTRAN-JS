@@ -2163,7 +2163,7 @@ function shouldQueueIncoming(context = {}) {
   if (lower === "stop" || lower === "leave") return true;
 
   if (room.status === "waiting") {
-    return lower === "go" || lower === "start" || /^join\\s+\\d{5}$/.test(lower);
+    return lower === "go" || lower === "start" || /^join\s+\d{5}$/.test(lower);
   }
   if (room.status !== "playing" || !room.activeUids?.includes(uid)) return false;
 
@@ -2171,8 +2171,8 @@ function shouldQueueIncoming(context = {}) {
     "tu dong", "bo", "pass", "skip"].includes(lower)) return true;
 
   return /(10|[3-9]|[jqka2])(ch|dt|b|r|c|t)/i.test(lower) ||
-    /^(doi(\\s*thong)?|doithong|pair|double|sam(\\s*co)?|triple|tu\\s*quy|tuquy|four|sanh|straight|le|single)\\b/.test(lower) ||
-    /^(chon|select|vi\\s*tri|vitri)\\b/.test(lower);
+    /^(doi(\s*thong)?|doithong|pair|double|sam(\s*co)?|triple|tu\s*quy|tuquy|four|sanh|straight|le|single)\b/.test(lower) ||
+    /^(chon|select|vi\s*tri|vitri)\b/.test(lower);
 }
 
 module.exports.run = context => withRoomActionLock(
