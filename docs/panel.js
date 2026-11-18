@@ -26,12 +26,27 @@ const VIEWS = {
   system: ["Giám sát hệ thống", "INFRASTRUCTURE"]
 };
 const ANTI_PROTECTION_ITEMS = Object.freeze([
-  { key:"anti_nude", label:"Chặn nội dung nhạy cảm", detail:"AI quét ảnh 18+ / khỏa thân", command:"/antinude", icon:"◉", tone:"pink" },
-  { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục chữ, ảnh, video, voice và sticker", command:"/antirecall · /anti undo", icon:"↶", tone:"purple" },
-  { key:"anti_danger_link", label:"Chặn link nguy hiểm", detail:"Chặn link mời nhóm khác và URL không an toàn", command:"/antilink", icon:"↗", tone:"blue" },
-  { key:"anti_sticker_spam", label:"Chống dội bom sticker", detail:"Phát hiện loạt sticker gửi dồn dập", command:"/antispam", icon:"⚡", tone:"orange" },
-  { key:"anti_link", label:"Chặn tất cả link", detail:"Chế độ chống link cũ của lệnh anti", command:"/anti link", icon:"⌁", tone:"cyan" },
-  { key:"anti_spam", label:"Chống spam tin nhắn", detail:"Chế độ chống spam tin nhắn cũ của lệnh anti", command:"/anti spam", icon:"✳", tone:"yellow" }
+  { key:"anti_card", label:"Chặn gửi danh thiếp", detail:"Chặn chia sẻ hồ sơ Zalo", command:"/anticard", icon:"ID", tone:"blue" },
+  { key:"anti_doodle", label:"Chặn doodle", detail:"Chặn nét vẽ / bản vẽ", command:"/antidoodle", icon:"✎", tone:"purple" },
+  { key:"anti_file", label:"Chặn tập tin", detail:"Chặn tệp đính kèm", command:"/antifile", icon:"FILE", tone:"orange" },
+  { key:"anti_gif", label:"Chặn GIF", detail:"Chặn ảnh động GIF", command:"/antigif", icon:"GIF", tone:"cyan" },
+  { key:"anti_danger_link", label:"Chặn link mời nhóm", detail:"Chặn link mời vào nhóm Zalo khác", command:"/antiinvite", icon:"INV", tone:"blue" },
+  { key:"anti_join", label:"Chặn spam vào nhóm", detail:"3 lần tái tham gia bị cảnh cáo; lần tiếp theo sẽ kick", command:"/antijoin", icon:"JOIN", tone:"pink" },
+  { key:"anti_link", label:"Chặn tất cả liên kết", detail:"Chặn mọi URL được gửi vào nhóm", command:"/antilink", icon:"URL", tone:"cyan" },
+  { key:"anti_location", label:"Chặn vị trí", detail:"Chặn chia sẻ bản đồ / tọa độ", command:"/antilocation", icon:"MAP", tone:"blue" },
+  { key:"anti_other", label:"Chặn payload lỗi", detail:"Chặn nội dung unknown / malformed", command:"/antiother", icon:"BUG", tone:"yellow" },
+  { key:"anti_photo", label:"Chặn hình ảnh", detail:"Chặn ảnh được gửi vào nhóm", command:"/antiphoto", icon:"IMG", tone:"pink" },
+  { key:"anti_qr", label:"Chặn mã QR", detail:"Phát hiện QR trong ảnh thường và payload QR", command:"/antiqr", icon:"QR", tone:"purple" },
+  { key:"anti_reaction", label:"Chống spam cảm xúc", detail:"3 lần cảnh cáo; lần vi phạm tiếp theo sẽ kick", command:"/antireaction", icon:"❤", tone:"pink" },
+  { key:"anti_nude", label:"Chặn nội dung 18+", detail:"AI quét ảnh nhạy cảm · cần OPENAI_API_KEY", command:"/antisex · /antinude", icon:"18+", tone:"pink" },
+  { key:"anti_spam", label:"Chặn spam tin nhắn", detail:"Phát hiện hơn 5 tin chữ trong 5 giây", command:"/antispam", icon:"SP", tone:"yellow" },
+  { key:"anti_sticker", label:"Chặn mọi sticker", detail:"Không cho gửi sticker vào nhóm", command:"/antistk", icon:"ST", tone:"orange" },
+  { key:"anti_sticker_spam", label:"Chặn spam sticker", detail:"Phát hiện hơn 5 sticker trong 4 giây", command:"/antistklag", icon:"LAG", tone:"orange" },
+  { key:"anti_taghide", label:"Chặn nhắc tên ẩn", detail:"Chặn mention ẩn / sai vị trí", command:"/antitaghide", icon:"TAG", tone:"blue" },
+  { key:"anti_video", label:"Chặn video", detail:"Chặn video clip được gửi vào nhóm", command:"/antivideo", icon:"VID", tone:"cyan" },
+  { key:"anti_voice", label:"Chặn tin nhắn thoại", detail:"Chặn voice được gửi vào nhóm", command:"/antivoice", icon:"VOX", tone:"purple" },
+  { key:"anti_word", label:"Chặn từ ngữ thô tục", detail:"Đối chiếu danh sách từ cấm tiếng Việt", command:"/antiword", icon:"TXT", tone:"pink" },
+  { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục chữ, ảnh, video, voice và sticker", command:"/antirecall", icon:"↶", tone:"purple" }
 ]);
 const STATUS = {
   online:["Đang chạy","online"],offline:["Chưa chạy","offline"],stopped:["Đã dừng","stopped"],
