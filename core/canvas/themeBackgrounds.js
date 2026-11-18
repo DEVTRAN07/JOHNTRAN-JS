@@ -47,16 +47,22 @@ function ensureDirectory() {
   fs.mkdirSync(THEME_DIR, { recursive: true });
 }
 
+function resolveStoredSelection(value) {
+  const selected = String(value?.selected || "random");
+  // Upgrade older persisted choices to random once. A numbered photo is
+  // considered an intentional lock only when it was saved by the new schema.
+  if (value?.mode !== "manual") return "random";
+  return BACKGROUNDS.some(item => item.id === selected) ? selected : "random";
+}
+
 function readSelection() {
   try {
     const stat = fs.statSync(SELECTION_FILE);
     if (selectionCache.mtimeMs === stat.mtimeMs) return selectionCache.value;
     const value = JSON.parse(fs.readFileSync(SELECTION_FILE, "utf8"));
-    const selected = String(value?.selected || "random");
     selectionCache = {
       mtimeMs: stat.mtimeMs,
-      value: selected === "random" || BACKGROUNDS.some(item => item.id === selected)
-        ? selected : "random"
+      value: resolveStoredSelection(value)
     };
   } catch {
     selectionCache = { mtimeMs: -1, value: "random" };
@@ -101,6 +107,7 @@ function setSelection(input) {
   try {
     fs.writeFileSync(temporary, JSON.stringify({
       selected,
+      mode: selected === "random" ? "random" : "manual",
       updatedAt: new Date().toISOString()
     }, null, 2), "utf8");
     fs.renameSync(temporary, SELECTION_FILE);
@@ -300,6 +307,7 @@ module.exports = {
   getCurrent,
   setSelection,
   normalizeSelection,
+  resolveStoredSelection,
   getActiveImage,
   getImage,
   getRenderSeed,
