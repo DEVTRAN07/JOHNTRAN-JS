@@ -120,7 +120,7 @@ async function runCmd(name, args = [], eventOverride = {}) {
     record(`Config: ${section}`, Object.keys(obj).length >= 1, Object.keys(obj).length + " khoa");
   }
 
-  const NETWORK_CMDS = new Set(["autodown", "lyric", "girl", "vdgirl", "anh"]);
+  const NETWORK_CMDS = new Set(["autodown", "lyric", "girl", "vdgirl"]);
   // 4. Chạy từng lệnh (không tham số — phản hồi gợi ý/lỗi)
   const cmds = [...global.client.commands.keys()].sort();
   for (const name of cmds) {
