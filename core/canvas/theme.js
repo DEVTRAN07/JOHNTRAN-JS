@@ -493,8 +493,8 @@ function text(ctx, value, x, y, options = {}) {
 function drawMulticolorText(ctx, value, x, y, options = {}) {
   ensureTheme();
   const rawText = String(value ?? "");
-  if (/\\r|\\n/.test(rawText)) {
-    const lines = sanitizeGlyphs(rawText).split(/\\r\\n|\\r|\\n/);
+  if (/\r|\n/.test(rawText)) {
+    const lines = sanitizeGlyphs(rawText).split(/\r\n|\r|\n/);
     const requestedSize = options.size || 20;
     const family = options.family || "JT";
     let lineSize = requestedSize;
@@ -534,7 +534,7 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
       }
     ));
     return {
-      text: results.map(result => result.text).join("\\n"),
+      text: results.map(result => result.text).join("\n"),
       segments: results.reduce((sum, result) => sum + result.segments, 0),
       width: Math.max(0, ...results.map(result => result.width))
     };
