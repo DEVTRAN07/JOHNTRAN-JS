@@ -121,8 +121,8 @@ function resolveFfmpegBinary(staticPath) {
   return "ffmpeg";
 }
 
-let FFMPEG = resolveFfmpegBinary();
 let verifiedFfmpegBinary = null;
+let FFMPEG = resolveFfmpegBinary();
 
 function execFfmpeg(args, timeout = 180000) {
   return new Promise((resolve, reject) => {
