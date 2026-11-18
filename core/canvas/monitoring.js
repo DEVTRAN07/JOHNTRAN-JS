@@ -128,6 +128,7 @@ function renderStatsCard(data = {}) {
   metric(ctx, S(PAD) + cw + gap, S(metricY), cw, "ĐỘ TRỄ P95", milliseconds(latency.p95Ms), "P50 " + milliseconds(latency.p50Ms), p, p.accent);
   metric(ctx, S(PAD) + (cw + gap) * 2, S(metricY), cw, "LỆNH GẦN NHẤT", milliseconds(latency.lastMs), "TB " + milliseconds(latency.avgMs), p);
   const full = W - S(PAD * 2);
+  const responseHalf = (full - S(10)) / 2;
   panel(ctx, S(PAD), S(activityY), full, S(49), p, p.panel);
   [["NHẠC TÌM", daily.musicSearch || 0], ["NHẠC TẢI", daily.musicDownload || 0], ["AI", daily.aiRequests || 0], ["TTS", daily.ttsRequests || 0]]
     .forEach((v, i) => {
@@ -135,8 +136,8 @@ function renderStatsCard(data = {}) {
       text(ctx, v[0], x + S(12), S(activityY + 19), 8, p.muted, true);
       text(ctx, String(v[1]), x + S(12), S(activityY + 38), 13, p.text, true);
     });
-  compactSection(ctx, S(PAD), S(responseY), halfWidth(full), "PHẢN HỒI ĐẦU TIÊN", firstResponses, p);
-  compactSection(ctx, S(PAD) + halfWidth(full) + S(10), S(responseY), halfWidth(full), "ZALO SEND RTT", sendRows, p);
+  compactSection(ctx, S(PAD), S(responseY), responseHalf, "PHẢN HỒI ĐẦU TIÊN", firstResponses, p);
+  compactSection(ctx, S(PAD) + responseHalf + S(10), S(responseY), responseHalf, "ZALO SEND RTT", sendRows, p);
   listSection(ctx, S(PAD), S(topY), full, "TOP LỆNH", top, p, "TẦN SUẤT SỬ DỤNG", "Chưa có dữ liệu");
   const half = (full - S(10)) / 2;
   compactSection(ctx, S(PAD), S(slowY), half, "LỆNH CHẬM · TOÀN BỘ", slow, p);
