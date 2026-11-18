@@ -334,14 +334,14 @@ function renderAntiProtectionCardV2(data = {}) {
   // Header is a light translucent title strip; the photo remains visible below.
   theme.panel(ctx, margin, bannerY, W - margin * 2, bannerH, S(16), palette.accent);
   const iconX = margin + S(15);
-  const iconY = bannerY + S(17);
-  theme.roundRect(ctx, iconX, iconY, S(53), S(53), S(12));
+  const iconY = bannerY + S(13);
+  theme.roundRect(ctx, iconX, iconY, S(44), S(44), S(11));
   ctx.fillStyle = palette.infoFill;
   ctx.fill();
   ctx.strokeStyle = palette.border;
   ctx.lineWidth = Math.max(1, S(1));
   ctx.stroke();
-  drawText(ctx, "+", iconX + S(26.5), iconY + S(37), 31, palette.accent, true, "center");
+  drawText(ctx, "+", iconX + S(22), iconY + S(31), 26, palette.accent, true, "center");
 
   drawText(ctx, "BẢO VỆ NHÓM",
     margin + S(82), bannerY + S(39), 20, palette.text, true,
