@@ -6,6 +6,7 @@ const http = require("../../core/http");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
 const fsSync = require("fs");
+const { hasBotGroupKey } = require("../../core/runtime/botGroupKey");
 
 module.exports.config = {
   name: "anti",
@@ -237,6 +238,10 @@ module.exports.handleEvent = async function (context = {}) {
 
   if (!isGroup || !threadId || !userId) return;
   if (context.isSelf === true || event.isSelf === true || userId === "0") return;
+
+  // Anti is available only when the bot account itself is the group owner or a deputy.
+  // Unknown role data fails closed and stays silent; sender/admin status is irrelevant.
+  if (!(await hasBotGroupKey(api, threadId))) return;
   if (typeof Threads?.getData !== "function") return;
 
   let threadData;
