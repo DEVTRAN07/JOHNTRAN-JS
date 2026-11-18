@@ -476,11 +476,10 @@ function randomTextColor(seed = "") {
 function text(ctx, value, x, y, options = {}) {
   ensureTheme();
   const requestedColor = options.color || PALETTE.ink2;
-  const semanticColor = [PALETTE.green, PALETTE.red, PALETTE.gold].includes(requestedColor);
   const multicolor = options.multicolor !== undefined
     ? options.multicolor === true
-    : options.randomColor === true || (options.randomColor !== false && !semanticColor);
-  drawMulticolorText(ctx, value, x, y, {
+    : options.randomColor !== false;
+  return drawMulticolorText(ctx, value, x, y, {
     size: options.size || 20,
     family: options.family || "JT",
     color: requestedColor,
@@ -496,41 +495,57 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
   const family = options.family || "JT";
   const baseColor = options.color || PALETTE.ink2;
   const align = options.align || "left";
-  const safe = sanitizeGlyphs(value);
-  ctx.font = options.font || font(size, family);
-  const display = options.maxWidth ? truncate(ctx, safe, options.maxWidth) : safe;
-  const useMulticolor = options.multicolor === true;
+  const display = sanitizeGlyphs(value);
+  let fittedSize = size;
+  const makeFont = value => options.font || font(value, family);
+  ctx.font = makeFont(fittedSize);
 
-  if (!useMulticolor) {
+  // Never silently drop the end of a Canvas label. Reduce the font first;
+  // when a very long value still exceeds its slot, compress it horizontally.
+  let measuredWidth = ctx.measureText(display).width;
+  while (options.maxWidth && measuredWidth > options.maxWidth &&
+         fittedSize > 9 && !options.font) {
+    fittedSize = Math.max(9, fittedSize - 1);
+    ctx.font = makeFont(fittedSize);
+    measuredWidth = ctx.measureText(display).width;
+  }
+  const scaleX = options.maxWidth && measuredWidth > options.maxWidth && measuredWidth > 0
+    ? options.maxWidth / measuredWidth
+    : 1;
+  const visualWidth = measuredWidth * scaleX;
+  const startX = align === "center" ? x - visualWidth / 2
+    : align === "right" ? x - visualWidth : x;
+
+  ctx.save();
+  if (scaleX !== 1) {
+    ctx.translate(startX, 0);
+    ctx.scale(scaleX, 1);
+  }
+  const drawX = scaleX === 1 ? startX : 0;
+  ctx.textAlign = "left";
+
+  if (options.multicolor !== true) {
     ctx.fillStyle = baseColor;
-    ctx.textAlign = align;
-    ctx.fillText(display, x, y);
-    ctx.textAlign = "left";
-    return { text: display, segments: 1, width: ctx.measureText(display).width };
+    ctx.fillText(display, drawX, y);
+    ctx.restore();
+    return { text: display, segments: display ? 1 : 0, width: visualWidth };
   }
 
-  // Tokenize words separately from spaces/punctuation. Word spans get a
-  // different bright brand color; separators keep the requested base color.
-  const tokens = display.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu) || [];
-  if (!tokens.length) return { text: display, segments: 0, width: 0 };
-
-  const totalWidth = tokens.reduce((sum, token) => sum + ctx.measureText(token).width, 0);
-  let cursor = align === "center" ? x - totalWidth / 2
-    : align === "right" ? x - totalWidth : x;
+  // Color every text word independently while preserving every character.
+  const tokens = display.match(/[\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+/gu) || [];
+  let cursor = drawX;
   let previousColorIndex = -1;
   let wordIndex = 0;
   const canvasSeed = Number.isFinite(ctx.__jtRenderSeed)
     ? ctx.__jtRenderSeed
     : themeBackgrounds.getRenderSeed();
   const seed = String(options.colorSeed ?? display) + ":" + x + ":" + y + ":" + canvasSeed;
-  ctx.textAlign = "left";
 
   for (const token of tokens) {
     const width = ctx.measureText(token).width;
-    if (/[\p{L}\p{N}]/u.test(token)) {
+    if (/[\\p{L}\\p{N}]/u.test(token)) {
       let colorIndex = RANDOM_TEXT_COLORS.indexOf(randomTextColor(seed + ":" + wordIndex));
       if (colorIndex < 0) colorIndex = 0;
-      // A sentence should visibly alternate, even with an unlucky hash sequence.
       if (RANDOM_TEXT_COLORS.length > 1 && colorIndex === previousColorIndex) {
         colorIndex = (colorIndex + 1) % RANDOM_TEXT_COLORS.length;
       }
@@ -543,8 +558,8 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
     if (token.trim()) ctx.fillText(token, cursor, y);
     cursor += width;
   }
-  ctx.textAlign = "left";
-  return { text: display, segments: wordIndex, width: totalWidth };
+  ctx.restore();
+  return { text: display, segments: wordIndex, width: visualWidth };
 }
 
 function rgba(hex, alpha) {
