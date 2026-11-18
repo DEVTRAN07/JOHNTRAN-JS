@@ -8,7 +8,7 @@ const decorations = require("../core/stickerDecorations");
 test("/stk is registered as a decorations-only Tools command", () => {
   assert.equal(command.config.name, "stk");
   assert.equal(command.config.preferCommandOnBare, true);
-  assert.match(command.config.usage, /decoration-id/i);
+  assert.match(command.config.usage, /số-ID/i);
   assert.doesNotMatch(command.config.usage, /1-5|khung/i);
 });
 
@@ -19,6 +19,9 @@ test("/stk parses decoration IDs, media URLs, and random selection", () => {
 
   const selected = command._test.parseArguments(["shop-anime-in-love"]);
   assert.equal(selected.decorationId, "shop-anime-in-love");
+
+  const numeric = command._test.parseArguments(["2"]);
+  assert.equal(numeric.decorationId, "2");
 
   const linked = command._test.parseArguments([
     "https://cdn.example.test/photo.png",
@@ -44,6 +47,31 @@ test("/stk random selects from the local bundled catalog", async () => {
   assert.ok(item.id);
   assert.ok(item.staticUrl);
   assert.equal(decorations.readManifest().items.some(row => row.id === item.id), true);
+});
+
+
+test("/stk numeric IDs resolve to 1-based positions in the full catalog", async () => {
+  const items = decorations.readManifest().items;
+  const first = await command._test.resolveDecoration(command._test.parseArguments(["1"]));
+  const second = await command._test.resolveDecoration(command._test.parseArguments(["2"]));
+  const last = await command._test.resolveDecoration(command._test.parseArguments([String(items.length)]));
+  const invalid = await command._test.resolveDecoration(command._test.parseArguments([String(items.length + 1)]));
+
+  assert.equal(first.id, items[0].id);
+  assert.equal(second.id, items[1].id);
+  assert.equal(last.id, items[items.length - 1].id);
+  assert.equal(invalid, null);
+});
+
+test("/stk list and find display numeric IDs rather than internal slugs", async () => {
+  const result = await decorations.getDecorations({ query: "anime", limit: 5 });
+  const formatted = command._test.formatDecorationList(result, 1);
+
+  for (const item of result.items) {
+    const serial = decorations.readManifest().items.findIndex(row => row.id === item.id) + 1;
+    assert.ok(formatted.includes("ID: " + serial));
+    assert.ok(!formatted.includes("ID: " + item.id));
+  }
 });
 
 test("/stk khung no longer displays the five removed custom frames", async () => {
