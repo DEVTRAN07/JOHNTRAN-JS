@@ -361,7 +361,7 @@ JOHNTRAN-JS/
 | `/events bye on` | 🚪 Có thành viên rời/bị kick → thẻ tạm biệt |
 | `/events rank on` | 🏆 Chat để nhận EXP (30s/lần), lên level → thẻ chúc mừng |
 | `/events react on` | 😍 Thả icon/emoji cho **mọi tin nhắn** của thành viên (10s/người, bỏ qua lệnh) |
-| `/events guard on` | 🚨 Canh link lạ & từ cấm (`assets/spam/badwords.txt`): cảnh cáo 3 lần → kick |
+| `/events guard on` | 🚨 Canh link lạ, link mời nhóm Zalo và từ cấm (`assets/spam/badwords.txt`): 3 lần cảnh cáo, vi phạm lần thứ 4 → kick |
 | `/events` | Xem trạng thái tất cả + hướng dẫn bật/tắt |
 | `/events guard allow <host>` / `guard allowed` | Thêm / xem host được phép (mặc định: youtube, facebook, tiktok, instagram...) |
 
