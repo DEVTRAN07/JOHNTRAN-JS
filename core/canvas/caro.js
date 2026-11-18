@@ -21,15 +21,19 @@ function drawText(ctx, value, x, y, scale, options = {}) {
   ctx.save();
   ctx.font = (options.weight || 600) + " " + size + "px " + (options.family || "Arial, sans-serif");
   const requestedColor = options.color || theme.PALETTE.ink2;
-  ctx.fillStyle = [theme.PALETTE.accent, theme.PALETTE.accent2].includes(requestedColor)
-    ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : requestedColor;
-  ctx.textAlign = options.align || "left";
-  ctx.textBaseline = options.baseline || "alphabetic";
+  const content = String(value ?? "");
+  const words = content.match(/[\p{L}\p{N}]+/gu) || [];
+  const semanticColor = [theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(requestedColor);
   ctx.shadowColor = options.shadow ? "rgba(0,0,0,.45)" : "transparent";
   ctx.shadowBlur = options.shadow ? Math.round(5 * scale) : 0;
-  const text = String(value ?? "");
-  if (options.maxWidth) ctx.fillText(text, x, y, options.maxWidth);
-  else ctx.fillText(text, x, y);
+  theme.drawMulticolorText(ctx, content, x, y, {
+    font: ctx.font,
+    color: requestedColor,
+    align: options.align || "left",
+    baseline: options.baseline || "alphabetic",
+    maxWidth: options.maxWidth,
+    multicolor: words.length > 1 && !semanticColor
+  });
   ctx.restore();
 }
 

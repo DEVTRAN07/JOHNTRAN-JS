@@ -248,22 +248,23 @@ function drawText(ctx, value, x, y, options = {}) {
   } = options;
   ctx.save();
   ctx.font = weight + " " + size + "px Arial, sans-serif";
-  ctx.fillStyle = color;
-  ctx.textAlign = align;
   ctx.textBaseline = baseline;
   if (shadow) {
     ctx.shadowColor = "rgba(0,0,0,.55)";
     ctx.shadowBlur = 7;
     ctx.shadowOffsetY = 2;
   }
-  let text = String(value ?? "");
-  if (maxWidth && ctx.measureText(text).width > maxWidth) {
-    while (text.length > 1 && ctx.measureText(text + "…").width > maxWidth) {
-      text = text.slice(0, -1);
-    }
-    text += "…";
-  }
-  ctx.fillText(text, x, y);
+  const text = String(value ?? "");
+  const words = text.match(/[\p{L}\p{N}]+/gu) || [];
+  const semanticColor = [theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(color);
+  theme.drawMulticolorText(ctx, text, x, y, {
+    font: ctx.font,
+    color,
+    align,
+    maxWidth,
+    baseline,
+    multicolor: words.length > 1 && !semanticColor
+  });
   ctx.restore();
 }
 

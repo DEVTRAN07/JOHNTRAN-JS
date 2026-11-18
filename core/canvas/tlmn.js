@@ -9,12 +9,17 @@ function drawText(ctx, text, x, y, scale, options = {}) {
   ctx.save();
   ctx.font = (options.weight || 700) + " " + size + "px " + (options.family || "Arial, sans-serif");
   const requestedColor = options.color || theme.PALETTE.ink;
-  ctx.fillStyle = [theme.PALETTE.accent, theme.PALETTE.accent2].includes(requestedColor)
-    ? theme.randomTextColor(String(text) + ":" + x + ":" + y) : requestedColor;
-  ctx.textAlign = options.align || "left";
-  ctx.textBaseline = options.baseline || "alphabetic";
-  if (options.maxWidth) ctx.fillText(String(text ?? ""), x, y, options.maxWidth);
-  else ctx.fillText(String(text ?? ""), x, y);
+  const value = String(text ?? "");
+  const words = value.match(/[\p{L}\p{N}]+/gu) || [];
+  const semanticColor = [theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(requestedColor);
+  theme.drawMulticolorText(ctx, value, x, y, {
+    font: ctx.font,
+    color: requestedColor,
+    align: options.align || "left",
+    baseline: options.baseline || "alphabetic",
+    maxWidth: options.maxWidth,
+    multicolor: words.length > 1 && !semanticColor
+  });
   ctx.restore();
 }
 
