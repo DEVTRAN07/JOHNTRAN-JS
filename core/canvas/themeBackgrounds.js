@@ -179,12 +179,28 @@ async function loadBackground(definition) {
   return task;
 }
 
+function settleWithin(promise, timeoutMs) {
+  const waitMs = Math.max(0, Number(timeoutMs) || 0);
+  if (!waitMs) return Promise.resolve(null);
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value ?? null);
+    };
+    const timer = setTimeout(() => finish(null), waitMs);
+    Promise.resolve(promise).then(finish, () => finish(null));
+  });
+}
+
 async function prepare(options = {}) {
   renderSeed = Math.floor(Math.random() * 0x7fffffff);
   const current = getCurrent();
-  if (options.preloadAll === true) {
-    await Promise.all(BACKGROUNDS.map(loadBackground));
-  }
+  const waitMs = Math.max(0, Math.min(2200,
+    Number(options.waitMs) || 1400
+  ));
 
   let candidate;
   if (current.selected === "random") {
@@ -200,32 +216,54 @@ async function prepare(options = {}) {
       ...BACKGROUNDS.filter(item => item.id !== current.selected)
     ];
   }
+  candidate = candidate.filter(Boolean);
 
-  activeImage = null;
-  activeBackgroundId = "";
-  const preferred = candidate[0];
-  if (preferred) {
-    activeImage = loaded.get(preferred.id) || await loadBackground(preferred);
-    if (activeImage) activeBackgroundId = preferred.id;
+  // Start remote downloads immediately, but never hold a normal Canvas
+  // response for the full network timeout. Download tasks continue in the
+  // background and their decoded bitmaps are reused on the next render.
+  const first = candidate[0];
+  const firstTask = first
+    ? (loaded.get(first.id) ? Promise.resolve(loaded.get(first.id)) : loadBackground(first))
+    : Promise.resolve(null);
+
+  let galleryTasks = [];
+  if (options.preloadAll === true) {
+    galleryTasks = BACKGROUNDS.map(item =>
+      loaded.get(item.id) ? Promise.resolve(loaded.get(item.id)) : loadBackground(item)
+    );
+  } else {
+    // Warm alternate photos without making the active image wait for them.
+    for (const item of candidate.slice(1)) void loadBackground(item);
   }
-  if (!activeImage && candidate.length > 1) {
-    const fallbackCandidates = candidate.slice(1);
-    const results = await Promise.all(fallbackCandidates.map(async definition => ({
-      definition,
-      image: loaded.get(definition.id) || await loadBackground(definition)
-    })));
-    const fallback = results.find(item => item.image);
-    if (fallback) {
-      activeImage = fallback.image;
-      activeBackgroundId = fallback.definition.id;
+
+  const preferredImage = await settleWithin(firstTask, waitMs);
+  const readyFallback = candidate
+    .map(item => ({ id: item.id, image: loaded.get(item.id) }))
+    .find(item => item.image);
+
+  activeImage = preferredImage || readyFallback?.image || null;
+  activeBackgroundId = preferredImage
+    ? first.id
+    : readyFallback?.id || "";
+
+  if (options.preloadAll === true && galleryTasks.length) {
+    // Gallery thumbnails use any images already loaded before this deadline;
+    // slower downloads remain in flight and populate the cache for next time.
+    await settleWithin(Promise.all(galleryTasks), waitMs);
+    if (activeImage) {
+      const active = BACKGROUNDS.find(item => item.id === activeBackgroundId);
+      if (active && !loaded.has(active.id)) {
+        activeImage = loaded.get(active.id) || activeImage;
+      }
     }
   }
 
   return {
     selected: current.selected,
     activeId: activeBackgroundId,
-    activeName: BACKGROUNDS.find(item => item.id === activeBackgroundId)?.name || "Gradient fallback",
+    activeName: BACKGROUNDS.find(item => item.id === activeBackgroundId)?.name || "Aurora gradient while images load",
     loaded: loaded.size,
+    pending: pending.size,
     available: BACKGROUNDS.length
   };
 }
@@ -266,5 +304,6 @@ module.exports = {
   getImage,
   getRenderSeed,
   getBackgrounds,
-  FAILURE_RETRY_MS
+  FAILURE_RETRY_MS,
+  settleWithin
 };
