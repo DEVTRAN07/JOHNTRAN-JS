@@ -46,6 +46,11 @@ test("photo themes change only the wallpaper while all Canvas cards keep one cyb
   const topchat = fs.readFileSync(require.resolve("../core/canvas/topchat"), "utf8");
   assert.ok(!topchat.includes("theme.jpg"));
   assert.ok(!topchat.includes("BG_IMAGE"));
+  const noituGuide = fs.readFileSync(require.resolve("../core/canvas/noituGuide"), "utf8");
+  const ghepchu = fs.readFileSync(require.resolve("../core/canvas/ghepchu"), "utf8");
+  assert.match(noituGuide, /theme\.paintBackground/);
+  assert.match(ghepchu, /theme\.paintBackground/);
+  assert.match(ghepchu, /ctx\.globalAlpha = 0\.64/);
   for (const relative of ["../core/canvas/index", "../core/canvas/monitoring", "../core/canvas/settings", "../core/canvas/profile"]) {
     const exporter = fs.readFileSync(require.resolve(relative), "utf8");
     assert.doesNotMatch(exporter, /withMacWindow/, relative + " must not wrap card images in a desktop window");
