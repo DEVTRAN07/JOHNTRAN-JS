@@ -88,10 +88,10 @@ test("semantic accent text is multicolor by default, with an explicit solid-colo
 });
 
 test("Vietnamese combining marks stay attached and are not lost while coloring", () => {
-  const decomposed = "Tie\\u0302\\u0301ng Vie\\u0323\\u0302t";
+  const decomposed = "Tie\u0302\u0301ng Vie\u0323\u0302t";
   const graphemes = theme.splitGraphemes(decomposed);
-  assert.ok(graphemes.includes("e\\u0302\\u0301"));
-  assert.ok(graphemes.includes("e\\u0323\\u0302"));
+  assert.ok(graphemes.includes("e\u0302\u0301"));
+  assert.ok(graphemes.includes("e\u0323\u0302"));
   assert.equal(graphemes.join(""), decomposed);
 
   const ctx = createCanvas(700, 90).getContext("2d");
@@ -100,9 +100,9 @@ test("Vietnamese combining marks stay attached and are not lost while coloring",
     size: 24, color: "#ffffff", multicolor: true
   });
   assert.equal(result.text, decomposed);
-  assert.ok(draws.some(item => item.value.includes("e\\u0302\\u0301")),
+  assert.ok(draws.some(item => item.value.includes("e\u0302\u0301")),
     "the base letter and its combining accents must be drawn together");
-  assert.ok(draws.some(item => item.value.includes("e\\u0323\\u0302")));
+  assert.ok(draws.some(item => item.value.includes("e\u0323\u0302")));
 });
 
 test("long unbroken URLs and IDs wrap by grapheme without dropping characters", () => {
@@ -118,10 +118,10 @@ test("long unbroken URLs and IDs wrap by grapheme without dropping characters", 
 test("letter-spaced Canvas labels preserve each accented Vietnamese grapheme", () => {
   const ctx = createCanvas(800, 90).getContext("2d");
   const draws = captureTextDraws(ctx);
-  theme.label(ctx, "Tie\\u0302\\u0301ng Vie\\u0323\\u0302t", 10, 42);
+  theme.label(ctx, "Tie\u0302\u0301ng Vie\u0323\u0302t", 10, 42);
   assert.ok(draws.length >= 8);
-  assert.ok(draws.some(item => item.value === "e\\u0302\\u0301"));
-  assert.ok(draws.some(item => item.value === "e\\u0323\\u0302"));
+  assert.ok(draws.some(item => item.value === "e\u0302\u0301"));
+  assert.ok(draws.some(item => item.value === "e\u0323\u0302"));
 });
 
 test("Custom game and Nối Từ Canvas renderers use word-level multicolor text", () => {
