@@ -16,7 +16,7 @@ module.exports.config = {
   description: "Xem menu 200 khung Discord và ghép khung vào ảnh, sticker, GIF hoặc video",
   category: "Tiện ích",
   usage: "stk (menu) | stk dis [1-200] (reply ảnh/sticker/GIF/video)",
-  cooldowns: 3,
+  cooldowns: 0,
   preferCommandOnBare: true,
   dependencies: {}
 };
@@ -131,34 +131,24 @@ function helpText(prefix = PREFIX()) {
 }
 
 async function sendMenu(api, event) {
-  const uid = getAuthorId(event);
-  const profile = await getRequesterProfile(api, event, { skipAvatarWarm: true });
-  const name = String(profile?.requesterName || "Bạn");
-  const tag = "@" + name;
-  const mentions = uid ? [{ uid, pos: 0, len: tag.length }] : [];
-
   try {
     const menuPath = await stkDiscord.ensureMenuFile();
     return await api.sendMessage(
       {
         msg: "✨ AVATAR DECORATION — DISCORD (200 KHUNG) ✨",
-        mentions,
-        attachments: [menuPath],
-        ttlKind: "media"
+        attachments: [menuPath]
       },
       event.threadId,
       event.type
     );
   } catch (error) {
-    console.error("[stk] Không tải/gửi được menu Discord:", error?.message || error);
-    const assets = stkDiscord.getAssetStatus();
+    console.error("[stk] Không tải/gửi được menu Discord:", error?.stack || error);
     const warning = [
-      "⚠️ Không tải được menu.jpg từ kho raw GitHub.",
+      "⚠️ Không gửi được menu Discord từ kho raw GitHub.",
       "Nguồn ảnh: " + stkDiscord.RAW_BASE_URL,
-      "Cache hiện có: " + assets.available + "/" + assets.total + " khung.",
-      "Lỗi: " + String(error?.message || error).slice(0, 220)
+      "Lỗi: " + String(error?.message || error).slice(0, 260)
     ];
-    return safeSend(api, event, helpText() + "\n\n" + warning.join("\n"), mentions);
+    return safeSend(api, event, helpText() + "\n\n" + warning.join("\n"));
   }
 }
 
