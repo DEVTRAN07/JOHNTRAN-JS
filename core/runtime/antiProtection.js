@@ -1,12 +1,10 @@
 "use strict";
 
 const ANTI_PROTECTION_KEYS = Object.freeze([
-  "anti_nude",
-  "anti_undo",
-  "anti_danger_link",
-  "anti_sticker_spam",
-  "anti_link",
-  "anti_spam"
+  "anti_nude", "anti_undo", "anti_danger_link", "anti_sticker_spam", "anti_link", "anti_spam",
+  "anti_card", "anti_doodle", "anti_file", "anti_gif", "anti_join", "anti_location",
+  "anti_other", "anti_photo", "anti_qr", "anti_reaction", "anti_sticker", "anti_taghide",
+  "anti_video", "anti_voice", "anti_word"
 ]);
 const KEY_SET = new Set(ANTI_PROTECTION_KEYS);
 
@@ -25,8 +23,4 @@ function setAntiProtectionState(threadData, feature, enabled) {
   return getAntiProtectionState(threadData);
 }
 
-module.exports = {
-  ANTI_PROTECTION_KEYS,
-  getAntiProtectionState,
-  setAntiProtectionState
-};
+module.exports = { ANTI_PROTECTION_KEYS, getAntiProtectionState, setAntiProtectionState };

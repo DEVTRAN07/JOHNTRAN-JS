@@ -10,7 +10,8 @@ const { isEnabled: isGroupBotEnabled } = require("../runtime/groupBotState");
 
 function isGroupEventPayload(eventType, eventData) {
   return eventData?.type === ThreadType.Group ||
-    (eventType === "undo" && eventData?.isGroup === true);
+    eventData?.isGroup === true ||
+    eventType === "group_event";
 }
 
 function getDispatchSources(eventType, eventData, isSelf, events, commands) {

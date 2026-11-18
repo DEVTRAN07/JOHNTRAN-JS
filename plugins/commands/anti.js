@@ -8,6 +8,7 @@ const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
 const fsSync = require("fs");
 const { getBotGroupRole } = require("../../core/runtime/botGroupKey");
 const { sendAntiToggleNotice } = require("../../core/runtime/antiToggle");
+const { ANTI_PROTECTION_KEYS } = require("../../core/runtime/antiProtection");
 
 const ANTI_SELF_ECHO_TTL_MS = 60_000;
 const ANTI_SELF_ECHO_LIMIT = 3000;
@@ -328,6 +329,98 @@ function isStickerMessage(data) {
   return type === "chat.sticker" || type === "sticker" || type.endsWith(".sticker");
 }
 
+function getMessageKind(data = {}) {
+  const type = String(data?.msgType || "").toLowerCase();
+  const content = data?.content && typeof data.content === "object" ? data.content : {};
+  const action = String(content.action || "").toLowerCase();
+  const mime = String(content.mimeType || content.mime_type || content.contentType || "").toLowerCase();
+  const hints = [content.type, content.subType, content.category, content.kind, content.fileType]
+    .map(value => String(value || "").toLowerCase()).join(" ");
+  if (type.includes("qr") || content.isQr === true || content.isQR === true ||
+      content.qrCode === true || /(^|[._ -])qr([._ -]|$)/i.test(hints)) return "qr";
+  if (type.includes("doodle") || action.includes("doodle") || hints.includes("doodle") || content.isDoodle === true) return "doodle";
+  if ((type === "chat.recommended" && action === "recommended.user") ||
+      type.includes("card") || hints.includes("contact_card")) return "card";
+  if (type === "share.file" || type.includes(".file") || hints.includes("file")) return "file";
+  if (type.includes("gif") || mime === "image/gif" || hints.includes("gif") ||
+      String(content.href || "").toLowerCase().split("?")[0].endsWith(".gif")) return "gif";
+  if (type.includes("location") || type.includes("map") || hints.includes("location") ||
+      ((content.lat != null || content.latitude != null) &&
+       (content.lng != null || content.long != null || content.longitude != null))) return "location";
+  if (type.includes("video") || mime.startsWith("video/")) return "video";
+  if (type.includes("voice") || mime.startsWith("audio/")) return "voice";
+  if (type.includes("sticker")) return "sticker";
+  if (type.includes("photo") || type.includes("image") || mime.startsWith("image/")) return "photo";
+  if (type === "webchat" || type === "chat.text" || type === "text" || type.includes("text") ||
+      (!type && typeof data?.content === "string")) return "text";
+  if (/unknown|unsupported|error|bug/.test(type)) return "other";
+  return type ? "other" : null;
+}
+
+function extractPlainMessageText(data = {}) {
+  const content = data?.content;
+  if (typeof content === "string") return content;
+  if (content && typeof content === "object") {
+    for (const key of ["title", "text", "description", "msg"]) {
+      if (typeof content[key] === "string") return content[key];
+    }
+  }
+  return typeof data?.text === "string" ? data.text : "";
+}
+
+function normalizeAntiWord(value) {
+  return String(value || "").toLowerCase().normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+const ANTI_BAD_WORDS = (() => {
+  const words = ["địt", "đụ", "lồn", "cặc", "buồi", "đéo", "đĩ", "fuck", "shit", "bitch", "asshole"];
+  try {
+    const file = path.join(__dirname, "../../assets/spam/badwords.txt");
+    const lines = fsSync.readFileSync(file, "utf8").split(/\r?\n/);
+    for (const line of lines) {
+      const value = line.trim();
+      if (value && !value.startsWith("#")) words.push(value);
+    }
+  } catch (error) {
+    console.warn("[ANTI_WORD] Không đọc được danh sách từ cấm:", error?.message || error);
+  }
+  return [...new Set(words.map(normalizeAntiWord).filter(Boolean))];
+})();
+
+function findAntiBadWord(data = {}) {
+  const text = " " + normalizeAntiWord(extractPlainMessageText(data)) + " ";
+  if (text.trim() === "") return null;
+  for (const word of ANTI_BAD_WORDS) {
+    if (text.includes(" " + word + " ")) return word;
+  }
+  return null;
+}
+
+function hasHiddenMention(data = {}) {
+  const content = data?.content && typeof data.content === "object" ? data.content : {};
+  const mentions = Array.isArray(data?.mentions) ? data.mentions
+    : (Array.isArray(content.mentions) ? content.mentions : []);
+  const text = extractPlainMessageText(data);
+  return mentions.some(mention => {
+    if (!mention || typeof mention !== "object") return true;
+    if (mention.hidden === true || mention.isHidden === true || mention.visibility === "hidden") return true;
+    const pos = Number(mention.pos);
+    const len = Number(mention.len);
+    if (!Number.isInteger(pos) || !Number.isInteger(len) || pos < 0 || len <= 0 || pos + len > text.length) return true;
+    return !text.slice(pos, pos + len).includes("@");
+  });
+}
+
+function isMalformedAntiPayload(data = {}) {
+  const type = String(data?.msgType || "").toLowerCase();
+  const content = data?.content;
+  return /(^|[._-])(unknown|unsupported|error|bug)([._-]|$)/.test(type) ||
+    (content && typeof content === "object" &&
+      (content.error === true || content.unsupported === true || content.malformed === true));
+}
+
 function parseVideoParams(value) {
   if (value && typeof value === "object") return value;
   if (typeof value !== "string" || !value) return {};
@@ -508,9 +601,9 @@ module.exports.handleEvent = async function (context = {}) {
     : getMessageCache()[String(undoCliMsgId)];
   const userId = String(data.uidFrom || (eventType === "undo" ? cachedUndoMessage?.uidFrom : "") || "");
   const name = data.dName || (eventType === "undo" ? cachedUndoMessage?.dName : "") || "Bạn";
-  const isGroup = event.type === ThreadType.Group || event.isGroup === true;
+  const isGroup = event.type === ThreadType.Group || event.isGroup === true || eventType === "group_event";
 
-  if (!isGroup || !threadId || (!userId && eventType !== "undo")) return;
+  if (!isGroup || !threadId || (!userId && eventType !== "undo" && eventType !== "group_event")) return;
   if (eventType === "undo" && !userId) {
     logAntiSkip(threadId, "sự kiện thu hồi không có uid người gửi và không tìm thấy bản tin trong cache");
     return;
@@ -540,11 +633,7 @@ module.exports.handleEvent = async function (context = {}) {
     return;
   }
 
-  const activeFlags = [
-    "anti_nude", "anti_undo", "anti_danger_link",
-    "anti_sticker_spam", "anti_link", "anti_spam"
-  ];
-  if (!activeFlags.some(key => threadData[key] === true)) return;
+  if (!ANTI_PROTECTION_KEYS.some(key => threadData[key] === true)) return;
 
   // Anti rules apply uniformly to every human group member, including
   // the group owner and deputies. QTV privilege is enforced only by the
@@ -559,6 +648,86 @@ module.exports.handleEvent = async function (context = {}) {
   const tempFiles = [];
 
   try {
+    if (eventType === "group_event") {
+      if (threadData.anti_join === true && String(event.type || "").toLowerCase() === "join") {
+        const members = Array.isArray(data.updateMembers) ? data.updateMembers : [];
+        let ownId = "";
+        try { ownId = String(await api.getOwnId() || ""); } catch {}
+        const histories = threadData.anti_join_history && typeof threadData.anti_join_history === "object"
+          ? { ...threadData.anti_join_history } : {};
+        const now = Date.now();
+        let changed = false;
+        for (const member of members) {
+          const joinedUid = String(member?.id || "");
+          if (!joinedUid || (ownId && joinedUid === ownId)) continue;
+          const history = (Array.isArray(histories[joinedUid]) ? histories[joinedUid] : [])
+            .filter(timestamp => Number.isFinite(Number(timestamp)) && now - Number(timestamp) <= 10 * 60 * 1000);
+          history.push(now);
+          if (history.length >= 3) {
+            try {
+              await kickGroupMember(api, joinedUid, threadId);
+              delete histories[joinedUid];
+              await sendAntiMessage(api, "⛔ Anti-Join: thành viên đã vào nhóm 3 lần trong 10 phút và bị kick.", threadId, ThreadType.Group);
+            } catch (error) {
+              histories[joinedUid] = history.slice(-3);
+              await sendAntiMessage(api, "⚠️ Anti-Join phát hiện spam vào nhóm nhưng chưa kick được: " + (error?.message || error), threadId, ThreadType.Group);
+            }
+          } else {
+            histories[joinedUid] = history;
+          }
+          changed = true;
+        }
+        if (changed) {
+          threadData.anti_join_history = histories;
+          const save = Threads.setDataAndWait || Threads.setData;
+          await save.call(Threads, threadId, threadData);
+        }
+      }
+      return;
+    }
+
+    if (eventType === "reaction") {
+      if (threadData.anti_reaction !== true) return;
+      const now = Date.now();
+      const cache = global.antiReactionSpamCache instanceof Map
+        ? global.antiReactionSpamCache
+        : (global.antiReactionSpamCache = new Map());
+      const cacheKey = threadId + ":" + userId;
+      const history = (cache.get(cacheKey) || []).filter(timestamp => now - timestamp <= 10_000);
+      history.push(now);
+      if (history.length <= 5) {
+        cache.set(cacheKey, history);
+        if (cache.size > 10000) cache.delete(cache.keys().next().value);
+        return;
+      }
+      cache.delete(cacheKey);
+      const strikes = threadData.anti_reaction_warnings && typeof threadData.anti_reaction_warnings === "object"
+        ? { ...threadData.anti_reaction_warnings } : {};
+      const current = Math.min(3, Math.max(0, Math.floor(Number(strikes[userId]) || 0)));
+      if (current < 3) {
+        const nextStrike = current + 1;
+        strikes[userId] = nextStrike;
+        threadData.anti_reaction_warnings = strikes;
+        const save = Threads.setDataAndWait || Threads.setData;
+        await save.call(Threads, threadId, threadData);
+        return sendNotice("🚨 {member}, phát hiện spam cảm xúc (hơn 5 reaction/10 giây). Cảnh cáo " + nextStrike + "/3; tái phạm lần 4 sẽ bị kick.");
+      }
+      try {
+        await kickGroupMember(api, userId, threadId);
+        delete strikes[userId];
+        threadData.anti_reaction_warnings = strikes;
+        const save = Threads.setDataAndWait || Threads.setData;
+        await save.call(Threads, threadId, threadData);
+        return sendNotice("⛔ {member}, đã tái phạm spam cảm xúc sau 3 lần cảnh cáo và bị kick khỏi nhóm.");
+      } catch (error) {
+        strikes[userId] = 3;
+        threadData.anti_reaction_warnings = strikes;
+        const save = Threads.setDataAndWait || Threads.setData;
+        await save.call(Threads, threadId, threadData);
+        return sendNotice("⚠️ {member}, đã đủ 3 lần cảnh cáo Anti-Reaction nhưng chưa kick được: " + (error?.message || error));
+      }
+    }
+
     // Undo payload from zalo-client has isGroup=true and no ThreadType field.
     if (threadData.anti_undo === true && eventType === "undo") {
       if (undoCliMsgId == null) return;
@@ -672,6 +841,59 @@ module.exports.handleEvent = async function (context = {}) {
 
     if (eventType !== "message") return;
 
+    const kind = getMessageKind(data);
+    const mediaRules = [
+      ["anti_card", "card", "danh thiếp"],
+      ["anti_doodle", "doodle", "nét vẽ doodle"],
+      ["anti_file", "file", "tập tin đính kèm"],
+      ["anti_gif", "gif", "ảnh động GIF"],
+      ["anti_location", "location", "vị trí bản đồ"],
+      ["anti_video", "video", "video clip"],
+      ["anti_voice", "voice", "tin nhắn thoại"],
+      ["anti_sticker", "sticker", "nhãn dán sticker"]
+    ];
+    const mediaBlock = mediaRules.find(([flag, expected]) =>
+      threadData[flag] === true && kind === expected
+    );
+    const qrBlocked = threadData.anti_qr === true && kind === "qr";
+    const photoBlocked = threadData.anti_photo === true && (kind === "photo" || kind === "qr");
+    if (mediaBlock || qrBlocked || photoBlocked) {
+      const label = mediaBlock?.[2] || (qrBlocked ? "mã QR" : "hình ảnh");
+      let deleteError = null;
+      try { await deleteGroupMessage(api, event); }
+      catch (error) { deleteError = error; }
+      return sendNotice(deleteError
+        ? "🚫 {member}, nhóm đang chặn " + label + " nhưng bot chưa xóa được tin nhắn: " + deleteError.message
+        : "🚫 {member}, nhóm không cho phép gửi " + label + ". Tin nhắn đã bị xóa.");
+    }
+
+    if (threadData.anti_other === true && isMalformedAntiPayload(data)) {
+      let deleteError = null;
+      try { await deleteGroupMessage(api, event); } catch (error) { deleteError = error; }
+      return sendNotice(deleteError
+        ? "🚫 {member}, payload lỗi/không xác định nhưng bot chưa xóa được: " + deleteError.message
+        : "🚫 {member}, payload lỗi hoặc không được hỗ trợ đã bị chặn.");
+    }
+
+    if (threadData.anti_taghide === true && hasHiddenMention(data)) {
+      let deleteError = null;
+      try { await deleteGroupMessage(api, event); } catch (error) { deleteError = error; }
+      return sendNotice(deleteError
+        ? "🚫 {member}, phát hiện nhắc tên ẩn nhưng chưa xóa được tin nhắn: " + deleteError.message
+        : "🚫 {member}, không được dùng nhắc tên ẩn trong nhóm.");
+    }
+
+    if (threadData.anti_word === true) {
+      const blockedWord = findAntiBadWord(data);
+      if (blockedWord) {
+        let deleteError = null;
+        try { await deleteGroupMessage(api, event); } catch (error) { deleteError = error; }
+        return sendNotice(deleteError
+          ? "🚫 {member}, phát hiện từ ngữ bị cấm nhưng bot chưa xóa được tin nhắn: " + deleteError.message
+          : "🚫 {member}, từ ngữ không phù hợp đã bị chặn.");
+      }
+    }
+
     if (threadData.anti_nude === true && isPhotoMessage(data)) {
       const imageUrl = getImageUrl(data);
       if (imageUrl) {
@@ -756,6 +978,27 @@ module.exports.handleEvent = async function (context = {}) {
       );
     }
 
+    if (threadData.anti_spam === true && kind === "text") {
+      const now = Date.now();
+      const cache = global.spamCache && typeof global.spamCache === "object"
+        ? global.spamCache
+        : (global.spamCache = {});
+      if (!cache[threadId]) cache[threadId] = {};
+      const history = (cache[threadId][userId] || []).filter(ts => now - ts <= 5000);
+      history.push(now);
+      cache[threadId][userId] = history;
+      if (history.length > 5) {
+        let deleteError = null;
+        try { await deleteGroupMessage(api, event); }
+        catch (error) { deleteError = error; }
+        return sendNotice(
+          deleteError
+            ? "🚫 {member}, vui lòng không spam. Bot chưa xóa được tin nhắn: " + deleteError.message
+            : "🚫 {member}, vui lòng không spam! Bot đã chặn tin nhắn vượt ngưỡng."
+        );
+      }
+    }
+
     if (threadData.anti_sticker_spam === true && isStickerMessage(data)) {
       const now = Date.now();
       const cache = global.antiStickerSpamCache instanceof Map
@@ -798,26 +1041,7 @@ module.exports.handleEvent = async function (context = {}) {
       if (cache.size > 10000) cache.delete(cache.keys().next().value);
     }
 
-    if (threadData.anti_spam === true) {
-      const now = Date.now();
-      const cache = global.spamCache && typeof global.spamCache === "object"
-        ? global.spamCache
-        : (global.spamCache = {});
-      if (!cache[threadId]) cache[threadId] = {};
-      const history = (cache[threadId][userId] || []).filter(ts => now - ts <= 5000);
-      history.push(now);
-      cache[threadId][userId] = history;
-      if (history.length > 5) {
-        let deleteError = null;
-        try { await deleteGroupMessage(api, event); }
-        catch (error) { deleteError = error; }
-        return sendNotice(
-          deleteError
-            ? "🚫 {member}, vui lòng không spam. Bot chưa xóa được tin nhắn: " + deleteError.message
-            : "🚫 {member}, vui lòng không spam!"
-        );
-      }
-    }
+
   } catch (error) {
     console.error("[ANTI] Lỗi xử lý tại nhóm " + threadId + ":", error?.stack || error);
   } finally {
@@ -845,17 +1069,37 @@ module.exports._test = {
   buildDeleteDestination,
   isBotAuthoredMessage,
   deleteGroupMessage,
-  kickGroupMember
+  kickGroupMember,
+  getMessageKind,
+  extractPlainMessageText,
+  findAntiBadWord,
+  hasHiddenMention,
+  isMalformedAntiPayload
 };
 
 
 const ANTI_MENU_ITEMS = Object.freeze([
-  { key:"anti_nude", label:"Chặn nội dung nhạy cảm", detail:"Xóa ảnh vi phạm; 3 lần cảnh cáo, tái phạm lần 4 kick", command:"/antinude", alias:"", icon:"18+", tone:"#e83f9e" },
-  { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục chữ, ảnh, video, voice và sticker", command:"/antirecall", alias:"/anti undo", icon:"↶", tone:"#a94ce5" },
-  { key:"anti_danger_link", label:"Chặn link nguy hiểm", detail:"Chặn link mời nhóm khác và URL không an toàn", command:"/antilink", alias:"", icon:"↗", tone:"#138fe5" },
-  { key:"anti_sticker_spam", label:"Chống dội bom sticker", detail:"Phát hiện loạt sticker gửi dồn dập", command:"/antispam", alias:"", icon:"ST", tone:"#f18b1c" },
-  { key:"anti_link", label:"Chặn tất cả link", detail:"Chế độ chống link cũ của lệnh anti", command:"/anti link", alias:"", icon:"URL", tone:"#08aeba" },
-  { key:"anti_spam", label:"Chống spam tin nhắn", detail:"Chế độ chống spam tin nhắn cũ của lệnh anti", command:"/anti spam", alias:"", icon:"SP", tone:"#e4b91e" }
+  { key:"anti_card", label:"Chặn gửi danh thiếp", detail:"Chặn chia sẻ hồ sơ", command:"/anticard", alias:"", icon:"ID", tone:"#138fe5" },
+  { key:"anti_doodle", label:"Chặn doodle", detail:"Chặn nét vẽ / bản vẽ", command:"/antidoodle", alias:"", icon:"✎", tone:"#a94ce5" },
+  { key:"anti_file", label:"Chặn tập tin", detail:"Chặn tệp đính kèm", command:"/antifile", alias:"", icon:"FILE", tone:"#f18b1c" },
+  { key:"anti_gif", label:"Chặn GIF", detail:"Chặn ảnh động", command:"/antigif", alias:"", icon:"GIF", tone:"#08aeba" },
+  { key:"anti_danger_link", label:"Chặn link mời nhóm", detail:"Chặn link mời nhóm Zalo khác", command:"/antiinvite", alias:"", icon:"INV", tone:"#138fe5" },
+  { key:"anti_join", label:"Chặn spam vào nhóm", detail:"3 lần tham gia trong 10 phút sẽ kick", command:"/antijoin", alias:"", icon:"JOIN", tone:"#e83f9e" },
+  { key:"anti_link", label:"Chặn tất cả liên kết", detail:"Chặn mọi URL", command:"/antilink", alias:"", icon:"URL", tone:"#08aeba" },
+  { key:"anti_location", label:"Chặn vị trí", detail:"Chặn chia sẻ bản đồ / tọa độ", command:"/antilocation", alias:"", icon:"MAP", tone:"#4d9c77" },
+  { key:"anti_other", label:"Chặn payload lỗi", detail:"Chặn payload unknown / error", command:"/antiother", alias:"", icon:"BUG", tone:"#e4b91e" },
+  { key:"anti_photo", label:"Chặn hình ảnh", detail:"Chặn ảnh được gửi vào nhóm", command:"/antiphoto", alias:"", icon:"IMG", tone:"#e83f9e" },
+  { key:"anti_qr", label:"Chặn mã QR", detail:"Chặn payload được đánh dấu QR", command:"/antiqr", alias:"", icon:"QR", tone:"#a94ce5" },
+  { key:"anti_reaction", label:"Chống spam cảm xúc", detail:"3 cảnh cáo, lần 4 kick", command:"/antireaction", alias:"", icon:"❤", tone:"#e83f9e" },
+  { key:"anti_nude", label:"Chặn nội dung 18+", detail:"3 cảnh cáo, lần 4 kick", command:"/antisex", alias:"/antinude", icon:"18+", tone:"#e83f9e" },
+  { key:"anti_spam", label:"Chặn spam tin nhắn", detail:"Hơn 5 tin chữ / 5 giây", command:"/antispam", alias:"", icon:"SP", tone:"#e4b91e" },
+  { key:"anti_sticker", label:"Chặn mọi sticker", detail:"Không cho gửi sticker", command:"/antistk", alias:"", icon:"ST", tone:"#f18b1c" },
+  { key:"anti_sticker_spam", label:"Chặn spam sticker", detail:"Hơn 5 sticker / 4 giây", command:"/antistklag", alias:"", icon:"LAG", tone:"#f18b1c" },
+  { key:"anti_taghide", label:"Chặn nhắc tên ẩn", detail:"Chặn mention ẩn / sai vị trí", command:"/antitaghide", alias:"", icon:"TAG", tone:"#138fe5" },
+  { key:"anti_video", label:"Chặn video", detail:"Chặn video clip", command:"/antivideo", alias:"", icon:"VID", tone:"#08aeba" },
+  { key:"anti_voice", label:"Chặn tin nhắn thoại", detail:"Chặn voice", command:"/antivoice", alias:"", icon:"VOX", tone:"#a94ce5" },
+  { key:"anti_word", label:"Chặn từ ngữ thô tục", detail:"Danh sách từ cấm tiếng Việt", command:"/antiword", alias:"", icon:"TXT", tone:"#e83f9e" },
+  { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục nội dung đã thu hồi", command:"/antirecall", alias:"", icon:"↶", tone:"#a94ce5" }
 ]);
 
 function buildAntiMenuText(threadData = {}, prefix = "/") {
