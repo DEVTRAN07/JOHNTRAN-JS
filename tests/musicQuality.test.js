@@ -155,3 +155,34 @@ test("/scl search results are sent as styled text without waiting for Canvas", a
     Threads.getData = originalThreadsGetData;
   }
 });
+
+
+test("/scl search does not wait for a stalled Zalo working reaction", async () => {
+  const originalSearch = music.search;
+  const originalGetProvider = music.getProvider;
+  const originalThreadsGetData = Threads.getData;
+  const sent = [];
+  music.getProvider = () => ({ name: "scl", label: "SoundCloud" });
+  music.search = async () => [{ id: "working-reaction-test", title: "Fast", artist: "Artist" }];
+  Threads.getData = async () => ({ data: {} });
+  try {
+    const started = Date.now();
+    await musicCommand.runMusic("scl", {
+      api: { async sendMessage(payload) { sent.push(payload); return { ok: true }; } },
+      event: { threadId: "scl-working-reaction-test", type: 1, data: { uidFrom: "user" } },
+      args: ["reaction-test"],
+      reply: {
+        working() { return new Promise(() => {}); },
+        async error(message) { throw new Error(message); },
+        async card() {}
+      }
+    });
+    assert.ok(Date.now() - started < 500, "search path must not wait for reaction API completion");
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].msg, /Fast/);
+  } finally {
+    music.search = originalSearch;
+    music.getProvider = originalGetProvider;
+    Threads.getData = originalThreadsGetData;
+  }
+});

@@ -47,14 +47,15 @@ const sendingLock = new Map();
 async function sendTrack(reply, threadId, type, track, providerName, api, quality = null) {
   const lockKey = `${threadId}:${providerName}`;
   if (sendingLock.has(lockKey)) {
-    await reply.working();
     return reply.error("Đang phát bài khác, vui lòng chờ hoặc dùng `out`");
   }
   const release = () => { sendingLock.delete(lockKey); };
   sendingLock.set(lockKey, true);
   try {
     const provider = music.getProvider(providerName);
-    await reply.working();
+    // The command dispatcher already acknowledges receipt. Never wait for a
+    // redundant Zalo reaction before resolving or starting the audio pipeline.
+    void Promise.resolve(reply.working?.()).catch(() => {});
 
     let filePath = null;
     try {
@@ -208,7 +209,8 @@ async function runMusic(providerName, { api, event, args, reply, Threads: thread
   }
 
   const query = options.queryArgs.join(" ");
-  await reply.working();
+  // Progress reactions are cosmetic and must not gate SoundCloud discovery/search.
+  void Promise.resolve(reply.working?.()).catch(() => {});
   let tracks;
   try {
     tracks = await enqueue("music-search", () => music.search(providerName, query), {
