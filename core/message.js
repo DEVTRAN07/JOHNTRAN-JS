@@ -7,10 +7,19 @@ const crypto = require("crypto");
 const messageTiming = require("./runtime/messageTiming");
 
 const DEFAULT_AUTO_RECALL_MS = readRecallDelay(process.env.JT_AUTO_RECALL_MS, 60 * 1000);
+const DEFAULT_RECALL_CLOCK_TICKS = readRecallClockTicks(process.env.JT_RECALL_CLOCK_TICKS, 2);
 const MAX_RECALL_DELAY_MS = 2_147_483_647;
 const RECALL_COUNTDOWN_CLOCKS = Object.freeze([
   "🕙", "🕘", "🕗", "🕖", "🕕", "🕔", "🕓", "🕒", "🕑", "🕐", "⏰"
 ]);
+
+function readRecallClockTicks(value, fallback = 2) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 1
+    ? Math.min(10, Math.floor(parsed))
+    : fallback;
+}
 
 function readRecallDelay(value, fallback) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -63,11 +72,13 @@ function scheduleRecallCountdown(api, message, threadId, type, delayMs) {
   // At most ten updates per message so a busy group does not receive a
   // reaction request every second for each short-lived bot reply.
   addRecallClock(api, message, threadId, type, RECALL_COUNTDOWN_CLOCKS[0]);
-  const ticks = Math.min(10, Math.max(1, Math.floor(delayMs / 1000)));
+  const ticks = Math.min(DEFAULT_RECALL_CLOCK_TICKS, Math.max(1, Math.floor(delayMs / 1000)));
   for (let step = 1; step <= ticks; step += 1) {
     const waitMs = Math.min(delayMs - 1,
       Math.max(0, Math.round(delayMs * step / (ticks + 1))));
-    const icon = RECALL_COUNTDOWN_CLOCKS[Math.min(step, RECALL_COUNTDOWN_CLOCKS.length - 1)];
+    const clockIndex = Math.min(RECALL_COUNTDOWN_CLOCKS.length - 1,
+      Math.round(step * (RECALL_COUNTDOWN_CLOCKS.length - 1) / ticks));
+    const icon = RECALL_COUNTDOWN_CLOCKS[clockIndex];
     const timer = setTimeout(() => addRecallClock(api, message, threadId, type, icon), waitMs);
     timer.unref?.();
   }
@@ -435,4 +446,4 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   return wrapped;
 }
 
-module.exports = { Reply, wrapApi, DEFAULT_AUTO_RECALL_MS, extractRecallOptions, scheduleRecall, scheduleRecallCountdown };
+module.exports = { Reply, wrapApi, DEFAULT_AUTO_RECALL_MS, DEFAULT_RECALL_CLOCK_TICKS, extractRecallOptions, scheduleRecall, scheduleRecallCountdown };
