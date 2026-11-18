@@ -10,29 +10,21 @@ const S = theme.S;
 const W = theme.WIDTH;
 const PAD = 28;
 
-function safeText(ctx, value, maxWidth) {
-  let result = theme.sanitizeGlyphs(String(value == null ? "" : value));
-  if (!maxWidth || ctx.measureText(result).width <= maxWidth) return result;
-  while (result.length > 1 && ctx.measureText(result + "…").width > maxWidth) {
-    result = result.slice(0, -1);
-  }
-  return result + "…";
-}
-
 function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
-  ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
   ctx.shadowColor = "rgba(0,5,16,.82)";
   ctx.shadowBlur = theme.S(bold ? 2.1 : 1.3);
   ctx.shadowOffsetY = theme.S(0.6);
-  const accentText = color === theme.PALETTE.accent || color === theme.PALETTE.accent2;
-  ctx.fillStyle = accentText ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : color;
-  ctx.textAlign = align || "left";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText(safeText(ctx, value, maxWidth), x, y);
+  theme.drawMulticolorText(ctx, String(value == null ? "" : value), x, y, {
+    size,
+    family: bold ? "JT-Round-Bold" : "JT-Round",
+    color,
+    align: align || "left",
+    maxWidth,
+    multicolor: ![theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(color)
+  });
   ctx.restore();
 }
-
 function rounded(ctx, x, y, width, height, radius) {
   theme.roundRect(ctx, x, y, width, height, radius);
 }
