@@ -8,12 +8,6 @@ const W = theme.WIDTH;
 const PAD = 28;
 
 function rounded(ctx, x, y, w, h, r) { theme.roundRect(ctx, x, y, w, h, r); }
-function fit(ctx, value, width) {
-  let out = theme.sanitizeGlyphs(String(value == null ? "" : value));
-  if (!width || ctx.measureText(out).width <= width) return out;
-  while (out.length > 1 && ctx.measureText(out + "…").width > width) out = out.slice(0, -1);
-  return out + "…";
-}
 function text(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
   ctx.shadowColor = "rgba(0,5,16,.78)";
