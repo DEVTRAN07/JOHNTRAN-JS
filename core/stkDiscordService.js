@@ -351,12 +351,11 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
   const sourceAnimated = isAnimatedBuffer(sourceBuffer, sourceExtension);
   const overlayAnimated = isAnimatedBuffer(overlayBuffer, path.extname(decorationPath));
   const animated = sourceAnimated || overlayAnimated;
+  // 288px stickers usually fit on the first encode; only retry once with a
+  // lighter profile instead of spending minutes across five encodes.
   const profiles = [
-    { fps: 18, quality: 45 },
-    { fps: 15, quality: 40 },
-    { fps: 12, quality: 35 },
-    { fps: 10, quality: 30 },
-    { fps: 8, quality: 25 }
+    { fps: 10, quality: 38 },
+    { fps: 7, quality: 26 }
   ];
   let lastError = null;
   for (const profile of profiles) {
@@ -382,6 +381,7 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
       "-q:v", String(profile.quality),
       "-compression_level", "4",
       "-preset", "picture",
+      "-threads", "2",
       "-pix_fmt", "yuva420p",
       "-loop", "0",
       outputPath
@@ -424,6 +424,7 @@ function extractUploadedUrl(uploaded) {
 }
 
 async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
+  const totalStartedAt = Date.now();
   if (!api || !event?.threadId) throw new Error("Thiếu thông tin cuộc trò chuyện để gửi sticker.");
   const decoration = getDecoration(decorationId);
   if (!decoration) throw new RangeError("Khung Discord phải nằm trong khoảng 1–200.");
@@ -431,14 +432,19 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
   const normalizedUrl = stickerService.normalizeSourceUrl(mediaUrl);
   if (!normalizedUrl) throw new Error("Không tìm thấy URL ảnh/sticker hợp lệ.");
 
-  const decorationPath = await ensureDecorationFile(decorationId);
   stickerService.registerStickerApi(api);
   fs.mkdirSync(TMP_DIR, { recursive: true });
 
   let sourcePath = null;
   let outputPath = null;
   try {
-    const source = await stickerService.fetchSource(api, normalizedUrl);
+    // Download the selected frame and the user's media in parallel.
+    const downloadStartedAt = Date.now();
+    const [decorationPath, source] = await Promise.all([
+      ensureDecorationFile(decorationId),
+      stickerService.fetchSource(api, normalizedUrl)
+    ]);
+    const downloadMs = Date.now() - downloadStartedAt;
     const extension = stickerService.sourceExtension(normalizedUrl, source.contentType, source.buffer);
     if (extension === ".bin") {
       throw new Error("Không nhận diện được định dạng ảnh/video. Hỗ trợ PNG, JPG, GIF, WebP, MP4, MOV và WebM.");
@@ -447,7 +453,9 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
     sourcePath = makeTempName("stk_source", extension);
     fs.writeFileSync(sourcePath, source.buffer);
 
+    const renderStartedAt = Date.now();
     const output = await createWebp(sourcePath, source.buffer, extension, decorationPath);
+    const renderMs = Date.now() - renderStartedAt;
     outputPath = output.path;
 
     if (typeof api.uploadStickerImage !== "function" ||
@@ -455,15 +463,18 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
       throw new Error("Phiên Zalo chưa khởi tạo API upload/send sticker. Hãy khởi động lại bot.");
     }
 
+    const uploadStartedAt = Date.now();
     const uploaded = await api.uploadStickerImage({
       filePath: outputPath,
       threadId: event.threadId,
       threadType: event.type
     });
+    const uploadMs = Date.now() - uploadStartedAt;
     const cdnUrl = extractUploadedUrl(uploaded);
     if (!cdnUrl) throw new Error("Zalo không trả về URL CDN sau khi upload sticker.");
 
     const quote = getReplyQuote(event);
+    const sendStartedAt = Date.now();
     const sent = await api.sendCustomStickerUrl({
       staticImgUrl: stickerService.buildStickerUrl(String(cdnUrl), true),
       animationImgUrl: stickerService.buildStickerUrl(String(cdnUrl), true),
@@ -473,8 +484,15 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
       width: output.width,
       height: output.height
     });
+    const sendMs = Date.now() - sendStartedAt;
+    const totalMs = Date.now() - totalStartedAt;
 
-    return { ...output, response: sent, decoration };
+    console.info(
+      "[stk] completed #" + decorationId +
+      " download=" + downloadMs + "ms render=" + renderMs +
+      "ms upload=" + uploadMs + "ms send=" + sendMs + "ms total=" + totalMs + "ms"
+    );
+    return { ...output, response: sent, decoration, timings: { downloadMs, renderMs, uploadMs, sendMs, totalMs } };
   } finally {
     for (const filePath of [sourcePath, outputPath]) {
       if (!filePath) continue;
