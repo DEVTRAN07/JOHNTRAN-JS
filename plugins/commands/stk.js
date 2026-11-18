@@ -184,7 +184,8 @@ async function processWithAvatarFallback(api, event, media) {
       api,
       event,
       mediaUrl: media.url,
-      decorationId: media.decorationId
+      decorationId: media.decorationId,
+      cacheIdentity: media.cacheIdentity || null
     });
   } catch (error) {
     if (media.usingAvatar || !isNotFoundError(error)) throw error;
@@ -205,7 +206,8 @@ async function processWithAvatarFallback(api, event, media) {
       api,
       event,
       mediaUrl: avatarUrl,
-      decorationId: media.decorationId
+      decorationId: media.decorationId,
+      cacheIdentity: media.cacheIdentity || null
     });
   }
 }
@@ -229,16 +231,31 @@ module.exports.run = async function ({ api, event, args }) {
   ).slice(0, 32);
   const mentions = uid ? [{ uid, pos: 0, len: tag.length }] : [];
 
-  // Warm the selected frame and resolve a fallback avatar while the command
-  // waits for a sticker worker. A cold Raw GitHub download no longer starts
-  // only after the queue slot becomes available.
+  // For avatar-based commands, check the short-lived UID cache before
+  // looking up the profile or warming the frame. A hit needs only one Zalo send.
+  const targetUid = getQuotedOwnerId(event);
+  const avatarCacheIdentity = !quotedUrl && targetUid ? targetUid : null;
+  const avatarCacheKey = avatarCacheIdentity
+    ? stkDiscord.createIdentityResultCacheKey(avatarCacheIdentity, options.decorationId)
+    : null;
+  const avatarCacheHit = avatarCacheKey
+    ? stkDiscord.readStickerResultCache(avatarCacheKey, {
+      ttlMs: stkDiscord.AVATAR_RESULT_CACHE_TTL_MS
+    })
+    : null;
+
+  // Cold requests still warm both network inputs in parallel with the queue.
   const queuedAt = Date.now();
-  const frameWarmPromise = stkDiscord.ensureDecorationFile(options.decorationId);
+  const frameWarmPromise = avatarCacheHit
+    ? Promise.resolve(null)
+    : stkDiscord.ensureDecorationFile(options.decorationId);
   void frameWarmPromise.catch(error => {
     console.warn("[stk] Prefetch khung thất bại; sẽ thử lại khi xử lý:", error?.message || error);
   });
-  const mediaWarmPromise = resolveMediaSource(api, event, quotedUrl);
-  void mediaWarmPromise.catch(() => {});
+  const mediaWarmPromise = avatarCacheHit
+    ? null
+    : resolveMediaSource(api, event, quotedUrl);
+  if (mediaWarmPromise) void mediaWarmPromise.catch(() => {});
 
   // Acknowledge immediately. The expensive download/FFmpeg/upload work must
   // not hold the command dispatcher or block the user's next command.
@@ -261,8 +278,20 @@ module.exports.run = async function ({ api, event, args }) {
     job = enqueue("sticker", async () => {
       console.info("[stk] queueWait #" + options.decorationId + "=" +
         (Date.now() - queuedAt) + "ms");
-      const media = await mediaWarmPromise;
+
+      if (avatarCacheHit && avatarCacheIdentity) {
+        const cached = await stkDiscord.sendCachedStickerForIdentity({
+          api,
+          event,
+          decorationId: options.decorationId,
+          identity: avatarCacheIdentity
+        });
+        if (cached) return cached;
+      }
+
+      const media = await (mediaWarmPromise || resolveMediaSource(api, event, quotedUrl));
       media.decorationId = options.decorationId;
+      media.cacheIdentity = media.usingAvatar ? avatarCacheIdentity : null;
       return processWithAvatarFallback(api, event, media);
     }, {
       key: jobKey,
