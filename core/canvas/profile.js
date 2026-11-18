@@ -4,9 +4,37 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createCanvas, loadImage, registerFont } = require("canvas");
+const theme = require("./theme");
 
 const WIDTH = 750;
 const PAD = 40;
+
+function drawRandomText(ctx, value, x, y, options = {}) {
+  const initialSize = options.size || 18;
+  const family = options.family || (options.bold ? "PB" : "P");
+  const display = theme.sanitizeGlyphs(String(value ?? ""));
+  let fittedSize = initialSize;
+  const makeFont = size => `${options.bold ? "bold " : ""}${size}px ${family}`;
+
+  ctx.save();
+  ctx.font = makeFont(fittedSize);
+  // This legacy renderer is a native 750px canvas; fit against its actual width.
+  while (options.maxWidth && ctx.measureText(display).width > options.maxWidth &&
+         fittedSize > 9) {
+    fittedSize = Math.max(9, fittedSize - 1);
+    ctx.font = makeFont(fittedSize);
+  }
+  theme.drawMulticolorText(ctx, display, x, y, {
+    size: fittedSize,
+    family,
+    font: ctx.font,
+    color: options.color || "#ffffff",
+    align: options.align || "left",
+    maxWidth: options.maxWidth,
+    multicolor: true
+  });
+  ctx.restore();
+}
 
 const SKINS = {
   zalo:     { name: "ZALO",     a: "#0068ff", b: "#00d4ff", icon: "🟦" },
@@ -40,13 +68,6 @@ function rr(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x, y, r);
   ctx.closePath();
-}
-
-function fit(ctx, text, w) {
-  let t = String(text ?? "");
-  if (ctx.measureText(t).width <= w) return t;
-  while (t.length > 1 && ctx.measureText(t + "…").width > w) t = t.slice(0, -1);
-  return t + "…";
 }
 
 // Tải ảnh: chỉ nhận URL tuyệt đối, resolve redirect cả tương đối
@@ -126,7 +147,7 @@ async function drawAvatar(ctx, url, cx, cy, size, skin) {
     ctx.font = `${Math.round(size * 0.5)}px P`;
     ctx.fillStyle = skin.a;
     ctx.textAlign = "center";
-    ctx.fillText("👤", cx, cy + Math.round(size * 0.18));
+    drawRandomText(ctx, "👤", cx, cy + Math.round(size * 0.18), { size: Math.round(size * 0.28), color: skin.b, align: "center" });
     ctx.textAlign = "left";
   }
   ctx.restore();
@@ -160,16 +181,16 @@ function infoRow(ctx, x, y, w, h, skin, icon, label, value) {
   ctx.font = "22px P";
   ctx.textAlign = "center";
   ctx.fillStyle = skin.b;
-  ctx.fillText(icon || "•", x + 34, y + h / 2 + 8);
+  drawRandomText(ctx, icon || "•", x + 34, y + h / 2 + 8, { size: 22, color: skin.b, align: "center" });
   ctx.textAlign = "left";
 
   // nhãn + giá trị
   ctx.font = "14px P";
   ctx.fillStyle = "#8b9ab8";
-  ctx.fillText(String(label || "").toUpperCase(), x + 68, y + h / 2 - 6);
+  drawRandomText(ctx, String(label || "").toUpperCase(), x + 68, y + h / 2 - 6, { size: 14, color: "#8b9ab8", maxWidth: w - 92 });
   ctx.font = "bold 21px PB";
   ctx.fillStyle = "#ffffff";
-  ctx.fillText(fit(ctx, value ?? "—", w - 92), x + 68, y + h / 2 + 20);
+  drawRandomText(ctx, value ?? "—", x + 68, y + h / 2 + 20, { size: 21, bold: true, color: "#ffffff", maxWidth: w - 92 });
 }
 
 // Nhãn loại hồ sơ
@@ -187,7 +208,7 @@ function skinTag(ctx, x, y, skin, w) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
-  ctx.fillText(text, x + tw / 2, y + 23);
+  drawRandomText(ctx, text, x + tw / 2, y + 23, { size: 15, bold: true, color: "#ffffff", align: "center", maxWidth: tw - 12 });
   ctx.textAlign = "left";
   return tw;
 }
@@ -221,16 +242,16 @@ async function renderProfile(o = {}) {
   ctx.textAlign = "center";
   ctx.font = "bold 42px PB";
   ctx.fillStyle = "#ffffff";
-  ctx.fillText(fit(ctx, o.title || "—", WIDTH - PAD * 2), cx, cy + avatarSize / 2 + 52);
+  drawRandomText(ctx, o.title || "—", cx, cy + avatarSize / 2 + 52, { size: 42, bold: true, color: "#ffffff", align: "center", maxWidth: WIDTH - PAD * 2 });
   if (o.handle) {
     ctx.font = "22px P";
     ctx.fillStyle = skin.b;
-    ctx.fillText(fit(ctx, o.handle, WIDTH - PAD * 2), cx, cy + avatarSize / 2 + 84);
+    drawRandomText(ctx, o.handle, cx, cy + avatarSize / 2 + 84, { size: 22, color: skin.b, align: "center", maxWidth: WIDTH - PAD * 2 });
   }
   if (o.subtitle) {
     ctx.font = "18px P";
     ctx.fillStyle = "#c3cee3";
-    ctx.fillText(fit(ctx, o.subtitle, WIDTH - PAD * 2), cx, cy + avatarSize / 2 + 112);
+    drawRandomText(ctx, o.subtitle, cx, cy + avatarSize / 2 + 112, { size: 18, color: "#c3cee3", align: "center", maxWidth: WIDTH - PAD * 2 });
   }
   ctx.textAlign = "left";
 
@@ -245,7 +266,7 @@ async function renderProfile(o = {}) {
   ctx.font = "bold 16px PB";
   ctx.fillStyle = "#8b9ab8";
   ctx.textAlign = "right";
-  ctx.fillText(String(o.footer || "JOHN TRAN"), WIDTH - PAD, H - 22);
+  drawRandomText(ctx, o.footer || "JOHN TRAN", WIDTH - PAD, H - 22, { size: 16, bold: true, color: "#8b9ab8", align: "right", maxWidth: WIDTH - PAD * 2 });
   ctx.textAlign = "left";
 
   return save(canvas, `${skin.name} Profile`);
@@ -273,11 +294,11 @@ async function renderAvatarCard(o = {}) {
   ctx.textAlign = "center";
   ctx.font = "bold 40px PB";
   ctx.fillStyle = "#ffffff";
-  ctx.fillText(fit(ctx, o.title || "—", WIDTH - PAD * 2), cx, H - 62);
+  drawRandomText(ctx, o.title || "—", cx, H - 62, { size: 40, bold: true, color: "#ffffff", align: "center", maxWidth: WIDTH - PAD * 2 });
   if (o.subtitle) {
     ctx.font = "19px P";
     ctx.fillStyle = "#c3cee3";
-    ctx.fillText(fit(ctx, o.subtitle, WIDTH - PAD * 2), cx, H - 30);
+    drawRandomText(ctx, o.subtitle, cx, H - 30, { size: 19, color: "#c3cee3", align: "center", maxWidth: WIDTH - PAD * 2 });
   }
   ctx.textAlign = "left";
 
