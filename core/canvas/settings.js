@@ -209,7 +209,7 @@ function renderThemeSettings(data = {}) {
     ctx.restore();
 
     rounded(ctx, thumbX, thumbY, thumbW, thumbH, S(12));
-    ctx.strokeStyle = background.selected
+    ctx.strokeStyle = background.id === current.selected
       ? "rgba(110,255,230,.95)" : "rgba(98,220,255,.70)";
     ctx.lineWidth = background.selected ? S(2.2) : S(1);
     ctx.shadowColor = "rgba(47,220,255,.72)";
@@ -230,7 +230,7 @@ function renderThemeSettings(data = {}) {
     drawText(ctx, "NỀN ẢNH  /  AURORA CYBER",
       thumbX + S(13), thumbY + thumbH - S(40), 7.4,
       palette.text, true);
-    drawText(ctx, background.selected ? "ĐANG CHỌN" : "GÕ /theme " + background.id,
+    drawText(ctx, background.id === current.selected ? "ĐANG CHỌN" : "GÕ /theme " + background.id,
       thumbX + S(13), thumbY + thumbH - S(18), 8.5,
       background.selected ? "#8dffe8" : palette.accent, true);
   });
