@@ -1474,10 +1474,13 @@ module.exports.handleEvent = function (context = {}) {
 
   // Snapshot the hot cache once. Reuse it in the queued handler so inactive
   // protections return immediately and active protections do not read twice.
-  let cachedThreadRecord = null;
-  let cachedThreadCacheChecked = false;
+  // The listener already snapshots this group's settings before dispatch.
+  // Reuse that exact lookup; otherwise this wrapper performs a second cache
+  // read on every protected group message and defeats the listener fast path.
+  let cachedThreadRecord = context.cachedThreadRecord || null;
+  let cachedThreadCacheChecked = context.cachedThreadCacheChecked === true;
   try {
-    if (typeof context.Threads?.getCachedData === "function") {
+    if (!cachedThreadCacheChecked && typeof context.Threads?.getCachedData === "function") {
       cachedThreadCacheChecked = true;
       cachedThreadRecord = context.Threads.getCachedData(threadId) || null;
     }
