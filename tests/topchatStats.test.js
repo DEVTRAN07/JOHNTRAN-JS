@@ -65,3 +65,11 @@ test("aggregateMessages excludes message IDs already counted by realtime", () =>
   const counts = aggregateMessages(messages, "2026-11-12", "/", "", ["seen-1"]);
   assert.equal(counts.u1.count, 1);
 });
+
+
+test("vietnamDateKey reuses current-date formatting and still accepts explicit instants", () => {
+  const expected = vietnamDateKey(new Date());
+  assert.equal(vietnamDateKey(), expected);
+  assert.equal(vietnamDateKey(undefined), expected);
+  assert.equal(vietnamDateKey("2026-11-11T17:00:00.000Z"), "2026-11-12");
+});

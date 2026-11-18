@@ -3,18 +3,36 @@
 const { pickAvatar } = require("../runtime/avatarUrl");
 
 const TIME_ZONE = "Asia/Ho_Chi_Minh";
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+let cachedCurrentMinute = -1;
+let cachedCurrentDateKey = "";
 
-function vietnamDateKey(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value);
+function formatVietnamDateKey(date) {
   if (Number.isNaN(date.getTime())) return "";
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(date);
+  const parts = DATE_FORMATTER.formatToParts(date);
   const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
   return values.year + "-" + values.month + "-" + values.day;
+}
+
+function vietnamDateKey(value) {
+  // Incoming realtime events ask for today's date repeatedly. Reuse the
+  // result within the same minute; Vietnam has no DST and its UTC+7 day
+  // boundary aligns with the UTC minute boundary.
+  if (value === undefined) {
+    const now = Date.now();
+    const minute = Math.floor(now / 60000);
+    if (minute === cachedCurrentMinute) return cachedCurrentDateKey;
+    cachedCurrentMinute = minute;
+    cachedCurrentDateKey = formatVietnamDateKey(new Date(now));
+    return cachedCurrentDateKey;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return formatVietnamDateKey(date);
 }
 
 function isGroupMessage(message) {
