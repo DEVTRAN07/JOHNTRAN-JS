@@ -160,8 +160,9 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
       : true;
     if (hasActiveGame && typeof noituCommand?.handleEvent === "function") {
       messageTiming.markCommand(event, "noitu");
+      const gameApi = wrapForThread(api, event.threadId, event.type, "noitu", event);
       const consumed = await noituCommand.handleEvent({
-        api, event, eventType: "message", isSelf: false, Users, Threads
+        api: gameApi, event, eventType: "message", isSelf: false, Users, Threads
       });
       if (consumed === true) return true;
     }
@@ -180,8 +181,9 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
       if (tlmnCommand._test?.shouldQueueIncoming?.({ event, isSelf: selfMessage, Threads })) {
         messageTiming.markCommand(event, "tlmn");
       }
+      const gameApi = wrapForThread(api, event.threadId, event.type, "tlmn", event);
       const consumed = await tlmnCommand.handleIncoming({
-        api, event, eventType: "message", isSelf: selfMessage, Users, Threads
+        api: gameApi, event, eventType: "message", isSelf: selfMessage, Users, Threads
       });
       if (consumed === true) return true;
     }
