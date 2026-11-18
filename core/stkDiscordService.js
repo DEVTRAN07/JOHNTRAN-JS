@@ -94,8 +94,7 @@ function buildFilterGraph(fps = DEFAULT_FPS) {
       ":force_original_aspect_ratio=decrease:flags=lanczos," +
       "pad=" + CANVAS_SIZE + ":" + CANVAS_SIZE +
       ":(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,format=rgba[decor]",
-    "color=c=black:s=" + CANVAS_SIZE + "x" + CANVAS_SIZE +
-      ":r=" + fps + ",format=rgba,geq=r='0':g='0':b='0':a='0'[base]",
+    "[2:v]format=rgba[base]",
     "[base][avatar]overlay=" + OFFSET + ":" + OFFSET + ":format=auto[stage]",
     "[stage][decor]overlay=0:0:format=auto,format=rgba,fps=" + fps + "[out]"
   ].join(";");
@@ -148,18 +147,24 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
     { fps: 8, quality: 25 }
   ];
   let lastError = null;
+  const { createCanvas } = require("canvas");
+  const transparentBasePath = makeTempName("stk_base", ".png");
+  const transparentBase = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
+  fs.writeFileSync(transparentBasePath, transparentBase.toBuffer("image/png"));
 
-  for (const profile of profiles) {
-    const outputPath = makeTempName("stk_dis", ".webp");
-    const filter = buildFilterGraph(profile.fps);
-    const args = [
-      "-hide_banner", "-loglevel", "error", "-y",
-      ...inputArgs(sourcePath, sourceExtension, sourceAnimated, profile.fps),
-      ...inputArgs(decorationPath, path.extname(decorationPath), overlayAnimated, profile.fps),
-      "-filter_complex", filter,
-      "-map", "[out]",
-      "-an"
-    ];
+  try {
+    for (const profile of profiles) {
+      const outputPath = makeTempName("stk_dis", ".webp");
+      const filter = buildFilterGraph(profile.fps);
+      const args = [
+        "-hide_banner", "-loglevel", "error", "-y",
+        ...inputArgs(sourcePath, sourceExtension, sourceAnimated, profile.fps),
+        ...inputArgs(decorationPath, path.extname(decorationPath), overlayAnimated, profile.fps),
+        "-loop", "1", "-framerate", String(profile.fps), "-i", transparentBasePath,
+        "-filter_complex", filter,
+        "-map", "[out]",
+        "-an"
+      ];
 
     if (animated) args.push("-t", String(ANIMATION_SECONDS));
     else args.push("-frames:v", "1");
@@ -197,6 +202,9 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
     }
 
     try { fs.rmSync(outputPath, { force: true }); } catch {}
+    }
+  } finally {
+    try { fs.rmSync(transparentBasePath, { force: true }); } catch {}
   }
 
   throw lastError || new Error("Không thể tạo sticker Discord.");
