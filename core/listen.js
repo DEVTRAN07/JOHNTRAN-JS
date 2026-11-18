@@ -62,6 +62,22 @@ function shouldProcessUndoEvent(event) {
   return event?.isSelf !== true || global.config?.allow_self_anti === true;
 }
 
+function shouldCacheIncomingMessage(event) {
+  if (!event) return false;
+  if (event.isSelf !== true) return true;
+  if (event.type !== ThreadType.Group || global.config?.allow_self_anti !== true) return false;
+
+  // In self-test mode cache bot-authored test messages so /antirecall can
+  // restore them. Do not cache Anti-generated notices/media, whose own recall
+  // timers must not be replayed as user content.
+  try {
+    const anti = require("../plugins/commands/anti");
+    return !anti?._test?.isAntiGeneratedSelfEcho?.(event, false);
+  } catch {
+    return true;
+  }
+}
+
 function shouldReplayOldMessage(message, reconnectSince) {
   const rawTimestamp = Number(message?.data?.ts);
   if (!Number.isFinite(rawTimestamp) || rawTimestamp <= 0) return false;
@@ -139,11 +155,11 @@ function startListening(api) {
       return;
     }
 
-    // Tin do chính bot gửi: bỏ qua cache (không cần undo) nhưng vẫn xử lý lệnh
-    // Mọi bước dưới đây đều phải cô lập lỗi: 1 plugin/module hỏng không được
-    // chặn việc xử lý lệnh (complaint: "bot không phản hồi")
+    // Normal member messages are cached for Anti recall restoration. In explicit
+    // self-test mode, cache bot-authored group messages too, except Anti replies.
+    // Every step is isolated so a cache failure cannot block command execution.
     try {
-      if (!event.isSelf) updateMessageCache(event);
+      if (shouldCacheIncomingMessage(event)) updateMessageCache(event);
     } catch (err) {
       logger.log(`Lỗi updateMessageCache (bỏ qua): ${err.message}`, "warn", { source: "listener-cache", isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
     }
@@ -655,5 +671,6 @@ module.exports.shouldReplayOldMessage = shouldReplayOldMessage;
 module.exports.claimListenerRegistration = claimListenerRegistration;
 module.exports.shouldExecuteMessageCommand = shouldExecuteMessageCommand;
 module.exports.shouldProcessUndoEvent = shouldProcessUndoEvent;
+module.exports.shouldCacheIncomingMessage = shouldCacheIncomingMessage;
 
 module.exports.computeReconnectDelay = computeReconnectDelay;
