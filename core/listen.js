@@ -86,6 +86,64 @@ function shouldReplayOldMessage(message, reconnectSince) {
 }
 
 
+async function dispatchAntiMessageBeforeGame({ api, event, Users, Threads, isSelf = false } = {}) {
+  if (event?.type !== ThreadType.Group || !event?.threadId) {
+    return { dispatched: false, consumed: false };
+  }
+
+  let antiCommand = global.client?.commands?.get?.("anti");
+  if (typeof antiCommand?.handleEvent !== "function") {
+    try { antiCommand = require("../plugins/commands/anti"); }
+    catch { return { dispatched: false, consumed: false }; }
+  }
+  if (typeof antiCommand?.handleEvent !== "function") {
+    return { dispatched: false, consumed: false };
+  }
+
+  try {
+    const wrapped = wrapForThread(api, event.threadId, ThreadType.Group, "anti", event);
+    const result = await antiCommand.handleEvent({
+      api: wrapped,
+      event,
+      eventType: "message",
+      isSelf: isSelf === true || event?.isSelf === true,
+      Users,
+      Threads,
+      reply: wrapped?.__reply,
+      threadType: ThreadType.Group
+    });
+    return { dispatched: true, consumed: result?.consumed === true };
+  } catch (error) {
+    logger.log("Lỗi kiểm duyệt Anti trước game: " + (error?.message || error), "error", {
+      source: "listener-anti-before-game",
+      groupId: event.threadId
+    });
+    return { dispatched: false, consumed: false };
+  }
+}
+
+async function dispatchGroupMessageBeforeGame({
+  api,
+  event,
+  Users,
+  Threads,
+  isSelf = false,
+  antiDispatcher = dispatchAntiMessageBeforeGame,
+  gameDispatcher = dispatchActiveGameMessage
+} = {}) {
+  const anti = await antiDispatcher({ api, event, Users, Threads, isSelf });
+  if (anti?.consumed === true) {
+    return { consumed: true, source: "anti", antiDispatched: anti.dispatched === true };
+  }
+
+  const gameConsumed = await gameDispatcher({ api, event, Users, Threads, isSelf });
+  return {
+    consumed: gameConsumed === true,
+    source: gameConsumed === true ? "game" : null,
+    antiDispatched: anti?.dispatched === true
+  };
+}
+
 async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = false } = {}) {
   const selfMessage = isSelf === true || event?.isSelf === true;
   if (selfMessage && global.config?.allow_self_command !== true) return false;
@@ -215,9 +273,9 @@ function startListening(api) {
       void getRequesterProfile(api, event).catch(() => {});
     }
 
-    const dispatchMessageEvents = () => {
+    const dispatchMessageEvents = (dispatchOptions = {}) => {
       if (isGroupThread && !groupBotEnabled) return;
-      Promise.resolve(handleEvent("message", event, api, event.isSelf === true))
+      Promise.resolve(handleEvent("message", event, api, event.isSelf === true, dispatchOptions))
         .catch((err) => logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn", {
           source: "listener-event",
           isGroup: event?.type === ThreadType.Group,
@@ -235,14 +293,20 @@ function startListening(api) {
       return;
     }
 
-    // Plain-text moves for active games are consumed directly in the live
-    // listener path before passive message plugins can treat them as chat.
-    const consumedByGame = await dispatchActiveGameMessage({
+    // Run moderation before active games. A game move is still game input,
+    // but it must not bypass Anti-Link, Anti-Word, Anti-Spam, media or AI rules.
+    // If Anti removes/blocks the message, the game must never consume it.
+    const activeDispatch = await dispatchGroupMessageBeforeGame({
       api, event, Users, Threads, isSelf: event?.isSelf === true
     });
-    if (consumedByGame) return;
+    if (activeDispatch.consumed) return;
 
-    dispatchMessageEvents();
+    // Anti and the game consumer have already had their single turn. Dispatch
+    // other passive plugins without re-running either handler on the same event.
+    dispatchMessageEvents({
+      skipAnti: activeDispatch.antiDispatched,
+      skipGameConsumers: true
+    });
 
     // ===== Điều hướng bằng từ TRẦN (không cần prefix): next / prev / out / số =====
     // Xử lý TRỰC TIẾP tại đây (không đi qua handleEvent) để chắc chắn chạy:
@@ -667,6 +731,8 @@ function startListening(api) {
 
 module.exports = startListening;
 module.exports.dispatchActiveGameMessage = dispatchActiveGameMessage;
+module.exports.dispatchAntiMessageBeforeGame = dispatchAntiMessageBeforeGame;
+module.exports.dispatchGroupMessageBeforeGame = dispatchGroupMessageBeforeGame;
 module.exports.shouldReplayOldMessage = shouldReplayOldMessage;
 module.exports.claimListenerRegistration = claimListenerRegistration;
 module.exports.shouldExecuteMessageCommand = shouldExecuteMessageCommand;
