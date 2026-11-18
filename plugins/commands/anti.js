@@ -16,6 +16,77 @@ const ANTI_SELF_ECHO_LIMIT = 3000;
 const antiSelfEchoes = new Map();
 const antiSkipLogAt = new Map();
 
+function createUrlScanCache(options = {}) {
+  const now = typeof options.now === "function" ? options.now : Date.now;
+  const safeTtlMs = Math.max(0, Number(options.safeTtlMs) || 30_000);
+  const unsafeTtlMs = Math.max(0, Number(options.unsafeTtlMs) || 120_000);
+  const maxEntries = Math.max(1, Math.floor(Number(options.maxEntries) || 1000));
+  const onError = typeof options.onError === "function" ? options.onError : () => {};
+  const cache = new Map();
+  const pending = new Map();
+
+  async function scan(rawUrl, scanner) {
+    const url = String(rawUrl || "").trim();
+    if (!url || typeof scanner !== "function") return false;
+
+    const timestamp = now();
+    const cached = cache.get(url);
+    if (cached) {
+      if (cached.expiresAt > timestamp) {
+        // LRU refresh so actively shared URLs survive the bounded cache.
+        cache.delete(url);
+        cache.set(url, cached);
+        return cached.unsafe;
+      }
+      cache.delete(url);
+    }
+
+    // Coalesce duplicate links from simultaneous messages in the same group.
+    if (pending.has(url)) return pending.get(url);
+
+    const task = Promise.resolve()
+      .then(() => scanner(url))
+      .then(result => {
+        const unsafe = result?.isSafe === false;
+        const ttlMs = unsafe ? unsafeTtlMs : safeTtlMs;
+        if (ttlMs > 0) {
+          cache.delete(url);
+          cache.set(url, { unsafe, expiresAt: now() + ttlMs });
+          while (cache.size > maxEntries) {
+            cache.delete(cache.keys().next().value);
+          }
+        }
+        return unsafe;
+      })
+      .catch(error => {
+        // Do not cache transport errors: the next message gets a fresh scan.
+        try { onError(error, url); } catch {}
+        return false;
+      })
+      .finally(() => pending.delete(url));
+
+    pending.set(url, task);
+    return task;
+  }
+
+  return {
+    scan,
+    clear() {
+      cache.clear();
+      pending.clear();
+    },
+    stats() {
+      return { cached: cache.size, pending: pending.size, maxEntries };
+    }
+  };
+}
+
+const urlScanCache = createUrlScanCache({
+  onError(error) {
+    console.warn("[antilink] Zalo scanURL thất bại:", error?.message || error);
+  }
+});
+
 function normalizeEchoText(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
@@ -253,13 +324,7 @@ function isGroupInviteUrl(rawUrl) {
 async function isUnsafeLink(rawUrl, api) {
   if (isGroupInviteUrl(rawUrl)) return true;
   if (typeof api?.scanURL !== "function") return false;
-  try {
-    const result = await api.scanURL(rawUrl);
-    return result?.isSafe === false;
-  } catch (error) {
-    console.warn("[antilink] Zalo scanURL thất bại:", error?.message || error);
-    return false;
-  }
+  return urlScanCache.scan(rawUrl, url => api.scanURL(url));
 }
 
 function isExplicitAdultImage(result, threshold = 0.9) {
@@ -1262,6 +1327,8 @@ module.exports._test = {
   extractMessageUrls,
   isGroupInviteUrl,
   isUnsafeLink,
+  createUrlScanCache,
+  urlScanCache,
   isExplicitAdultImage,
   getImageUrl,
   decodeQrFromImageBuffer,

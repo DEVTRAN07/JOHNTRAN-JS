@@ -158,3 +158,75 @@ test("Anti QR decoding delegates CPU work to the bounded worker pool", async () 
   assert.equal(ignored, null);
   assert.equal(called, false);
 });
+
+
+test("Anti-Link URL scan coalesces concurrent requests for the same URL", async () => {
+  const { createUrlScanCache } = anti._test;
+  const cache = createUrlScanCache({ safeTtlMs: 1000, unsafeTtlMs: 2000 });
+  let calls = 0;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const scanner = async () => {
+    calls++;
+    await gate;
+    return { isSafe: false };
+  };
+
+  const first = cache.scan("https://example.com/repeated", scanner);
+  const second = cache.scan("https://example.com/repeated", scanner);
+  release();
+  assert.equal(await first, true);
+  assert.equal(await second, true);
+  assert.equal(calls, 1);
+  assert.deepEqual(cache.stats(), { cached: 1, pending: 0, maxEntries: 1000 });
+});
+
+test("Anti-Link URL scan caches safe and unsafe decisions with separate TTLs", async () => {
+  const { createUrlScanCache } = anti._test;
+  let now = 1000;
+  const cache = createUrlScanCache({
+    now: () => now,
+    safeTtlMs: 100,
+    unsafeTtlMs: 250
+  });
+  let safeCalls = 0;
+  let unsafeCalls = 0;
+
+  const safeScanner = async () => { safeCalls++; return { isSafe: true }; };
+  const unsafeScanner = async () => { unsafeCalls++; return { isSafe: false }; };
+
+  assert.equal(await cache.scan("https://safe.example", safeScanner), false);
+  assert.equal(await cache.scan("https://safe.example", safeScanner), false);
+  assert.equal(safeCalls, 1);
+
+  assert.equal(await cache.scan("https://bad.example", unsafeScanner), true);
+  assert.equal(await cache.scan("https://bad.example", unsafeScanner), true);
+  assert.equal(unsafeCalls, 1);
+
+  now += 101;
+  assert.equal(await cache.scan("https://safe.example", safeScanner), false);
+  assert.equal(safeCalls, 2);
+  assert.equal(await cache.scan("https://bad.example", unsafeScanner), true);
+  assert.equal(unsafeCalls, 1, "unsafe verdict remains cached for its longer TTL");
+});
+
+test("Anti-Link scan transport errors are not cached", async () => {
+  const { createUrlScanCache } = anti._test;
+  let calls = 0;
+  let errors = 0;
+  const cache = createUrlScanCache({
+    onError() { errors++; },
+    safeTtlMs: 100,
+    unsafeTtlMs: 200
+  });
+  const scanner = async () => {
+    calls++;
+    if (calls === 1) throw new Error("temporary scan outage");
+    return { isSafe: false };
+  };
+
+  assert.equal(await cache.scan("https://retry.example", scanner), false);
+  assert.equal(await cache.scan("https://retry.example", scanner), true);
+  assert.equal(calls, 2);
+  assert.equal(errors, 1);
+});
