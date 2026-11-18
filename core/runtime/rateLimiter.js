@@ -1,4 +1,8 @@
 "use strict";
+
+const PRUNE_BATCH_SIZE = 256;
+const CAPACITY_PRUNE_BATCH_SIZE = 1024;
+
 class SlidingWindowLimiter {
   constructor({ windowMs = 10000, max = 12, maxKeys = 20000 } = {}) {
     this.windowMs = windowMs;
@@ -6,6 +10,7 @@ class SlidingWindowLimiter {
     this.maxKeys = maxKeys;
     this.entries = new Map();
     this.operations = 0;
+    this.pruneIterator = null;
   }
   allow(key, now = Date.now()) {
     if (key === undefined || key === null || key === "") return false;
@@ -38,14 +43,33 @@ class SlidingWindowLimiter {
     return true;
   }
   prune(now = Date.now(), force = false) {
-    for (const [key, entry] of this.entries) {
-      const active = entry.timestamps.length - entry.cursor;
-      const expired = active === 0 && now - entry.touchedAt > this.windowMs;
-      const staleForCapacity = force && now - entry.touchedAt > this.windowMs * 2;
-      if (expired || staleForCapacity) this.entries.delete(key);
+    // Scan a rotating, bounded slice instead of walking every tracked user
+    // on one message. Capacity pressure gets a larger but still bounded pass.
+    const batchSize = force ? CAPACITY_PRUNE_BATCH_SIZE : PRUNE_BATCH_SIZE;
+    if (!this.pruneIterator) this.pruneIterator = this.entries.keys();
+
+    let inspected = 0;
+    while (inspected < batchSize) {
+      const next = this.pruneIterator.next();
+      if (next.done) {
+        this.pruneIterator = null;
+        break;
+      }
+      const key = next.value;
+      const entry = this.entries.get(key);
+      // All timestamps are at or before touchedAt. Once the last activity
+      // is outside the window, the key is safe to discard without scanning
+      // its timestamp array first.
+      if (entry && now - entry.touchedAt > this.windowMs) {
+        this.entries.delete(key);
+      }
+      inspected++;
     }
   }
-  clear() { this.entries.clear(); }
+  clear() {
+    this.entries.clear();
+    this.pruneIterator = null;
+  }
 }
 const commandLimiter = new SlidingWindowLimiter({ windowMs: 10000, max: 12 });
 module.exports = { SlidingWindowLimiter, commandLimiter };
