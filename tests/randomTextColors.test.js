@@ -136,7 +136,7 @@ test("each newly rendered Canvas gets a palette seed for randomized card text", 
   assert.ok(ctx.__jtRenderSeed >= 0);
 });
 
-test("Canvas sanitizing keeps superscript and extended Latin characters", () => {
-  const value = "Hệ thống ² ᴬ ᴮ";
+test("Canvas sanitizing preserves emoji and uncommon Unicode rather than dropping text", () => {
+  const value = "Hệ thống ² ᴬ ᴮ 🪼";
   assert.equal(theme.sanitizeGlyphs(value), value);
 });
