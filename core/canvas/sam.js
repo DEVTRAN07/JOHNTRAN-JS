@@ -51,7 +51,7 @@ function seatLayout(count) {
 
 function drawSeat(ctx, player, x, y, w, h, scale, index, isTurn, room) {
   const px = value => Math.round(value * scale);
-  const p = theme.PALETTE;
+  const p = { ...theme.PALETTE, ...theme.getCardPalette() };
   const active = Boolean(player && isTurn);
   panel(ctx, x, y, w, h, px(16),
     active ? "rgba(17,74,115,.96)" : "rgba(8,22,39,.94)",
@@ -128,7 +128,7 @@ function comboLabel(combo) {
 }
 
 function renderTable(ctx, width, height, scale, data) {
-  const p = theme.PALETTE;
+  const p = { ...theme.PALETTE, ...theme.getCardPalette() };
   const room = data.room || {};
   const players = Array.isArray(room.players) ? room.players : [];
   const px = value => Math.round(value * scale);
@@ -277,7 +277,7 @@ function renderHand(data = {}) {
   const scale = width / 1080;
   const px = value => Math.round(value * scale);
   const height = px(780);
-  const p = theme.PALETTE;
+  const p = { ...theme.PALETTE, ...theme.getCardPalette() };
   const { canvas, ctx } = theme.newCanvas(width, height);
   theme.paintBackground(ctx, width, height);
   const room = data.room || {};
