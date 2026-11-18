@@ -95,13 +95,14 @@ function buildFilterGraph(fps = DEFAULT_FPS) {
     "[1:v]scale=" + CANVAS_SIZE + ":" + CANVAS_SIZE +
       ":force_original_aspect_ratio=decrease:flags=lanczos," +
       "pad=" + CANVAS_SIZE + ":" + CANVAS_SIZE +
-      ":(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,format=rgba[decor]",
+      ":(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,format=rgba," +
+      "split=2[decorColor][decorAlphaSource]",
     "[2:v]format=rgb24[base]",
     "[base][avatar]overlay=" + OFFSET + ":" + OFFSET + ":format=auto[stage]",
-    "[stage][decor]overlay=0:0:format=auto,format=rgb24,fps=" + fps + "[rgb]",
+    "[stage][decorColor]overlay=0:0:format=auto,format=rgb24,fps=" + fps + "[rgb]",
     "nullsrc=s=" + CANVAS_SIZE + "x" + CANVAS_SIZE + ":r=" + fps +
       ",format=gray,geq=lum='" + circleMask + "'[circle]",
-    "[decor]alphaextract,format=gray[decorAlpha]",
+    "[decorAlphaSource]alphaextract,format=gray[decorAlpha]",
     "[circle][decorAlpha]blend=all_mode=lighten[mask]",
     "[rgb][mask]alphamerge,format=yuva420p[out]"
   ].join(";");
