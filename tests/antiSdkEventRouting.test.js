@@ -14,13 +14,13 @@ const handleEvent = require("../core/handle/handleEvent");
 const Threads = require("../core/runtime/services/threadService");
 const anti = require("../plugins/commands/anti");
 
-async function waitFor(predicate, label, timeoutMs = 1500) {
+async function waitFor(predicate, label, timeoutMs = 1500, diagnostics = () => ({})) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     if (predicate()) return;
     await new Promise(resolve => setTimeout(resolve, 5));
   }
-  assert.fail("Timed out waiting for " + label);
+  assert.fail("Timed out waiting for " + label + ": " + JSON.stringify(diagnostics()));
 }
 
 function installAntiRuntime({ threadId, initialData }) {
@@ -128,12 +128,21 @@ test("real zalo-client Reaction objects reach Anti-Reaction through the runtime 
       assert.equal(reactionEvent.isGroup, true);
       assert.equal(reactionEvent.threadId, threadId);
       assert.equal(reactionEvent.isSelf, false);
-      await handleEvent("reaction", reactionEvent, runtime.api, false);
+      const dispatch = await handleEvent("reaction", reactionEvent, runtime.api, false);
+      assert.equal(dispatch.commandModules, 1, "Anti command must be selected by the runtime dispatcher");
     }
 
     await waitFor(
       () => runtime.state.anti_reaction_warnings?.["member-1"] === 1 && runtime.calls.sent.length === 1,
-      "first Anti-Reaction warning from SDK events"
+      "first Anti-Reaction warning from SDK events",
+      1500,
+      () => ({
+        state: runtime.state,
+        calls: runtime.calls,
+        antiQueue: require("../core/runtime/threadQueue").queues.size,
+        commandCount: global.client?.commands?.size,
+        eventBotEnabled: Threads.getCachedData(threadId)
+      })
     );
 
     assert.equal(runtime.calls.kicked.length, 0);
@@ -184,14 +193,24 @@ test("real zalo-client GroupEvent JOIN objects reach Anti-Join through the runti
       assert.equal(groupEvent.type, "join");
       assert.equal(groupEvent.threadId, threadId);
       assert.equal(groupEvent.isSelf, false);
-      await handleEvent("group_event", groupEvent, runtime.api, false);
+      const dispatch = await handleEvent("group_event", groupEvent, runtime.api, false);
+      assert.equal(dispatch.commandModules, 1, "Anti command must be selected for group events");
 
       if (count <= 4) {
         await waitFor(
           () => count === 1
             ? Array.isArray(runtime.state.anti_join_history?.["rejoining-member"])
             : runtime.state.anti_join_warnings?.["rejoining-member"] === count - 1,
-          "Anti-Join strike " + Math.max(0, count - 1)
+          "Anti-Join strike " + Math.max(0, count - 1),
+          1500,
+          () => ({
+            count,
+            state: runtime.state,
+            calls: runtime.calls,
+            antiQueue: require("../core/runtime/threadQueue").queues.size,
+            event: groupEvent,
+            eventBotEnabled: Threads.getCachedData(threadId)
+          })
         );
       }
     }
