@@ -4,7 +4,7 @@
 const { loadImage } = require("canvas");
 const avatarCache = require("./avatarCache");
 const theme = require("./theme");
-const menuPalette = require("./menuPalette");
+const brandTheme = require("./brandTheme");
 const { drawCategoryIcon } = require("./menuIcons");
 
 function rounded(ctx, x, y, w, h, r) {
@@ -198,30 +198,8 @@ function drawBotIcon(ctx, cx, cy, size, color) {
 }
 
 function getMainMenuPalette() {
-  const active = menuPalette.getPalette();
-  // Keep a deliberately chosen /theme preset, but use the blue JOHNTRAN
-  // identity when the menu has never been themed by an administrator.
-  let hasSavedTheme = false;
-  try { hasSavedTheme = fs.existsSync(menuPalette.THEME_FILE); } catch { /* keep default */ }
-  if (hasSavedTheme) return active;
-
-  const accent = "#62dcff";
-  return {
-    ...active,
-    label: "JOHNTRAN · Blue Neon",
-    accent,
-    background: ["#030914", "#07182d", "#102b4b", "#040d1d"],
-    panel: ["#102b4b", "#08182c"],
-    card: ["#122c4b", "#091a31"],
-    footer: ["#0c2038", "#071426"],
-    border: "rgba(98,220,255,.46)",
-    cardBorder: "rgba(98,220,255,.28)",
-    glow: ["rgba(33,151,255,.20)", "rgba(118,94,255,.13)"],
-    infoFill: "rgba(98,220,255,.10)",
-    infoBorder: "rgba(98,220,255,.40)",
-    text: "#f4f9ff",
-    muted: "#a9bfd8"
-  };
+  // The exact same palette now drives every command Canvas and card.
+  return brandTheme.getPalette();
 }
 
 function paintMainMenuBackdrop(ctx, w, h, palette) {
