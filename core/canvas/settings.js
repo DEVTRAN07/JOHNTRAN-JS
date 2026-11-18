@@ -259,9 +259,11 @@ function renderAntiProtectionCardV2(data = {}) {
   const startY = bannerY + bannerH + S(16);
   const cardW = (W - margin * 2 - gapX) / columns;
   const infoY = startY + rows * cardH + Math.max(0, rows - 1) * gapY + S(15);
-  const infoH = S(132);
-  const footerY = infoY + infoH + S(25);
-  const height = Math.max(S(720), footerY + S(30));
+  // Keep the full-height Anti board, and let the QTV guidance panel use the
+  // remaining vertical room instead of leaving an empty blank area below.
+  const footerY = Math.max(infoY + S(132) + S(25), S(720) - S(30));
+  const infoH = footerY - infoY - S(25);
+  const height = footerY + S(30);
 
   const result = theme.newCanvas(W, height);
   const ctx = result.ctx;
@@ -373,16 +375,32 @@ function renderAntiProtectionCardV2(data = {}) {
 
   // Permission note uses the same nested glass-panel treatment as the menu.
   theme.panel(ctx, margin, infoY, W - margin * 2, infoH, S(14), palette.accent);
-  drawText(ctx, "QTV BOX  /  QUYỀN QUẢN LÝ",
+  drawText(ctx, "QTV BOX  /  ĐIỀU KIỆN ĐỂ ANTI HOẠT ĐỘNG",
     margin + S(17), infoY + S(28), 9, palette.accent, true);
-  drawText(ctx, "Chỉ trưởng nhóm hoặc phó nhóm được bật / tắt",
-    margin + S(17), infoY + S(57), 13, palette.text, true,
+  drawText(ctx, "Bot phải là trưởng nhóm hoặc phó nhóm Zalo để Anti chạy.",
+    margin + S(17), infoY + S(60), 13, palette.text, true,
     "left", W - margin * 2 - S(34));
-  drawText(ctx, "Cấu hình được lưu riêng cho từng nhóm Zalo.",
-    margin + S(17), infoY + S(81), 9.5, palette.muted, false,
+  drawText(ctx, "Bot không có QTV: Anti tự bỏ qua mọi chế độ, không quét / xóa / cảnh báo.",
+    margin + S(17), infoY + S(90), 9.2, palette.muted, false,
     "left", W - margin * 2 - S(34));
-  drawText(ctx, "CÚ PHÁP VÀ HƯỚNG DẪN CHI TIẾT NẰM Ở TIN NHẮN NGAY BÊN DƯỚI ẢNH",
-    margin + S(17), infoY + S(111), 7.4, palette.muted, true,
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(margin + S(17), infoY + S(111));
+  ctx.lineTo(W - margin - S(17), infoY + S(111));
+  ctx.strokeStyle = palette.cardBorder;
+  ctx.lineWidth = Math.max(1, S(.8));
+  ctx.stroke();
+  ctx.restore();
+
+  drawText(ctx, "Khi bot được cấp QTV trở lại, Anti tự chạy theo cấu hình đã lưu.",
+    margin + S(17), infoY + S(143), 9.2, palette.ink2, false,
+    "left", W - margin * 2 - S(34));
+  drawText(ctx, "Tất cả thành viên, kể cả trưởng nhóm và phó nhóm, đều chịu quy tắc Anti.",
+    margin + S(17), infoY + S(174), 9.2, palette.ink2, false,
+    "left", W - margin * 2 - S(34));
+  drawText(ctx, "Chỉ trưởng nhóm hoặc phó nhóm mới được bật / tắt các chế độ Anti.",
+    margin + S(17), infoY + S(205), 9.2, palette.ink2, false,
     "left", W - margin * 2 - S(34));
 
   drawText(ctx, "JOHNTRAN  ·  ANTI-PROTECTION V2",
