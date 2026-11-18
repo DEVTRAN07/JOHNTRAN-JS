@@ -2150,10 +2150,17 @@ function shouldQueueIncoming(context = {}) {
   const uid = String(event?.data?.uidFrom || "");
   if (!threadId) return false;
 
-  const lower = engine.normalizeText(content);
   const room = game.get(threadId);
-  // With no in-memory room, only the creation keyword can use group settings.
-  if (!room) return lower === "go" && isEnabled(Threads, threadId);
+  // Most idle-group messages are ordinary chat. Avoid accent folding and
+  // Unicode normalization unless a room is active or the text might be the
+  // room creation keyword. Keep the normalized fallback for "gó" variants.
+  if (!room) {
+    const simpleGo = content.toLowerCase() === "go";
+    const normalizedGo = simpleGo || engine.normalizeText(content) === "go";
+    return normalizedGo && isEnabled(Threads, threadId);
+  }
+
+  const lower = engine.normalizeText(content);
   if (!isEnabled(Threads, threadId)) return false;
 
   // A room being settled must consume messages until the financial operation

@@ -94,3 +94,65 @@ test("TLMN avoids group-setting lookup for unrelated chat when no room exists", 
   assert.equal(command._test.shouldQueueIncoming(context), false);
   assert.equal(cacheReads, 0);
 });
+
+
+test("TLMN idle-group fast path skips Unicode normalization for ordinary chat", () => {
+  global.config = { prefix: "/" };
+  const engine = require("../core/games/tlmnEngine");
+  const originalNormalize = engine.normalizeText;
+  let normalizeCalls = 0;
+  engine.normalizeText = value => {
+    normalizeCalls++;
+    return originalNormalize(value);
+  };
+  try {
+    const context = {
+      isSelf: false,
+      Threads: { getCachedData: () => ({ data: { tlmn_enabled: true } }) },
+      event: {
+        type: ThreadType.Group,
+        threadId: "tlmn-no-room-no-normalize",
+        data: { uidFrom: "player-1", content: "chào cả nhóm" }
+      }
+    };
+
+    assert.equal(command._test.shouldQueueIncoming(context), false);
+    assert.equal(normalizeCalls, 0);
+  } finally {
+    engine.normalizeText = originalNormalize;
+  }
+});
+
+test("TLMN idle-group fast path keeps case-insensitive and accented GO keywords", () => {
+  global.config = { prefix: "/" };
+  const engine = require("../core/games/tlmnEngine");
+  const originalNormalize = engine.normalizeText;
+  let normalizeCalls = 0;
+  engine.normalizeText = value => {
+    normalizeCalls++;
+    return originalNormalize(value);
+  };
+  const Threads = { getCachedData: () => ({ data: { tlmn_enabled: true } }) };
+  const context = {
+    isSelf: false,
+    Threads,
+    event: {
+      type: ThreadType.Group,
+      threadId: "tlmn-no-room-go-keyword",
+      data: { uidFrom: "player-1", content: "GO" }
+    }
+  };
+  const accentedContext = {
+    ...context,
+    event: { ...context.event, data: { ...context.event.data, content: "gó" } }
+  };
+
+  try {
+    assert.equal(command._test.shouldQueueIncoming(context), true);
+    assert.equal(normalizeCalls, 0, "plain GO should use the cheap ASCII check");
+    assert.equal(command._test.shouldQueueIncoming(accentedContext), true);
+    assert.equal(normalizeCalls, 1, "accented input keeps the legacy normalization fallback");
+  } finally {
+    engine.normalizeText = originalNormalize;
+  }
+});
