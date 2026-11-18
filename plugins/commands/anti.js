@@ -220,7 +220,9 @@ function extractMessageUrls(data) {
     try {
       const parsed = new URL(url);
       if (!["http:", "https:"].includes(parsed.protocol)) continue;
-      const normalized = parsed.toString();
+      // Validate with URL, but preserve the exact submitted URL.
+      // Zalo scanURL and platform providers may compare/resolve the original string.
+      const normalized = url;
       if (!unique.has(normalized)) {
         unique.add(normalized);
         urls.push(normalized);
