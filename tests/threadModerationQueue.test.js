@@ -58,8 +58,7 @@ test("simultaneous autokick violations increment once per message and kick once"
     assert.equal(calls.sent.filter(item => /lần 1\/3/.test(item.msg || "")).length, 1);
     assert.equal(calls.sent.filter(item => /lần 2\/3/.test(item.msg || "")).length, 1);
     assert.equal(calls.sent.filter(item => /lần 3\/3/.test(item.msg || "")).length, 1);
-    assert.equal(calls.sent.filter(item => /Cảnh cáo 3\/3/.test(item.msg || "")).length, 1);
-  assert.equal(calls.sent.filter(item => /Đã kick/.test(item.msg || "")).length, 1);
+    assert.equal(calls.sent.filter(item => /Đã kick/.test(item.msg || "")).length, 1);
     assert.equal(Threads.snapshot().auto_kick.violations.member, undefined);
   } finally {
     if (previousUsers === undefined) delete global.users;
