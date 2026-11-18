@@ -1,19 +1,18 @@
-# Discord avatar decoration assets
+# STK Discord decoration assets
 
-Lệnh mới: `/stk dis` để xem menu, sau đó reply một ảnh/sticker/GIF/video và gõ `/stk dis <1-200>`.
+Place assets for the Python-style `stk dis` command in this directory.
 
-Đặt tài nguyên tại thư mục này:
+- `menu.jpg` — image showing the 200 decoration choices.
+- Frame files — names listed in `core/data/stkDiscord200.json`.
 
-- `menu.jpg`: ảnh menu 200 khung.
-- Các file khung theo đúng tên trong `core/data/stkDiscord200.json`.
-- Có thể dùng APNG/GIF/WebP để giữ chuyển động. Các file PNG động (APNG) cũng được nhận diện.
+The bot accepts either the exact filename from the catalog or an alternate filename beginning with the matching numeric ID (for example `12_custom.gif`). Valid frame formats are PNG/APNG, GIF and WebP.
 
-Một số ví dụ tên file:
+Expected composition: 288×288 canvas, circular 240×240 avatar at offset (24,24), Discord frame layered above it, animated WebP output capped at 512 KB.
 
-- `1_a_3c97a2d37f433a7913a1c7b7a735d000.png`
-- `11_sakura.png`
-- `200_timekeepers_clock.png`
+After copying the assets from the Python bot's `data/discord_decor/` directory, run:
 
-Bot ghép ảnh avatar tròn kích thước 240×240 tại vị trí (24,24) trên canvas 288×288, ghép khung Discord lên trên, xuất WebP động và giới hạn file đầu ra 512 KB.
+```bash
+npm run check:stk-assets
+```
 
-**Lưu ý:** mã nguồn chỉ chứa danh sách 200 tên/ID. Các ảnh khung và `menu.jpg` là tài nguyên riêng, cần được đưa vào thư mục này để lệnh gửi sticker thực tế. Khi thiếu ảnh, bot báo rõ file còn thiếu thay vì gửi sticker rỗng.
+The checker validates the menu image and all 200 frame IDs. It lists every missing frame file. This repository currently contains only the catalog and this README; binary frame images and `menu.jpg` must still be copied in.
