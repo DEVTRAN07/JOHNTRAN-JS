@@ -497,7 +497,7 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
   const baseColor = options.color || PALETTE.ink2;
   const align = options.align || "left";
   const safe = sanitizeGlyphs(value);
-  ctx.font = font(size, family);
+  ctx.font = options.font || font(size, family);
   const display = options.maxWidth ? truncate(ctx, safe, options.maxWidth) : safe;
   const useMulticolor = options.multicolor === true;
 
