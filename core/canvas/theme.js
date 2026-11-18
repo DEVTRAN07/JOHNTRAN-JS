@@ -140,14 +140,14 @@ function label(ctx, value, x, y, options = {}) {
   ensureTheme();
   const size = options.size || 15;
   const color = options.color || PALETTE.accent;
-  const display = sanitizeGlyphs(String(value || "").toUpperCase()).split("").join("\u200a");
+  const display = sanitizeGlyphs(splitGraphemes(String(value || "").toUpperCase()).join("\u200a"));
   drawMulticolorText(ctx, display, x, y, {
     size,
     family: "JT-Bold",
     color,
     align: options.align || "left",
     maxWidth: options.maxWidth,
-    multicolor: options.randomColor !== false && ![PALETTE.green, PALETTE.red, PALETTE.gold].includes(color)
+    multicolor: options.randomColor !== false
   });
 }
 
@@ -206,13 +206,75 @@ function roundRect(ctx, x, y, w, h, radius) {
   ctx.closePath();
 }
 
+function splitGraphemes(value) {
+  const source = String(value ?? "");
+  if (typeof Intl.Segmenter === "function") {
+    return Array.from(
+      new Intl.Segmenter("vi", { granularity: "grapheme" }).segment(source),
+      item => item.segment
+    );
+  }
+  return Array.from(source);
+}
+
 function truncate(ctx, value, maxWidth) {
-  let output = String(value ?? "");
-  if (!maxWidth || ctx.measureText(output).width <= maxWidth) return output;
-  while (output.length > 1 && ctx.measureText(output + "…").width > maxWidth) {
-    output = output.slice(0, -1);
+  const graphemes = splitGraphemes(value);
+  const source = graphemes.join("");
+  if (!maxWidth || ctx.measureText(source).width <= maxWidth) return source;
+  let output = "";
+  for (const grapheme of graphemes) {
+    if (ctx.measureText(output + grapheme + "…").width > maxWidth) break;
+    output += grapheme;
   }
   return output + "…";
+}
+
+// Wrap long, unbroken IDs/URLs between grapheme clusters instead of shrinking
+// the whole token until it becomes unreadable. No character is discarded.
+function wrapText(ctx, value, maxWidth) {
+  const source = String(value ?? "");
+  const width = Number(maxWidth);
+  if (!Number.isFinite(width) || width <= 0) return source.split(/\r\n|\r|\n/);
+
+  const output = [];
+  for (const paragraph of source.split(/\r\n|\r|\n/)) {
+    const words = paragraph.split(/\s+/u).filter(Boolean);
+    if (!words.length) {
+      output.push("");
+      continue;
+    }
+
+    let line = "";
+    for (const word of words) {
+      const pieces = [];
+      if (ctx.measureText(word).width <= width) {
+        pieces.push(word);
+      } else {
+        let piece = "";
+        for (const grapheme of splitGraphemes(word)) {
+          if (piece && ctx.measureText(piece + grapheme).width > width) {
+            pieces.push(piece);
+            piece = grapheme;
+          } else {
+            piece += grapheme;
+          }
+        }
+        if (piece) pieces.push(piece);
+      }
+
+      for (const piece of pieces) {
+        const candidate = line ? line + " " + piece : piece;
+        if (line && ctx.measureText(candidate).width > width) {
+          output.push(line);
+          line = piece;
+        } else {
+          line = candidate;
+        }
+      }
+    }
+    if (line) output.push(line);
+  }
+  return output;
 }
 
 function sharpenPhotoImageData(imageData, strength = 0.38) {
@@ -474,10 +536,11 @@ function randomTextColor(seed = "") {
 function text(ctx, value, x, y, options = {}) {
   ensureTheme();
   const requestedColor = options.color || PALETTE.ink2;
-  const semanticColor = [PALETTE.green, PALETTE.red, PALETTE.gold].includes(requestedColor);
+  // Every ordinary Canvas text gets randomized per-word colors by default.
+  // A caller can still keep a semantic solid color with multicolor:false.
   const multicolor = options.multicolor !== undefined
     ? options.multicolor === true
-    : options.randomColor === true || (options.randomColor !== false && !semanticColor);
+    : options.randomColor !== false;
   drawMulticolorText(ctx, value, x, y, {
     size: options.size || 20,
     family: options.family || "JT",
@@ -585,7 +648,7 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
     return { text: display, segments: display ? 1 : 0, width: visualWidth };
   }
 
-  const tokens = display.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu) || [];
+  const tokens = display.match(/[\p{L}\p{M}\p{N}]+(?:\u200a[\p{L}\p{M}\p{N}]+)*|[^\p{L}\p{M}\p{N}]+/gu) || [];
   if (!tokens.length) {
     ctx.restore();
     return { text: display, segments: 0, width: 0 };
@@ -669,7 +732,7 @@ function save(canvas, prefix) {
 }
 
 module.exports = {
-  PALETTE, WIDTH, S, font, FONT_FAMILIES, initFonts, roundRect, truncate,
+  PALETTE, WIDTH, S, font, FONT_FAMILIES, initFonts, roundRect, truncate, wrapText, splitGraphemes,
   paintBackground, panel, button, text, drawMulticolorText, newCanvas, save, foil, label,
   THEME_STYLE, randomAccent, RANDOM_ACCENTS, getCardPalette,
   reload: resolveTheme, ensureTheme, sanitizeGlyphs, mixHex, rgba,
