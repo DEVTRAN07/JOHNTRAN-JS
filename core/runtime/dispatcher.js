@@ -3,6 +3,10 @@
 const { performance } = require("node:perf_hooks");
 const { ThreadType } = require("zalo-client");
 
+// Status reactions create extra Zalo requests on every command. Keep them opt-in
+// so the default fast path sends only the actual command result.
+const SHOW_COMMAND_STATUS_REACTIONS = process.env.JT_COMMAND_STATUS_REACTIONS === "true";
+
 /**
  * Executes a resolved command using the legacy plugin contract.
  * Parsing, permissions and cooldowns stay in the pipeline; this module owns
@@ -44,7 +48,7 @@ async function dispatchCommand({
     };
 
     // Fast acknowledgement: show that the command has been received and is running.
-    reactAuto(Reactions.PRAY);
+    if (SHOW_COMMAND_STATUS_REACTIONS) reactAuto(Reactions.PRAY);
     try {
       await command.run({
         args,
@@ -58,13 +62,13 @@ async function dispatchCommand({
         threadData,
         userData
       });
-      if (command?.config?.backgroundExecution !== true) {
+      if (SHOW_COMMAND_STATUS_REACTIONS && command?.config?.backgroundExecution !== true) {
         reactAuto(Reactions.OK);
       }
     } catch (error) {
       logger.log(`Lỗi khi xử lý lệnh '${commandName}': ${error.message}`, "error", { source: "command", commandName, isGroup: event?.type === ThreadType.Group, groupId: event?.type === ThreadType.Group ? event?.threadId : "" });
       metrics?.track?.("error", { command: commandName });
-      reactAuto(Reactions.CRY);
+      if (SHOW_COMMAND_STATUS_REACTIONS) reactAuto(Reactions.CRY);
       try {
         await reply.error("Đã xảy ra lỗi khi xử lý lệnh!");
       } catch {
