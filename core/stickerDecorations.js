@@ -209,7 +209,7 @@ function createDecorationCatalog({
       ? true
       : options.animated === false || options.animated === "false" ? false : null;
     const filtered = data.items.filter(item => {
-      if (category && item.category !== category && item.collection !== category) return false;
+      if (category && item.category !== category && String(item.collection).toLowerCase() !== category) return false;
       if (animated !== null && item.animated !== animated) return false;
       if (!query) return true;
       return [item.id, item.name, item.category, item.collection].join(" ").toLowerCase().includes(query);
