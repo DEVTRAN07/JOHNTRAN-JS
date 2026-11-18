@@ -78,12 +78,13 @@ function isAntiGeneratedSelfEcho(event) {
   const threadId = String(event?.threadId || "");
   if (!threadId) return false;
   pruneAntiSelfEchoes();
+  let matched = false;
   for (const key of echoKeysFromPayload(threadId, data)) {
     if (!antiSelfEchoes.has(key)) continue;
     antiSelfEchoes.delete(key);
-    return true;
+    matched = true;
   }
-  return false;
+  return matched;
 }
 
 function shouldSkipSelfEvent(context = {}) {
