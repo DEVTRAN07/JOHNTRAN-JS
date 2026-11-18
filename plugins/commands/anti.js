@@ -348,10 +348,37 @@ function buildDeleteDestination(event) {
 }
 
 async function deleteGroupMessage(api, event) {
+  const destination = buildDeleteDestination(event);
+
+  // zalo-client explicitly rejects deleteMessage(..., false) for a message
+  // sent by the logged-in bot account. Zalo requires the undo endpoint for
+  // that case; regular members' messages still use group deleteMessage.
+  let ownId = "";
+  if (typeof api?.getOwnId === "function") {
+    try { ownId = String(await api.getOwnId()); }
+    catch { /* event.isSelf remains a reliable fallback when supplied */ }
+  }
+  const isBotMessage = event?.isSelf === true ||
+    (ownId && ownId === String(destination.data.uidFrom));
+
+  if (isBotMessage) {
+    if (typeof api?.undo !== "function") {
+      throw new Error("Zalo API undo không khả dụng để thu hồi tin nhắn do bot gửi");
+    }
+    return api.undo(
+      {
+        msgId: destination.data.msgId,
+        cliMsgId: destination.data.cliMsgId
+      },
+      destination.threadId,
+      ThreadType.Group
+    );
+  }
+
   if (typeof api?.deleteMessage !== "function") {
     throw new Error("Zalo API deleteMessage không khả dụng");
   }
-  return api.deleteMessage(buildDeleteDestination(event), false);
+  return api.deleteMessage(destination, false);
 }
 
 async function kickGroupMember(api, userId, threadId) {
