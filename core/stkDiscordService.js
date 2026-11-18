@@ -509,6 +509,118 @@ function extractUploadedUrl(uploaded) {
     root.thumbUrl || root.fileUrl || root.url || null;
 }
 
+
+const RESULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const RESULT_CACHE_MAX_ENTRIES = 2000;
+const DEFAULT_RESULT_CACHE_FILE = path.join(DECOR_DIR, "results-v1.json");
+
+function createResultCacheKey(mediaUrl, decorationId) {
+  const normalizedUrl = stickerService.normalizeSourceUrl(mediaUrl);
+  if (!normalizedUrl) throw new Error("Không tạo được khóa cache STK từ URL media.");
+  return crypto.createHash("sha256")
+    .update("stk-discord-v1\\0" + String(decorationId) + "\\0" + normalizedUrl)
+    .digest("hex");
+}
+
+function readResultCacheStore(filePath) {
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (data?.version === 1 && data.entries && typeof data.entries === "object") {
+      return data;
+    }
+  } catch {}
+  return { version: 1, entries: {} };
+}
+
+function isSafeCachedCdnUrl(value) {
+  try {
+    const parsed = new URL(String(value || ""));
+    return parsed.protocol === "https:" && !parsed.username && !parsed.password;
+  } catch {
+    return false;
+  }
+}
+
+function readStickerResultCache(key, options = {}) {
+  const filePath = options.filePath || DEFAULT_RESULT_CACHE_FILE;
+  const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : RESULT_CACHE_TTL_MS;
+  const nowMs = Number.isFinite(options.now) ? options.now : Date.now();
+  const store = readResultCacheStore(filePath);
+  const entry = store.entries[String(key)];
+  if (!entry || !isSafeCachedCdnUrl(entry.cdnUrl)) return null;
+  if (!Number.isFinite(entry.cachedAt) || nowMs - entry.cachedAt > ttlMs || nowMs < entry.cachedAt) {
+    return null;
+  }
+  return {
+    cdnUrl: entry.cdnUrl,
+    format: entry.format === "webp" ? "webp" : "png",
+    width: Number(entry.width) || CANVAS_SIZE,
+    height: Number(entry.height) || CANVAS_SIZE,
+    animated: entry.animated === true,
+    cachedAt: entry.cachedAt
+  };
+}
+
+function writeStickerResultCache(key, value, options = {}) {
+  if (!value || !isSafeCachedCdnUrl(value.cdnUrl)) return false;
+  const filePath = options.filePath || DEFAULT_RESULT_CACHE_FILE;
+  const nowMs = Number.isFinite(options.now) ? options.now : Date.now();
+  const store = readResultCacheStore(filePath);
+  store.entries[String(key)] = {
+    cdnUrl: String(value.cdnUrl),
+    format: value.format === "webp" ? "webp" : "png",
+    width: Number(value.width) || CANVAS_SIZE,
+    height: Number(value.height) || CANVAS_SIZE,
+    animated: value.animated === true,
+    cachedAt: nowMs
+  };
+
+  const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : RESULT_CACHE_TTL_MS;
+  const valid = Object.entries(store.entries)
+    .filter(([, entry]) =>
+      entry && isSafeCachedCdnUrl(entry.cdnUrl) &&
+      Number.isFinite(entry.cachedAt) &&
+      nowMs >= entry.cachedAt &&
+      nowMs - entry.cachedAt <= ttlMs
+    )
+    .sort((a, b) => b[1].cachedAt - a[1].cachedAt)
+    .slice(0, RESULT_CACHE_MAX_ENTRIES);
+  store.entries = Object.fromEntries(valid);
+
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tempPath = filePath + ".tmp-" + process.pid + "-" + crypto.randomBytes(4).toString("hex");
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(store));
+    fs.renameSync(tempPath, filePath);
+  } finally {
+    try { fs.rmSync(tempPath, { force: true }); } catch {}
+  }
+  return true;
+}
+
+function deleteStickerResultCache(key, options = {}) {
+  const filePath = options.filePath || DEFAULT_RESULT_CACHE_FILE;
+  const store = readResultCacheStore(filePath);
+  if (!Object.prototype.hasOwnProperty.call(store.entries, String(key))) return false;
+  delete store.entries[String(key)];
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tempPath = filePath + ".tmp-" + process.pid + "-" + crypto.randomBytes(4).toString("hex");
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(store));
+    fs.renameSync(tempPath, filePath);
+  } finally {
+    try { fs.rmSync(tempPath, { force: true }); } catch {}
+  }
+  return true;
+}
+
+function isExpiredCdnError(error) {
+  const status = Number(error?.status || error?.statusCode || error?.response?.status);
+  return status === 404 || /HTTP\\s*404|\\b404\\b|not found|expired|hết hạn/i.test(
+    String(error?.message || error || "")
+  );
+}
+
 async function measureStage(name, operation, timings) {
   const startedAt = Date.now();
   try {
@@ -542,6 +654,50 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
     currentStage = "register-api";
     stickerService.registerStickerApi(api);
     fs.mkdirSync(TMP_DIR, { recursive: true });
+
+    // A composition already uploaded to Zalo can be re-sent using one API
+    // call. This is the only practical sub-second path after the first build.
+    const resultCacheFile = options.resultCacheFile || DEFAULT_RESULT_CACHE_FILE;
+    const resultCacheKey = createResultCacheKey(normalizedUrl, decorationId);
+    const cachedResult = readStickerResultCache(resultCacheKey, {
+      filePath: resultCacheFile
+    });
+    if (cachedResult && typeof api.sendCustomStickerUrl === "function") {
+      currentStage = "zalo-send-cache";
+      try {
+        const cachedSent = await measureStage("cacheSend", () => api.sendCustomStickerUrl({
+          staticImgUrl: stickerService.buildStickerUrl(cachedResult.cdnUrl, cachedResult.format === "webp"),
+          animationImgUrl: stickerService.buildStickerUrl(cachedResult.cdnUrl, cachedResult.format === "webp"),
+          threadId: event.threadId,
+          threadType: event.type,
+          reply: getReplyQuote(event)?.msgId || null,
+          width: cachedResult.width,
+          height: cachedResult.height
+        }), timings);
+        timings.totalMs = Date.now() - totalStartedAt;
+        console.info(
+          "[stk] completed #" + decorationId +
+          " resultCache=HIT cacheSend=" + timings.cacheSend + "ms" +
+          " total=" + timings.totalMs + "ms"
+        );
+        return {
+          path: null,
+          width: cachedResult.width,
+          height: cachedResult.height,
+          size: 0,
+          animated: cachedResult.animated,
+          format: cachedResult.format,
+          cached: true,
+          response: cachedSent,
+          decoration,
+          timings
+        };
+      } catch (error) {
+        if (!isExpiredCdnError(error)) throw error;
+        deleteStickerResultCache(resultCacheKey, { filePath: resultCacheFile });
+        console.warn("[stk] CDN cache cũ không còn tồn tại; tạo lại sticker.");
+      }
+    }
 
     // Determine whether the selected frame is already on Persistent Disk.
     // Frame cache lookup and avatar/media retrieval run concurrently.
@@ -609,6 +765,21 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
     }), timings);
     const cdnUrl = extractUploadedUrl(uploaded);
     if (!cdnUrl) throw new Error("Zalo không trả về URL CDN sau khi upload sticker.");
+
+    // Persist the personalized CDN URL before sending so a subsequent command
+    // can skip both rendering and the upload request.
+    try {
+      writeStickerResultCache(resultCacheKey, {
+        cdnUrl,
+        format: output.format,
+        width: output.width,
+        height: output.height,
+        animated: output.animated
+      }, { filePath: resultCacheFile });
+    } catch (error) {
+      console.warn("[stk] Không lưu được cache kết quả Zalo: " +
+        String(error && error.message || error));
+    }
 
     const quote = getReplyQuote(event);
     currentStage = "zalo-send";
@@ -682,5 +853,10 @@ module.exports = {
   createWebp,
   createStaticPng,
   extractUploadedUrl,
+  createResultCacheKey,
+  readStickerResultCache,
+  writeStickerResultCache,
+  deleteStickerResultCache,
+  RESULT_CACHE_TTL_MS,
   processDiscordSticker
 };
