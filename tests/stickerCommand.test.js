@@ -118,7 +118,7 @@ test("/stk downloads the remote menu into cache and sends the cached file", asyn
 
 
 
-test("/stk dis reports a raw GitHub error when the menu cannot be downloaded", async () => {
+test("/stk dis is rejected with the replacement direct-number syntax", async () => {
   const sent = [];
   const api = {
     async sendMessage(message) {
@@ -127,16 +127,10 @@ test("/stk dis reports a raw GitHub error when the menu cannot be downloaded", a
     }
   };
   const event = { threadId: "stk-test-thread", type: 1, data: {} };
-  const originalEnsureMenu = service.ensureMenuFile;
-  service.ensureMenuFile = async () => { throw new Error("network offline"); };
-  try {
-    await command.run({ api, event, args: ["dis"] });
-  } finally {
-    service.ensureMenuFile = originalEnsureMenu;
-  }
+  await command.run({ api, event, args: ["dis"] });
   assert.equal(sent.length, 1);
-  assert.match(sent[0].msg, /raw GitHub/);
-  assert.match(sent[0].msg, /network offline/);
+  assert.match(sent[0].msg, /đã bỏ/);
+  assert.match(sent[0].msg, /\/stk 12/);
 });
 
 
