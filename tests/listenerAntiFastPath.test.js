@@ -65,3 +65,38 @@ test("listener reuses active Anti group snapshot instead of reading it again", a
 test.after(() => {
   global.client = previousClient;
 });
+
+
+test("inactive Anti is marked checked so passive dispatch does not invoke it a second time", async () => {
+  global.client = { commands: new Map([["anti", anti]]) };
+  const record = {
+    threadId: "listener-anti-checked-off",
+    data: { bot_enabled: true, anti_link: false, anti_spam: false }
+  };
+  let cacheReads = 0;
+  let gameCalls = 0;
+
+  const result = await listener.dispatchGroupMessageBeforeGame({
+    api: {},
+    event: {
+      threadId: record.threadId,
+      type: ThreadType.Group,
+      data: { uidFrom: "member-1", content: "ordinary message" }
+    },
+    Threads: {
+      getCachedData() { cacheReads++; return record; },
+      async getData() { throw new Error("snapshot is already available"); }
+    },
+    threadData: record,
+    async gameDispatcher() {
+      gameCalls++;
+      return false;
+    }
+  });
+
+  assert.equal(result.antiDispatched, false);
+  assert.equal(result.antiChecked, true);
+  assert.equal(result.consumed, false);
+  assert.equal(gameCalls, 1);
+  assert.equal(cacheReads, 0);
+});

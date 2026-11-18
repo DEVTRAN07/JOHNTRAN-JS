@@ -89,16 +89,16 @@ function shouldReplayOldMessage(message, reconnectSince) {
 
 async function dispatchAntiMessageBeforeGame({ api, event, Users, Threads, threadData = null, isSelf = false } = {}) {
   if (event?.type !== ThreadType.Group || !event?.threadId) {
-    return { dispatched: false, consumed: false };
+    return { dispatched: false, consumed: false, checked: true };
   }
 
   let antiCommand = global.client?.commands?.get?.("anti");
   if (typeof antiCommand?.handleEvent !== "function") {
     try { antiCommand = require("../plugins/commands/anti"); }
-    catch { return { dispatched: false, consumed: false }; }
+    catch { return { dispatched: false, consumed: false, checked: true }; }
   }
   if (typeof antiCommand?.handleEvent !== "function") {
-    return { dispatched: false, consumed: false };
+    return { dispatched: false, consumed: false, checked: true };
   }
 
   // onMessage has already loaded the group's settings. Reuse that snapshot
@@ -114,7 +114,7 @@ async function dispatchAntiMessageBeforeGame({ api, event, Users, Threads, threa
       const source = cachedThreadRecord?.data || cachedThreadRecord;
       const relevantKeys = antiCommand._test?.getRelevantAntiProtectionKeys?.("message") || [];
       if (relevantKeys.length && !relevantKeys.some(key => source?.[key] === true)) {
-        return { dispatched: false, consumed: false, skipped: true };
+        return { dispatched: false, consumed: false, skipped: true, checked: true };
       }
     }
   } catch {
@@ -135,13 +135,13 @@ async function dispatchAntiMessageBeforeGame({ api, event, Users, Threads, threa
       reply: wrapped?.__reply,
       threadType: ThreadType.Group
     });
-    return { dispatched: true, consumed: result?.consumed === true };
+    return { dispatched: true, consumed: result?.consumed === true, checked: true };
   } catch (error) {
     logger.log("Lỗi kiểm duyệt Anti trước game: " + (error?.message || error), "error", {
       source: "listener-anti-before-game",
       groupId: event.threadId
     });
-    return { dispatched: false, consumed: false };
+    return { dispatched: false, consumed: false, checked: false };
   }
 }
 
@@ -156,15 +156,22 @@ async function dispatchGroupMessageBeforeGame({
   gameDispatcher = dispatchActiveGameMessage
 } = {}) {
   const anti = await antiDispatcher({ api, event, Users, Threads, threadData, isSelf });
+  const antiChecked = anti?.checked === true || anti?.dispatched === true;
   if (anti?.consumed === true) {
-    return { consumed: true, source: "anti", antiDispatched: anti.dispatched === true };
+    return {
+      consumed: true,
+      source: "anti",
+      antiDispatched: anti.dispatched === true,
+      antiChecked
+    };
   }
 
   const gameConsumed = await gameDispatcher({ api, event, Users, Threads, isSelf, threadData });
   return {
     consumed: gameConsumed === true,
     source: gameConsumed === true ? "game" : null,
-    antiDispatched: anti?.dispatched === true
+    antiDispatched: anti?.dispatched === true,
+    antiChecked
   };
 }
 
@@ -345,7 +352,7 @@ function startListening(api) {
     // Anti and the game consumer have already had their single turn. Dispatch
     // other passive plugins without re-running either handler on the same event.
     dispatchMessageEvents({
-      skipAnti: activeDispatch.antiDispatched,
+      skipAnti: activeDispatch.antiChecked,
       skipGameConsumers: true
     });
 
