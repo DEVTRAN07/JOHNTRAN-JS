@@ -196,6 +196,53 @@ test("Discord STK result-cache hit skips source download, rendering and Zalo upl
   }
 });
 
+
+test("Discord avatar UID cache is short-lived and can send a stored CDN sticker directly", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-uid-cache-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cacheFile = path.join(dir, "results.json");
+  const key = service.createIdentityResultCacheKey("zalo-user-123", 18);
+  assert.notEqual(key, service.createIdentityResultCacheKey("zalo-user-123", 19));
+  service.writeStickerResultCache(key, {
+    cdnUrl: "https://f789.zdn.vn/sticker/avatar-123.png",
+    format: "png",
+    width: 288,
+    height: 288,
+    animated: false
+  }, { filePath: cacheFile });
+
+  const originalRegister = stickerService.registerStickerApi;
+  stickerService.registerStickerApi = () => ({});
+  const sent = [];
+  try {
+    const result = await service.sendCachedStickerForIdentity({
+      api: {
+        sendCustomStickerUrl: async options => {
+          sent.push(options);
+          return { sent: true };
+        }
+      },
+      event: { threadId: "uid-cache-thread", type: 1, data: {} },
+      decorationId: 18,
+      identity: "zalo-user-123",
+      resultCacheFile: cacheFile
+    });
+    assert.equal(result.cached, true);
+    assert.equal(result.cachedBy, "uid");
+    assert.equal(result.response.sent, true);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].threadId, "uid-cache-thread");
+  } finally {
+    stickerService.registerStickerApi = originalRegister;
+  }
+
+  assert.equal(service.readStickerResultCache(key, {
+    filePath: cacheFile,
+    now: Date.now() + service.AVATAR_RESULT_CACHE_TTL_MS + 1,
+    ttlMs: service.AVATAR_RESULT_CACHE_TTL_MS
+  }), null, "UID aliases expire quickly so profile changes are picked up");
+});
+
 test("STK asset inventory resolves exact and alternate frame names", t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-assets-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
