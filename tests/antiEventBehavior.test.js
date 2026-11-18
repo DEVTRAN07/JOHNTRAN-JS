@@ -20,7 +20,8 @@ function makeEvent(options = {}) {
       content: options.content === undefined ? "" : options.content,
       cliMsgId: options.cliMsgId || "cli-1",
       msgId: options.msgId || "msg-1",
-      ts: Date.now()
+      ts: Date.now(),
+      ...(Array.isArray(options.mentions) ? { mentions: options.mentions } : {})
     }
   };
 }
@@ -486,3 +487,88 @@ test("Anti Link preserves all three warnings when Zalo refuses the fourth-offenc
   assert.equal(threadData.anti_link_warnings.member, 3);
   assert.match(calls.sent[0].payload.msg, /Zalo từ chối kick/i);
 });
+
+
+test("new Anti media modes execute deletion and persistent fourth-offence enforcement", async () => {
+  const cases = [
+    ["anti_card", "chat.recommended", { action: "recommended.user", params: "member-card" }],
+    ["anti_doodle", "chat.doodle", { doodle: true }],
+    ["anti_file", "share.file", { href: "https://files.zaloapp.com/demo.pdf" }],
+    ["anti_gif", "chat.gif", { href: "https://files.zaloapp.com/loop.gif", mimeType: "image/gif" }],
+    ["anti_location", "chat.location", { lat: 10.7, lng: 106.6 }],
+    ["anti_video", "chat.video.msg", { href: "https://files.zaloapp.com/demo.mp4" }],
+    ["anti_voice", "chat.voice", { href: "https://files.zaloapp.com/demo.m4a" }],
+    ["anti_sticker", "chat.sticker", { id: 1, catId: 1 }],
+    ["anti_photo", "chat.photo", { href: "https://cdn.zaloapp.com/demo.jpg" }],
+    ["anti_qr", "chat.qr", { qrCode: true }]
+  ];
+
+  for (const [flag, msgType, content] of cases) {
+    const { api, calls } = makeApi();
+    const threadData = { [flag]: true };
+    for (let strike = 1; strike <= 4; strike++) {
+      await run(threadData, api, makeEvent({
+        uidFrom: "media-member",
+        msgType,
+        content,
+        cliMsgId: flag + "-cli-" + strike,
+        msgId: flag + "-msg-" + strike
+      }));
+      assert.equal(calls.deleted.length, strike, flag + " must delete each violating message");
+      assert.equal(calls.kicked.length, strike === 4 ? 1 : 0,
+        flag + " must kick only on the fourth violation");
+      if (strike <= 3) {
+        assert.equal(threadData[flag + "_warnings"]["media-member"], strike,
+          flag + " must persist warning " + strike);
+      }
+    }
+    assert.deepEqual(threadData[flag + "_warnings"], {},
+      flag + " must clear the warning counter after a successful kick");
+  }
+});
+
+test("Anti-Word and Anti-Tag-Hide execute the same warning and fourth-offence enforcement", async () => {
+  for (const [flag, buildData] of [
+    ["anti_word", (strike) => ({ content: "Địt mẹ", msgType: "webchat" })],
+    ["anti_taghide", () => ({
+      content: "xin chào",
+      msgType: "webchat",
+      mentions: [{ uid: "hidden-user", hidden: true, pos: 0, len: 0 }]
+    })]
+  ]) {
+    const { api, calls } = makeApi();
+    const threadData = { [flag]: true };
+    for (let strike = 1; strike <= 4; strike++) {
+      const source = buildData(strike);
+      await run(threadData, api, makeEvent({
+        uidFrom: "text-member",
+        msgType: source.msgType,
+        content: source.content,
+        mentions: source.mentions,
+        cliMsgId: flag + "-cli-" + strike,
+        msgId: flag + "-msg-" + strike
+      }));
+      assert.equal(calls.deleted.length, strike, flag + " must delete violating text");
+      assert.equal(calls.kicked.length, strike === 4 ? 1 : 0,
+        flag + " must kick only on the fourth violation");
+    }
+    assert.deepEqual(threadData[flag + "_warnings"], {});
+  }
+});
+
+test("Anti-Other only enforces explicitly malformed payloads", async () => {
+  const { api, calls } = makeApi();
+  const threadData = { anti_other: true };
+  await run(threadData, api, makeEvent({
+    msgType: "webchat", content: "tin nhắn bình thường"
+  }));
+  assert.equal(calls.deleted.length, 0, "normal text must not be blocked by Anti-Other");
+
+  await run(threadData, api, makeEvent({
+    msgType: "unknown.message", content: {}
+  }));
+  assert.equal(calls.deleted.length, 1);
+  assert.equal(threadData.anti_other_warnings.member, 1);
+  assert.match(calls.sent[0].payload.msg, /payload lỗi|không được Zalo hỗ trợ/i);
+});
+

@@ -5,6 +5,9 @@ const assert = require("node:assert/strict");
 
 const sam = require("../core/runtime/services/games/samService");
 const tlmn = require("../core/runtime/services/games/tlmnService");
+const samCommand = require("../plugins/commands/sam");
+const tlmnCommand = require("../plugins/commands/tlmn");
+const { ThreadType } = require("zalo-client");
 
 test("Sâm start countdown locks the room, persists its deadline and can be restored", () => {
   const threadId = "test-sam-start-countdown";
@@ -63,4 +66,44 @@ test("Tiến Lên start countdown locks join, bet changes and direct start", () 
   assert.deepEqual(restored.startCountdownMessage, { msgId: "102", cliMsgId: "202" });
 
   tlmn.removeRoom(threadId);
+});
+
+
+test("Sâm and Tiến Lên start-countdown reactions update the original group card from 10 to 0", async () => {
+  const remaining = [10, 9, 5, 1, 0];
+  const expected = ["🕙", "🕘", "🕔", "🕐", "⏰"];
+  const threadId = "start-reaction-countdown-" + Date.now();
+  const room = {
+    threadId,
+    startCountdownMessage: { msgId: 901, cliMsgId: "start-countdown-card" }
+  };
+
+  for (const command of [samCommand, tlmnCommand]) {
+    const reactions = [];
+    const api = {
+      async addReaction(reaction, destination) {
+        reactions.push({ reaction, destination });
+        return { status: 0 };
+      }
+    };
+
+    for (const seconds of remaining) {
+      assert.equal(await command._test.reactStartCountdown(api, room, seconds), true);
+    }
+
+    assert.deepEqual(
+      reactions.map(item => item.reaction.icon),
+      expected,
+      command.config.name + " must advance the clock reaction to zero"
+    );
+    assert.ok(reactions.every(item =>
+      item.reaction.rType === 0 && item.reaction.source === 6
+    ));
+    assert.ok(reactions.every(item =>
+      item.destination.threadId === threadId &&
+      item.destination.type === ThreadType.Group &&
+      item.destination.data.msgId === "901" &&
+      item.destination.data.cliMsgId === "start-countdown-card"
+    ), command.config.name + " must react to the exact group countdown card");
+  }
 });
