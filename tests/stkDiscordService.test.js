@@ -205,3 +205,35 @@ test("STK FFmpeg selection uses the verified WebP-capable binary", async () => {
     assert.match(String(probe.stdout || "") + String(probe.stderr || ""), /\blibwebp\b/);
   }
 });
+
+
+test("raw GitHub loader serves stale disk cache while refresh runs in background", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-stale-fast-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const file = path.join(dir, "menu.jpg");
+  const cachedJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  fs.writeFileSync(file, cachedJpeg);
+  let refreshFinished = false;
+
+  const result = await service.ensureRemoteAsset("menu.jpg", {
+    directory: dir,
+    ttlMs: 0,
+    maxBytes: 1024,
+    fetchImpl: async () => {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      refreshFinished = true;
+      throw new Error("slow GitHub response");
+    }
+  });
+
+  assert.equal(result, file);
+  assert.equal(refreshFinished, false,
+    "an expired but valid frame must be served without waiting for GitHub");
+  assert.deepEqual(fs.readFileSync(result), cachedJpeg);
+
+  await new Promise(resolve => setTimeout(resolve, 130));
+  assert.equal(refreshFinished, true, "the background refresh should still run");
+  assert.deepEqual(fs.readFileSync(result), cachedJpeg,
+    "a failed refresh must not damage the existing cached frame");
+});
