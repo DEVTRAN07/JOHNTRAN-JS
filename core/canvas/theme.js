@@ -537,9 +537,12 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
   let cursor = drawX;
   let previousColorIndex = -1;
   let wordIndex = 0;
-  const canvasSeed = Number.isFinite(ctx.__jtRenderSeed)
-    ? ctx.__jtRenderSeed
-    : themeBackgrounds.getRenderSeed();
+  // Also support legacy renderers that create their own Canvas context
+  // instead of calling newCanvas(); assign the random seed once per context.
+  if (!Number.isFinite(ctx.__jtRenderSeed)) {
+    ctx.__jtRenderSeed = Math.floor(Math.random() * 0x7fffffff);
+  }
+  const canvasSeed = ctx.__jtRenderSeed;
   const seed = String(options.colorSeed ?? display) + ":" + x + ":" + y + ":" + canvasSeed;
 
   for (const token of tokens) {
