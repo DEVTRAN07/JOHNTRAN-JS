@@ -112,3 +112,20 @@ test("antinude cannot be enabled without an OpenAI API key", async () => {
 test.after(() => {
   workerRender.renderCanvas = originalRenderCanvas;
 });
+
+
+test("Anti toggle keeps a readable confirmation when Canvas rendering fails", async () => {
+  const previousRender = workerRender.renderCanvas;
+  workerRender.renderCanvas = async () => { throw new Error("Canvas test failure"); };
+  const { context, calls } = makeContext();
+  try {
+    await runAntiToggle("antilink", context);
+    assert.equal(calls.saved?.anti_danger_link, true);
+    assert.equal(calls.sent.length, 1);
+    assert.match(calls.sent[0].payload.msg, /ℹ️ THÔNG BÁO HỆ THỐNG/);
+    assert.match(calls.sent[0].payload.msg, /Đã bật thành công chế độ Anti-Link/);
+    assert.equal(calls.sent[0].payload.attachments, undefined);
+  } finally {
+    workerRender.renderCanvas = previousRender;
+  }
+});
