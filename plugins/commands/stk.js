@@ -2,7 +2,7 @@
 
 const { enqueue } = require("../../core/jobQueue");
 const { parseQuote } = require("../../core/mediaReply");
-const { getUserAvatar, getRequesterProfile } = require("../../core/runtime/requesterProfile");
+const { getUserAvatar } = require("../../core/runtime/requesterProfile");
 const stkDiscord = require("../../core/stkDiscordService");
 
 const PREFIX = () => global.config?.prefix || "/";
@@ -13,10 +13,11 @@ module.exports.config = {
   version: "2.0.0",
   role: 0,
   author: "JOHNTRAN",
-  description: "Xem menu 200 khung Discord và ghép khung vào ảnh, sticker, GIF hoặc video",
+  description: "Xem menu Discord và tạo sticker bằng một trong 200 khung",
   category: "Tiện ích",
-  usage: "stk (menu) | stk dis [1-200] (reply ảnh/sticker/GIF/video)",
+  usage: "stk [1-200] (reply ảnh/sticker/GIF/video)",
   cooldowns: 0,
+  backgroundExecution: true,
   preferCommandOnBare: true,
   dependencies: {}
 };
@@ -25,29 +26,30 @@ function parseArguments(args) {
   const tokens = Array.isArray(args)
     ? args.map(value => String(value ?? "").trim()).filter(Boolean)
     : [];
-  // Bare /stk opens the Discord decoration menu.
-  if (!tokens.length) {
-    return { help: false, menu: true, decorationId: null, error: null };
-  }
-  if (tokens[0].toLowerCase() !== "dis") {
-    return { help: true, menu: false, decorationId: null, error: null };
-  }
 
-  const candidate = tokens[1];
-  if (!candidate || ["menu", "help", "list"].includes(candidate.toLowerCase())) {
+  if (!tokens.length || ["menu", "help", "list"].includes(tokens[0]?.toLowerCase())) {
     return { help: false, menu: true, decorationId: null, error: null };
   }
 
-  if (!/^\d{1,3}$/.test(candidate)) {
+  if (tokens[0].toLowerCase() === "dis") {
     return {
       help: false,
       menu: false,
       decorationId: null,
-      error: "Số thứ tự khung không hợp lệ. Vui lòng chọn từ 1 đến 200."
+      error: "Cú pháp /stk dis đã bỏ. Dùng /stk để xem menu hoặc /stk 12 để tạo khung số 12."
     };
   }
 
-  const decorationId = Number(candidate);
+  if (tokens.length !== 1 || !/^\d{1,3}$/.test(tokens[0])) {
+    return {
+      help: false,
+      menu: false,
+      decorationId: null,
+      error: "Cú pháp: /stk để xem menu hoặc /stk <1-200> để tạo sticker."
+    };
+  }
+
+  const decorationId = Number(tokens[0]);
   if (decorationId < 1 || decorationId > 200) {
     return {
       help: false,
@@ -119,13 +121,11 @@ function helpText(prefix = PREFIX()) {
   return [
     "✨ DISCORD AVATAR DECORATION — 200 KHUNG ✨",
     "",
-    "Xem danh sách 200 khung: " + prefix + "stk",
+    "Xem danh sách khung: " + prefix + "stk",
     "1. Reply vào ảnh, sticker, GIF hoặc video.",
-    "2. Gõ: " + prefix + "stk dis <1-200>",
+    "2. Gõ: " + prefix + "stk <1-200>",
     "",
-    "Có thể dùng " + prefix + "stk dis để mở lại menu.",
-    "Ví dụ: " + prefix + "stk dis 12",
-    "",
+    "Ví dụ: " + prefix + "stk 12",
     "Không reply media? Bot sẽ thử dùng avatar Zalo của người gửi lệnh."
   ].join("\n");
 }
@@ -215,7 +215,7 @@ module.exports.run = async function ({ api, event, args }) {
 
   if (options.help) return safeSend(api, event, helpText());
   if (options.menu) return sendMenu(api, event);
-  if (options.error) return safeSend(api, event, "⚠️ " + options.error + "\nGõ " + PREFIX() + "stk dis để xem menu.");
+  if (options.error) return safeSend(api, event, "⚠️ " + options.error);
 
   const decoration = stkDiscord.getDecoration(options.decorationId);
   if (!decoration) {
@@ -223,19 +223,19 @@ module.exports.run = async function ({ api, event, args }) {
   }
 
   const quotedUrl = getQuotedMediaUrl(event);
-
-  // Emit the progress reaction/text before avatar lookup or media download,
-  // matching the immediate acknowledgement in the Python implementation.
-  const profile = await getRequesterProfile(api, event, { skipAvatarWarm: true });
   const uid = getAuthorId(event);
-  const tag = "@" + String(profile?.requesterName || "Bạn");
+  const tag = "@" + String(
+    event?.data?.dName || event?.data?.senderName || event?.senderName || "Bạn"
+  ).slice(0, 32);
   const mentions = uid ? [{ uid, pos: 0, len: tag.length }] : [];
 
-  await safeReaction(api, event, "⏳");
-  await safeSend(
+  // Acknowledge immediately. The expensive download/FFmpeg/upload work must
+  // not hold the command dispatcher or block the user's next command.
+  void safeSend(
     api,
     event,
-    "⏳ Đang tạo sticker Discord [" + decoration.name + " - " + decoration.vi + "]...",
+    "⏳ Đã nhận yêu cầu tạo sticker [" + decoration.name + " - " + decoration.vi +
+      "]. Bot đang xử lý nền; kết quả sẽ được gửi khi hoàn tất.",
     mentions
   );
 
@@ -245,8 +245,9 @@ module.exports.run = async function ({ api, event, args }) {
     String(options.decorationId)
   ].join(":");
 
+  let job;
   try {
-    await enqueue("sticker", async () => {
+    job = enqueue("sticker", async () => {
       const media = await resolveMediaSource(api, event, quotedUrl);
       media.decorationId = options.decorationId;
       return processWithAvatarFallback(api, event, media);
@@ -255,26 +256,38 @@ module.exports.run = async function ({ api, event, args }) {
       label: "STK Discord · #" + options.decorationId,
       retries: 0
     });
-
-    const success = [
-      tag,
-      "SUCCESS",
-      "Đã thêm khung Discord [" + decoration.name + " - " + decoration.vi + "]"
-    ].join("\n");
-    await safeSend(api, event, success, mentions);
-    await safeReaction(api, event, "✅");
-    return true;
   } catch (error) {
+    void safeSend(api, event, "❌ Không thể đưa STK vào hàng đợi: " +
+      String(error?.message || error).slice(0, 280), mentions);
+    void safeReaction(api, event, "😢");
+    return false;
+  }
+
+  void Promise.resolve(job).then(async () => {
+    await safeSend(
+      api,
+      event,
+      [
+        tag,
+        "✅ SUCCESS",
+        "Đã tạo và gửi sticker Discord [" + decoration.name + " - " + decoration.vi + "]."
+      ].join("\n"),
+      mentions
+    );
+    void safeReaction(api, event, "✅");
+  }).catch(async error => {
     console.error("[stk] Tạo sticker thất bại:", error?.stack || error);
     await safeSend(
       api,
       event,
-      "❌ Đã xảy ra lỗi khi tạo sticker khung Discord:\n" +
-      String(error?.userMessage || error?.message || error).slice(0, 350),
+      "❌ Đã xảy ra lỗi khi tạo sticker Discord:\n" +
+        String(error?.userMessage || error?.message || error).slice(0, 350),
       mentions
     );
-    return false;
-  }
+    void safeReaction(api, event, "😢");
+  });
+
+  return true;
 };
 
 module.exports._test = {
