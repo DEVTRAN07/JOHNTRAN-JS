@@ -192,8 +192,14 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
     }
   }
 
-  const cachedUserData = Users.getCachedData?.(UIDUsage) ?? null;
-  const userData = cachedUserData || await Users.getData(UIDUsage).catch(() => null);
+  // The current command set reads user records through Users only when it
+  // actually needs them. Avoid a cold storage await on every ordinary command;
+  // legacy/custom plugins can opt in explicitly with config.requiresUserData.
+  let userData = null;
+  if (command.config.requiresUserData === true) {
+    const cachedUserData = Users.getCachedData?.(UIDUsage) ?? null;
+    userData = cachedUserData || await Users.getData(UIDUsage).catch(() => null);
+  }
 
   await dispatchCommand({
     command,
