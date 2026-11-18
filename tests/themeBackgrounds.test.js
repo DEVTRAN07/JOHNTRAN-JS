@@ -27,3 +27,14 @@ test("photo theme selection accepts numbered, random, reset and next commands", 
   assert.equal(themeBackgrounds.normalizeSelection("next", "3"), "1");
   assert.equal(themeBackgrounds.normalizeSelection("invalid"), null);
 });
+
+test("legacy saved photo selections migrate to random mode", () => {
+  assert.equal(themeBackgrounds.resolveStoredSelection({ selected: "2" }), "random");
+  assert.equal(themeBackgrounds.resolveStoredSelection({ selected: "3", updatedAt: "old" }), "random");
+});
+
+test("random is the default mode while explicit numbered selections remain supported", () => {
+  assert.equal(themeBackgrounds.resolveStoredSelection({ selected: "random", mode: "random" }), "random");
+  assert.equal(themeBackgrounds.resolveStoredSelection({ selected: "2", mode: "manual" }), "2");
+  assert.equal(themeBackgrounds.resolveStoredSelection({ selected: "invalid", mode: "manual" }), "random");
+});
