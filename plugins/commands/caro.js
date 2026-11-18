@@ -583,7 +583,10 @@ async function handleSpecial({ api, event, Users }, action) {
     }
     if (result.cancelled) {
       game.finish(threadId);
-      return send(api, event, "👋 Bạn đã rời phòng. Ván Caro đã được hủy, không tính thắng/thua.");
+      return sendBoard(api, event, result.session, "⚔️ PHÒNG CARO ĐÃ HỦY", [
+        "👋 Chủ phòng đã rời phòng chờ.",
+        "Ván đã hủy, không cộng/trừ sao."
+      ]);
     }
     result.reason = "leave";
     return settleGame({ api, event, Users, result });
@@ -591,9 +594,12 @@ async function handleSpecial({ api, event, Users }, action) {
 
   if (action === "stop") {
     if (session.ownerId !== uid && !isAdmin(uid)) return send(api, event, "⛔ Chỉ chủ phòng hoặc Admin mới được hủy ván.");
-    game.stop(threadId);
+    const stopped = game.stop(threadId);
     game.finish(threadId);
-    return send(api, event, "🛑 Đã hủy ván Caro. Không cộng/trừ sao.");
+    return sendBoard(api, event, stopped || session, "⚔️ CARO ĐÃ HỦY", [
+      "🛑 Chủ phòng/Admin đã hủy ván.",
+      "Không cộng/trừ sao."
+    ]);
   }
   return false;
 }
@@ -769,13 +775,20 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     if (!isAdmin(uid)) return send(api, event, "⛔ Chỉ Admin bot mới được bật/tắt Game Caro.");
     try {
       await setGameEnabled(Threads, threadId, action === "on");
-      if (action === "off" && game.get(threadId)) {
-        game.stop(threadId);
-        game.finish(threadId);
+      if (action === "off") {
+        const stopped = game.get(threadId);
+        if (stopped) {
+          game.stop(threadId);
+          game.finish(threadId);
+          return sendBoard(api, event, stopped, "⚔️ CARO ĐÃ HỦY", [
+            "🚫 Admin đã tắt Game Caro trong nhóm.",
+            "Ván đã hủy, không cộng/trừ sao."
+          ]);
+        }
       }
       return send(api, event, action === "on"
         ? "✅ Đã bật Game Caro trong nhóm hiện tại."
-        : "🚫 Đã tắt Game Caro trong nhóm hiện tại. Ván đang chạy (nếu có) đã được hủy, không tính sao.");
+        : "🚫 Đã tắt Game Caro trong nhóm hiện tại.");
     } catch (error) {
       return send(api, event, "❌ Không thể lưu cài đặt Caro: " + error.message);
     }
@@ -874,9 +887,12 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     if (!result.ok) return send(api, event, "⚠️ Nhóm đang có ván Caro. Gõ board để xem hoặc stop để hủy.");
     const session = result.session;
     const guestSymbol = symbol === "X" ? "O" : "X";
-    game.watchLobby(threadId, async () => {
+    game.watchLobby(threadId, async ({ session: expiredSession }) => {
       game.finish(threadId);
-      await send(api, event, "⌛ Phòng Caro đã tự hủy vì 5 phút không có người tham gia.");
+      await sendBoard(api, event, expiredSession || session, "⚔️ PHÒNG CARO HẾT HẠN", [
+        "⌛ Phòng tự hủy vì 5 phút không có người tham gia.",
+        "Không cộng/trừ sao."
+      ]);
     });
     await sendBoard(api, event, session, "⚔️ ĐÃ TẠO PHÒNG CARO PvP", [
       `👤 ${session.players[symbol].name}: quân ${symbol}`,
