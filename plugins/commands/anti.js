@@ -6,7 +6,7 @@ const http = require("../../core/http");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
 const fsSync = require("fs");
-const { getBotGroupRole } = require("../../core/runtime/botGroupKey");
+const { getBotGroupRole, getBotId } = require("../../core/runtime/botGroupKey");
 const { ANTI_PROTECTION_KEYS } = require("../../core/runtime/antiProtection");
 const { runThreadQueue } = require("../../core/runtime/threadQueue");
 const { sendAntiToggleNotice } = require("../../core/runtime/antiToggle");
@@ -735,8 +735,11 @@ async function handleAntiEvent(context = {}) {
     if (eventType === "group_event") {
       if (threadData.anti_join === true && String(event.type || "").toLowerCase() === "join") {
         const members = Array.isArray(data.updateMembers) ? data.updateMembers : [];
+        // getBotGroupRole has already resolved the bot UID. Reuse its
+        // cached value so a transient second getOwnId() failure cannot make
+        // Anti-Join treat the bot as an ordinary member during self-test mode.
         let ownId = "";
-        try { ownId = String(await api.getOwnId() || ""); } catch {}
+        try { ownId = String(await getBotId(api) || ""); } catch {}
         const histories = threadData.anti_join_history && typeof threadData.anti_join_history === "object"
           ? { ...threadData.anti_join_history } : {};
         const warningCounts = threadData.anti_join_warnings && typeof threadData.anti_join_warnings === "object"
