@@ -126,7 +126,7 @@ ai:
 
 # ===== CANVAS (ảnh menu/thẻ/nhạc) =====
 canvas:
-  theme: blue-neon # Theme mặc định đồng bộ cho mọi Canvas; có thể đổi bằng /theme
+  theme: photo-library # /theme chọn ảnh nền trong thư mục theme/; màu nhận diện cyan giữ cố định
   width: 750 # cỡ ảnh render: 750 = Zalo gửi NGUYÊN BẢN (không resize/nén HD) • 1280 = lớn nhưng bị Zalo nén
   quality: 100 # chất lượng PNG lossless (giữ original, không nén)
 
