@@ -1,6 +1,7 @@
 "use strict";
 
 const { createCanvas } = require("canvas");
+const theme = require("./theme");
 
 // Stable app-wide frame. /theme is intentionally not read here: only the
 // menu and folder renderers pass their selected palette explicitly.
@@ -102,7 +103,14 @@ function withMacWindow(content, title = "JOHN TRAN", palette = DEFAULT_FRAME_PAL
   ctx.fillStyle = "#f6f2e7";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(String(title || "JOHN TRAN").slice(0, 48), canvas.width / 2, dotY);
+  theme.drawMulticolorText(ctx, String(title || "JOHN TRAN"), canvas.width / 2, dotY, {
+    size: Math.round(13 * scale),
+    family: "Arial",
+    color: "#f6f2e7",
+    align: "center",
+    maxWidth: canvas.width - 96 * scale,
+    multicolor: true
+  });
   ctx.restore();
 
   ctx.strokeStyle = border;
