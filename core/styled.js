@@ -52,7 +52,7 @@ function randomColorStyles(message, options = {}) {
 
   // Color every visible token (words, punctuation and emoji), not just letters.
   // RegExp indices and lengths use UTF-16 offsets, as required by Zalo styles.
-  for (const match of text.matchAll(/\\S+/gu)) {
+  for (const match of text.matchAll(/\S+/gu)) {
     const start = match.index ?? 0;
     const len = match[0].length;
     const end = start + len;
