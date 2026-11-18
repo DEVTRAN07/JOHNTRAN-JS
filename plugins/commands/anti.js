@@ -724,10 +724,14 @@ async function handleAntiEvent(context = {}) {
     // last-known committed snapshot synchronously first, so a temporary
     // Supabase outage / startup sync does not silently disable Anti for an
     // already-configured group. Cold groups still use the durable async read.
-    let record = null;
-    try {
-      record = Threads.getCachedData?.(threadId) || null;
-    } catch { /* fall back to the durable read below */ }
+    let record = context.cachedThreadRecord || null;
+    // handleEvent checks the hot cache once before queueing so inactive Anti
+    // rules never enter the serialized path. Reuse that result here.
+    if (!record && context.cachedThreadCacheChecked !== true) {
+      try {
+        record = Threads.getCachedData?.(threadId) || null;
+      } catch { /* fall back to the durable read below */ }
+    }
     if (!record) {
       if (typeof Threads?.getData !== "function") return;
       record = await Threads.getData(threadId);
@@ -1438,17 +1442,27 @@ module.exports.handleEvent = function (context = {}) {
   const threadId = String(context.event?.threadId || "");
   if (!threadId) return Promise.resolve();
 
-  // Hot cached settings let us skip queueing and all role/API checks when the
-  // relevant Anti protection is OFF for this kind of event.
+  // Snapshot the hot cache once. Reuse it in the queued handler so inactive
+  // protections return immediately and active protections do not read twice.
+  let cachedThreadRecord = null;
+  let cachedThreadCacheChecked = false;
   try {
-    const record = context.Threads?.getCachedData?.(threadId);
-    if (record) {
-      const source = record?.data || record;
+    if (typeof context.Threads?.getCachedData === "function") {
+      cachedThreadCacheChecked = true;
+      cachedThreadRecord = context.Threads.getCachedData(threadId) || null;
+    }
+    if (cachedThreadRecord) {
+      const source = cachedThreadRecord?.data || cachedThreadRecord;
       const eventType = context.eventType || "message";
       const relevantKeys = getRelevantAntiProtectionKeys(eventType);
       if (!relevantKeys.some(key => source?.[key] === true)) return Promise.resolve();
     }
-  } catch { /* the serialized path below retains the safe fallback */ }
+  } catch { /* the queued handler retains the durable read fallback */ }
 
-  return runThreadQueue(threadId, () => handleAntiEvent(context));
+  const queuedContext = {
+    ...context,
+    cachedThreadRecord,
+    cachedThreadCacheChecked
+  };
+  return runThreadQueue(threadId, () => handleAntiEvent(queuedContext));
 };
