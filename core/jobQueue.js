@@ -3,9 +3,10 @@
 // Bounded in-process queues. Retry backoff is delayed outside active worker
 // slots, so a temporarily failing provider cannot block unrelated work.
 const DOWNLOAD_CONCURRENCY = positiveEnv("JT_DOWNLOAD_CONCURRENCY", 1);
+const STICKER_CONCURRENCY = positiveEnv("JT_STICKER_CONCURRENCY", 2);
 
 const DEFAULT_LANES = {
-  sticker: { concurrency: 1, maxPending: 30, maxInFlight: 31 },
+  sticker: { concurrency: STICKER_CONCURRENCY, maxPending: 30, maxInFlight: 31 },
   image: { concurrency: 1, maxPending: 20, maxInFlight: 21 },
   gif: { concurrency: 1, maxPending: 12, maxInFlight: 13 },
   video: { concurrency: 1, maxPending: 8, maxInFlight: 9 },
@@ -258,5 +259,6 @@ module.exports = {
   DEFAULT_LANES,
   GLOBAL_CONCURRENCY,
   GLOBAL_MAX_PENDING,
-  DOWNLOAD_CONCURRENCY
+  DOWNLOAD_CONCURRENCY,
+  STICKER_CONCURRENCY
 };
