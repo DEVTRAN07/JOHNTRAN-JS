@@ -77,7 +77,7 @@ function formatDecorationList(result, page, prefix = PREFIX(), heading = "KHO DI
     "├────────────────────────",
     "• Trang tiếp: " + prefix + "stk list " + (page + 1),
     "• Tìm tên: " + prefix + "stk find <từ khóa>",
-    "• Reply media rồi dùng: " + prefix + "stk <ID>",
+    "• Reply media rồi dùng: " + prefix + "stk <số ID>",
     "• Chọn ngẫu nhiên: reply media rồi gõ " + prefix + "stk random",
     "• Nguồn: uhidontkno/DiscordAvatarDecorations",
     "╰────────────────────────"
