@@ -256,7 +256,7 @@ export const sendMessageFactory = apiFactory()((api, ctx, utils) => {
         };
     }
     async function handleAttachment(opts, threadId, type, outerClientId) {
-        const { msg, attachments, mentions, quote, ttl, urgency } = opts;
+        const { msg, attachments, mentions, quote, ttl, urgency, styles } = opts;
         if (!attachments)
             throw new ZaloApiError("Missing attachments");
         if (!Array.isArray(attachments))
@@ -318,6 +318,9 @@ export const sendMessageFactory = apiFactory()((api, ctx, utils) => {
                         },
                         body: new URLSearchParams(),
                     };
+                    // Single-image captions live in desc, not in a separate
+                    // text message. Keep their Zalo text styles on the image payload.
+                    if (msg) handleStyles(data.params, styles);
                     break;
                 }
                 case "video": {
