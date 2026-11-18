@@ -19,7 +19,7 @@ const SAMPLE =
 
 test("bot text receives random Zalo colors per word without changing message content", () => {
   const output = styledText.randomize(SAMPLE, { random: () => 0.5 });
-  const words = [...SAMPLE.matchAll(/[\\p{L}\\p{N}]+/gu)];
+  const words = [...SAMPLE.matchAll(/[\p{L}\p{N}]+/gu)];
   const colors = output.styles.filter(style => COLOR_STYLES.has(style.st));
 
   assert.equal(output.msg, SAMPLE);
