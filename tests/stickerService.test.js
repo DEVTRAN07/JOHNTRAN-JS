@@ -187,4 +187,21 @@ test("FFmpeg composes a transparent decoration overlay over a still image and re
   assert.ok(result.size <= service.MAX_STICKER_BYTES);
   assert.equal(result.width, result.height);
   assert.ok(["webp", "gif"].includes(result.format));
+  assert.equal(result.shape, "circle");
+  assert.equal(result.transparent, true);
+
+  // Decode one frame to RGBA and prove the corners are transparent while the
+  // centre remains opaque. This catches accidental square output or alpha loss.
+  const decoded = spawnSync(service.resolveFfmpegBinary(), [
+    "-hide_banner", "-loglevel", "error", "-i", result.path,
+    "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"
+  ], { encoding: null, maxBuffer: 4 * 1024 * 1024 });
+  assert.equal(decoded.status, 0, String(decoded.stderr || ""));
+  const pixelAlpha = (x, y) => decoded.stdout[(y * result.width + x) * 4 + 3];
+  assert.equal(pixelAlpha(0, 0), 0, "top-left corner must be transparent");
+  assert.equal(pixelAlpha(result.width - 1, 0), 0, "top-right corner must be transparent");
+  assert.equal(pixelAlpha(0, result.height - 1), 0, "bottom-left corner must be transparent");
+  assert.equal(pixelAlpha(result.width - 1, result.height - 1), 0, "bottom-right corner must be transparent");
+  assert.equal(pixelAlpha(Math.floor(result.width / 2), Math.floor(result.height / 2)), 255,
+    "circle centre must remain opaque");
 });
