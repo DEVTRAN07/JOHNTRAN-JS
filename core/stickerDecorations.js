@@ -17,22 +17,21 @@ const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_LIMIT = 100;
 const IMAGE_EXTENSIONS = new Set([".png", ".gif", ".webp", ".apng"]);
 const ANIMATED_PRIORITY = [".webp", ".gif", ".apng"];
-const STATIC_PRIORITY = [".png", ".webp", ".gif", ".apng"];
 
 function titleFromFile(value) {
   return String(value || "")
-    .replace(/\\.(png|gif|webp|apng)$/i, "")
+    .replace(/\.(png|gif|webp|apng)$/i, "")
     .replace(/_static$/i, "")
     .replace(/[_-]+/g, " ")
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
-    .replace(/\\b\\w/g, letter => letter.toUpperCase());
+    .replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
 function safeRawUrl(assetPath) {
-  const normalized = String(assetPath || "").replace(/^\\/+/, "");
+  const normalized = String(assetPath || "").replace(/^\/+/, "");
   if (!normalized || normalized.split("/").some(part => !part || part === "." || part === "..")) return null;
-  if (!/^(shop|archive|etc)\\//.test(normalized)) return null;
+  if (!/^(shop|archive|etc)\//.test(normalized)) return null;
   if (!IMAGE_EXTENSIONS.has(path.posix.extname(normalized).toLowerCase())) return null;
   return SOURCE.rawBase + normalized.split("/").map(encodeURIComponent).join("/");
 }
@@ -43,39 +42,43 @@ function classifyPath(assetPath) {
   if (!["shop", "archive", "etc"].includes(root)) return null;
   if (root === "etc" && parts[1] === "default_old") return null;
 
-  let collection = parts[1] || "misc";
+  const collection = parts[1] || "misc";
   let base = path.posix.basename(assetPath, path.posix.extname(assetPath));
   let variant = "static";
 
   if (root === "archive" && ["gif", "apng"].includes(parts[2])) {
     variant = "animated";
-    base = path.posix.basename(assetPath, path.posix.extname(assetPath));
-  } else if (root === "etc") {
-    if (/\\.(gif|webp|apng)$/i.test(assetPath)) variant = "animated";
-    if (/_static$/i.test(base)) base = base.replace(/_static$/i, "");
-  } else if (/\\.(gif|webp|apng)$/i.test(assetPath)) {
+  } else if (root === "etc" && /\.(gif|webp|apng)$/i.test(assetPath)) {
+    variant = "animated";
+  } else if (/\.(gif|webp|apng)$/i.test(assetPath)) {
     variant = "animated";
   }
 
+  if (root === "etc" && /_static$/i.test(base)) base = base.replace(/_static$/i, "");
   const idParts = [root, collection, base]
     .map(value => String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""))
     .filter(Boolean);
-  const id = idParts.join("-");
-  return { id, root, collection, base, variant, assetPath };
+  return {
+    id: idParts.join("-"),
+    root,
+    collection,
+    base,
+    variant,
+    assetPath
+  };
 }
 
 function buildCatalog(tree, sourceSha = null, generatedAt = Date.now()) {
   const groups = new Map();
   for (const entry of Array.isArray(tree) ? tree : []) {
     if (entry?.type !== "blob" || typeof entry.path !== "string") continue;
-    const ext = path.posix.extname(entry.path).toLowerCase();
-    if (!IMAGE_EXTENSIONS.has(ext)) continue;
+    if (!IMAGE_EXTENSIONS.has(path.posix.extname(entry.path).toLowerCase())) continue;
     const classified = classifyPath(entry.path);
-    if (!classified) continue;
-    const key = classified.id;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        id: key,
+    if (!classified?.id) continue;
+
+    if (!groups.has(classified.id)) {
+      groups.set(classified.id, {
+        id: classified.id,
         name: titleFromFile(classified.base),
         category: classified.root,
         collection: classified.collection,
@@ -83,9 +86,9 @@ function buildCatalog(tree, sourceSha = null, generatedAt = Date.now()) {
         animatedPaths: []
       });
     }
-    const item = groups.get(key);
-    if (classified.variant === "animated") item.animatedPaths.push(classified.assetPath);
-    else if (!item.staticPath) item.staticPath = classified.assetPath;
+    const group = groups.get(classified.id);
+    if (classified.variant === "animated") group.animatedPaths.push(classified.assetPath);
+    else if (!group.staticPath) group.staticPath = classified.assetPath;
   }
 
   const items = [];
@@ -93,13 +96,17 @@ function buildCatalog(tree, sourceSha = null, generatedAt = Date.now()) {
     group.animatedPaths.sort((a, b) => {
       const extA = path.posix.extname(a).toLowerCase();
       const extB = path.posix.extname(b).toLowerCase();
-      return ANIMATED_PRIORITY.indexOf(extA) - ANIMATED_PRIORITY.indexOf(extB);
+      const indexA = ANIMATED_PRIORITY.indexOf(extA);
+      const indexB = ANIMATED_PRIORITY.indexOf(extB);
+      return (indexA < 0 ? 99 : indexA) - (indexB < 0 ? 99 : indexB);
     });
     const animatedPath = group.animatedPaths[0] || null;
-    const staticPath = group.staticPath || animatedPath;
+    const apngFallback = group.animatedPaths.find(item => /\/apng\//i.test(item) && /\.png$/i.test(item));
+    const staticPath = group.staticPath || apngFallback || animatedPath;
     const staticUrl = safeRawUrl(staticPath);
     const animatedUrl = safeRawUrl(animatedPath);
     if (!staticUrl && !animatedUrl) continue;
+
     items.push({
       id: group.id,
       name: group.name,
@@ -108,7 +115,7 @@ function buildCatalog(tree, sourceSha = null, generatedAt = Date.now()) {
       animated: Boolean(animatedUrl),
       staticUrl: staticUrl || animatedUrl,
       animatedUrl,
-      sourcePath: group.staticPath || animatedPath,
+      sourcePath: group.staticPath || apngFallback || animatedPath,
       source: SOURCE.repositoryUrl
     });
   }
@@ -173,11 +180,11 @@ function createDecorationCatalog({
       if (!Array.isArray(payload?.tree) || payload.tree.length === 0) {
         throw new Error("Catalog Discord trả về dữ liệu không hợp lệ.");
       }
-      const snapshot = buildCatalog(payload.tree, payload.sha || null, now());
-      if (!snapshot.items.length) throw new Error("Catalog Discord không có decoration hợp lệ.");
-      memory = snapshot;
-      writeCache(snapshot);
-      return snapshot;
+      const next = buildCatalog(payload.tree, payload.sha || null, now());
+      if (!next.items.length) throw new Error("Catalog Discord không có decoration hợp lệ.");
+      memory = next;
+      writeCache(next);
+      return next;
     })().finally(() => { refreshPromise = null; });
     return refreshPromise;
   }
@@ -187,7 +194,6 @@ function createDecorationCatalog({
     if (forceRefresh) return refresh();
     if (cached && now() - Number(cached.generatedAt || 0) < ttlMs) return cached;
     if (cached) {
-      // Stale-while-revalidate: command/API dùng ngay cache cũ, cập nhật ở nền.
       refresh().catch(() => {});
       return cached;
     }
@@ -205,8 +211,7 @@ function createDecorationCatalog({
       if (category && item.category !== category && item.collection !== category) return false;
       if (animated !== null && item.animated !== animated) return false;
       if (!query) return true;
-      const haystack = [item.id, item.name, item.category, item.collection].join(" ").toLowerCase();
-      return haystack.includes(query);
+      return [item.id, item.name, item.category, item.collection].join(" ").toLowerCase().includes(query);
     });
     const limitRaw = Number(options.limit);
     const offsetRaw = Number(options.offset);
@@ -228,9 +233,13 @@ function createDecorationCatalog({
     const data = await snapshot(options);
     const key = String(id || "").trim().toLowerCase();
     if (!key) return null;
-    return data.items.find(item => item.id.toLowerCase() === key) ||
-      data.items.find(item => path.posix.basename(item.sourcePath || "").replace(/\\.(png|gif|webp|apng)$/i, "").toLowerCase() === key) ||
-      null;
+    const exact = data.items.find(item => item.id.toLowerCase() === key);
+    if (exact) return exact;
+    const matches = data.items.filter(item =>
+      path.posix.basename(item.sourcePath || "").replace(/\.(png|gif|webp|apng)$/i, "").toLowerCase() === key ||
+      item.name.toLowerCase() === key
+    );
+    return matches.length === 1 ? matches[0] : null;
   }
 
   return { getDecorations, getDecoration, refresh, snapshot };
