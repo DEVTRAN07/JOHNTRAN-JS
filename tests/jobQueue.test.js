@@ -282,3 +282,41 @@ test("reserved HTTP control-plane requests run while every media slot is occupie
   }
   await Promise.all(mediaJobs);
 });
+
+
+test("control-plane pending capacity is isolated from a saturated media queue", async () => {
+  const { GLOBAL_MAX_PENDING, CONTROL_MAX_PENDING } = require("../core/jobQueue");
+  let release;
+  let signalStarted;
+  const started = new Promise(resolve => { signalStarted = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const mediaJobs = [];
+  mediaJobs.push(enqueue("test-media-pending-isolation", async () => {
+    signalStarted();
+    await gate;
+    return "active";
+  }, {
+    concurrency: 1,
+    maxPending: GLOBAL_MAX_PENDING,
+    maxInFlight: GLOBAL_MAX_PENDING + 1
+  }));
+  await started;
+  for (let index = 0; index < GLOBAL_MAX_PENDING; index++) {
+    mediaJobs.push(enqueue("test-media-pending-isolation", async () => index));
+  }
+  assert.equal(stats().global.mediaPending, GLOBAL_MAX_PENDING);
+  assert.equal(stats().global.controlPending, 0);
+
+  try {
+    assert.equal(await enqueue("http", async () => "control-work"), "control-work");
+    assert.equal(stats().global.mediaPending, GLOBAL_MAX_PENDING,
+      "a control-plane request must not consume media pending capacity");
+    assert.equal(stats().global.controlPending, 0);
+    assert.equal(CONTROL_MAX_PENDING, 48);
+  } finally {
+    release();
+  }
+  const values = await Promise.all(mediaJobs);
+  assert.equal(values.length, GLOBAL_MAX_PENDING + 1);
+  assert.equal(stats().global.mediaPending, 0);
+});

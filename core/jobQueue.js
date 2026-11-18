@@ -26,9 +26,11 @@ const DEFAULT_LANES = {
 const lanes = new Map();
 const GLOBAL_CONCURRENCY = positiveEnv("JT_JOB_GLOBAL_CONCURRENCY", 4);
 const GLOBAL_MAX_PENDING = positiveEnv("JT_JOB_GLOBAL_MAX_PENDING", 80);
+const CONTROL_MAX_PENDING = positiveEnv("JT_JOB_CONTROL_MAX_PENDING", 48);
 let globalActive = 0;
 let controlActive = 0;
 let globalPending = 0;
+let controlPending = 0;
 let sequence = 0;
 
 function positiveEnv(name, fallback) {
@@ -131,7 +133,8 @@ function deferRetry(lane, job, error) {
   job.lastError = error;
   lane.retried++;
   lane.retrying.set(job.id, job);
-  globalPending++;
+  if (lane.controlPlane) controlPending++;
+  else globalPending++;
 
   job.retryTimer = setTimeout(() => {
     job.retryTimer = null;
@@ -167,7 +170,8 @@ function drain(lane) {
     lane.active < lane.concurrency && lane.pending.length
   ) {
     const job = lane.pending.shift();
-    globalPending = Math.max(0, globalPending - 1);
+    if (lane.controlPlane) controlPending = Math.max(0, controlPending - 1);
+    else globalPending = Math.max(0, globalPending - 1);
     lane.active++;
     if (lane.controlPlane) controlActive++;
     else globalActive++;
@@ -201,9 +205,15 @@ function enqueue(laneName, run, options = {}) {
   if (key && lane.inFlight.has(key)) return lane.inFlight.get(key);
 
   const lanePending = lane.pending.length + lane.retrying.size;
-  if (globalPending >= GLOBAL_MAX_PENDING) {
+  const pendingCount = lane.controlPlane ? controlPending : globalPending;
+  const pendingLimit = lane.controlPlane ? CONTROL_MAX_PENDING : GLOBAL_MAX_PENDING;
+  if (pendingCount >= pendingLimit) {
     lane.rejected++;
-    return Promise.reject(new Error("Hệ thống đang có quá nhiều tác vụ chờ. Vui lòng thử lại sau."));
+    return Promise.reject(new Error(
+      lane.controlPlane
+        ? "Hàng đợi request điều khiển đang quá tải. Vui lòng thử lại sau."
+        : "Hệ thống đang có quá nhiều tác vụ chờ. Vui lòng thử lại sau."
+    ));
   }
   if (lanePending >= lane.maxPending) {
     lane.rejected++;
@@ -236,7 +246,8 @@ function enqueue(laneName, run, options = {}) {
   };
 
   if (key) lane.inFlight.set(key, promise);
-  globalPending++;
+  if (lane.controlPlane) controlPending++;
+  else globalPending++;
   insertByPriority(lane, job);
   drainAll();
   return promise;
@@ -291,9 +302,12 @@ function stats() {
     active: globalActive,
     controlActive,
     totalActive: globalActive + controlActive,
-    pending: globalPending,
+    pending: globalPending + controlPending,
+    mediaPending: globalPending,
+    controlPending,
     concurrency: GLOBAL_CONCURRENCY,
-    maxPending: GLOBAL_MAX_PENDING
+    maxPending: GLOBAL_MAX_PENDING,
+    controlMaxPending: CONTROL_MAX_PENDING
   };
   return snapshot;
 }
@@ -304,6 +318,7 @@ module.exports = {
   DEFAULT_LANES,
   GLOBAL_CONCURRENCY,
   GLOBAL_MAX_PENDING,
+  CONTROL_MAX_PENDING,
   DOWNLOAD_CONCURRENCY,
   STICKER_CONCURRENCY
 };
