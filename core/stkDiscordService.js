@@ -81,8 +81,10 @@ function inputArgs(filePath, extension, animated, fps) {
 }
 
 function buildFilterGraph(fps = DEFAULT_FPS) {
-  // Crop the source to a centred circle (240x240), place it at 24,24 on a
-  // transparent 288x288 canvas, then composite the full-canvas Discord frame.
+  // Keep RGB composition separate from alpha composition. Some FFmpeg builds
+  // negotiate an opaque pixel format through overlay=auto; extracting the
+  // avatar/frame alpha planes and alphamerge-ing them at the end guarantees
+  // transparent canvas corners on every supported build.
   const alpha = "alpha(X,Y)*lt(hypot(X-W/2\\,Y-H/2)\\,min(W\\,H)/2)";
   return [
     "[0:v]scale=" + AVATAR_SIZE + ":" + AVATAR_SIZE +
@@ -94,10 +96,18 @@ function buildFilterGraph(fps = DEFAULT_FPS) {
       ":force_original_aspect_ratio=decrease:flags=lanczos," +
       "pad=" + CANVAS_SIZE + ":" + CANVAS_SIZE +
       ":(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,format=rgba[decor]",
-    "color=c=black@0.0:s=" + CANVAS_SIZE + "x" + CANVAS_SIZE +
-      ":r=" + fps + ",format=rgba[base]",
-    "[base][avatar]overlay=" + OFFSET + ":" + OFFSET + ":format=auto[stage]",
-    "[stage][decor]overlay=0:0:format=auto,format=rgba,fps=" + fps + "[out]"
+    "[avatar]split=2[avatar_rgb][avatar_alpha_src]",
+    "[avatar_alpha_src]format=rgba,alphaextract,format=gray," +
+      "pad=" + CANVAS_SIZE + ":" + CANVAS_SIZE +
+      ":" + OFFSET + ":" + OFFSET + ":color=black[avatar_alpha]",
+    "[decor]split=2[decor_rgb][decor_alpha_src]",
+    "[decor_alpha_src]format=rgba,alphaextract,format=gray[decor_alpha]",
+    "[avatar_alpha][decor_alpha]blend=all_mode=lighten,format=gray[final_alpha]",
+    "color=c=black:s=" + CANVAS_SIZE + "x" + CANVAS_SIZE +
+      ":r=" + fps + ",format=rgb24[base]",
+    "[base][avatar_rgb]overlay=" + OFFSET + ":" + OFFSET + ":format=auto[stage]",
+    "[stage][decor_rgb]overlay=0:0:format=auto,format=rgb24[stage_rgb]",
+    "[stage_rgb][final_alpha]alphamerge,format=rgba,fps=" + fps + "[out]"
   ].join(";");
 }
 
