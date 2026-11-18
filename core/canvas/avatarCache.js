@@ -46,6 +46,7 @@ function warmAvatar(url, options = {}) {
       const result = await getBuffer(key, {
         timeout,
         retries: 0,
+        queueLane: "asset",
         headers: {
           "User-Agent": "Mozilla/5.0",
           Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8"
