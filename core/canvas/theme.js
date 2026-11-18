@@ -216,7 +216,7 @@ function truncate(ctx, value, maxWidth) {
   return output + "…";
 }
 
-function paintBackground(ctx, width, height) {
+function paintBackground(ctx, width, height, options = {}) {
   initFonts();
   ensureTheme();
   const palette = getCardPalette();
@@ -245,10 +245,18 @@ function paintBackground(ctx, width, height) {
   }
 
   // Layer 1: transparent navy veil; it darkens photography without hiding it.
+  const defaultVeilAlpha = [0.38, 0.53, 0.62];
+  const requestedVeilAlpha = Array.isArray(options.veilAlpha)
+    ? options.veilAlpha
+    : defaultVeilAlpha;
+  const veilAlpha = defaultVeilAlpha.map((fallback, index) => {
+    const value = Number(requestedVeilAlpha[index]);
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
+  });
   const veil = ctx.createLinearGradient(0, 0, width, height);
-  veil.addColorStop(0, "rgba(2,8,20,.38)");
-  veil.addColorStop(0.48, "rgba(3,12,29,.53)");
-  veil.addColorStop(1, "rgba(2,7,18,.62)");
+  veil.addColorStop(0, "rgba(2,8,20," + veilAlpha[0] + ")");
+  veil.addColorStop(0.48, "rgba(3,12,29," + veilAlpha[1] + ")");
+  veil.addColorStop(1, "rgba(2,7,18," + veilAlpha[2] + ")");
   ctx.fillStyle = veil;
   ctx.fillRect(0, 0, width, height);
 
@@ -316,7 +324,10 @@ function paintBackground(ctx, width, height) {
     width * 0.5, height * 0.45, width * 0.82
   );
   vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, "rgba(0,5,16,.48)");
+  const vignetteAlpha = Number.isFinite(Number(options.vignetteAlpha))
+    ? Math.max(0, Math.min(1, Number(options.vignetteAlpha)))
+    : 0.48;
+  vignette.addColorStop(1, "rgba(0,5,16," + vignetteAlpha + ")");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
