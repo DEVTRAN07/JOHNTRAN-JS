@@ -40,6 +40,7 @@ test("protected /metrics exposes command latency, event-loop pressure and queue 
     assert.ok(payload.eventLoop && typeof payload.eventLoop.p95Ms === "number");
     assert.ok(payload.jobQueues && typeof payload.jobQueues.global === "object");
     assert.ok(payload.workers && typeof payload.workers === "object");
+    assert.ok(payload.messageCache && typeof payload.messageCache.fullScans === "number");
   } finally {
     global.config = previousConfig;
   }
