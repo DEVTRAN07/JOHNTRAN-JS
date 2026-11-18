@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const music = require("../core/music");
 const utils = require("../utils");
+const metrics = require("../core/metrics");
 
 // Keep this command-flow test deterministic: the real command schedules an
 // optional decorative Now Playing canvas after the audio has been sent.
@@ -20,6 +21,8 @@ workerRender.renderCanvas = originalRenderCanvas;
 
 test("/scl selection preserves the quality chosen during search", async () => {
   const threadId = "scl-quality-test";
+  const stageCountsBefore = new Map(metrics.getListenerStageLatencyStats(100)
+    .map(item => [item.command, item.count]));
   const uid = "music-user";
   const track = { id: "track-1", title: "Test", artist: "Artist", sourceUrl: "" };
   const key = music.pickKey(threadId, uid);
@@ -55,6 +58,12 @@ test("/scl selection preserves the quality chosen during search", async () => {
       }
     });
     assert.equal(passedQuality, 320);
+    const stageCountsAfter = new Map(metrics.getListenerStageLatencyStats(100)
+      .map(item => [item.command, item.count]));
+    for (const stage of ["music:resolve", "music:download", "music:process-audio", "music:send-voice"]) {
+      assert.ok((stageCountsAfter.get(stage) || 0) > (stageCountsBefore.get(stage) || 0),
+        stage + " must be exposed through /metrics");
+    }
   } finally {
     music.getPending = original.getPending;
     music.clearPending = original.clearPending;
@@ -103,6 +112,8 @@ test("/scl next/prev keeps the selected quality in the pending result", async ()
 
 test("/scl search results are sent as styled text without waiting for Canvas", async () => {
   const originalSearch = music.search;
+  const searchStageBefore = metrics.getListenerStageLatencyStats(100)
+    .find(item => item.command === "music:search-total")?.count || 0;
   const originalGetProvider = music.getProvider;
   const originalThreadsGetData = Threads.getData;
   const beforeRenders = searchCanvasRenderCalls;
@@ -150,6 +161,10 @@ test("/scl search results are sent as styled text without waiting for Canvas", a
     assert.equal(sent[1].payload.attachments, undefined);
     assert.equal(searchCanvasRenderCalls, beforeRenders,
       "the search list must not render or upload a Canvas image");
+    const searchStageAfter = metrics.getListenerStageLatencyStats(100)
+      .find(item => item.command === "music:search-total")?.count || 0;
+    assert.equal(searchStageAfter, searchStageBefore + 1,
+      "SCL search duration must be available in /metrics");
   } finally {
     music.search = originalSearch;
     music.getProvider = originalGetProvider;

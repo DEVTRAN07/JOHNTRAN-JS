@@ -703,15 +703,25 @@ function isExpiredCdnError(error) {
   );
 }
 
+function recordStickerStageMetric(name, durationMs) {
+  try {
+    require("./metrics").trackListenerStageLatency?.("stk:" + name, durationMs);
+  } catch {
+    // Observability must never affect sticker delivery.
+  }
+}
+
 async function measureStage(name, operation, timings) {
   const startedAt = Date.now();
   try {
     const result = await operation();
     timings[name] = Date.now() - startedAt;
+    recordStickerStageMetric(name, timings[name]);
     console.info("[stk] " + name + "=" + timings[name] + "ms");
     return result;
   } catch (error) {
     timings[name] = Date.now() - startedAt;
+    recordStickerStageMetric(name, timings[name]);
     console.warn("[stk] " + name + " failed after " + timings[name] +
       "ms: " + String(error && error.message || error));
     throw error;

@@ -9,6 +9,7 @@ const { spawnSync } = require("node:child_process");
 const { createCanvas, loadImage } = require("canvas");
 const service = require("../core/stkDiscordService");
 const stickerService = require("../core/stickerService");
+const metrics = require("../core/metrics");
 
 const FFMPEG = stickerService.resolveFfmpegBinary();
 const ffmpegAvailable = spawnSync(FFMPEG, ["-version"], { stdio: "ignore" }).status === 0;
@@ -220,6 +221,8 @@ test("Discord STK result-cache hit skips source download, rendering and Zalo upl
   const cacheFile = path.join(dir, "results.json");
   const mediaUrl = "https://zalo-chat-static.zadn.vn/avatar/user-2.png?token=stable";
   const key = service.createResultCacheKey(mediaUrl, 42);
+  const beforeMetrics = metrics.getListenerStageLatencyStats(100)
+    .find(item => item.command === "stk:cachesend")?.count || 0;
   service.writeStickerResultCache(key, {
     cdnUrl: "https://f456.zdn.vn/sticker/user-2.png",
     format: "png",
@@ -255,6 +258,10 @@ test("Discord STK result-cache hit skips source download, rendering and Zalo upl
     });
     assert.equal(result.cached, true);
     assert.equal(result.response.sent, true);
+    const afterMetric = metrics.getListenerStageLatencyStats(100)
+      .find(item => item.command === "stk:cachesend");
+    assert.equal(afterMetric?.count, beforeMetrics + 1,
+      "STK cache-send latency must be exposed through /metrics");
     assert.equal(calls.length, 1);
     assert.equal(calls[0].threadId, "thread-1");
     assert.match(calls[0].staticImgUrl, /^https:\/\//);

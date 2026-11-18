@@ -6,6 +6,24 @@ const logger = require("../../utils/logger");
 const { renderCanvas } = require("../canvas/workerRender");
 const Threads = require("../controller/controllerThreads");
 const { enqueue } = require("../jobQueue");
+const { performance } = require("node:perf_hooks");
+
+function recordMusicStageMetric(name, durationMs) {
+  try {
+    require("../metrics").trackListenerStageLatency?.("music:" + name, durationMs);
+  } catch {
+    // Metrics must never block audio playback or music search.
+  }
+}
+
+async function measureMusicStage(name, operation) {
+  const startedAt = performance.now();
+  try {
+    return await operation();
+  } finally {
+    recordMusicStageMetric(name, performance.now() - startedAt);
+  }
+}
 
 let nextPageCursor = null; // "zing|2"
 
@@ -58,17 +76,17 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
 
     let filePath = null;
     try {
-      const streamUrl = await music.resolve(providerName, track);
-      filePath = await music.downloadToFile(streamUrl, "mp3", { fallbackUrl: track.sourceUrl || track.permalink_url || track.permalinkUrl || "", quality });
+      const streamUrl = await measureMusicStage("resolve", () => music.resolve(providerName, track));
+      filePath = await measureMusicStage("download", () => music.downloadToFile(streamUrl, "mp3", { fallbackUrl: track.sourceUrl || track.permalink_url || track.permalinkUrl || "", quality }));
       
       // Use worker pool for CPU-intensive audio conversion
       // Worker audioWorker hiện chỉ nhận videoPath, không xử lý audioPath hoặc upload Zalo.
       // Dùng pipeline processAudio hiện hành để chuyển AAC + upload và nhận voiceUrl.
-      const voiceUrl = await require("../../utils").processAudio(filePath, threadId, type, api);
+      const voiceUrl = await measureMusicStage("process-audio", () => require("../../utils").processAudio(filePath, threadId, type, api));
       filePath = null;
 
       // Audio is the primary result. Never wait for a decorative card.
-      await api.sendVoice({ voiceUrl }, threadId, type);
+      await measureMusicStage("send-voice", () => api.sendVoice({ voiceUrl }, threadId, type));
       void Promise.resolve(reply.done?.()).catch(() => {});
 
       setImmediate(() => {
@@ -219,14 +237,16 @@ async function runMusic(providerName, { api, event, args, reply, Threads: thread
 
   let tracks;
   try {
-    tracks = await enqueue("music-search", () => music.search(providerName, query), {
-      key: `${providerName}|${query.toLowerCase()}|40`,
-      label: `Tìm nhạc: ${query.slice(0, 36)}`,
-      retries: 1,
-      retryDelayMs: 450,
-      retryOn: error => !error?.privacyBlocked && !error?.needCredentials &&
-        !error?.noResults && !error?.notAvailable
-    });
+    tracks = await measureMusicStage("search-total", () =>
+      enqueue("music-search", () => music.search(providerName, query), {
+        key: `${providerName}|${query.toLowerCase()}|40`,
+        label: `Tìm nhạc: ${query.slice(0, 36)}`,
+        retries: 1,
+        retryDelayMs: 450,
+        retryOn: error => !error?.privacyBlocked && !error?.needCredentials &&
+          !error?.noResults && !error?.notAvailable
+      })
+    );
   } catch (error) {
     return friendlyError(error, reply);
   }
