@@ -190,3 +190,12 @@ test("Reply.done and Reply.failed do not await the Zalo reaction API", async () 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(reactionCalls, 2, "status reactions are dispatched outside the command response path");
 });
+
+test("Reply.working does not schedule duplicate reactions after acknowledgement", async () => {
+  const { wrapped, reactions } = createWrapped();
+  await wrapped.__reply.working({ delayMs: 5 });
+  await delay(20);
+  await wrapped.__reply.working({ delayMs: 5 });
+  await delay(20);
+  assert.equal(reactions.length, 1);
+});
