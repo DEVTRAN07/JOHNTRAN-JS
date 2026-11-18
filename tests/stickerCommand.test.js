@@ -51,7 +51,7 @@ test("/stk khung lists all five built-in Discord presets without requiring media
   for (const item of frames.frameList()) {
     assert.ok(sent.msg.includes(item.name));
   }
-  assert.match(sent.msg, /\\/stk list/);
+  assert.ok(sent.msg.includes("/stk list"));
 });
 
 test("/stk without reply or URL shows direct usage instead of throwing", async () => {
