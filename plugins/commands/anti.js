@@ -646,7 +646,8 @@ async function enforceAntiViolation({ api, event, Threads, sendNotice, userId, r
     : (botAuthored ? "Đã thu hồi tin nhắn thử nghiệm." : "Đã xóa tin nhắn vi phạm.");
 
   if (botAuthored) {
-    return sendNotice("🚫 {member}, " + reason + "\n" + deleteNote + " Bỏ qua cảnh cáo và không kick tài khoản bot.");
+    await sendNotice("🚫 {member}, " + reason + "\n" + deleteNote + " Bỏ qua cảnh cáo và không kick tài khoản bot.");
+    return { consumed: true, moderated: true };
   }
 
   const enforcement = await registerAntiViolation(Threads, api, event.threadId, userId, warningKey);
@@ -664,7 +665,8 @@ async function enforceAntiViolation({ api, event, Threads, sendNotice, userId, r
   }
 
   if (deleteFailures.length) warningNote += "\n" + deleteNote;
-  return sendNotice("🚫 {member}, " + reason + "\n" + warningNote);
+  await sendNotice("🚫 {member}, " + reason + "\n" + warningNote);
+  return { consumed: true, moderated: true };
 }
 
 async function handleAntiEvent(context = {}) {
@@ -1060,7 +1062,7 @@ async function handleAntiEvent(context = {}) {
                 }
               }
 
-              return sendNotice(
+              await sendNotice(
                 "⛔ AI phát hiện ảnh vi phạm (điểm sexual " +
                 Math.round(moderation.score * 100) + "%). {member}: " +
                 actions.join(", ") + "." +
@@ -1069,6 +1071,7 @@ async function handleAntiEvent(context = {}) {
                 (enforcement?.kickError ? "\n⚠️ " + enforcement.kickError.message : "") +
                 (enforcement?.cleanupError ? "\n⚠️ " + enforcement.cleanupError.message : "")
               );
+              return { consumed: true, moderated: true };
             }
           } catch (error) {
             console.error("[ANTINUDE] Không thể phân loại ảnh tại nhóm " + threadId + ":", error?.stack || error);
