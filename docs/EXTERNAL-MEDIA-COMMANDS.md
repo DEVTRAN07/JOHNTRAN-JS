@@ -1,0 +1,19 @@
+# External media commands
+
+## /ảnh [từ khóa]
+
+Searches Openverse for an open-licensed image, downloads the Openverse thumbnail proxy and sends it as a Zalo attachment. Requests explicitly set mature=false and filter_dead=true. The caption includes the title, creator, licence and source page so the original work can be credited.
+
+The command is available as /ảnh, /anh, /image and /photo. Without a keyword it searches for nature images.
+
+## /vd 18+ [từ khóa]
+
+Uses the AdultEmbed API catalogue and returns up to five player links. With no keyword it asks for one random result. It does not download, mirror or re-upload adult video files.
+
+This mode is restricted to one-to-one chats. It is the only private-message command allowed through when allow_private_command: false; other private commands remain blocked. Group chats receive a refusal instead of adult results.
+
+The 18+ token is a self-attestation, not identity or government age verification. Users must be adults and must access the content only where lawful. The command displays that notice and the bot does not send adult media into groups.
+
+## Existing /vd behavior
+
+/vd without the 18+ argument remains the existing reply-to-video command: it sends the replied video in its original file form.
