@@ -216,6 +216,53 @@ function truncate(ctx, value, maxWidth) {
   return output + "…";
 }
 
+function sharpenPhotoImageData(imageData, strength = 0.38) {
+  if (!imageData || !imageData.data || !Number.isInteger(imageData.width) ||
+      !Number.isInteger(imageData.height)) {
+    throw new TypeError("ImageData không hợp lệ để tăng độ nét");
+  }
+  const width = imageData.width;
+  const height = imageData.height;
+  const pixels = imageData.data;
+  const amount = Math.max(0, Math.min(0.8, Number(strength) || 0));
+  if (!amount || width < 3 || height < 3) return imageData;
+
+  // A restrained 5-tap unsharp mask improves real edges without creating
+  // bright halos around text, avatars or the neon frame.
+  const source = new Uint8ClampedArray(pixels);
+  const rowStride = width * 4;
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const index = (y * width + x) * 4;
+      for (let channel = 0; channel < 3; channel++) {
+        const neighbors = (
+          source[index - 4 + channel] +
+          source[index + 4 + channel] +
+          source[index - rowStride + channel] +
+          source[index + rowStride + channel]
+        ) * 0.25;
+        const center = source[index + channel];
+        pixels[index + channel] = center + (center - neighbors) * amount;
+      }
+    }
+  }
+  return imageData;
+}
+
+function sharpenPhoto(ctx, width, height, strength) {
+  const amount = Math.max(0, Math.min(0.8, Number(strength) || 0));
+  if (!amount) return false;
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    sharpenPhotoImageData(imageData, amount);
+    ctx.putImageData(imageData, 0, 0);
+    return true;
+  } catch (error) {
+    // Some Canvas backends disable pixel reads; leave the original photo intact.
+    return false;
+  }
+}
+
 function paintBackground(ctx, width, height, options = {}) {
   initFonts();
   ensureTheme();
@@ -228,6 +275,10 @@ function paintBackground(ctx, width, height, options = {}) {
     const scale = Math.max(width / image.width, height / image.height);
     const drawWidth = image.width * scale;
     const drawHeight = image.height * scale;
+    // Ask node-canvas for its best resampling path before drawing portrait
+    // source photos onto the wide menu/folder canvases.
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.drawImage(
       image,
       (width - drawWidth) / 2,
@@ -235,6 +286,7 @@ function paintBackground(ctx, width, height, options = {}) {
       drawWidth,
       drawHeight
     );
+    sharpenPhoto(ctx, width, height, options.sharpen || 0);
   } else {
     const fallback = ctx.createLinearGradient(0, 0, width, height);
     fallback.addColorStop(0, "#030914");
@@ -271,13 +323,16 @@ function paintBackground(ctx, width, height, options = {}) {
     ctx.restore();
   };
 
-  // Layer 2: Aurora borealis light pools and curved neon ribbons.
+  // Layer 2: Keep Aurora as edge ambience so it does not wash out photo detail.
+  const auroraStrength = Number.isFinite(Number(options.auroraStrength))
+    ? Math.max(0, Math.min(1, Number(options.auroraStrength)))
+    : 1;
   ctx.save();
   ctx.globalCompositeOperation = "screen";
-  glow(width * 0.13, height * 0.08, width * 0.58, "rgba(22,214,255,.56)", 0.42);
-  glow(width * 0.83, height * 0.17, width * 0.52, "rgba(126,94,255,.52)", 0.34);
-  glow(width * 0.50, height * 0.98, width * 0.66, "rgba(28,255,207,.36)", 0.28);
-  glow(width * 0.96, height * 0.78, width * 0.34, "rgba(49,157,255,.45)", 0.26);
+  glow(width * 0.13, height * 0.08, width * 0.58, "rgba(22,214,255,.56)", 0.42 * auroraStrength);
+  glow(width * 0.83, height * 0.17, width * 0.52, "rgba(126,94,255,.52)", 0.34 * auroraStrength);
+  glow(width * 0.50, height * 0.98, width * 0.66, "rgba(28,255,207,.36)", 0.28 * auroraStrength);
+  glow(width * 0.96, height * 0.78, width * 0.34, "rgba(49,157,255,.45)", 0.26 * auroraStrength);
 
   const ribbon = (y, bend, color, alpha, lineWidth) => {
     const gradient = ctx.createLinearGradient(0, y - height * 0.12, width, y + height * 0.16);
@@ -300,9 +355,9 @@ function paintBackground(ctx, width, height, options = {}) {
     ctx.shadowBlur = S(26);
     ctx.stroke();
   };
-  ribbon(height * 0.19, height * 0.17, "rgba(36,219,255,.40)", 0.20, 38);
-  ribbon(height * 0.34, height * 0.13, "rgba(129,112,255,.38)", 0.15, 30);
-  ribbon(height * 0.73, height * 0.12, "rgba(35,255,210,.34)", 0.14, 34);
+  ribbon(height * 0.19, height * 0.17, "rgba(36,219,255,.40)", 0.20 * auroraStrength, 38);
+  ribbon(height * 0.34, height * 0.13, "rgba(129,112,255,.38)", 0.15 * auroraStrength, 30);
+  ribbon(height * 0.73, height * 0.12, "rgba(35,255,210,.34)", 0.14 * auroraStrength, 34);
   ctx.restore();
 
   // Fine stars and edge vignette add depth but leave the photograph visible.
@@ -314,8 +369,8 @@ function paintBackground(ctx, width, height, options = {}) {
     ctx.beginPath();
     ctx.arc(x, y, Math.max(0.45, radius), 0, Math.PI * 2);
     ctx.fillStyle = i % 3 === 0
-      ? "rgba(164,244,255,.42)"
-      : "rgba(223,239,255,.20)";
+      ? rgba("#a4f4ff", 0.42 * Math.max(0.18, auroraStrength))
+      : rgba("#dfEfff", 0.20 * Math.max(0.18, auroraStrength));
     ctx.fill();
   }
 
@@ -489,5 +544,5 @@ module.exports = {
   paintBackground, panel, button, text, newCanvas, save, foil, label,
   THEME_STYLE, randomAccent, RANDOM_ACCENTS, getCardPalette,
   reload: resolveTheme, ensureTheme, sanitizeGlyphs, mixHex, rgba,
-  randomTextColor, RANDOM_TEXT_COLORS
+  randomTextColor, RANDOM_TEXT_COLORS, sharpenPhotoImageData
 };
