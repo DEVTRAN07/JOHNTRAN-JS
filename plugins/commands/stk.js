@@ -229,6 +229,17 @@ module.exports.run = async function ({ api, event, args }) {
   ).slice(0, 32);
   const mentions = uid ? [{ uid, pos: 0, len: tag.length }] : [];
 
+  // Warm the selected frame and resolve a fallback avatar while the command
+  // waits for a sticker worker. A cold Raw GitHub download no longer starts
+  // only after the queue slot becomes available.
+  const queuedAt = Date.now();
+  const frameWarmPromise = stkDiscord.ensureDecorationFile(options.decorationId);
+  void frameWarmPromise.catch(error => {
+    console.warn("[stk] Prefetch khung thất bại; sẽ thử lại khi xử lý:", error?.message || error);
+  });
+  const mediaWarmPromise = resolveMediaSource(api, event, quotedUrl);
+  void mediaWarmPromise.catch(() => {});
+
   // Acknowledge immediately. The expensive download/FFmpeg/upload work must
   // not hold the command dispatcher or block the user's next command.
   void safeSend(
@@ -248,12 +259,15 @@ module.exports.run = async function ({ api, event, args }) {
   let job;
   try {
     job = enqueue("sticker", async () => {
-      const media = await resolveMediaSource(api, event, quotedUrl);
+      console.info("[stk] queueWait #" + options.decorationId + "=" +
+        (Date.now() - queuedAt) + "ms");
+      const media = await mediaWarmPromise;
       media.decorationId = options.decorationId;
       return processWithAvatarFallback(api, event, media);
     }, {
       key: jobKey,
       label: "STK Discord · #" + options.decorationId,
+      concurrency: 2,
       retries: 0
     });
   } catch (error) {
