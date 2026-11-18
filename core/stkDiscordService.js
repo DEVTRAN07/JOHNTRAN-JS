@@ -309,7 +309,7 @@ function buildFilterGraph(fps = DEFAULT_FPS) {
   ].join(";");
 }
 
-function runFfmpeg(binary, args, timeout = 180000) {
+function runFfmpeg(binary, args, timeout = 20000) {
   return new Promise((resolve, reject) => {
     execFile(binary, args, { timeout, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
