@@ -522,7 +522,7 @@ async function enforceAntiViolation({ api, event, Threads, sendNotice, userId, r
   } else if (enforcement.kicked) {
     warningNote = "⛔ Đã đủ 3 lần cảnh cáo. Vi phạm lần thứ 4, bot đã kick thành viên.";
   } else if (enforcement.kickError) {
-    warningNote = "⚠️ Đã đủ 3 lần cảnh cáo; bot thử kick nhưng Zalo từ chối. Bot sẽ thử lại khi thành viên tái phạm.";
+    warningNote = "⚠️ Đã đủ 3 lần cảnh cáo; bot thử kick nhưng Zalo từ chối kick thành viên. Bot sẽ thử lại khi thành viên tái phạm.";
   } else {
     warningNote = "⚠️ Cảnh cáo lần " + enforcement.warningCount +
       "/3. Sau 3 lần cảnh cáo, vi phạm lần thứ 4 sẽ bị kick.";
@@ -779,7 +779,7 @@ async function handleAntiEvent(context = {}) {
         return enforceAntiViolation({
           api, event, Threads, sendNotice, userId,
           warningKey: "anti_link_warnings",
-          reason: "phát hiện link mời nhóm Zalo khác hoặc URL không an toàn (" + blockedUrl.slice(0, 90) + ")."
+          reason: "phát hiện link mời nhóm khác trên Zalo hoặc URL không an toàn (" + blockedUrl.slice(0, 90) + ")."
         });
       }
     }
@@ -855,7 +855,7 @@ async function handleAntiEvent(context = {}) {
         return enforceAntiViolation({
           api, event, Threads, sendNotice, userId,
           warningKey: "anti_spam_warnings",
-          reason: "gửi tin nhắn quá dồn dập (hơn 5 tin trong 5 giây).",
+          reason: "vui lòng không spam: gửi tin nhắn quá dồn dập (hơn 5 tin trong 5 giây).",
           deleteEvents: deleteEvents.length ? deleteEvents : [event]
         });
       }
