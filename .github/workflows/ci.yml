@@ -27,10 +27,10 @@ jobs:
       - name: Benchmark hot command paths
         run: npm run benchmark:hotpath
       - name: Render actual canvas previews
-        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'feature/unified-canvas'))
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feature/unified-canvas') || startsWith(github.head_ref, 'design/canvas-unified-menu-style')))
         run: node scripts/render-canvas-previews.js
       - name: Upload canvas preview images
-        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'feature/unified-canvas'))
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feature/unified-canvas') || startsWith(github.head_ref, 'design/canvas-unified-menu-style')))
         uses: actions/upload-artifact@v4
         with:
           name: johntran-canvas-previews

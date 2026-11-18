@@ -2,7 +2,7 @@
 
 const avatarCache = require("./avatarCache");
 
-const AVATAR_PRELOAD_TIMEOUT_MS = 550;
+const AVATAR_PRELOAD_TIMEOUT_MS = 2100;
 const MAX_CARD_AVATARS = 10;
 const MAX_GROUP_AVATARS = 12;
 

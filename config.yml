@@ -64,6 +64,7 @@ privacy:
     - www.tikwm.com
     - tikwm.com
     - api.tikwm.com
+    - thoitietmiennam.edu.vn # Nguồn ảnh nền Aurora trong thư mục theme/
     - tiktok.com
     - vm.tiktok.com
     - vt.tiktok.com
@@ -126,7 +127,7 @@ ai:
 
 # ===== CANVAS (ảnh menu/thẻ/nhạc) =====
 canvas:
-  theme: editorial # classic | editorial (đen–nhũ vàng, kiểu riêng)
+  theme: photo-library # /theme chọn ảnh nền trong thư mục theme/; màu nhận diện cyan giữ cố định
   width: 750 # cỡ ảnh render: 750 = Zalo gửi NGUYÊN BẢN (không resize/nén HD) • 1280 = lớn nhưng bị Zalo nén
   quality: 100 # chất lượng PNG lossless (giữ original, không nén)
 

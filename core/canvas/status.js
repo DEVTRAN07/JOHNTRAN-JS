@@ -27,7 +27,7 @@ function drawAvatar(ctx, url, name, x, y, size) {
     const g = ctx.createLinearGradient(x, y, x + size, y + size);
     g.addColorStop(0, "#24617a"); g.addColorStop(1, "#162d4b");
     ctx.fillStyle = g; ctx.fillRect(x, y, size, size);
-    ctx.font = theme.font(27, "JT-Bold"); ctx.fillStyle = p.accent;
+    ctx.font = theme.font(27, "JT-Bold"); ctx.fillStyle = theme.randomTextColor(String(name || "J") + ":status-avatar");
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(String(name || "J").trim().charAt(0).toUpperCase(), x + size / 2, y + size / 2);
   }

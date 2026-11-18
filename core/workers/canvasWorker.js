@@ -6,6 +6,7 @@ catch (error) { configError = error; global.config = global.config || {}; }
 
 async function renderToPath(type, data) {
   if (configError) throw new Error("Canvas worker cannot load application config: " + configError.message);
+  await require("../canvas/themeBackgrounds").prepare({ preloadAll: type === "theme" });
   await require("../canvas/prepareRequesterAvatar").prepareCanvasAvatars(type, data || {});
   switch (type) {
     case "menu": return require("../canvas/menu").renderMenuGrid(data || {});

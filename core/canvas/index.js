@@ -55,19 +55,10 @@ function renderCard(spec = {}) {
   const S = theme.S, p = theme.PALETTE;
   const accent = THEMES[spec.theme]?.accent || p.accent;
   const { ctx, canvas } = theme.newCanvas(width, height);
-  const bg = ctx.createLinearGradient(0, 0, width, height);
-  bg.addColorStop(0, p.bg0); bg.addColorStop(.6, p.bg1); bg.addColorStop(1, "#091626");
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, width, height);
-  const glow = ctx.createRadialGradient(width * .82, height * .08, 0,
-    width * .82, height * .08, width * .6);
-  glow.addColorStop(0, accent + "26"); glow.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = glow; ctx.fillRect(0, 0, width, height);
+  theme.paintBackground(ctx, width, height);
 
-  const faceX = padding, faceY = S(16), faceW = contentWidth, faceH = height - S(32);
-  theme.roundRect(ctx, faceX, faceY, faceW, faceH, S(18));
-  ctx.fillStyle = "rgba(11,24,40,.82)"; ctx.fill();
-  ctx.strokeStyle = "rgba(180,204,228,.18)"; ctx.lineWidth = S(1); ctx.stroke();
-  ctx.fillStyle = accent; ctx.fillRect(faceX, faceY + S(17), S(4), S(55));
+  const faceX = padding, faceY = S(26), faceW = contentWidth, faceH = height - S(52);
+  theme.panel(ctx, faceX, faceY, faceW, faceH, S(18), accent);
 
   let y = S(51);
   const brandName = String(spec.brand || global.config?.name_bot || "JOHN TRAN").trim() || "JOHN TRAN";

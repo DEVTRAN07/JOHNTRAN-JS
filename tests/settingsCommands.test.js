@@ -15,7 +15,7 @@ workerRender.renderCanvas = async (type, data) => {
 };
 const eventsCommand = require("../plugins/commands/events");
 const themeCommand = require("../plugins/commands/theme");
-const menuPalette = require("../core/canvas/menuPalette");
+const themeBackgrounds = require("../core/canvas/themeBackgrounds");
 after(() => {
   workerRender.renderCanvas = originalRender;
   for (const call of calls) { try { fs.unlinkSync(call.file); } catch {} }
@@ -63,27 +63,66 @@ test("/events guard allowed view uses a Canvas host list while on/off stays a qu
   assert.equal(changed.event_guard, true);
 });
 
-test("/theme default view sends a Canvas card with the saved presets", async () => {
+test("/theme default view sends the photo wallpaper gallery card", async () => {
   const sent = [];
-  const original = menuPalette.getThemeInfo;
-  const originalSet = menuPalette.getPresetList;
-  menuPalette.getThemeInfo = () => ({ name: "gold", label: "Gold", accent: "#d4af37" });
-  menuPalette.getPresetList = () => [{ name: "gold", label: "Gold", accent: "#d4af37" }];
+  const originalCurrent = themeBackgrounds.getCurrent;
+  const originalBackgrounds = themeBackgrounds.getBackgrounds;
+  themeBackgrounds.getCurrent = () => ({
+    selected: "random", random: true, name: "Ngẫu nhiên · Aurora Mix"
+  });
+  themeBackgrounds.getBackgrounds = () => [
+    { id: "1", name: "Aurora Muse 01" },
+    { id: "2", name: "Aurora Muse 02" },
+    { id: "3", name: "Aurora Muse 03" }
+  ];
   try {
-    await themeCommand.run({ api: mockApi(sent), event: { threadId: "theme-group", type: 1 }, args: [] });
+    await themeCommand.run({
+      api: mockApi(sent),
+      event: { threadId: "theme-group", type: 1 },
+      args: []
+    });
   } finally {
-    menuPalette.getThemeInfo = original;
-    menuPalette.getPresetList = originalSet;
+    themeBackgrounds.getCurrent = originalCurrent;
+    themeBackgrounds.getBackgrounds = originalBackgrounds;
   }
   const call = calls.find(item => item.type === "theme");
   assert.ok(call);
-  assert.equal(call.data.presets.length, 1);
+  assert.equal(call.data.backgrounds.length, 3);
   assert.equal(sent[sent.length - 1].payload.ttlKind, "card");
 });
 
-test("theme fallback message remains available for text-only clients", () => {
-  assert.match(themeCommand._test.buildText(
-    { label: "Gold", accent: "#d4af37" },
-    [{ name: "gold", label: "Gold", accent: "#d4af37" }]
-  ), /THEME MENU/);
+test("/theme numeric selection stores a photo background instead of changing brand colors", async () => {
+  const sent = [];
+  const originalSet = themeBackgrounds.setSelection;
+  let selectedInput = "";
+  themeBackgrounds.setSelection = input => {
+    selectedInput = input;
+    return { selected: "2", random: false, name: "Aurora Muse 02" };
+  };
+  try {
+    await themeCommand.run({
+      api: mockApi(sent),
+      event: { threadId: "theme-group", type: 1 },
+      args: ["2"]
+    });
+  } finally {
+    themeBackgrounds.setSelection = originalSet;
+  }
+  assert.equal(selectedInput, "2");
+  assert.ok(calls.some(item => item.type === "theme"));
+  assert.match(sent[sent.length - 1].payload.msg, /Aurora Muse 02/);
+});
+
+test("theme fallback message lists photo choices and random mode", () => {
+  const output = themeCommand._test.buildText(
+    { name: "Ngẫu nhiên", selected: "random" },
+    [
+      { id: "1", name: "Aurora Muse 01" },
+      { id: "2", name: "Aurora Muse 02" },
+      { id: "3", name: "Aurora Muse 03" }
+    ]
+  );
+  assert.match(output, /PHOTO THEME LIBRARY/);
+  assert.ok(output.includes("/theme 1"));
+  assert.ok(output.includes("/theme random"));
 });

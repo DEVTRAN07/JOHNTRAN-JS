@@ -20,7 +20,7 @@ function drawAvatar(ctx, group, x, y, size) {
     ctx.fillStyle = "rgba(85,214,232,.16)";
     ctx.fillRect(x, y, size, size);
     ctx.font = theme.font(18, "JT-Bold");
-    ctx.fillStyle = theme.PALETTE.accent;
+    ctx.fillStyle = theme.randomTextColor(String(group.name || "N") + ":group-avatar");
     ctx.textAlign = "center";
     const initial = Array.from(String(group.name || "N"))[0] || "N";
     ctx.fillText(theme.sanitizeGlyphs(initial.toUpperCase()), x + size / 2, y + size / 2 + S(6));

@@ -303,7 +303,7 @@ JOHNTRAN-JS/
 **Trạng thái:** queue/worker là lát cắt V5 đã có trong codebase; sơ đồ cấu trúc đích là kế hoạch migration. Không coi các thư mục trong “Cấu trúc đích” là đã được tạo đầy đủ.
 
 **Tính năng nổi bật v3:**
-- **Mọi ảnh MỘT KIỂU**: `core/canvas/theme.js` giữ nền (`assets/bg/theme.jpg` + gradient + glow), font, bo góc — menu, thẻ lệnh, nhạc (kết quả + đang phát), thẻ VIP đều dùng chung, muốn đổi chỉ sửa 1 file.
+- **Photo Theme đồng bộ**: thư mục `theme/` lưu ba ảnh nền được chọn bằng `/theme 1`, `/theme 2`, `/theme 3`; `/theme random` xoay ngẫu nhiên và `/theme next` chuyển ảnh. Nếu thiếu file, renderer tự tải ảnh từ `theme/sources.json` và cache vào thư mục này. Mọi Canvas dùng chung ảnh nền full-bleed, lớp phủ navy trong suốt, Aurora ribbons, starfield và panel kính neon cyan; bảng màu nhận diện cyan được giữ cố định.
 - **Cỡ ảnh chỉnh được 1 chỗ**: `config.yml → canvas.width` (mặc định **750** = Zalo gửi **NGUYÊN BẢN**, ảnh nét, không bị nén/resize thành HD). Đổi sang `1280` nếu muốn ảnh lớn hơn (nhưng Zalo sẽ resize + nén). Cũng đổi được bằng biến môi trường `JT_CANVAS__WIDTH`.
 - **Render chất lượng cao nhất**: `antialias/quality = "best"`, lưu PNG lossless → chữ sắc, ảnh nền không rỗ. Bố cục tự co theo cỡ (750px → menu 2 cột, nhạc 2 cột; ≥1100px → 3/4 cột như cũ).
 - **PNG lossless**: ảnh lưu PNG không nén (`canvas.quality` trong config) — giữ original.
