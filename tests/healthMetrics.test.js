@@ -37,6 +37,9 @@ test("protected /metrics exposes command latency, event-loop pressure and queue 
     const payload = JSON.parse(response.body);
     assert.ok(Array.isArray(payload.commandLatency));
     assert.ok(Array.isArray(payload.commandExecutionLatency));
+    assert.ok(payload.firstResponseLatency && typeof payload.firstResponseLatency.count === "number");
+    assert.ok(Array.isArray(payload.listenerStageLatency));
+    assert.ok(Array.isArray(payload.zaloApiLatency));
     assert.ok(payload.eventLoop && typeof payload.eventLoop.p95Ms === "number");
     assert.ok(payload.jobQueues && typeof payload.jobQueues.global === "object");
     assert.ok(payload.workers && typeof payload.workers === "object");
