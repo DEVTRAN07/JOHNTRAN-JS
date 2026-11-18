@@ -263,7 +263,7 @@ function drawText(ctx, value, x, y, options = {}) {
     align,
     maxWidth,
     baseline,
-    multicolor: words.length > 1 && !semanticColor
+    multicolor: !semanticColor && (words.length > 1 || words.some(word => Array.from(word).length > 1))
   });
   ctx.restore();
 }
