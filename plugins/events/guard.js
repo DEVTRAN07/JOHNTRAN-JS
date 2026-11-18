@@ -64,7 +64,7 @@ function badwordHit(text) {
 
 function getMessageText(data) {
   if (typeof data?.content === "string") return data.content;
-  try { return JSON.stringify(data?.content || ""); }
+  try { return JSON.stringify(data || ""); }
   catch { return ""; }
 }
 
