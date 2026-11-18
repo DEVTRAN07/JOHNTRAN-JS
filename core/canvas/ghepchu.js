@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { createCanvas, loadImage } = require("canvas");
 const avatarCache = require("./avatarCache");
+const theme = require("./theme");
 
 const WIDTH = 1280;
 const HEIGHT = 780;
@@ -143,11 +144,13 @@ function drawRobotMascot(ctx, cx, cy) {
 }
 
 function drawFallbackTemplate(ctx) {
-  const background=ctx.createLinearGradient(0,0,WIDTH,HEIGHT);
-  background.addColorStop(0,"#07172c");
-  background.addColorStop(.52,"#0b2543");
-  background.addColorStop(1,"#071b34");
-  ctx.fillStyle=background;ctx.fillRect(0,0,WIDTH,HEIGHT);
+  // Match the production template path: photo theme underneath,
+  // translucent artwork and transparent information surfaces above it.
+  theme.paintBackground(ctx, WIDTH, HEIGHT, {
+    veilAlpha: [0.12, 0.17, 0.25],
+    vignetteAlpha: 0.18,
+    auroraStrength: 0.16
+  });
 
   // Same layout proportions as the reference screenshot.
   drawChibiMascot(ctx,116,223);
@@ -155,8 +158,8 @@ function drawFallbackTemplate(ctx) {
 
   roundedRect(ctx,245,25,790,672,23);
   const panel=ctx.createLinearGradient(245,25,245,697);
-  panel.addColorStop(0,"rgba(13,35,62,.98)");
-  panel.addColorStop(1,"rgba(8,28,51,.98)");
+  panel.addColorStop(0,"rgba(13,35,62,.34)");
+  panel.addColorStop(1,"rgba(8,28,51,.40)");
   ctx.fillStyle=panel;ctx.fill();
   ctx.strokeStyle="#62a8f2";ctx.lineWidth=2;ctx.stroke();
 
@@ -174,7 +177,7 @@ function drawFallbackTemplate(ctx) {
   ];
   for(const box of boxes){
     roundedRect(ctx,box.x,132,211,73,16);
-    ctx.fillStyle="rgba(4,20,41,.72)";ctx.fill();
+    ctx.fillStyle="rgba(4,20,41,.32)";ctx.fill();
     ctx.strokeStyle="#4f95d9";ctx.lineWidth=1.6;ctx.stroke();
     drawText(ctx,box.label,box.x+105.5,157,{
       size:16,color:"#aebed1",weight:"700",align:"center"
@@ -189,7 +192,7 @@ function drawFallbackTemplate(ctx) {
 
   // The tile board is repainted on every turn.
   roundedRect(ctx,273,468,735,90,19);
-  ctx.fillStyle="rgba(4,23,44,.82)";ctx.fill();
+  ctx.fillStyle="rgba(4,23,44,.40)";ctx.fill();
   ctx.strokeStyle="#5ba4e9";ctx.lineWidth=1.2;ctx.stroke();
   drawText(ctx,"MẸO CHƠI:",291,505,{
     size:25,color:"#ffbf32",weight:"800"
@@ -208,7 +211,7 @@ function drawFallbackTemplate(ctx) {
 
   // Brand/version pill at the bottom, replaced with live version data.
   roundedRect(ctx,498,722,286,42,21);
-  ctx.fillStyle="rgba(7,25,49,.96)";ctx.fill();
+  ctx.fillStyle="rgba(7,25,49,.38)";ctx.fill();
   ctx.strokeStyle="#60a8ef";ctx.lineWidth=1.5;ctx.stroke();
 
   // Small puzzle decorations around the outer canvas.
@@ -267,7 +270,7 @@ function drawText(ctx, value, x, y, options = {}) {
 function drawStatValue(ctx, x, value, color, maxWidth = 150) {
   // The supplied match screenshot is the master background; only the live
   // value is repainted so the original labels, borders and spacing stay exact.
-  ctx.fillStyle = "#0d1c31";
+  ctx.fillStyle = "rgba(13,28,49,.48)";
   ctx.fillRect(x - maxWidth / 2, 163, maxWidth, 40);
   drawText(ctx, value, x, 193, {
     size: 29,
@@ -311,7 +314,7 @@ function drawAvatar(ctx, data = {}) {
   ctx.stroke();
 
   // Replace only the old sample name; keep the original label and badge art.
-  ctx.fillStyle = "#10233d";
+  ctx.fillStyle = "rgba(16,35,61,.46)";
   ctx.fillRect(38, 500, 164, 43);
   drawText(ctx, data.playerName || "Người chơi", x, 534, {
     size: 27,
@@ -362,7 +365,7 @@ function drawTile(ctx, x, y, size, letter) {
 function drawLiveTiles(ctx, letters) {
   // Hide the sample letters from the source image while preserving the
   // original divider, heading and overall central board proportions.
-  ctx.fillStyle = "#10203a";
+  ctx.fillStyle = "rgba(16,32,58,.42)";
   ctx.fillRect(315, 312, 650, 108);
 
   const list = Array.isArray(letters) ? letters.slice(0, 14) : [];
@@ -382,7 +385,7 @@ function drawLiveTiles(ctx, letters) {
 
 function drawFooter(ctx, data = {}) {
   // Preserve the original rounded footer pill, replacing its sample values.
-  ctx.fillStyle = "#0b1d33";
+  ctx.fillStyle = "rgba(11,29,51,.42)";
   ctx.fillRect(515, 729, 260, 27);
   drawText(ctx, "▣  " + (data.version || "1.0.2"), 568, 750, {
     size: 19, color: "#edf6ff", weight: "700", align: "center"
@@ -416,8 +419,19 @@ async function renderGhepChu(data = {}) {
 
   // Prefer the supplied master artwork when it is present. Production builds
   // that omit the optional image still get a complete, legible game card.
-  if (template) ctx.drawImage(template, 0, 0, WIDTH, HEIGHT);
-  else drawFallbackTemplate(ctx);
+  if (template) {
+    theme.paintBackground(ctx, WIDTH, HEIGHT, {
+      veilAlpha: [0.12, 0.17, 0.25],
+      vignetteAlpha: 0.18,
+      auroraStrength: 0.16
+    });
+    // The master artwork remains recognizable, but no longer fully covers
+    // the selected wallpaper beneath it.
+    ctx.save();
+    ctx.globalAlpha = 0.64;
+    ctx.drawImage(template, 0, 0, WIDTH, HEIGHT);
+    ctx.restore();
+  } else drawFallbackTemplate(ctx);
 
   const remaining = Math.max(0, Number(data.remainingSeconds) || 0);
   drawStatValue(ctx, 410, remaining + "s", remaining <= 15 ? "#ff8752" : "#95caff", 150);
