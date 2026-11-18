@@ -53,8 +53,11 @@ test("every requested command is registered and shared toggles are explicit", ()
     "antistk","antistklag","antitaghide","antivideo","antivoice","antiword","antirecall"
   ];
   for (const name of requested) assert.ok(FEATURES[name], name + " must have a toggle specification");
-  assert.deepEqual(FEATURES.antilink.flags, ["anti_danger_link","anti_link"]);
-  assert.deepEqual(FEATURES.antispam.flags, ["anti_spam","anti_sticker_spam"]);
+  assert.equal(FEATURES.antilink.key, "anti_link");
+  assert.equal(FEATURES.antiinvite.key, "anti_danger_link");
+  assert.equal(FEATURES.antispam.key, "anti_spam");
+  assert.equal(FEATURES.antistklag.key, "anti_sticker_spam");
   assert.equal(FEATURES.antisex.key, FEATURES.antinude.key);
-  assert.equal(FEATURES.antiinvite.key, FEATURES.antilink.key);
+  assert.notEqual(FEATURES.antiinvite.key, FEATURES.antilink.key);
+  assert.notEqual(FEATURES.antispam.key, FEATURES.antistklag.key);
 });

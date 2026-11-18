@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const workerRender = require("../core/canvas/workerRender");
+
 const originalRenderCanvas = workerRender.renderCanvas;
 const renderedCards = [];
 workerRender.renderCanvas = async (type, data) => {
@@ -10,17 +11,47 @@ workerRender.renderCanvas = async (type, data) => {
   return "/tmp/jt-anti-feature-test.png";
 };
 
-const commands = {
-  antinude: require("../plugins/commands/antinude"),
-  antirecall: require("../plugins/commands/antirecall"),
-  antilink: require("../plugins/commands/antilink"),
-  antispam: require("../plugins/commands/antispam")
+const commandNames = [
+  "anticard", "antidoodle", "antifile", "antigif", "antiinvite", "antijoin",
+  "antilink", "antilocation", "antiother", "antiphoto", "antiqr", "antireaction",
+  "antisex", "antispam", "antistk", "antistklag", "antitaghide", "antivideo",
+  "antivoice", "antiword", "antirecall", "antinude"
+];
+
+const expectedKeys = {
+  anticard: "anti_card",
+  antidoodle: "anti_doodle",
+  antifile: "anti_file",
+  antigif: "anti_gif",
+  antiinvite: "anti_danger_link",
+  antijoin: "anti_join",
+  antilink: "anti_link",
+  antilocation: "anti_location",
+  antiother: "anti_other",
+  antiphoto: "anti_photo",
+  antiqr: "anti_qr",
+  antireaction: "anti_reaction",
+  antisex: "anti_nude",
+  antispam: "anti_spam",
+  antistk: "anti_sticker",
+  antistklag: "anti_sticker_spam",
+  antitaghide: "anti_taghide",
+  antivideo: "anti_video",
+  antivoice: "anti_voice",
+  antiword: "anti_word",
+  antirecall: "anti_undo",
+  antinude: "anti_nude"
 };
 
-function makeContext(command, mode, options = {}) {
-  const threadId = "anti-toggle-" + command;
+const commands = Object.fromEntries(commandNames.map(name => [
+  name,
+  require("../plugins/commands/" + name)
+]));
+
+function makeContext(commandName, mode, options = {}) {
+  const threadId = "anti-toggle-" + commandName;
   const userId = options.userId || "owner";
-  const data = {};
+  const data = { ...(options.initial || {}) };
   const messages = [];
   const groupInfo = options.groupInfo === undefined
     ? { creatorId: "owner", adminIds: ["moderator"] }
@@ -38,7 +69,7 @@ function makeContext(command, mode, options = {}) {
 
   const Threads = {
     async getData() { return { data: { ...data } }; },
-    async setDataAndWait(id, next) {
+    async setDataAndWait(_id, next) {
       Object.assign(data, next);
     }
   };
@@ -55,16 +86,38 @@ function makeContext(command, mode, options = {}) {
   };
 }
 
-test("all four moderation commands are restricted to confirmed group QTVs", async () => {
+test("every Anti command from the requested list is registered with its own name", () => {
+  for (const name of commandNames) {
+    assert.equal(commands[name].config.name, name, name + " must be registered");
+    assert.equal(commands[name].config.category, "Anti", name + " must be in Anti category");
+    assert.equal(typeof commands[name].run, "function", name + " must expose run()");
+  }
+});
+
+test("all Anti commands enable/disable their own group setting and send Canvas notices", async () => {
   const previousKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "test-key";
 
   try {
-    for (const command of Object.keys(commands)) {
-      const fixture = makeContext(command, "on", { userId: "ordinary-member" });
-      await commands[command].run(fixture.context);
-      assert.equal(Object.keys(fixture.data).length, 0);
-      assert.match(fixture.messages[0].msg, /QTV BOX/i);
+    for (const [name, key] of Object.entries(expectedKeys)) {
+      const fixture = makeContext(name, "on");
+      const renderedBefore = renderedCards.length;
+      await commands[name].run(fixture.context);
+
+      assert.equal(fixture.data[key], true, name + " should enable " + key);
+      assert.equal(fixture.messages.length, 1, name + " should send one confirmation");
+      assert.match(fixture.messages[0].msg, /THÔNG BÁO HỆ THỐNG/i);
+      assert.deepEqual(fixture.messages[0].attachments, ["/tmp/jt-anti-feature-test.png"]);
+      assert.equal(fixture.messages[0].ttlKind, "card");
+      assert.equal(renderedCards.length, renderedBefore + 1);
+      assert.equal(renderedCards.at(-1).type, "card");
+      assert.match(renderedCards.at(-1).data.title, /THÔNG BÁO HỆ THỐNG/i);
+      assert.match(renderedCards.at(-1).data.subtitle, /Đã bật thành công/i);
+
+      fixture.context.args = ["off"];
+      await commands[name].run(fixture.context);
+      assert.equal(fixture.data[key], false, name + " should disable " + key);
+      assert.match(renderedCards.at(-1).data.subtitle, /Đã tắt thành công/i);
     }
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
@@ -72,31 +125,40 @@ test("all four moderation commands are restricted to confirmed group QTVs", asyn
   }
 });
 
-test("all four commands persist their independent on/off settings", async () => {
+test("Anti-Link and Anti-Invite are separate controls", async () => {
+  const invite = makeContext("antiinvite", "on");
+  await commands.antiinvite.run(invite.context);
+  assert.equal(invite.data.anti_danger_link, true);
+  assert.equal(invite.data.anti_link, undefined);
+
+  const link = makeContext("antilink", "on");
+  await commands.antilink.run(link.context);
+  assert.equal(link.data.anti_link, true);
+  assert.equal(link.data.anti_danger_link, undefined);
+});
+
+test("Anti-Spam text and Anti-Sticker-Lag are separate controls", async () => {
+  const textSpam = makeContext("antispam", "on");
+  await commands.antispam.run(textSpam.context);
+  assert.equal(textSpam.data.anti_spam, true);
+  assert.equal(textSpam.data.anti_sticker_spam, undefined);
+
+  const stickerSpam = makeContext("antistklag", "on");
+  await commands.antistklag.run(stickerSpam.context);
+  assert.equal(stickerSpam.data.anti_sticker_spam, true);
+  assert.equal(stickerSpam.data.anti_spam, undefined);
+});
+
+test("all Anti commands reject members who are not confirmed group QTVs", async () => {
   const previousKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "test-key";
 
   try {
-    const expectedKeys = {
-      antinude: "anti_nude",
-      antirecall: "anti_undo",
-      antilink: "anti_danger_link",
-      antispam: "anti_sticker_spam"
-    };
-
-    for (const [command, key] of Object.entries(expectedKeys)) {
-      const fixture = makeContext(command, "on");
-      await commands[command].run(fixture.context);
-      assert.equal(fixture.data[key], true, command + " should be enabled");
-      assert.match(fixture.messages[0].msg, /THÔNG BÁO HỆ THỐNG/i);
-      assert.deepEqual(fixture.messages[0].attachments, ["/tmp/jt-anti-feature-test.png"]);
-      assert.equal(renderedCards.at(-1).type, "card");
-      assert.match(renderedCards.at(-1).data.subtitle, /Đã bật thành công/);
-
-      fixture.context.args = ["off"];
-      await commands[command].run(fixture.context);
-      assert.equal(fixture.data[key], false, command + " should be disabled");
-      assert.match(renderedCards.at(-1).data.subtitle, /Đã tắt thành công/);
+    for (const name of commandNames) {
+      const fixture = makeContext(name, "on", { userId: "ordinary-member" });
+      await commands[name].run(fixture.context);
+      assert.deepEqual(fixture.data, {}, name + " must not change settings for a non-QTV");
+      assert.match(fixture.messages[0].msg, /QTV BOX/i);
     }
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
@@ -107,21 +169,23 @@ test("all four commands persist their independent on/off settings", async () => 
 test("missing group-admin metadata does not grant QTV access", async () => {
   const fixture = makeContext("antilink", "on", { groupInfo: null });
   await commands.antilink.run(fixture.context);
-  assert.equal(fixture.data.anti_danger_link, undefined);
+  assert.deepEqual(fixture.data, {});
   assert.match(fixture.messages[0].msg, /QTV BOX/i);
 });
 
-test("antinude cannot be enabled without an AI API key", async () => {
+test("Anti-Sex and legacy Anti-Nude require an OpenAI API key", async () => {
   const previousKey = process.env.OPENAI_API_KEY;
   const previousAlias = process.env.JT_ANTINUDE_OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
   delete process.env.JT_ANTINUDE_OPENAI_API_KEY;
 
   try {
-    const fixture = makeContext("antinude", "on");
-    await commands.antinude.run(fixture.context);
-    assert.equal(fixture.data.anti_nude, undefined);
-    assert.match(fixture.messages[0].msg, /OPENAI_API_KEY/);
+    for (const name of ["antisex", "antinude"]) {
+      const fixture = makeContext(name, "on");
+      await commands[name].run(fixture.context);
+      assert.deepEqual(fixture.data, {}, name + " must not enable without an AI API key");
+      assert.match(fixture.messages[0].msg, /OPENAI_API_KEY/i);
+    }
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = previousKey;
@@ -129,7 +193,6 @@ test("antinude cannot be enabled without an AI API key", async () => {
     else process.env.JT_ANTINUDE_OPENAI_API_KEY = previousAlias;
   }
 });
-
 
 test.after(() => {
   workerRender.renderCanvas = originalRenderCanvas;

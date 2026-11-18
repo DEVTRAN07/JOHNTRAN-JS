@@ -7,7 +7,7 @@ module.exports.config = {
   version: "1.0.0",
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
-  description: "Chặn mọi URL và link mời nhóm khác trong nhóm",
+  description: "Chặn mọi URL được gửi trong nhóm",
   category: "Anti",
   usage: "antilink [on/off]",
   cooldowns: 1

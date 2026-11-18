@@ -120,7 +120,7 @@ test("Anti toggle keeps a readable confirmation when Canvas rendering fails", as
   const { context, calls } = makeContext();
   try {
     await runAntiToggle("antilink", context);
-    assert.equal(calls.saved?.anti_danger_link, true);
+    assert.equal(calls.saved?.anti_link, true);
     assert.equal(calls.sent.length, 1);
     assert.match(calls.sent[0].payload.msg, /ℹ️ THÔNG BÁO HỆ THỐNG/);
     assert.match(calls.sent[0].payload.msg, /Đã bật thành công chế độ Anti-Link/);

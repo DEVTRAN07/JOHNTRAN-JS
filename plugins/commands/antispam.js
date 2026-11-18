@@ -7,7 +7,7 @@ module.exports.config = {
   version: "1.0.0",
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
-  description: "Chặn spam tin nhắn liên tục và dội bom sticker",
+  description: "Chặn spam tin nhắn liên tục",
   category: "Anti",
   usage: "antispam [on/off]",
   cooldowns: 1
