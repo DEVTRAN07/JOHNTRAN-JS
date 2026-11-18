@@ -560,17 +560,27 @@ async function handleRequest(req, res, url) {
       try {
         const { threadId, type, msg, styles } = JSON.parse(body || "{}");
         if (!threadId || !msg) return json(400, { error: "Thiếu threadId hoặc msg" });
-        // styles: kiểu chữ gửi LUÔN lên Zalo (bold/màu/cỡ chữ...) — Zalo chỉ
-        // hỗ trợ b/i/u/s + 4 màu + 2 cỡ chữ nên panel lọc trước khi gửi.
+        const messageText = String(msg);
+        // Zalo supports b/i/u/s, four colors and two font sizes. Multiple
+        // non-overlapping color spans are needed for random multi-color text.
+        const allowedStyles = new Set([
+          "b", "i", "u", "s",
+          "c_db342e", "c_f27806", "c_f7b503", "c_15a85f",
+          "f_13", "f_18"
+        ]);
         const safeStyles = (Array.isArray(styles) ? styles : [])
-          .filter((st) => st && Number.isFinite(st.start) && Number.isFinite(st.len) && typeof st.st === "string")
-          .slice(0, 8);
+          .filter((st) => st &&
+            Number.isInteger(st.start) && st.start >= 0 &&
+            Number.isInteger(st.len) && st.len > 0 &&
+            st.start + st.len <= messageText.length &&
+            allowedStyles.has(st.st))
+          .slice(0, 128);
         await wrapApi(apiRef, threadId, Number(type) === 1 ? ThreadType.Group : ThreadType.User, "panel").sendMessage(
-          { msg: String(msg), ...(safeStyles.length ? { styles: safeStyles } : {}) },
+          { msg: messageText, ...(safeStyles.length ? { styles: safeStyles } : {}) },
           threadId,
           Number(type) === 1 ? ThreadType.Group : ThreadType.User
         );
-        record(threadId, { from: "me", name: "Bot", text: String(msg), isSelf: true });
+        record(threadId, { from: "me", name: "Bot", text: messageText, isSelf: true });
         return json(200, { ok: true });
       } catch (error) {
         return json(500, { error: error.message });
