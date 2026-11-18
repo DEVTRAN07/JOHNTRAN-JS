@@ -13,11 +13,11 @@ function temporaryThemeFile(t) {
   return path.join(directory, "menu-theme.json");
 }
 
-test("menu palette defaults to the shared gold theme", t => {
+test("menu palette defaults to the JOHNTRAN Blue Neon brand theme", t => {
   const file = temporaryThemeFile(t);
   const palette = menuPalette.getPalette(file);
-  assert.equal(menuPalette.getThemeInfo(file).name, "gold");
-  assert.equal(palette.accent, "#d4af37");
+  assert.equal(menuPalette.getThemeInfo(file).name, "blue-neon");
+  assert.equal(palette.accent, "#62dcff");
   assert.equal(palette.panel[0], menuPalette.getPalette(file).panel[0]);
 });
 
@@ -47,8 +47,8 @@ test("invalid theme cannot overwrite a valid saved selection", t => {
   assert.equal(menuPalette.getThemeInfo(file).name, "rose");
 });
 
-test("reset restores the default palette", t => {
+test("reset restores the shared JOHNTRAN Blue Neon palette", t => {
   const file = temporaryThemeFile(t);
   menuPalette.setTheme("crimson", file);
-  assert.equal(menuPalette.setTheme("reset", file).name, "gold");
+  assert.equal(menuPalette.setTheme("reset", file).name, "blue-neon");
 });
