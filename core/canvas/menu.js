@@ -21,6 +21,9 @@ function rounded(ctx, x, y, w, h, r) {
 function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
   ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
+  ctx.shadowColor = "rgba(0,5,16,.78)";
+  ctx.shadowBlur = theme.S(bold ? 2.8 : 2);
+  ctx.shadowOffsetY = theme.S(0.8);
   const accentText = color === theme.PALETTE.accent || color === theme.PALETTE.accent2;
   ctx.fillStyle = accentText ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : color;
   ctx.textAlign = align || "left";
@@ -47,8 +50,8 @@ function drawOuterPanel(ctx, x, y, w, h, radius, colors, borderColor) {
   ctx.shadowBlur = theme.S(24);
   ctx.shadowOffsetY = theme.S(10);
   const fill = ctx.createLinearGradient(x, y, x + w, y + h);
-  fill.addColorStop(0, theme.rgba(colors[0], 0.22));
-  fill.addColorStop(1, theme.rgba(colors[1], 0.28));
+  fill.addColorStop(0, theme.rgba(colors[0], 0.085));
+  fill.addColorStop(1, theme.rgba(colors[1], 0.12));
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.restore();
@@ -221,9 +224,9 @@ function drawMainMenuShell(ctx, x, y, w, h, radius, palette) {
   ctx.shadowBlur = theme.S(28);
   ctx.shadowOffsetY = theme.S(12);
   const fill = ctx.createLinearGradient(x, y, x + w, y + h);
-  fill.addColorStop(0, theme.rgba(palette.panel[0], 0.20));
-  fill.addColorStop(0.48, "rgba(7,24,44,.23)");
-  fill.addColorStop(1, theme.rgba(palette.panel[1], 0.29));
+  fill.addColorStop(0, theme.rgba(palette.panel[0], 0.075));
+  fill.addColorStop(0.48, "rgba(7,24,44,.09)");
+  fill.addColorStop(1, theme.rgba(palette.panel[1], 0.12));
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.restore();
@@ -280,9 +283,9 @@ function drawMainMenuTile(ctx, item, x, y, w, h, palette) {
   ctx.shadowBlur = theme.S(10);
   ctx.shadowOffsetY = theme.S(4);
   const fill = ctx.createLinearGradient(x, y, x + w, y + h);
-  fill.addColorStop(0, "rgba(22,54,87,.19)");
-  fill.addColorStop(0.5, theme.rgba(palette.card[0], 0.18));
-  fill.addColorStop(1, theme.rgba(palette.card[1], 0.25));
+  fill.addColorStop(0, "rgba(22,54,87,.07)");
+  fill.addColorStop(0.5, theme.rgba(palette.card[0], 0.08));
+  fill.addColorStop(1, theme.rgba(palette.card[1], 0.12));
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.restore();
@@ -331,8 +334,10 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, p
   const palette = getMainMenuPalette();
 
   paintMainMenuBackdrop(ctx, W, H, palette, {
-    veilAlpha: [0.18, 0.24, 0.30],
-    vignetteAlpha: 0.28
+    veilAlpha: [0.025, 0.04, 0.055],
+    vignetteAlpha: 0.055,
+    auroraStrength: 0.22,
+    sharpen: 0.42
   });
 
   // Layer 2: one inset glass shell sits above the cinematic background.
@@ -474,8 +479,10 @@ async function renderFolderCard({
   const palette = theme.getCardPalette();
 
   paintBackdrop(ctx, W, H, {
-    veilAlpha: [0.16, 0.22, 0.27],
-    vignetteAlpha: 0.24
+    veilAlpha: [0.018, 0.03, 0.045],
+    vignetteAlpha: 0.045,
+    auroraStrength: 0.18,
+    sharpen: 0.46
   });
 
   const panelX = S(24);
