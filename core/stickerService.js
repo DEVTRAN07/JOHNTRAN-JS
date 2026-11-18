@@ -101,11 +101,14 @@ function sourceExtension(url, contentType, buffer) {
   return ".bin";
 }
 
+function getPackagedFfmpegPath() {
+  try { return require("ffmpeg-static"); } catch { return null; }
+}
+
 function resolveFfmpegBinary(staticPath) {
-  let packaged = staticPath;
-  if (packaged === undefined) {
-    try { packaged = require("ffmpeg-static"); } catch { packaged = null; }
-  }
+  if (staticPath === undefined && verifiedFfmpegBinary) return verifiedFfmpegBinary;
+
+  const packaged = staticPath === undefined ? getPackagedFfmpegPath() : staticPath;
   for (const candidate of [process.env.FFMPEG_PATH, packaged, "ffmpeg"]) {
     if (typeof candidate !== "string" || !candidate.trim()) continue;
     const resolved = candidate.trim();
@@ -118,7 +121,8 @@ function resolveFfmpegBinary(staticPath) {
   return "ffmpeg";
 }
 
-const FFMPEG = resolveFfmpegBinary();
+let FFMPEG = resolveFfmpegBinary();
+let verifiedFfmpegBinary = null;
 
 function execFfmpeg(args, timeout = 180000) {
   return new Promise((resolve, reject) => {
@@ -134,14 +138,47 @@ function execFfmpeg(args, timeout = 180000) {
 }
 
 async function hasWebpEncoder() {
-  if (webpEncoderCache !== null) return webpEncoderCache;
-  try {
-    const result = await execFfmpeg(["-hide_banner", "-encoders"], 15000);
-    webpEncoderCache = /\blibwebp\b/.test(result.stdout + result.stderr);
-  } catch {
-    webpEncoderCache = false;
+  if (webpEncoderCache === true) return true;
+
+  const candidates = [
+    FFMPEG,
+    process.env.FFMPEG_PATH,
+    getPackagedFfmpegPath(),
+    "ffmpeg"
+  ].filter((candidate, index, all) =>
+    typeof candidate === "string" &&
+    candidate.trim() &&
+    all.indexOf(candidate) === index
+  );
+
+  for (const candidate of candidates) {
+    try {
+      const result = await new Promise((resolve, reject) => {
+        execFile(candidate, ["-hide_banner", "-encoders"], {
+          timeout: 15000,
+          maxBuffer: 16 * 1024 * 1024
+        }, (error, stdout, stderr) => {
+          if (error) {
+            error.stderr = String(stderr || "");
+            reject(error);
+            return;
+          }
+          resolve({ stdout: String(stdout || ""), stderr: String(stderr || "") });
+        });
+      });
+      if (!/\blibwebp\b/.test(result.stdout + result.stderr)) continue;
+
+      FFMPEG = candidate;
+      verifiedFfmpegBinary = candidate;
+      webpEncoderCache = true;
+      return true;
+    } catch {
+      // Try the next candidate: the system binary may be missing or lack WebP.
+    }
   }
-  return webpEncoderCache;
+
+  webpEncoderCache = false;
+  return false;
 }
 
 async function fetchSource(api, url) {
