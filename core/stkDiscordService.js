@@ -182,33 +182,56 @@ async function ensureRemoteAsset(fileName, options = {}) {
 
   const cacheKey = directory + "::" + safeName;
   const existingDownload = remoteDownloads.get(cacheKey);
+
+  const downloadAndCache = async () => {
+    const buffer = await fetchRemoteImageBuffer(
+      fetchImpl, url, timeoutMs, maxBytes
+    );
+    if (!isValidImageBuffer(buffer, safeName)) {
+      throw new Error("Dữ liệu tải về không đúng định dạng ảnh " +
+        path.extname(safeName) + ".");
+    }
+
+    const temporaryPath = targetPath + ".tmp-" + process.pid + "-" +
+      crypto.randomBytes(5).toString("hex");
+    try {
+      await fs.promises.writeFile(temporaryPath, buffer, { flag: "wx" });
+      await fs.promises.rename(temporaryPath, targetPath);
+    } finally {
+      try { await fs.promises.rm(temporaryPath, { force: true }); } catch {}
+    }
+    return targetPath;
+  };
+
+  // A valid local frame is always usable. Refresh expired cache in the
+  // background so a slow Raw GitHub response never blocks sticker rendering.
+  if (hasUsableCache) {
+    if (!existingDownload) {
+      let refresh;
+      refresh = (async () => {
+        try {
+          await downloadAndCache();
+        } catch (error) {
+          console.warn("[stk] Không làm mới được cache GitHub; tiếp tục dùng " +
+            "khung đã lưu " + safeName + ": " +
+            String(error && error.message || error));
+        } finally {
+          if (remoteDownloads.get(cacheKey) === refresh) {
+            remoteDownloads.delete(cacheKey);
+          }
+        }
+      })();
+      remoteDownloads.set(cacheKey, refresh);
+    }
+    return targetPath;
+  }
+
   if (existingDownload) return existingDownload;
 
   const pending = (async () => {
     try {
-      const buffer = await fetchRemoteImageBuffer(
-        fetchImpl, url, timeoutMs, maxBytes
-      );
-      if (!isValidImageBuffer(buffer, safeName)) {
-        throw new Error("Dữ liệu tải về không đúng định dạng ảnh " +
-          path.extname(safeName) + ".");
-      }
-
-      const temporaryPath = targetPath + ".tmp-" + process.pid + "-" +
-        crypto.randomBytes(5).toString("hex");
-      try {
-        await fs.promises.writeFile(temporaryPath, buffer, { flag: "wx" });
-        await fs.promises.rename(temporaryPath, targetPath);
-      } finally {
-        try { await fs.promises.rm(temporaryPath, { force: true }); } catch {}
-      }
-      return targetPath;
+      return await downloadAndCache();
     } catch (error) {
-      if (hasUsableCache) {
-        console.warn("[stk] GitHub raw không truy cập được; dùng cache cũ " +
-          safeName + ": " + String(error && error.message || error));
-        return targetPath;
-      }
       const wrapped = new Error(
         "Không tải được " + safeName + " từ kho Discord-decor trên GitHub (" +
         url + "): " + String(error && error.message || error)
@@ -423,28 +446,59 @@ function extractUploadedUrl(uploaded) {
     root.thumbUrl || root.fileUrl || root.url || null;
 }
 
+async function measureStage(name, operation, timings) {
+  const startedAt = Date.now();
+  try {
+    const result = await operation();
+    timings[name] = Date.now() - startedAt;
+    console.info("[stk] " + name + "=" + timings[name] + "ms");
+    return result;
+  } catch (error) {
+    timings[name] = Date.now() - startedAt;
+    console.warn("[stk] " + name + " failed after " + timings[name] +
+      "ms: " + String(error && error.message || error));
+    throw error;
+  }
+}
+
 async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
   const totalStartedAt = Date.now();
-  if (!api || !event?.threadId) throw new Error("Thiếu thông tin cuộc trò chuyện để gửi sticker.");
-  const decoration = getDecoration(decorationId);
-  if (!decoration) throw new RangeError("Khung Discord phải nằm trong khoảng 1–200.");
-
-  const normalizedUrl = stickerService.normalizeSourceUrl(mediaUrl);
-  if (!normalizedUrl) throw new Error("Không tìm thấy URL ảnh/sticker hợp lệ.");
-
-  stickerService.registerStickerApi(api);
-  fs.mkdirSync(TMP_DIR, { recursive: true });
-
+  const timings = {};
   let sourcePath = null;
   let outputPath = null;
+  let currentStage = "validate";
+
   try {
-    // Download the selected frame and the user's media in parallel.
+    if (!api || !event?.threadId) throw new Error("Thiếu thông tin cuộc trò chuyện để gửi sticker.");
+    const decoration = getDecoration(decorationId);
+    if (!decoration) throw new RangeError("Khung Discord phải nằm trong khoảng 1–200.");
+
+    const normalizedUrl = stickerService.normalizeSourceUrl(mediaUrl);
+    if (!normalizedUrl) throw new Error("Không tìm thấy URL ảnh/sticker hợp lệ.");
+
+    currentStage = "register-api";
+    stickerService.registerStickerApi(api);
+    fs.mkdirSync(TMP_DIR, { recursive: true });
+
+    // Determine whether the selected frame is already on Persistent Disk.
+    // Frame cache lookup and avatar/media retrieval run concurrently.
+    const frameCacheHit = Boolean(resolveDecorationFile(decorationId));
+    currentStage = "parallel-download";
     const downloadStartedAt = Date.now();
     const [decorationPath, source] = await Promise.all([
-      ensureDecorationFile(decorationId),
-      stickerService.fetchSource(api, normalizedUrl)
+      measureStage(
+        frameCacheHit ? "frameCache" : "frameDownload",
+        () => ensureDecorationFile(decorationId),
+        timings
+      ),
+      measureStage(
+        "mediaDownload",
+        () => stickerService.fetchSource(api, normalizedUrl),
+        timings
+      )
     ]);
-    const downloadMs = Date.now() - downloadStartedAt;
+    timings.parallelDownloadMs = Date.now() - downloadStartedAt;
+
     const extension = stickerService.sourceExtension(normalizedUrl, source.contentType, source.buffer);
     if (extension === ".bin") {
       throw new Error("Không nhận diện được định dạng ảnh/video. Hỗ trợ PNG, JPG, GIF, WebP, MP4, MOV và WebM.");
@@ -453,9 +507,12 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
     sourcePath = makeTempName("stk_source", extension);
     fs.writeFileSync(sourcePath, source.buffer);
 
-    const renderStartedAt = Date.now();
-    const output = await createWebp(sourcePath, source.buffer, extension, decorationPath);
-    const renderMs = Date.now() - renderStartedAt;
+    currentStage = "ffmpeg";
+    const output = await measureStage(
+      "ffmpegRender",
+      () => createWebp(sourcePath, source.buffer, extension, decorationPath),
+      timings
+    );
     outputPath = output.path;
 
     if (typeof api.uploadStickerImage !== "function" ||
@@ -463,19 +520,18 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
       throw new Error("Phiên Zalo chưa khởi tạo API upload/send sticker. Hãy khởi động lại bot.");
     }
 
-    const uploadStartedAt = Date.now();
-    const uploaded = await api.uploadStickerImage({
+    currentStage = "zalo-upload";
+    const uploaded = await measureStage("zaloUpload", () => api.uploadStickerImage({
       filePath: outputPath,
       threadId: event.threadId,
       threadType: event.type
-    });
-    const uploadMs = Date.now() - uploadStartedAt;
+    }), timings);
     const cdnUrl = extractUploadedUrl(uploaded);
     if (!cdnUrl) throw new Error("Zalo không trả về URL CDN sau khi upload sticker.");
 
     const quote = getReplyQuote(event);
-    const sendStartedAt = Date.now();
-    const sent = await api.sendCustomStickerUrl({
+    currentStage = "zalo-send";
+    const sent = await measureStage("zaloSend", () => api.sendCustomStickerUrl({
       staticImgUrl: stickerService.buildStickerUrl(String(cdnUrl), true),
       animationImgUrl: stickerService.buildStickerUrl(String(cdnUrl), true),
       threadId: event.threadId,
@@ -483,16 +539,31 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
       reply: quote?.msgId || null,
       width: output.width,
       height: output.height
-    });
-    const sendMs = Date.now() - sendStartedAt;
-    const totalMs = Date.now() - totalStartedAt;
+    }), timings);
 
+    timings.totalMs = Date.now() - totalStartedAt;
     console.info(
       "[stk] completed #" + decorationId +
-      " download=" + downloadMs + "ms render=" + renderMs +
-      "ms upload=" + uploadMs + "ms send=" + sendMs + "ms total=" + totalMs + "ms"
+      " frameCache=" + (frameCacheHit ? "HIT" : "MISS") +
+      " parallelDownload=" + timings.parallelDownloadMs + "ms" +
+      " frame=" + timings.frameCache + (timings.frameDownload ?? "") + "ms" +
+      " media=" + timings.mediaDownload + "ms" +
+      " ffmpeg=" + timings.ffmpegRender + "ms" +
+      " upload=" + timings.zaloUpload + "ms" +
+      " send=" + timings.zaloSend + "ms" +
+      " total=" + timings.totalMs + "ms"
     );
-    return { ...output, response: sent, decoration, timings: { downloadMs, renderMs, uploadMs, sendMs, totalMs } };
+    return { ...output, response: sent, decoration, timings };
+  } catch (error) {
+    timings.totalMs = Date.now() - totalStartedAt;
+    console.error(
+      "[stk] failed #" + decorationId +
+      " stage=" + currentStage +
+      " timings=" + JSON.stringify(timings) +
+      " total=" + timings.totalMs + "ms: " +
+      String(error && error.stack || error)
+    );
+    throw error;
   } finally {
     for (const filePath of [sourcePath, outputPath]) {
       if (!filePath) continue;
