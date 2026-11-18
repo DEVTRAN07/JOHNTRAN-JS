@@ -40,3 +40,36 @@ test("panel chat preview caps long message text before it enters the persisted r
   assert.equal(message.text.length, MAX_PANEL_MESSAGE_TEXT_LENGTH);
   assert.ok(message.text.endsWith("…"));
 });
+
+
+test("panel ring persistence serializes one conversation at a time and yields between chunks", async () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const { _test } = require("../core/panelBridge");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-panel-chunks-"));
+  const target = path.join(directory, "panel_chat.json");
+  const entries = Array.from({ length: 5 }, (_, groupIndex) => [
+    "group-" + groupIndex,
+    Array.from({ length: 200 }, (_, messageIndex) => ({
+      ts: groupIndex * 1000 + messageIndex,
+      from: "member-" + messageIndex,
+      name: "Member " + messageIndex,
+      text: ("Tin nhắn nhóm " + groupIndex + " nội dung có dấu tiếng Việt 😀 ").repeat(10),
+      isSelf: false
+    }))
+  ]);
+  let yieldCount = 0;
+
+  try {
+    assert.equal(await _test.persistEntriesInChunks(entries, target, {
+      yieldEvery: 1,
+      onYield() { yieldCount++; }
+    }), true);
+    const saved = JSON.parse(fs.readFileSync(target, "utf8"));
+    assert.deepEqual(saved, Object.fromEntries(entries));
+    assert.equal(yieldCount, entries.length - 1);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

@@ -58,6 +58,45 @@ function loadRingFromDisk() {
 let persistInFlight = false;
 let persistAgain = false;
 
+async function persistEntriesInChunks(entries, targetPath, options = {}) {
+  const yieldEvery = Math.max(1, Math.floor(Number(options.yieldEvery) || 1));
+  const onYield = typeof options.onYield === "function" ? options.onYield : null;
+  const tempPath = targetPath + "." + process.pid + ".tmp";
+  let handle = null;
+
+  try {
+    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+    handle = await fs.promises.open(tempPath, "w");
+    await handle.writeFile("{");
+
+    for (let index = 0; index < entries.length; index++) {
+      const [threadId, messages] = entries[index];
+      if (index > 0) await handle.writeFile(",");
+      await handle.writeFile(JSON.stringify(String(threadId)));
+      await handle.writeFile(":");
+      // Each conversation is at most 200 messages. Serialize one bounded
+      // chunk, then yield so incoming Zalo events can run before the next one.
+      await handle.writeFile(JSON.stringify(messages));
+      if ((index + 1) % yieldEvery === 0 && index + 1 < entries.length) {
+        try { onYield?.(index + 1); } catch {}
+        await new Promise(resolve => setImmediate(resolve));
+      }
+    }
+
+    await handle.writeFile("}");
+    await handle.close();
+    handle = null;
+    await fs.promises.rename(tempPath, targetPath);
+    return true;
+  } catch (error) {
+    if (handle) {
+      try { await handle.close(); } catch {}
+    }
+    try { await fs.promises.unlink(tempPath); } catch {}
+    throw error;
+  }
+}
+
 function persistRing() {
   persistTimer = null;
   if (persistInFlight) {
@@ -66,13 +105,15 @@ function persistRing() {
   }
 
   persistInFlight = true;
-  // Chỉ serialize tối đa MAX_THREADS × MAX_PER_THREAD tin nhắn.
-  const keep = Object.fromEntries(ring.entries());
-  const tempPath = `${CACHE_FILE}.${process.pid}.tmp`;
+  // Snapshot list membership and message arrays at the start of the flush.
+  // Serialize one group at a time so a large panel cache cannot monopolize
+  // the main event loop in a single JSON.stringify call.
+  const entries = [...ring.entries()].map(([threadId, messages]) => [
+    threadId,
+    messages.slice()
+  ]);
 
-  fs.promises.mkdir(path.dirname(CACHE_FILE), { recursive: true })
-    .then(() => fs.promises.writeFile(tempPath, JSON.stringify(keep), "utf8"))
-    .then(() => fs.promises.rename(tempPath, CACHE_FILE))
+  persistEntriesInChunks(entries, CACHE_FILE)
     .catch(() => { /* lưu panel history không được làm gián đoạn bot */ })
     .finally(() => {
       persistInFlight = false;
@@ -661,4 +702,4 @@ async function start({ api, port = 3901, token } = {}) {
   return finalPort;
 }
 
-module.exports = { start, record, recordIncoming, getMessages, contentToText, MAX_PANEL_MESSAGE_TEXT_LENGTH };
+module.exports = { start, record, recordIncoming, getMessages, contentToText, MAX_PANEL_MESSAGE_TEXT_LENGTH, _test: { persistEntriesInChunks } };
