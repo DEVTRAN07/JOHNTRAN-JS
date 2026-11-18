@@ -191,3 +191,16 @@ test("STK metadata maps to the raw GitHub repository and has 200 frame URLs", ()
     assert.ok(service.buildRawAssetUrl(item.file).endsWith("/" + item.file));
   }
 });
+
+
+test("STK FFmpeg selection uses the verified WebP-capable binary", async () => {
+  const hasEncoder = await stickerService.hasWebpEncoder();
+  if (hasEncoder) {
+    assert.equal(service.resolveFfmpegBinary(), stickerService.resolveFfmpegBinary());
+    const probe = spawnSync(service.resolveFfmpegBinary(), ["-hide_banner", "-encoders"], {
+      encoding: "utf8"
+    });
+    assert.equal(probe.status, 0, String(probe.stderr || ""));
+    assert.match(String(probe.stdout || "") + String(probe.stderr || ""), /\blibwebp\b/);
+  }
+});
