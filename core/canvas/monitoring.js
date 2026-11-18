@@ -105,14 +105,22 @@ function renderStatsCard(data = {}) {
   const top = (data.topCommands || []).slice(0, 5).map((v, i) => ({ left: (i + 1) + ". " + v[0], right: v[1] + " lần" }));
   const slow = (data.slowCommands || []).slice(0, 5).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
   const handlers = (data.slowHandlers || []).slice(0, 5).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
+  const firstResponse = data.firstResponse || null;
+  const listenerRows = [
+    { left: "First response", right: firstResponse ? "P95 " + milliseconds(firstResponse.p95Ms) : "Chưa đủ mẫu" },
+    ...(data.listenerStages || []).slice(0, 3).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }))
+  ];
+  const apiRows = (data.apiCalls || []).slice(0, 4).map(v => ({ left: v.command, right: "P95 " + milliseconds(v.p95Ms) }));
   const caches = (data.caches || []).slice(0, 10);
   const topH = sectionHeight(top.length), slowH = sectionHeight(Math.max(slow.length, handlers.length), 26);
+  const diagnosticsH = sectionHeight(Math.max(listenerRows.length, apiRows.length), 26);
   const cacheH = S(42 + Math.max(1, Math.ceil(caches.length / 2)) * 39 + 13);
   let y = 96;
   const metricY = y; y += 95;
   const activityY = y; y += 62;
   const topY = y; y += topH + 12;
   const slowY = y; y += slowH + 12;
+  const diagnosticsY = y; y += diagnosticsH + 12;
   const cacheY = y; y += cacheH + 42;
   const result = theme.newCanvas(W, S(y)), canvas = result.canvas, ctx = result.ctx;
   backdrop(ctx, W, canvas.height, p);
@@ -134,6 +142,8 @@ function renderStatsCard(data = {}) {
   const half = (full - S(10)) / 2;
   compactSection(ctx, S(PAD), S(slowY), half, "LỆNH CHẬM · TOÀN BỘ", slow, p);
   compactSection(ctx, S(PAD) + half + S(10), S(slowY), half, "HANDLER · COMMAND.RUN", handlers, p);
+  compactSection(ctx, S(PAD), S(diagnosticsY), half, "NHẬN TIN → PHẢN HỒI", listenerRows, p);
+  compactSection(ctx, S(PAD) + half + S(10), S(diagnosticsY), half, "THỜI GIAN API ZALO", apiRows, p);
   cacheGrid(ctx, S(PAD), S(cacheY), full, caches, p, "HIỆU SUẤT CACHE");
   footer(ctx, S(y - 34), p, "JOHNTRAN  ·  LIVE METRICS  ·  " + String(latency.count || 0) + " mẫu độ trễ");
   return saveFrame(canvas);
