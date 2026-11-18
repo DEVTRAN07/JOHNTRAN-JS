@@ -265,6 +265,60 @@ function startPanel({ manager, config }) {
       // Panel UI tĩnh (docs/) — xử lý trước mọi route API
       if (!pathname.startsWith("/api") && serveStatic(pathname, res)) return;
 
+      // ===== Discord sticker decoration catalog API (Panel Bearer token required) =====
+      if (pathname === "/api/stk/decorations" || pathname.startsWith("/api/stk/decorations/")) {
+        const catalog = require("../core/stickerDecorations");
+        const cacheHeaders = {
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=300"
+        };
+
+        if (req.method === "GET" && pathname === "/api/stk/decorations") {
+          const limit = Number(url.searchParams.get("limit")) || 30;
+          const offset = Number(url.searchParams.get("offset")) || 0;
+          const result = await catalog.getDecorations({
+            query: url.searchParams.get("q") || "",
+            category: url.searchParams.get("category") || "",
+            animated: url.searchParams.get("animated"),
+            limit,
+            offset
+          });
+          return sendJson(res, 200, {
+            success: true,
+            total: result.total,
+            limit: result.limit,
+            offset: result.offset,
+            source: result.source,
+            sourceSha: result.sourceSha,
+            cachedAt: result.cachedAt,
+            stale: result.stale,
+            decorations: result.items
+          }, cacheHeaders);
+        }
+
+        if (req.method === "GET") {
+          const itemMatch = pathname.match(/^\/api\/stk\/decorations\/([a-z0-9-]+)$/i);
+          if (itemMatch) {
+            const decoration = await catalog.getDecoration(itemMatch[1]);
+            return decoration
+              ? sendJson(res, 200, { success: true, decoration }, cacheHeaders)
+              : sendJson(res, 404, { success: false, error: "Không tìm thấy decoration." });
+          }
+        }
+
+        if (req.method === "POST" && pathname === "/api/stk/decorations/refresh") {
+          const refreshed = await catalog.refresh({ force: true });
+          return sendJson(res, 200, {
+            success: true,
+            total: refreshed.total,
+            source: refreshed.source,
+            sourceSha: refreshed.sourceSha,
+            cachedAt: refreshed.generatedAt
+          }, cacheHeaders);
+        }
+
+        return sendJson(res, 405, { success: false, error: "Method hoặc endpoint không được hỗ trợ." });
+      }
+
       // ===== DHBC Question Bank API (đã được bảo vệ bằng Panel Bearer token) =====
       if (pathname === "/api/dhbc/questions" || pathname.startsWith("/api/dhbc/questions/")) {
         const bank = require("../core/games/dhbcBank");
@@ -799,10 +853,11 @@ async function readBody(req, maxBytes = MAX_BODY_BYTES) {
   }
 }
 
-function sendJson(res, status, data) {
+function sendJson(res, status, data, headers = {}) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    ...headers
   });
   res.end(JSON.stringify(data));
 }
