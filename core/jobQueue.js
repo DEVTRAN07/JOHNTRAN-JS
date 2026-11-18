@@ -5,7 +5,6 @@
 const DOWNLOAD_CONCURRENCY = positiveEnv("JT_DOWNLOAD_CONCURRENCY", 1);
 
 const DEFAULT_LANES = {
-  sticker: { concurrency: 1, maxPending: 30, maxInFlight: 31 },
   image: { concurrency: 1, maxPending: 20, maxInFlight: 21 },
   gif: { concurrency: 1, maxPending: 12, maxInFlight: 13 },
   video: { concurrency: 1, maxPending: 8, maxInFlight: 9 },
