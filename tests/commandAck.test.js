@@ -8,8 +8,9 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function createWrapped() {
+function createWrapped(options = {}) {
   const sent = [];
+  const reactions = [];
   const api = {
     async sendMessage(payload) {
       sent.push(payload);
@@ -18,10 +19,15 @@ function createWrapped() {
     async sendVoice(payload) {
       sent.push({ voice: payload });
       return { message: { msgId: sent.length, cliMsgId: sent.length } };
+    },
+    async addReaction(reaction, destination) {
+      reactions.push({ reaction, destination });
+      if (typeof options.onReaction === "function") return options.onReaction(reaction, destination);
+      return true;
     }
   };
   const event = { threadId: "ack-group", type: 2, data: { msgId: 1, cliMsgId: 1 } };
-  return { wrapped: wrapApi(api, event.threadId, event.type, "slowcmd", event), sent };
+  return { wrapped: wrapApi(api, event.threadId, event.type, "slowcmd", event), sent, reactions };
 }
 
 // Status is a delayed reaction only; it must never add another message to the chat.
@@ -148,4 +154,46 @@ test("background command dispatcher does not mark a sticker complete before its 
 
   assert.equal(finished, true);
   assert.deepEqual(reactions, ["working"]);
+});
+
+test("Reply.working defers its Zalo reaction and never holds the caller", async () => {
+  const { wrapped, reactions } = createWrapped();
+  await wrapped.__reply.working({ delayMs: 10 });
+  assert.equal(reactions.length, 0);
+  await delay(30);
+  assert.equal(reactions.length, 1);
+});
+
+test("Reply.working is cancelled when the first command response starts", async () => {
+  const { wrapped, reactions, sent } = createWrapped();
+  await wrapped.__reply.working({ delayMs: 10 });
+  await wrapped.sendMessage({ msg: "Kết quả" });
+  await delay(30);
+  assert.equal(sent.length, 1);
+  assert.equal(reactions.length, 0);
+});
+
+test("Reply.done and Reply.failed do not await the Zalo reaction API", async () => {
+  let reactionCalls = 0;
+  const { wrapped } = createWrapped({
+    onReaction: () => {
+      reactionCalls++;
+      return new Promise(() => {});
+    }
+  });
+
+  await wrapped.__reply.done();
+  await wrapped.__reply.failed();
+  assert.equal(reactionCalls, 0, "cosmetic status reactions must not run inline");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reactionCalls, 2, "status reactions are dispatched outside the command response path");
+});
+
+test("Reply.working does not schedule duplicate reactions after acknowledgement", async () => {
+  const { wrapped, reactions } = createWrapped();
+  await wrapped.__reply.working({ delayMs: 5 });
+  await delay(20);
+  await wrapped.__reply.working({ delayMs: 5 });
+  await delay(20);
+  assert.equal(reactions.length, 1);
 });
