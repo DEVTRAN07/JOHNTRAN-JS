@@ -269,7 +269,8 @@ async function downloadDecorationOverlay(decoration, options = {}) {
   const parsed = new URL(assetUrl);
   const extension = path.extname(parsed.pathname).toLowerCase();
   const cacheKey = crypto.createHash("sha1").update(assetUrl).digest("hex");
-  const cachedPath = path.join(DECORATION_ASSET_CACHE_DIR, cacheKey + extension);
+  const assetCacheDir = options.cacheDir || DECORATION_ASSET_CACHE_DIR;
+  const cachedPath = path.join(assetCacheDir, cacheKey + extension);
   try {
     const stat = fs.statSync(cachedPath);
     if (stat.isFile() && stat.size > 0 && stat.size <= MAX_DECORATION_BYTES &&
@@ -302,7 +303,7 @@ async function downloadDecorationOverlay(decoration, options = {}) {
   const isWebp = buffer.subarray(0, 4).toString() === "RIFF" && buffer.subarray(8, 12).toString() === "WEBP";
   if (!isPng && !isGif && !isWebp) throw new Error("Tệp tải về không phải ảnh PNG/GIF/WebP hợp lệ.");
 
-  fs.mkdirSync(DECORATION_ASSET_CACHE_DIR, { recursive: true });
+  fs.mkdirSync(assetCacheDir, { recursive: true });
   const tempPath = cachedPath + "." + process.pid + ".tmp";
   fs.writeFileSync(tempPath, buffer);
   fs.renameSync(tempPath, cachedPath);
