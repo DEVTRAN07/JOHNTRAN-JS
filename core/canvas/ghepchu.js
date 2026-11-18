@@ -255,15 +255,14 @@ function drawText(ctx, value, x, y, options = {}) {
     ctx.shadowOffsetY = 2;
   }
   const text = String(value ?? "");
-  const words = text.match(/[\p{L}\p{N}]+/gu) || [];
-  const semanticColor = [theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(color);
+  const words = text.match(/[\p{L}\p{M}\p{N}]+/gu) || [];
   theme.drawMulticolorText(ctx, text, x, y, {
     font: ctx.font,
     color,
     align,
     maxWidth,
     baseline,
-    multicolor: !semanticColor && (words.length > 1 || words.some(word => Array.from(word).length > 1))
+    multicolor: words.length > 1 || words.some(word => theme.splitGraphemes(word).length > 1)
   });
   ctx.restore();
 }

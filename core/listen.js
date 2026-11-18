@@ -186,6 +186,10 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
   const selfMessage = isSelf === true || event?.isSelf === true;
   if (selfMessage && global.config?.allow_self_command !== true) return false;
 
+  // Active game handlers used to receive the raw SDK API, bypassing the shared
+  // sendMessage wrapper (random colors, recall and API latency instrumentation).
+  const gameApi = wrapForThread(api, event.threadId, event.type, "game", event);
+
   // Preserve Nối Từ priority: a message consumed by it must not reach another game.
   try {
     const noituCommand = require("../plugins/commands/noitu");
@@ -194,7 +198,8 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
       : true;
     if (hasActiveGame && typeof noituCommand?.handleEvent === "function") {
       const consumed = await noituCommand.handleEvent({
-        api, event, eventType: "message", isSelf: false, Users, Threads, threadData
+        api: gameApi, reply: gameApi?.__reply,
+        event, eventType: "message", isSelf: false, Users, Threads, threadData
       });
       if (consumed === true) return true;
     }
@@ -211,7 +216,8 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
     const tlmnCommand = require("../plugins/commands/tlmn");
     if (typeof tlmnCommand?.handleIncoming === "function") {
       const consumed = await tlmnCommand.handleIncoming({
-        api, event, eventType: "message", isSelf: selfMessage, Users, Threads
+        api: gameApi, reply: gameApi?.__reply,
+        event, eventType: "message", isSelf: selfMessage, Users, Threads
       });
       if (consumed === true) return true;
     }

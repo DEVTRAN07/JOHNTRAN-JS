@@ -23,15 +23,7 @@ function sanitizeEmoji(value) {
   return theme.sanitizeGlyphs(out);
 }
 function wrap(ctx, value, maxWidth) {
-  const words = sanitizeEmoji(value).split(/\s+/).filter(Boolean);
-  const lines = []; let current = "";
-  for (const word of words) {
-    const next = current ? current + " " + word : word;
-    if (current && ctx.measureText(next).width > maxWidth) { lines.push(current); current = word; }
-    else current = next;
-  }
-  if (current) lines.push(current);
-  return lines.length ? lines : [""];
+  return theme.wrapText(ctx, sanitizeEmoji(value), maxWidth);
 }
 function measure(spec = {}) {
   theme.initFonts();

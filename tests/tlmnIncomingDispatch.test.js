@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
-const { ThreadType } = require("zalo-client");
+const { ThreadType, TextStyle } = require("zalo-client");
 
 const noituPath = require.resolve("../plugins/commands/noitu");
 const tlmnPath = require.resolve("../plugins/commands/tlmn");
@@ -42,7 +42,13 @@ test("plain text messages reach TLMN after Nối Từ declines them", async () =
   calls.tlmn.length = 0;
   global.config = { allow_self_command: false };
 
-  const api = {};
+  const sent = [];
+  const api = {
+    async sendMessage(payload) {
+      sent.push(payload);
+      return { message: null, attachment: [] };
+    }
+  };
   const Users = {};
   const Threads = {};
   const event = {
@@ -59,10 +65,21 @@ test("plain text messages reach TLMN after Nối Từ declines them", async () =
   assert.equal(calls.noitu.length, 1);
   assert.equal(calls.tlmn.length, 1);
   assert.equal(calls.tlmn[0].event, event);
-  assert.equal(calls.tlmn[0].api, api);
+  assert.notEqual(calls.tlmn[0].api, api, "game replies must use the shared message wrapper");
+  assert.equal(Object.getPrototypeOf(calls.tlmn[0].api), api);
+  assert.equal(calls.noitu[0].api, calls.tlmn[0].api, "both games share one wrapped API per incoming message");
+  assert.ok(calls.tlmn[0].reply, "game handlers receive the shared Reply helper");
   assert.equal(calls.tlmn[0].Users, Users);
   assert.equal(calls.tlmn[0].Threads, Threads);
   assert.equal(calls.tlmn[0].isSelf, false);
+
+  const content = "Lượt chơi mới bắt đầu";
+  await calls.tlmn[0].api.sendMessage({ msg: content });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].msg, content);
+  assert.ok(sent[0].styles.some(style => [
+    TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green
+  ].includes(style.st)), "game response text must pass through randomized Zalo styles");
 });
 
 test("private messages skip group-only game dispatch entirely", async () => {
