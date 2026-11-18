@@ -5,6 +5,7 @@ const { ThreadType } = require("zalo-client");
 const stats = require("../../core/stats");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const { isEnabled: isGroupBotEnabled } = require("../../core/runtime/groupBotState");
+const { collectBotGroupKeys } = require("../../core/runtime/botGroupKey");
 
 const GROUP_INFO_CONCURRENCY = 4;
 
@@ -41,34 +42,132 @@ async function collectEnabledGroups(api, Threads) {
     ])
   );
 
-  // A group appears as active only after an explicit /bot on.
-  // Missing legacy settings are OFF and are omitted from this card.
+  // QTV status is independent from /bot on/off and covers every joined group.
+  // Older test adapters and third-party wrappers may not expose getOwnId().
+  // Keep the legacy /bot status card working, but never guess that an
+  // unverified group has a QTV key.
+  const canVerifyBotRole =
+    typeof api?.getOwnId === "function" &&
+    typeof api?.getGroupInfo === "function";
+
+  let keySummary = {
+    botUid: "",
+    totalGroups: allIds.length,
+    allGroups: allIds.map(gid => ({
+      gid: String(gid),
+      name: String(settingsById.get(String(gid))?.group_name || ("Nhóm " + String(gid).slice(-6))),
+      avatar: "",
+      totalMember: 0,
+      role: "unknown"
+    })),
+    keyGroups: [],
+    noKeyGroups: [],
+    unknownGroups: [],
+    ownerCount: 0,
+    deputyCount: 0,
+    verificationAvailable: false
+  };
+  const infoById = new Map();
+
+  if (canVerifyBotRole) {
+    try {
+      keySummary = {
+        ...(await collectBotGroupKeys(api, { groupIds: allIds })),
+        verificationAvailable: true
+      };
+      for (const group of keySummary.allGroups) infoById.set(group.gid, group);
+    } catch (error) {
+      console.warn("[BOT_STATUS] Không xác minh được quyền QTV của bot:", error?.message || error);
+    }
+  }
+
   const enabledIds = allIds.filter(gid => isGroupBotEnabled(settingsById.get(String(gid))));
   const groups = [];
 
-  for (let offset = 0; offset < enabledIds.length; offset += GROUP_INFO_CONCURRENCY) {
-    const batch = enabledIds.slice(offset, offset + GROUP_INFO_CONCURRENCY);
-    const items = await Promise.all(batch.map(async gid => {
-      let info = stats.getCachedGroupInfo(gid);
-      // wrapApi.getGroupInfo already has its own single-flight cache.
-      // Do not wrap it again with stats.warmGroupInfo or the two cache
-      // promises can recursively await each other on the same group key.
-      if (!info && typeof api?.getGroupInfo === "function") info = await api.getGroupInfo(gid);
-      const group = info?.gridInfoMap?.[gid] || {};
-      return {
+  // When role inspection is available, reuse the names/details gathered from
+  // the same Zalo response. Otherwise retain the previous enabled-only lookup.
+  if (keySummary.verificationAvailable) {
+    for (const gid of enabledIds) {
+      const info = infoById.get(String(gid)) || {};
+      groups.push({
         gid: String(gid),
-        name: String(group.name || settingsById.get(String(gid))?.group_name || ("Nhóm " + String(gid).slice(-6))),
-        avatar: String(group.avt || group.fullAvt || ""),
-        totalMember: Number(group.totalMember) || 0
-      };
-    }));
-    groups.push(...items);
+        name: String(info.name || settingsById.get(String(gid))?.group_name || ("Nhóm " + String(gid).slice(-6))),
+        avatar: String(info.avatar || ""),
+        totalMember: Number(info.totalMember) || 0
+      });
+    }
+  } else {
+    for (let offset = 0; offset < enabledIds.length; offset += GROUP_INFO_CONCURRENCY) {
+      const batch = enabledIds.slice(offset, offset + GROUP_INFO_CONCURRENCY);
+      const items = await Promise.all(batch.map(async gid => {
+        let info = stats.getCachedGroupInfo(gid);
+        if (!info && typeof api?.getGroupInfo === "function") {
+          info = await api.getGroupInfo(gid);
+        }
+        const group = info?.gridInfoMap?.[gid] || {};
+        return {
+          gid: String(gid),
+          name: String(group.name || settingsById.get(String(gid))?.group_name || ("Nhóm " + String(gid).slice(-6))),
+          avatar: String(group.avt || group.fullAvt || ""),
+          totalMember: Number(group.totalMember) || 0
+        };
+      }));
+      groups.push(...items);
+    }
+  }
+
+  if (!keySummary.verificationAvailable) {
+    keySummary.unknownGroups = keySummary.allGroups;
   }
 
   return {
+    ...keySummary,
     groups,
     totalGroups: allIds.length
   };
+}
+
+function buildBotGroupKeyStatus(summary = {}) {
+  const keyGroups = Array.isArray(summary.keyGroups) ? summary.keyGroups : [];
+  const noKeyGroups = Array.isArray(summary.noKeyGroups) ? summary.noKeyGroups : [];
+  const unknownGroups = Array.isArray(summary.unknownGroups) ? summary.unknownGroups : [];
+  const lines = [
+    "🔑 QUYỀN QTV NHÓM CỦA TÀI KHOẢN BOT",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "👥 Bot đang tham gia: " + (Number(summary.totalGroups) || 0) + " nhóm",
+    "✅ Bot có key (trưởng/phó): " + keyGroups.length + " nhóm",
+    "   👑 Trưởng nhóm: " + (Number(summary.ownerCount) || 0),
+    "   🛡️ Phó nhóm: " + (Number(summary.deputyCount) || 0),
+    "⚪ Bot chưa có quyền QTV: " + noKeyGroups.length + " nhóm",
+    "❔ Chưa xác minh được: " + unknownGroups.length + " nhóm",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "DANH SÁCH NHÓM BOT CÓ KEY:"
+  ];
+
+  if (!keyGroups.length) {
+    lines.push("Không có nhóm nào mà bot đang giữ quyền trưởng/phó.");
+  } else {
+    const limit = 40;
+    keyGroups.slice(0, limit).forEach((group, index) => {
+      const isOwner = group.role === "owner";
+      lines.push(
+        (index + 1) + ". " + (isOwner ? "👑 " : "🛡️ ") +
+        group.name + " [" + (isOwner ? "TRƯỞNG" : "PHÓ NHÓM") + "] · ID: " + group.gid
+      );
+    });
+    if (keyGroups.length > limit) {
+      lines.push("... và " + (keyGroups.length - limit) + " nhóm khác.");
+    }
+  }
+
+  if (unknownGroups.length) {
+    lines.push(
+      "",
+      "⚠️ Zalo chưa trả đủ thông tin quyền của " + unknownGroups.length +
+      " nhóm; các nhóm này không được tính là có key."
+    );
+  }
+  return lines.join("\n");
 }
 
 async function sendStatusCard({ api, event, Threads }) {
@@ -84,11 +183,17 @@ async function sendStatusCard({ api, event, Threads }) {
       version: require("../../package.json").version
     }, { timeout: 30000, poolSize: 2 });
 
-    return await api.sendMessage({
+    await api.sendMessage({
       msg: "",
       attachments: [imagePath],
       ttlKind: "card"
     }, event.threadId, event.type);
+    if (result.verificationAvailable) {
+      await api.sendMessage({
+        msg: buildBotGroupKeyStatus(result)
+      }, event.threadId, event.type);
+    }
+    return true;
   } finally {
     if (imagePath) {
       const timer = setTimeout(() => {
@@ -144,4 +249,4 @@ module.exports.run = async function ({ api, event, args, Threads, reply }) {
   );
 };
 
-module.exports._test = { collectEnabledGroups, GROUP_INFO_CONCURRENCY, sendStatusCard };
+module.exports._test = { collectEnabledGroups, buildBotGroupKeyStatus, GROUP_INFO_CONCURRENCY, sendStatusCard };
