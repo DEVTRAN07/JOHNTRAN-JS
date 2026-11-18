@@ -546,8 +546,9 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
       "[stk] completed #" + decorationId +
       " frameCache=" + (frameCacheHit ? "HIT" : "MISS") +
       " parallelDownload=" + timings.parallelDownloadMs + "ms" +
-      " frame=" + timings.frameCache + (timings.frameDownload ?? "") + "ms" +
-      " media=" + timings.mediaDownload + "ms" +
+      " frameCache=" + (timings.frameCache ?? "-") + "ms" +
+      " frameDownload=" + (timings.frameDownload ?? "-") + "ms" +
+      " mediaDownload=" + timings.mediaDownload + "ms" +
       " ffmpeg=" + timings.ffmpegRender + "ms" +
       " upload=" + timings.zaloUpload + "ms" +
       " send=" + timings.zaloSend + "ms" +
