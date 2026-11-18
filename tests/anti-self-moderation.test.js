@@ -4,6 +4,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const anti = require("../plugins/commands/anti");
 const { ThreadType } = require("zalo-client");
+const { shouldProcessUndoEvent } = require("../core/listen");
+const { getDispatchSources } = require("../core/handle/handleEvent")._test;
 
 const originalConfig = global.config;
 
@@ -192,4 +194,31 @@ test("Anti link does not exempt a group owner or deputy sender", async () => {
   assert.equal(calls.groupLookups, 1, "the bot's QTV key is verified independently");
   assert.equal(calls.deleted.length, 1, "the group owner link is moderated too");
   assert.equal(calls.sent.length, 1);
+});
+
+
+test("bot self-undo is allowed only in Anti test mode and dispatched only to Anti", () => {
+  const antiCommand = { handleEvent() {} };
+  const otherCommand = { handleEvent() {} };
+  const eventModule = {
+    config: { event_type: ["undo"] },
+    run() {}
+  };
+  const events = new Map([["some-event", eventModule]]);
+  const commands = new Map([
+    ["anti", antiCommand],
+    ["other", otherCommand]
+  ]);
+
+  global.config = { allow_self_anti: true };
+  assert.equal(shouldProcessUndoEvent({ isSelf: true }), true);
+  assert.equal(shouldProcessUndoEvent({ isSelf: false }), true);
+
+  const sources = getDispatchSources("undo", { isSelf: true }, true, events, commands);
+  assert.equal(sources.events.size, 0, "self-undo must not reach unrelated event plugins");
+  assert.deepEqual([...sources.commands.keys()], ["anti"]);
+  assert.equal(sources.commands.get("anti"), antiCommand);
+
+  global.config = { allow_self_anti: false };
+  assert.equal(shouldProcessUndoEvent({ isSelf: true }), false);
 });
