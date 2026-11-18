@@ -15,6 +15,12 @@ test("Canvas worker renders stats as a standalone card image", async () => {
     uptime: "1 phút",
     daily: { day: "2026-11-16", commands: 2, errors: 0, musicSearch: 0, musicDownload: 0, aiRequests: 0, ttsRequests: 0 },
     latency: { count: 2, avgMs: 194.6, p50Ms: 194.6, p95Ms: 194.6, lastMs: 194.6 },
+    firstResponse: { count: 2, avgMs: 145.2, p50Ms: 120.4, p95Ms: 170.1 },
+    listenerStages: [
+      { command: "thread-data", p95Ms: 9.4 },
+      { command: "receive-to-command", p95Ms: 15.8 }
+    ],
+    apiCalls: [{ command: "sendmessage", p95Ms: 178.2 }, { command: "addreaction", p95Ms: 42.1 }],
     topCommands: [["noitu", 1], ["stats", 1]],
     slowCommands: [{ command: "noitu", p95Ms: 194.6, avgMs: 194.6 }],
     slowHandlers: [{ command: "noitu", p95Ms: 189.63, avgMs: 189.63 }],
