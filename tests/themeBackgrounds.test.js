@@ -38,3 +38,22 @@ test("random is the default mode while explicit numbered selections remain suppo
   assert.equal(themeBackgrounds.resolveStoredSelection({ selected: "2", mode: "manual" }), "2");
   assert.equal(themeBackgrounds.resolveStoredSelection({ selected: "invalid", mode: "manual" }), "random");
 });
+
+test("numbered theme selection resolves to exactly one authoritative photo", () => {
+  for (const id of ["1", "2", "3"]) {
+    const candidates = themeBackgrounds.getCandidateOrder(id, 0);
+    assert.deepEqual(candidates.map(item => item.id), [id]);
+  }
+});
+
+test("random theme order starts from an independent random choice and includes all photos", () => {
+  const first = themeBackgrounds.getCandidateOrder("random", 0);
+  const second = themeBackgrounds.getCandidateOrder("random", 1);
+  const third = themeBackgrounds.getCandidateOrder("random", 2);
+
+  assert.deepEqual(first.map(item => item.id), ["1", "2", "3"]);
+  assert.deepEqual(second.map(item => item.id), ["2", "3", "1"]);
+  assert.deepEqual(third.map(item => item.id), ["3", "1", "2"]);
+  assert.notEqual(first[0].id, second[0].id);
+  assert.notEqual(second[0].id, third[0].id);
+});

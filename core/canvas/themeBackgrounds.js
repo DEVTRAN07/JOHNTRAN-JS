@@ -41,7 +41,6 @@ const FAILURE_RETRY_MS = 60 * 1000;
 let activeImage = null;
 let activeBackgroundId = "";
 let renderSeed = Math.floor(Math.random() * 0x7fffffff);
-let selectionCache = { mtimeMs: -1, value: "random" };
 
 function ensureDirectory() {
   fs.mkdirSync(THEME_DIR, { recursive: true });
@@ -57,17 +56,11 @@ function resolveStoredSelection(value) {
 
 function readSelection() {
   try {
-    const stat = fs.statSync(SELECTION_FILE);
-    if (selectionCache.mtimeMs === stat.mtimeMs) return selectionCache.value;
     const value = JSON.parse(fs.readFileSync(SELECTION_FILE, "utf8"));
-    selectionCache = {
-      mtimeMs: stat.mtimeMs,
-      value: resolveStoredSelection(value)
-    };
+    return resolveStoredSelection(value);
   } catch {
-    selectionCache = { mtimeMs: -1, value: "random" };
+    return "random";
   }
-  return selectionCache.value;
 }
 
 function getCurrent() {
@@ -115,8 +108,25 @@ function setSelection(input) {
     try { fs.unlinkSync(temporary); } catch { /* no temporary file */ }
     throw new Error("Không thể lưu nền theme: " + error.message);
   }
-  selectionCache = { mtimeMs: -1, value: selected };
   return getCurrent();
+}
+
+function getCandidateOrder(selected = "random", randomStart) {
+  if (selected !== "random") {
+    const fixed = BACKGROUNDS.find(item => item.id === String(selected));
+    // Fixed mode must never substitute another cached photo: every renderer
+    // either displays the requested image or uses the neutral fallback.
+    return fixed ? [fixed] : [];
+  }
+
+  const rawStart = Number.isInteger(randomStart)
+    ? randomStart
+    : Math.floor(Math.random() * BACKGROUNDS.length);
+  const start = ((rawStart % BACKGROUNDS.length) + BACKGROUNDS.length) % BACKGROUNDS.length;
+  return [
+    ...BACKGROUNDS.slice(start),
+    ...BACKGROUNDS.slice(0, start)
+  ];
 }
 
 function isJpeg(buffer) {
@@ -205,25 +215,14 @@ function settleWithin(promise, timeoutMs) {
 async function prepare(options = {}) {
   renderSeed = Math.floor(Math.random() * 0x7fffffff);
   const current = getCurrent();
+  const defaultWaitMs = current.random ? 1400 : 2200;
+  const requestedWaitMs = options.waitMs === undefined
+    ? defaultWaitMs
+    : Number(options.waitMs);
   const waitMs = Math.max(0, Math.min(2200,
-    Number(options.waitMs) || 1400
+    Number.isFinite(requestedWaitMs) ? requestedWaitMs : defaultWaitMs
   ));
-
-  let candidate;
-  if (current.selected === "random") {
-    const start = Math.floor(Math.random() * BACKGROUNDS.length);
-    candidate = [
-      ...BACKGROUNDS.slice(start),
-      ...BACKGROUNDS.slice(0, start)
-    ];
-  } else {
-    const selectedIndex = BACKGROUNDS.findIndex(item => item.id === current.selected);
-    candidate = [
-      BACKGROUNDS[selectedIndex],
-      ...BACKGROUNDS.filter(item => item.id !== current.selected)
-    ];
-  }
-  candidate = candidate.filter(Boolean);
+  const candidate = getCandidateOrder(current.selected);
 
   // Start remote downloads immediately, but never hold a normal Canvas
   // response for the full network timeout. Download tasks continue in the
@@ -244,9 +243,14 @@ async function prepare(options = {}) {
   }
 
   const preferredImage = await settleWithin(firstTask, waitMs);
-  const readyFallback = candidate
-    .map(item => ({ id: item.id, image: loaded.get(item.id) }))
-    .find(item => item.image);
+  // Only random mode may use a different already-cached photo as a
+  // fallback. In numbered mode the requested ID is authoritative across
+  // menu, folder, status, games and every other Canvas renderer.
+  const readyFallback = current.random
+    ? candidate
+      .map(item => ({ id: item.id, image: loaded.get(item.id) }))
+      .find(item => item.image)
+    : null;
 
   activeImage = preferredImage || readyFallback?.image || null;
   activeBackgroundId = preferredImage
@@ -307,6 +311,7 @@ module.exports = {
   getCurrent,
   setSelection,
   normalizeSelection,
+  getCandidateOrder,
   resolveStoredSelection,
   getActiveImage,
   getImage,
