@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { TextStyle } = require("zalo-client");
+const { createCanvas } = require("canvas");
 const styledText = require("../core/styled");
 const theme = require("../core/canvas/theme");
 const { wrapApi } = require("../core/message");
@@ -129,6 +130,16 @@ test("Canvas text does not truncate the end of a long label", () => {
 
 test("each newly rendered Canvas gets a palette seed for randomized card text", () => {
   const { ctx } = theme.newCanvas(320, 120);
+  assert.ok(Number.isSafeInteger(ctx.__jtRenderSeed));
+  assert.ok(ctx.__jtRenderSeed >= 0);
+});
+
+test("legacy Canvas contexts lazily receive their own random color seed", () => {
+  const ctx = createCanvas(320, 120).getContext("2d");
+  theme.drawMulticolorText(ctx, "Thẻ Canvas cũ cũng cần phối màu ngẫu nhiên", 10, 40, {
+    color: "#ffffff",
+    multicolor: true
+  });
   assert.ok(Number.isSafeInteger(ctx.__jtRenderSeed));
   assert.ok(ctx.__jtRenderSeed >= 0);
 });
