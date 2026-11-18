@@ -8,10 +8,16 @@ const { dispatchEvent } = require("../runtime/eventRegistry");
 const { createEventContext } = require("../runtime/eventContext");
 const { isEnabled: isGroupBotEnabled } = require("../runtime/groupBotState");
 
+function isGroupEventPayload(eventType, eventData) {
+  return eventData?.type === ThreadType.Group ||
+    (eventType === "undo" && eventData?.isGroup === true);
+}
+
 async function handleEvent(eventType, eventData, api, isSelf = false) {
   // Safety net: suppress every event source when this group has disabled the bot.
   // Use the synchronous hot cache so the event path never waits for a database round-trip.
-  if (eventData?.type === ThreadType.Group && eventData?.threadId) {
+  const isGroupEvent = isGroupEventPayload(eventType, eventData);
+  if (isGroupEvent && eventData?.threadId) {
     const thread = Threads.getCachedData?.(eventData.threadId);
     // Fail closed: an uncached/missing setting remains OFF until /bot on.
     if (!isGroupBotEnabled(thread)) return;
@@ -89,9 +95,11 @@ async function handleEvent(eventType, eventData, api, isSelf = false) {
     },
     onError(error, kind, name) {
       const label = kind === "event" ? "event" : "handleEvent trong command";
-      logger.log(`Lỗi khi xử lý ${label} ${name}: ${error?.message || error}`, "error", { source: kind === "event" ? "event" : "command-event", eventName: name, eventType, isGroup: eventData?.type === ThreadType.Group || eventType === "group_event", groupId: eventData?.threadId });
+      logger.log(`Lỗi khi xử lý ${label} ${name}: ${error?.message || error}`, "error", { source: kind === "event" ? "event" : "command-event", eventName: name, eventType, isGroup: isGroupEvent || eventType === "group_event", groupId: eventData?.threadId });
     }
   });
 }
 
 module.exports = handleEvent;
+
+module.exports._test = { isGroupEventPayload };
