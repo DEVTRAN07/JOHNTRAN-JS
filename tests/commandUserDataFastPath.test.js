@@ -22,7 +22,7 @@ async function execute(command) {
   let receivedUserData = "not-called";
   const uid = "user-data-fast-user-" + Math.random().toString(36).slice(2);
   const commandName = String(command.config?.name || "probe").toLowerCase();
-  const messageText = "/" + commandName;
+  const messageText = "/" + commandName + " invoke";
   const event = {
     threadId: "private-user-data-fast",
     type: ThreadType.User,
