@@ -298,7 +298,7 @@ class Reply {
   // within the grace period. Fast commands avoid an extra Zalo API request.
   scheduleAcknowledgement(callback, delayMs = 600) {
     this.cancelAcknowledgement();
-    if (this._responseStarted || this._commandCompleted || typeof callback !== "function") return false;
+    if (this._responseStarted || this._commandCompleted || this._ackSent || typeof callback !== "function") return false;
     const parsed = Number(delayMs);
     const delay = Math.max(0, Math.min(5000, Number.isFinite(parsed) ? Math.floor(parsed) : 600));
     this._ackTimer = setTimeout(() => {
