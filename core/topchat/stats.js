@@ -41,7 +41,7 @@ function vietnamDateKey(value) {
 function getVietnamDayBounds(dateKey) {
   const key = String(dateKey || "");
   if (key === cachedBoundsDateKey && cachedDayBounds) return cachedDayBounds;
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(key);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
   if (!match) return null;
   const start = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) - VIETNAM_UTC_OFFSET_MS;
   if (!Number.isFinite(start)) return null;
