@@ -511,7 +511,7 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
 
   // Tokenize words separately from spaces/punctuation. Word spans get a
   // different bright brand color; separators keep the requested base color.
-  const tokens = display.match(/[\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+/gu) || [];
+  const tokens = display.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu) || [];
   if (!tokens.length) return { text: display, segments: 0, width: 0 };
 
   const totalWidth = tokens.reduce((sum, token) => sum + ctx.measureText(token).width, 0);
@@ -524,7 +524,7 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
 
   for (const token of tokens) {
     const width = ctx.measureText(token).width;
-    if (/[\\p{L}\\p{N}]/u.test(token)) {
+    if (/[\p{L}\p{N}]/u.test(token)) {
       let colorIndex = RANDOM_TEXT_COLORS.indexOf(randomTextColor(seed + ":" + wordIndex));
       if (colorIndex < 0) colorIndex = 0;
       // A sentence should visibly alternate, even with an unlucky hash sequence.
