@@ -251,3 +251,39 @@ test("zero recall delay disables local recall without sending a TTL field", asyn
     global.setTimeout = originalSetTimeout;
   }
 });
+
+
+test("long auto-recalled messages use three clock states instead of eleven reaction requests", async () => {
+  const originalSetTimeout = global.setTimeout;
+  const scheduled = [];
+  const reactions = [];
+  global.setTimeout = (callback, delay) => {
+    scheduled.push({ callback, delay });
+    return { unref() {} };
+  };
+
+  try {
+    const api = {
+      async sendMessage() {
+        return { message: { msgId: 91, cliMsgId: "long-clock" }, attachment: [] };
+      },
+      async addReaction(icon) { reactions.push(icon); },
+      async undo() {}
+    };
+    const wrapped = wrapApi(api, "thread-long-clock", 1, "test");
+    const { DEFAULT_RECALL_CLOCK_TICKS } = require("../core/message");
+    await wrapped.sendMessage({ msg: "long recall", recallAfterMs: 60000 });
+    await Promise.resolve();
+
+    assert.equal(DEFAULT_RECALL_CLOCK_TICKS, 2);
+    assert.equal(reactions.length, 1, "one initial clock reaction is sent immediately");
+    const countdownTimers = scheduled.filter(item => item.delay < 60000);
+    assert.equal(countdownTimers.length, 2, "only two countdown updates are scheduled");
+    assert.deepEqual(countdownTimers.map(item => item.delay), [20000, 40000]);
+    for (const timer of countdownTimers) await timer.callback();
+    await Promise.resolve();
+    assert.equal(reactions.length, 3, "the message keeps an initial, middle and final clock state");
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+});
