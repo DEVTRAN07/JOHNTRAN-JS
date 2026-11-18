@@ -5,6 +5,7 @@ const logger = require("../utils/logger");
 const { reportComponent } = require("./runtime/recovery");
 const { updateMessageCache, getMessageCache } = require("../utils/index");
 const { ThreadType } = require("zalo-client");
+const messageTiming = require("./runtime/messageTiming");
 const { createCipherReadyGate, requestOldMessagesThen } = require("./topchat/historyBootstrap");
 const { createReconnectFailureTracker } = require("./topchat/reconnectState");
 const {
@@ -99,6 +100,7 @@ async function dispatchAntiMessageBeforeGame({ api, event, Users, Threads, isSel
     return { dispatched: false, consumed: false };
   }
 
+  messageTiming.markCommand(event, "anti");
   try {
     const wrapped = wrapForThread(api, event.threadId, ThreadType.Group, "anti", event);
     const result = await antiCommand.handleEvent({
@@ -157,6 +159,7 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
       ? noituCommand.hasActiveGameForThread(event.threadId)
       : true;
     if (hasActiveGame && typeof noituCommand?.handleEvent === "function") {
+      messageTiming.markCommand(event, "noitu");
       const consumed = await noituCommand.handleEvent({
         api, event, eventType: "message", isSelf: false, Users, Threads
       });
@@ -174,6 +177,9 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
   try {
     const tlmnCommand = require("../plugins/commands/tlmn");
     if (typeof tlmnCommand?.handleIncoming === "function") {
+      if (tlmnCommand._test?.shouldQueueIncoming?.({ event, isSelf: selfMessage, Threads })) {
+        messageTiming.markCommand(event, "tlmn");
+      }
       const consumed = await tlmnCommand.handleIncoming({
         api, event, eventType: "message", isSelf: selfMessage, Users, Threads
       });
@@ -214,6 +220,7 @@ function startListening(api) {
 
   // ===== Xử lý 1 tin nhắn (dùng chung cho realtime và backfill sau reconnect) =====
   const onMessage = async (event, options = {}) => {
+    if (options.skipCommandExecution !== true) messageTiming.markReceived(event);
     // allow_private_command: false → bỏ qua HOÀN TOÀN tin riêng (cả lệnh lẫn auto-reply)
     if (event.type === ThreadType.User && global.config.allow_private_command === false) {
       return;
