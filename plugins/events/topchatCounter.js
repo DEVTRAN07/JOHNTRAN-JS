@@ -140,8 +140,15 @@ function resetDailyFields(thread, dateKey) {
   thread.topchatDiagnostics = { date: dateKey, received: 0, counted: 0, rejected: 0, duplicates: 0, lastSeenAt: 0 };
 }
 
-function makePending(dateKey) {
-  return { dateKey, counts: new Map(), ids: [], idsSet: new Set(), total: 0, history: false, liveReceived: 0, liveCounted: 0, liveRejected: 0, liveDuplicates: 0, timer: null };
+function makePending(dateKey, storedIds = []) {
+  // The persisted dedupe window is large (up to 10k IDs). Build this Set once
+  // when a batch starts, not again for every incoming group message.
+  const storedIdsSet = new Set(Array.isArray(storedIds) ? storedIds.map(String) : []);
+  return {
+    dateKey, counts: new Map(), ids: [], idsSet: new Set(), storedIdsSet,
+    total: 0, history: false, liveReceived: 0, liveCounted: 0,
+    liveRejected: 0, liveDuplicates: 0, timer: null
+  };
 }
 
 function scheduleFlush(threadId, Threads, pending) {
@@ -230,9 +237,6 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
     const record = Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
     const thread = record?.data || {};
     const prefix = String(thread.prefix || global.config?.prefix || "/");
-    const storedIds = thread.topchatDate === dateKey && Array.isArray(thread.topchatSeenMessageIds)
-      ? thread.topchatSeenMessageIds.map(String) : [];
-    const storedSet = new Set(storedIds);
 
     let pending = pendingGroups.get(threadId);
     if (pending && pending.dateKey !== dateKey) {
@@ -240,7 +244,9 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
       pending = null;
     }
     if (!pending) {
-      pending = makePending(dateKey);
+      const storedIds = thread.topchatDate === dateKey && Array.isArray(thread.topchatSeenMessageIds)
+        ? thread.topchatSeenMessageIds : [];
+      pending = makePending(dateKey, storedIds);
       pendingGroups.set(threadId, pending);
     }
     if (source === "history") pending.history = true;
@@ -256,7 +262,7 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
       const data = message.data || {};
       const uid = String(data.uidFrom || data.senderId || "");
       const messageId = String(data.cliMsgId || data.msgId || "");
-      if (messageId && (storedSet.has(messageId) || pending.idsSet.has(messageId))) {
+      if (messageId && (pending.storedIdsSet.has(messageId) || pending.idsSet.has(messageId))) {
         if (source === "live") pending.liveDuplicates++;
         continue;
       }

@@ -508,3 +508,39 @@ test("topchat bounds per-group in-memory deduplication cache with LRU eviction",
     for (const [key, value] of original) cache.set(key, value);
   }
 });
+
+
+test("topchat builds the persisted message-ID lookup once per batch, not once per event", async () => {
+  global.config = { prefix: "/" };
+  const threadId = "topchat-dedupe-set-once";
+  const storedIds = Array.from({ length: 5000 }, (_, index) => "stored-" + index);
+  let mapCalls = 0;
+  const originalMap = storedIds.map;
+  storedIds.map = function (...args) {
+    mapCalls++;
+    return originalMap.apply(this, args);
+  };
+  const Threads = fakeThreads({
+    [threadId]: {
+      prefix: "/",
+      topchatDate: vietnamDateKey(),
+      topchatSeenMessageIds: storedIds,
+      topchatCounts: {}
+    }
+  });
+
+  for (let index = 0; index < 100; index++) {
+    await counter.run({
+      event: makeGroupMessage(threadId, "member-1", "new-live-" + index, "hello " + index),
+      Threads,
+      isSelf: false
+    });
+  }
+
+  assert.equal(mapCalls, 1, "the 5,000-ID persisted window should be indexed once for the batch");
+  await counter.flushGroup(threadId, Threads);
+  assert.equal(mapCalls, 2, "the persisted IDs should be read once again only when committing the batch");
+  const saved = Threads.rows.get(threadId).data;
+  assert.equal(saved.topchatCounts["member-1"].count, 100);
+  assert.equal(saved.topchatSeenMessageIds.length, 5100);
+});
