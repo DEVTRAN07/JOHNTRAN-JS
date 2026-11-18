@@ -63,6 +63,8 @@ test("/scl acknowledges before waiting for SoundCloud search", async () => {
     await run;
     assert.equal(sent.length, 2);
     assert.match(sent[1]?.msg || "", /Test track/);
+    // Run the scheduled stream prefetch while the mocked resolver is installed.
+    await nextTurn();
   } finally {
     music.search = originalSearch;
     music.resolve = originalResolve;
