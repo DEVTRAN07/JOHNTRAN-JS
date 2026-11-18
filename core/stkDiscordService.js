@@ -16,7 +16,8 @@ const TMP_DIR = path.join(__dirname, "..", "cache", "temp");
 const CANVAS_SIZE = 288;
 const AVATAR_SIZE = 240;
 const OFFSET = 24;
-const MAX_OUTPUT_BYTES = 512 * 1024;
+// Keep a 32 KiB safety margin below Zalo's 512 KiB transport limit.
+const MAX_OUTPUT_BYTES = 480 * 1024;
 const MAX_DECORATION_BYTES = 10 * 1024 * 1024;
 const MAX_MENU_BYTES = 8 * 1024 * 1024;
 const DEFAULT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -389,7 +390,10 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
     { size: 256, fps: 6, quality: 22, duration: 4 },
     { size: 224, fps: 5, quality: 18, duration: 3 },
     { size: 192, fps: 4, quality: 12, duration: 2 },
-    { size: 192, fps: 1, quality: 10, duration: 1, firstFrameOnly: true }
+    { size: 192, fps: 1, quality: 10, duration: 1, firstFrameOnly: true },
+    // Final safety profile: a tiny static WebP remains sendable even when the
+    // original animation is unusually noisy or contains many full-frame changes.
+    { size: 160, fps: 1, quality: 5, duration: 1, firstFrameOnly: true }
   ] : [
     { size: 288, fps: 1, quality: 38, duration: 1 },
     { size: 256, fps: 1, quality: 24, duration: 1 },
@@ -439,6 +443,7 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
       break;
     }
 
+    let acceptedOutput = false;
     try {
       await runFfmpeg(binary, args, Math.min(10000, remainingMs));
       const stat = fs.statSync(outputPath);
@@ -468,6 +473,7 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
         };
         if (profile.firstFrameOnly) result.degradedAnimation = true;
         if (profile.size < CANVAS_SIZE) result.downscaled = true;
+        acceptedOutput = true;
         return result;
       }
       lastError = new Error("Sticker sau nén vẫn vượt giới hạn 512 KB.");
@@ -481,14 +487,10 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
         String(error.message || error)
       );
     } finally {
-      if (fs.existsSync(outputPath)) {
-        try {
-          if (!fs.statSync(outputPath).size || fs.statSync(outputPath).size > MAX_OUTPUT_BYTES) {
-            fs.rmSync(outputPath, { force: true });
-          }
-        } catch {
-          try { fs.rmSync(outputPath, { force: true }); } catch {}
-        }
+      // Keep only the file returned to the caller. Remove even small partial
+      // files when FFmpeg exits with an error so retries cannot leak temp data.
+      if (!acceptedOutput) {
+        try { fs.rmSync(outputPath, { force: true }); } catch {}
       }
     }
   }
