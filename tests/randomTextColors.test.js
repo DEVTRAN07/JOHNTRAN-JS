@@ -92,6 +92,29 @@ test("Reply.text uses the shared random-color sender", async () => {
   assert.ok(sent[0].payload.styles.some(style => COLOR_STYLES.has(style.st)));
 });
 
+test("text captions sent with Canvas attachments also receive random colors", async () => {
+  const sent = [];
+  const api = {
+    sendMessage: async (payload, threadId, type) => {
+      sent.push({ payload, threadId, type });
+      return { message: null, attachment: [] };
+    }
+  };
+  const wrapped = wrapApi(api, "caption-thread", 1, "canvas-caption-test");
+  const caption = "🤖 Nội dung hiển thị bên dưới card Canvas";
+
+  await wrapped.sendMessage({
+    msg: caption,
+    attachments: "/tmp/canvas-preview.png",
+    recallAfterMs: 0
+  });
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].payload.msg, caption);
+  assert.equal(sent[0].payload.attachments, "/tmp/canvas-preview.png");
+  assert.ok(sent[0].payload.styles.some(style => COLOR_STYLES.has(style.st)));
+});
+
 test("Canvas text does not truncate the end of a long label", () => {
   const { ctx } = theme.newCanvas(320, 120);
   const fullText = "Nội dung quan trọng cần hiển thị đầy đủ trên thẻ thông báo";
@@ -104,6 +127,7 @@ test("Canvas text does not truncate the end of a long label", () => {
 
   assert.equal(result.text, fullText);
   assert.ok(!result.text.endsWith("…"));
+  assert.ok(result.segments > 1);
 });
 
 test("each newly rendered Canvas gets a palette seed for randomized card text", () => {
