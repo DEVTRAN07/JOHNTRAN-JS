@@ -28,13 +28,12 @@ async function setConfig(threadId, data) {
 }
 
 function escapeRegExp(value) {
-  const special = new Set([".", "*", "+", "?", "^", "$", "{", "}", "(", ")", "|", "[", "]", "\\\\"]);
-  let output = "";
-  for (const character of String(value)) {
-    if (special.has(character)) output += "\\\\";
-    output += character;
-  }
-  return output;
+  const specialCodes = new Set([46, 42, 43, 63, 94, 36, 123, 125, 40, 41, 124, 91, 93, 92]);
+  return Array.from(String(value), character =>
+    specialCodes.has(character.charCodeAt(0))
+      ? String.fromCharCode(92) + character
+      : character
+  ).join("");
 }
 
 function getAutoKick(data) {
@@ -116,7 +115,7 @@ module.exports.handleEvent = async function ({ api, event, Threads }) {
     if (!autoKick.enabled || autoKick.words.length === 0) return;
 
     const found = autoKick.words.find(word =>
-      new RegExp(`(^|\\s)${escapeRegExp(word)|[\\]\\\\]/g, "\\      new RegExp(`(^|\\s)${String(word).replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}(\\s|$)`, "i").test(content)")}(\\s|$)`, "i").test(content)
+      new RegExp(`(^|\\s)${escapeRegExp(word)}(\\s|$)`, "i").test(content)
     );
     if (!found) return;
 
