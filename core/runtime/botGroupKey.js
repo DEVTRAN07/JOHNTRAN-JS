@@ -8,12 +8,28 @@ const GROUP_INFO_BATCH_SIZE = 20;
 const GROUP_INFO_CONCURRENCY = 3;
 const MAX_CACHED_GROUPS = 5000;
 
-function getApiState(api) {
+function getApiStateOwner(api) {
   if (!api || (typeof api !== "object" && typeof api !== "function")) return null;
-  let state = apiStates.get(api);
+  // wrapApi() creates a fresh Object.create(rawApi) wrapper for each event.
+  // Its private __reply marker lets all wrappers share one state for that raw session.
+  if (Object.prototype.hasOwnProperty.call(api, "__reply")) {
+    try {
+      const rawApi = Object.getPrototypeOf(api);
+      if (rawApi && (typeof rawApi === "object" || typeof rawApi === "function")) {
+        return rawApi;
+      }
+    } catch {}
+  }
+  return api;
+}
+
+function getApiState(api) {
+  const owner = getApiStateOwner(api);
+  if (!owner) return null;
+  let state = apiStates.get(owner);
   if (!state) {
     state = { botId: "", botIdPromise: null, roles: new Map(), pending: new Map() };
-    apiStates.set(api, state);
+    apiStates.set(owner, state);
   }
   return state;
 }
