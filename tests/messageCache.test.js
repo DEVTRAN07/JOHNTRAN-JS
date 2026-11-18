@@ -49,3 +49,35 @@ test("message cache remains unchanged while under its configured bound", () => {
   assert.equal(enforceMessageCacheLimit(cache, 2), 0);
   assert.deepEqual(Object.keys(cache), ["a", "b"]);
 });
+
+
+test("message cache hot updates do not scan all retained keys on every message", () => {
+  const cacheModule = require("../utils/messageCache");
+  const before = cacheModule.getMessageCacheStats().fullScans;
+  const ids = [];
+
+  try {
+    for (let index = 0; index < 100; index++) {
+      const cliMsgId = "message-cache-hotpath-" + process.pid + "-" + index;
+      ids.push(cliMsgId);
+      updateMessageCache({
+        threadId: "cache-hotpath-group",
+        type: ThreadType.Group,
+        data: {
+          msgId: "cache-hotpath-msg-" + index,
+          cliMsgId,
+          uidFrom: "cache-hotpath-user",
+          idTo: "cache-hotpath-group",
+          ts: Date.now()
+        }
+      });
+    }
+
+    const after = cacheModule.getMessageCacheStats();
+    assert.equal(after.fullScans, before, "ordinary inserts under the cap must be O(1) and skip Object.keys()");
+    assert.ok(after.entries >= 100);
+  } finally {
+    const cache = getMessageCache();
+    for (const id of ids) delete cache[id];
+  }
+});
