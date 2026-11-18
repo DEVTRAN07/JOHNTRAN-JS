@@ -99,7 +99,7 @@ test("Guard scans nested message metadata for banned words and deletes the viola
   const fixture = makeFixture();
   await guard.run({
     api: fixture.api,
-    event: makeEvent(fixture.threadId, { title: "Cẩn thận link lạ trong tin chia sẻ" }, 1),
+    event: makeEvent(fixture.threadId, "Nội dung chia sẻ", 1, { propertyExt: { nested: { description: "Cảnh báo đánh bạc trong tin chia sẻ" } } }),
     Threads: fixture.Threads,
     isSelf: false
   });
