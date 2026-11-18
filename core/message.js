@@ -4,6 +4,7 @@ const logger = require("../utils/logger");
 const styledText = require("./styled");
 const fs = require("fs");
 const crypto = require("crypto");
+const messageTiming = require("./runtime/messageTiming");
 
 const DEFAULT_AUTO_RECALL_MS = readRecallDelay(process.env.JT_AUTO_RECALL_MS, 60 * 1000);
 const MAX_RECALL_DELAY_MS = 2_147_483_647;
@@ -332,6 +333,18 @@ function defineWrapped(wrapped, name, fn) {
   });
 }
 
+async function sendWithTiming(event, send) {
+  const ticket = messageTiming.startSend(event);
+  try {
+    const response = await send();
+    messageTiming.finishSend(ticket);
+    return response;
+  } catch (error) {
+    messageTiming.finishSend(ticket, error);
+    throw error;
+  }
+}
+
 function wrapApi(api, threadId, type, commandName, event = null) {
   if (!api) return api;
   const wrapped = Object.create(api);
@@ -344,7 +357,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     const extracted = extractRecallOptions(message, DEFAULT_AUTO_RECALL_MS);
     const content = typeof extracted.payload === "string" ? { msg: extracted.payload } : extracted.payload;
     if (content.plain) delete content.plain;
-    const response = await api.sendMessage(content, targetThreadId, targetType);
+    const response = await sendWithTiming(event, () => api.sendMessage(content, targetThreadId, targetType));
     markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
@@ -355,7 +368,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     const targetType = type || ty;
     const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
     const content = typeof extracted.payload === "string" ? { voiceUrl: extracted.payload } : extracted.payload;
-    const response = await api.sendVoice(content, targetThreadId, targetType);
+    const response = await sendWithTiming(event, () => api.sendVoice(content, targetThreadId, targetType));
     markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
@@ -365,7 +378,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     const targetThreadId = threadId || tid;
     const targetType = type || ty;
     const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
-    const response = await api.sendVideo(extracted.payload, targetThreadId, targetType);
+    const response = await sendWithTiming(event, () => api.sendVideo(extracted.payload, targetThreadId, targetType));
     markResponseStarted();
     scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
     return response;
@@ -377,7 +390,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
       const targetThreadId = threadId || tid;
       const targetType = type || ty;
       const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
-      const response = await api[method](extracted.payload, targetThreadId, targetType);
+      const response = await sendWithTiming(event, () => api[method](extracted.payload, targetThreadId, targetType));
       markResponseStarted();
       scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
       return response;
@@ -389,7 +402,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
       const targetThreadId = payload?.threadId || threadId;
       const targetType = payload?.threadType ?? type;
       const extracted = extractRecallOptions(payload, DEFAULT_AUTO_RECALL_MS);
-      const response = await api.sendCustomStickerUrl(extracted.payload);
+      const response = await sendWithTiming(event, () => api.sendCustomStickerUrl(extracted.payload));
       markResponseStarted();
       scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
       return response;
