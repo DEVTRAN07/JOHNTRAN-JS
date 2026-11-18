@@ -154,9 +154,7 @@ async function safeSend(api, message, event) {
 
 async function resolveDecoration(options) {
   if (options.randomDecoration) {
-    const catalog = await stickerDecorations.getDecorations({ limit: stickerDecorations.MAX_LIMIT || 100 });
-    if (!catalog.items.length) return null;
-    return catalog.items[Math.floor(Math.random() * catalog.items.length)];
+    return stickerDecorations.getRandomDecoration();
   }
   if (!options.decorationId) return null;
   const exact = await stickerDecorations.getDecoration(options.decorationId);
