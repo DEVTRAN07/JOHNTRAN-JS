@@ -19,7 +19,7 @@ const SAMPLE =
 
 test("bot text receives random Zalo colors per visible token without changing any text", () => {
   const output = styledText.randomize(SAMPLE, { random: () => 0.5 });
-  const tokens = [...SAMPLE.matchAll(/\\S+/gu)];
+  const tokens = [...SAMPLE.matchAll(/\S+/gu)];
   const colors = output.styles.filter(style => COLOR_STYLES.has(style.st));
 
   assert.equal(output.msg, SAMPLE);
@@ -64,7 +64,7 @@ test("mentions remain untouched but words previously styled bold are colored too
 test("long bot messages retain all characters and color all non-mention tokens", () => {
   const msg = ("Nội dung rất dài để kiểm tra không bị mất chữ khi tô màu. ").repeat(30);
   const output = styledText.randomize(msg, { random: () => 0.7 });
-  const expectedTokens = [...msg.matchAll(/\\S+/gu)];
+  const expectedTokens = [...msg.matchAll(/\S+/gu)];
   const colorStyles = output.styles.filter(style => COLOR_STYLES.has(style.st));
 
   assert.equal(output.msg, msg);
