@@ -4,6 +4,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { TextStyle } = require("zalo-client");
 const { createCanvas } = require("canvas");
+const fs = require("node:fs");
+const path = require("node:path");
 const styledText = require("../core/styled");
 const theme = require("../core/canvas/theme");
 const { wrapApi } = require("../core/message");
@@ -111,6 +113,19 @@ test("text captions sent with Canvas attachments also receive random colors", as
   assert.equal(sent[0].payload.msg, caption);
   assert.equal(sent[0].payload.attachments, "/tmp/canvas-preview.png");
   assert.ok(sent[0].payload.styles.some(style => COLOR_STYLES.has(style.st)));
+});
+
+test("vendored Zalo SDK forwards styles into single-image caption payloads", () => {
+  const sdkPath = path.join(__dirname, "..", "vendor", "zalo-client", "dist", "api", "sendMessage.js");
+  const sdkSource = fs.readFileSync(sdkPath, "utf8");
+  const attachmentStart = sdkSource.indexOf("async function handleAttachment");
+  const attachmentEnd = sdkSource.indexOf("for (const gif of gifFiles)", attachmentStart);
+  assert.ok(attachmentStart >= 0 && attachmentEnd > attachmentStart);
+
+  const attachmentSource = sdkSource.slice(attachmentStart, attachmentEnd);
+  assert.ok(attachmentSource.includes("urgency, styles } = opts"));
+  assert.ok(attachmentSource.includes("desc: msg"));
+  assert.ok(attachmentSource.includes("handleStyles(data.params, styles)"));
 });
 
 test("Canvas text does not truncate the end of a long label", () => {
