@@ -230,6 +230,12 @@ function createDecorationCatalog({
     };
   }
 
+  async function getRandomDecoration(options = {}) {
+    const data = await snapshot(options);
+    if (!data.items.length) return null;
+    return data.items[Math.floor(Math.random() * data.items.length)] || null;
+  }
+
   async function getDecoration(id, options = {}) {
     const data = await snapshot(options);
     const key = String(id || "").trim().toLowerCase();
@@ -243,7 +249,7 @@ function createDecorationCatalog({
     return matches.length === 1 ? matches[0] : null;
   }
 
-  return { getDecorations, getDecoration, refresh, snapshot };
+  return { getDecorations, getDecoration, getRandomDecoration, refresh, snapshot };
 }
 
 const catalog = createDecorationCatalog();
@@ -258,5 +264,6 @@ module.exports = {
   createDecorationCatalog,
   getDecorations: catalog.getDecorations,
   getDecoration: catalog.getDecoration,
+  getRandomDecoration: catalog.getRandomDecoration,
   refresh: catalog.refresh
 };
