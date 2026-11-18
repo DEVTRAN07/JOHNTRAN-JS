@@ -515,11 +515,15 @@ function button(ctx, x, y, width, height, value, color) {
   ctx.lineWidth = S(1.3);
   ctx.stroke();
   ctx.globalAlpha = 1;
-  ctx.font = font(13, "JT-Bold");
-  ctx.fillStyle = color;
-  ctx.textAlign = "center";
-  ctx.fillText(sanitizeGlyphs(value), x + width / 2, y + height / 2 + S(4));
-  ctx.textAlign = "left";
+  drawMulticolorText(ctx, sanitizeGlyphs(value), x + width / 2,
+    y + height / 2 + S(4), {
+      size: 13,
+      family: "JT-Bold",
+      color,
+      align: "center",
+      maxWidth: Math.max(1, width - S(16)),
+      multicolor: true
+    });
 }
 
 const RANDOM_TEXT_COLORS = Object.freeze([
