@@ -3,6 +3,7 @@
 const fs = require("fs");
 const { ThreadType } = require("zalo-client");
 const { renderCanvas } = require("../../core/canvas/workerRender");
+const { sendAntiToggleNotice } = require("../../core/runtime/antiToggle");
 
 const EVENTS = [
   { key: "welcome", label: "Chào thành viên mới", field: "event_welcome" },
@@ -108,9 +109,18 @@ module.exports.run = async function ({ api, event, args, Threads, reply }) {
   }
 
   const thread = (await Threads.getData(threadId)).data || {};
-  thread[target.field] = action === "on";
+  const enabled = action === "on";
+  thread[target.field] = enabled;
   await Threads.setData(threadId, thread);
-  return reply.success(target.label + " đã " + (action === "on" ? "BẬT" : "TẮT") + ".");
+
+  if (target.key === "guard") {
+    return sendAntiToggleNotice(api, threadId, type, {
+      label: "Anti-Guard",
+      enabled,
+      detail: "Quét link lạ, link mời nhóm Zalo và từ cấm; 3 lần cảnh cáo, vi phạm lần thứ 4 mới kick."
+    });
+  }
+  return reply.success(target.label + " đã " + (enabled ? "BẬT" : "TẮT") + ".");
 };
 
 module.exports._test = { EVENTS, statusText };
