@@ -16,28 +16,17 @@ function fit(ctx, value, width) {
 }
 function text(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save(); ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
-  ctx.fillStyle = color; ctx.textAlign = align || "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = (color === theme.PALETTE.accent || color === theme.PALETTE.accent2) ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : color; ctx.textAlign = align || "left"; ctx.textBaseline = "alphabetic";
   ctx.fillText(fit(ctx, value, maxWidth), x, y); ctx.restore();
 }
 function backdrop(ctx, width, height, p) {
-  const g = ctx.createLinearGradient(0, 0, width, height);
-  g.addColorStop(0, p.background[0]); g.addColorStop(.42, p.background[1]);
-  g.addColorStop(.72, p.background[2]); g.addColorStop(1, p.background[3]);
-  ctx.fillStyle = g; ctx.fillRect(0, 0, width, height);
-  const glow = (x, y, r, c) => {
-    const v = ctx.createRadialGradient(x, y, 0, x, y, r);
-    v.addColorStop(0, c); v.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = v; ctx.fillRect(0, 0, width, height);
-  };
-  glow(width * .15, height * .08, width * .48, p.glow[0]);
-  glow(width * .9, height * .13, width * .4, p.glow[1]);
-  glow(width * .25, height * .95, width * .5, p.glow[1]);
+  theme.paintBackground(ctx, width, height);
 }
 function panel(ctx, x, y, w, h, p, colors) {
   const c = colors || p.card; rounded(ctx, x, y, w, h, S(12));
   ctx.save(); ctx.shadowColor = "rgba(0,0,0,.24)"; ctx.shadowBlur = S(8); ctx.shadowOffsetY = S(3);
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
-  g.addColorStop(0, c[0]); g.addColorStop(1, c[1]); ctx.fillStyle = g; ctx.fill(); ctx.restore();
+  g.addColorStop(0, theme.rgba(c[0], .66)); g.addColorStop(1, theme.rgba(c[1], .72)); ctx.fillStyle = g; ctx.fill(); ctx.restore();
   rounded(ctx, x, y, w, h, S(12)); ctx.strokeStyle = p.cardBorder; ctx.lineWidth = Math.max(1, S(.8)); ctx.stroke();
 }
 function header(ctx, title, subtitle, meta, p) {
