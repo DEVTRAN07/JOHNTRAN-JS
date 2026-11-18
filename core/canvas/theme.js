@@ -648,7 +648,7 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
     return { text: display, segments: display ? 1 : 0, width: visualWidth };
   }
 
-  const tokens = display.match(/[\p{L}\p{M}\p{N}]+(?:\u200a[\p{L}\p{M}\p{N}]+)*|[^\p{L}\p{M}\p{N}]+/gu) || [];
+  const tokens = display.match(/[\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+/gu) || [];
   if (!tokens.length) {
     ctx.restore();
     return { text: display, segments: 0, width: 0 };
