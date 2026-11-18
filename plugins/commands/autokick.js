@@ -27,6 +27,16 @@ async function setConfig(threadId, data) {
   await Threads.setData(threadId, data);
 }
 
+function escapeRegExp(value) {
+  const special = new Set([".", "*", "+", "?", "^", "$", "{", "}", "(", ")", "|", "[", "]", "\\\\"]);
+  let output = "";
+  for (const character of String(value)) {
+    if (special.has(character)) output += "\\\\";
+    output += character;
+  }
+  return output;
+}
+
 function getAutoKick(data) {
   if (!data.auto_kick) data.auto_kick = { enabled: false, words: [], violations: {} };
   if (!Array.isArray(data.auto_kick.words)) data.auto_kick.words = [];
@@ -106,7 +116,7 @@ module.exports.handleEvent = async function ({ api, event, Threads }) {
     if (!autoKick.enabled || autoKick.words.length === 0) return;
 
     const found = autoKick.words.find(word =>
-      new RegExp(`(^|\\s)${String(word).replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}(\\s|$)`, "i").test(content)
+      new RegExp(`(^|\\s)${escapeRegExp(word)|[\\]\\\\]/g, "\\      new RegExp(`(^|\\s)${String(word).replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}(\\s|$)`, "i").test(content)")}(\\s|$)`, "i").test(content)
     );
     if (!found) return;
 
