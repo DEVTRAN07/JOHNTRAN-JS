@@ -283,6 +283,7 @@ module.exports = {
   isAnimatedBuffer,
   inputArgs,
   buildFilterGraph,
+  createWebp,
   extractUploadedUrl,
   processDiscordSticker
 };
