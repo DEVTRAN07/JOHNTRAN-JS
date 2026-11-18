@@ -76,7 +76,7 @@ function renderCaro(data = {}) {
   const width = theme.WIDTH;
   const scale = width / 1080;
   const px = value => Math.round(value * scale);
-  const height = px(1200);
+  const height = px(1400);
   const { canvas, ctx } = theme.newCanvas(width, height);
   const palette = theme.PALETTE;
 
@@ -132,7 +132,7 @@ function renderCaro(data = {}) {
     size: 10, weight: 700, color: palette.ink2, align: "right"
   });
 
-  const cellSize = px(42);
+  const cellSize = px(50);
   const cellGap = px(3);
   const boardSize = BOARD_SIZE * cellSize + (BOARD_SIZE - 1) * cellGap;
   const boardX = Math.round((width - boardSize) / 2);
@@ -170,7 +170,7 @@ function renderCaro(data = {}) {
 
       const label = cellLabel(value, index);
       drawText(ctx, label, x + cellSize / 2, y + cellSize * 0.66, scale, {
-        size: value ? 22 : 11,
+        size: value ? 25 : 13,
         weight: value ? 800 : 600,
         color: value ? color : palette.mute,
         align: "center"
@@ -178,7 +178,7 @@ function renderCaro(data = {}) {
     }
   }
 
-  const footerY = px(1108);
+  const footerY = px(1260);
   const legendCell = px(30);
   const legendGap = px(12);
   const legendX = px(94);
@@ -204,7 +204,7 @@ function renderCaro(data = {}) {
     width - px(58), footerY + px(34), scale, {
       size: 10, weight: 700, color: palette.accent, align: "right"
     });
-  drawText(ctx, "JOHNTRAN  •  CARO BOARD", width / 2, px(1172), scale, {
+  drawText(ctx, "JOHNTRAN  •  CARO BOARD", width / 2, px(1368), scale, {
     size: 9, weight: 600, color: palette.mute, align: "center"
   });
 
