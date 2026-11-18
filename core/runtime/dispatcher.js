@@ -58,7 +58,9 @@ async function dispatchCommand({
         threadData,
         userData
       });
-      reactAuto(Reactions.OK);
+      if (command?.config?.backgroundExecution !== true) {
+        reactAuto(Reactions.OK);
+      }
     } catch (error) {
       logger.log(`Lỗi khi xử lý lệnh '${commandName}': ${error.message}`, "error", { source: "command", commandName, isGroup: event?.type === ThreadType.Group, groupId: event?.type === ThreadType.Group ? event?.threadId : "" });
       metrics?.track?.("error", { command: commandName });
