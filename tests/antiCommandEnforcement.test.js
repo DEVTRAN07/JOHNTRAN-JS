@@ -103,6 +103,29 @@ test("all media Anti modes classify their target message and remove it", async (
   }
 });
 
+test("Anti-QR scans image pixels and removes a QR photo without Zalo QR metadata", async () => {
+  const threadId = "anti-qr-image-pixels";
+  const { api, calls } = makeApi(threadId);
+  const threadData = { anti_qr: true };
+  const qrBuffer = await require("qrcode").toBuffer("https://example.com/qr-test", { width: 256, margin: 2 });
+  const http = require("../core/http");
+  const originalGetBuffer = http.getBuffer;
+  http.getBuffer = async () => ({ buffer: qrBuffer, contentType: "image/png" });
+
+  try {
+    await runMessage(threadData, api, makeEvent(threadId, {
+      msgType: "chat.photo",
+      content: { href: "https://cdn.example/qr-photo.png" }
+    }));
+  } finally {
+    http.getBuffer = originalGetBuffer;
+  }
+
+  assert.equal(calls.deleted.length, 1);
+  assert.equal(threadData.anti_qr_warnings.member, 1);
+  assert.match(calls.sent[0].payload.msg, /mã QR/i);
+});
+
 test("Anti-Tag-Hide and Anti-Word detect hidden mentions and blocked words", async () => {
   const hiddenThread = "anti-hidden-mention";
   const hiddenFixture = makeApi(hiddenThread);
@@ -148,7 +171,7 @@ test("Anti-Reaction warns on three spam bursts and kicks on the fourth", async (
   assert.match(calls.sent.at(-1).payload.msg, /đã tái phạm spam cảm xúc/i);
 });
 
-test("Anti-Join tracks repeated joins in a ten-minute window and kicks on the third", async () => {
+test("Anti-Join gives three warnings for rejoining and kicks on the next rejoin", async () => {
   const threadId = "anti-rejoin-window";
   const { api, calls } = makeApi(threadId);
   const threadData = { anti_join: true };
@@ -157,18 +180,132 @@ test("Anti-Join tracks repeated joins in a ten-minute window and kicks on the th
     async setDataAndWait(_threadId, next) { Object.assign(threadData, next); }
   };
 
-  for (let count = 1; count <= 3; count++) {
+  // First join establishes the ten-minute baseline and is not an offence.
+  for (let count = 1; count <= 5; count++) {
     const event = {
       threadId,
       type: "join",
       data: { updateMembers: [{ id: "member", dName: "Member" }] }
     };
     await anti.handleEvent({ event, eventType: "group_event", api, Threads });
-    if (count < 3) assert.equal(calls.kicked.length, 0);
+
+    if (count === 1) {
+      assert.equal(calls.kicked.length, 0);
+      assert.equal(threadData.anti_join_warnings?.member, undefined);
+    } else if (count <= 4) {
+      assert.equal(calls.kicked.length, 0, "the first three rejoin offences must only warn");
+      assert.equal(threadData.anti_join_warnings.member, count - 1);
+      assert.match(calls.sent.at(-1).payload.msg, new RegExp("Cảnh cáo lần " + (count - 1) + "/3"));
+    }
   }
 
-  assert.equal(calls.kicked.length, 1);
+  assert.equal(calls.kicked.length, 1, "the rejoin after three warnings must kick");
   assert.equal(calls.kicked[0].uid, "member");
   assert.equal(threadData.anti_join_history.member, undefined);
-  assert.match(calls.sent.at(-1).payload.msg, /Anti-Join/i);
+  assert.equal(threadData.anti_join_warnings.member, undefined);
+  assert.match(calls.sent.at(-1).payload.msg, /sau 3 lần cảnh cáo và bị kick/i);
+});
+
+test("Anti-Join retains the three warnings when Zalo refuses the kick", async () => {
+  const threadId = "anti-rejoin-kick-refused";
+  const { api, calls } = makeApi(threadId, {
+    removeUserFromGroup: async uid => ({ errorMembers: [uid] })
+  });
+  const threadData = {
+    anti_join: true,
+    anti_join_history: { member: [Date.now() - 4000, Date.now() - 3000, Date.now() - 2000, Date.now() - 1000] },
+    anti_join_warnings: { member: 3 }
+  };
+  const Threads = {
+    async getData() { return { data: threadData }; },
+    async setDataAndWait(_threadId, next) { Object.assign(threadData, next); }
+  };
+  const event = {
+    threadId,
+    type: "join",
+    data: { updateMembers: [{ id: "member", dName: "Member" }] }
+  };
+
+  await anti.handleEvent({ event, eventType: "group_event", api, Threads });
+  assert.equal(calls.kicked.length, 1);
+  assert.equal(threadData.anti_join_warnings.member, 3);
+  assert.equal(threadData.anti_join_history.member.length, 5);
+  assert.match(calls.sent.at(-1).payload.msg, /chưa cho kick/i);
+});
+
+test("Anti-Join persists warnings even when Zalo rejects the warning message", async () => {
+  const threadId = "anti-rejoin-notice-failure";
+  const { api, calls } = makeApi(threadId);
+  api.sendMessage = async () => { throw new Error("send failed"); };
+  const threadData = { anti_join: true };
+  const Threads = {
+    async getData() { return { data: threadData }; },
+    async setDataAndWait(_threadId, next) { Object.assign(threadData, next); }
+  };
+
+  for (let count = 1; count <= 2; count++) {
+    const event = {
+      threadId,
+      type: "join",
+      data: { updateMembers: [{ id: "member", dName: "Member" }] }
+    };
+    await anti.handleEvent({ event, eventType: "group_event", api, Threads });
+  }
+
+  assert.equal(calls.kicked.length, 0);
+  assert.equal(threadData.anti_join_warnings.member, 1);
+  assert.equal(threadData.anti_join_history.member.length, 2);
+});
+
+test("Anti-Join keeps a successful kick even when the success notice cannot be sent", async () => {
+  const threadId = "anti-rejoin-success-notice-failure";
+  const { api, calls } = makeApi(threadId);
+  api.sendMessage = async () => { throw new Error("send failed"); };
+  const threadData = {
+    anti_join: true,
+    anti_join_history: { member: [Date.now() - 4000, Date.now() - 3000, Date.now() - 2000, Date.now() - 1000] },
+    anti_join_warnings: { member: 3 }
+  };
+  const Threads = {
+    async getData() { return { data: threadData }; },
+    async setDataAndWait(_threadId, next) { Object.assign(threadData, next); }
+  };
+  const event = {
+    threadId,
+    type: "join",
+    data: { updateMembers: [{ id: "member", dName: "Member" }] }
+  };
+
+  await anti.handleEvent({ event, eventType: "group_event", api, Threads });
+  assert.equal(calls.kicked.length, 1);
+  assert.equal(threadData.anti_join_history.member, undefined);
+  assert.equal(threadData.anti_join_warnings.member, undefined);
+});
+
+test("Anti-Spam counts only plain-text messages, not media", async () => {
+  const threadId = "anti-text-only-spam";
+  const { api, calls } = makeApi(threadId);
+  const threadData = { anti_spam: true };
+
+  for (let i = 1; i <= 6; i++) {
+    await runMessage(threadData, api, makeEvent(threadId, {
+      msgType: "chat.photo",
+      content: { href: "https://cdn.example/photo-" + i + ".jpg" },
+      cliMsgId: "media-cli-" + i,
+      msgId: "media-msg-" + i
+    }));
+  }
+  assert.equal(calls.deleted.length, 0, "six photos must not trigger text Anti-Spam");
+  assert.equal(threadData.anti_spam_warnings?.member, undefined);
+
+  for (let i = 1; i <= 6; i++) {
+    await runMessage(threadData, api, makeEvent(threadId, {
+      msgType: "webchat",
+      content: "text message " + i,
+      cliMsgId: "text-cli-" + i,
+      msgId: "text-msg-" + i
+    }));
+  }
+  assert.equal(calls.deleted.length, 6, "six text messages in the window must be removed");
+  assert.equal(threadData.anti_spam_warnings.member, 1);
 });

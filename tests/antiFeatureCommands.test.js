@@ -54,10 +54,11 @@ function makeContext(commandName, mode, options = {}) {
   const data = { ...(options.initial || {}) };
   const messages = [];
   const groupInfo = options.groupInfo === undefined
-    ? { creatorId: "owner", adminIds: ["moderator"] }
+    ? { creatorId: "owner", adminIds: ["bot-id", "moderator"] }
     : options.groupInfo;
 
   const api = {
+    async getOwnId() { return "bot-id"; },
     async getGroupInfo() {
       return { gridInfoMap: { [threadId]: groupInfo } };
     },

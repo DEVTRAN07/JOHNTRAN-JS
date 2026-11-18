@@ -320,6 +320,45 @@ function getImageUrl(data) {
   return null;
 }
 
+const ANTI_QR_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+async function decodeQrFromImageBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0 || buffer.length > ANTI_QR_MAX_IMAGE_BYTES) {
+    return null;
+  }
+  const Jimp = require("jimp");
+  const jsQR = require("jsqr");
+  const image = await Jimp.read(buffer);
+  const bitmap = image?.bitmap;
+  if (!bitmap?.data || !bitmap.width || !bitmap.height) return null;
+  const decoded = jsQR(
+    new Uint8ClampedArray(bitmap.data),
+    bitmap.width,
+    bitmap.height
+  );
+  return decoded?.data ? String(decoded.data) : null;
+}
+
+async function imageContainsQr(data, options = {}) {
+  const imageUrl = getImageUrl(data);
+  if (!imageUrl) return false;
+  const client = options.httpClient || http;
+  const decode = options.decode || decodeQrFromImageBuffer;
+  try {
+    const response = await client.getBuffer(imageUrl, { timeout: 5000, retries: 0 });
+    const buffer = response?.buffer;
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0 || buffer.length > ANTI_QR_MAX_IMAGE_BYTES) {
+      return false;
+    }
+    const contentType = String(response?.contentType || "").toLowerCase();
+    if (contentType && !contentType.startsWith("image/")) return false;
+    return Boolean(await decode(buffer));
+  } catch (error) {
+    console.warn("[ANTI_QR] Không thể quét QR trong ảnh:", error?.message || error);
+    return false;
+  }
+}
+
 function isPhotoMessage(data) {
   const type = String(data?.msgType || "").toLowerCase();
   return type === "chat.photo" || type === "chat.image" || type.includes("photo");
@@ -700,30 +739,72 @@ async function handleAntiEvent(context = {}) {
         try { ownId = String(await api.getOwnId() || ""); } catch {}
         const histories = threadData.anti_join_history && typeof threadData.anti_join_history === "object"
           ? { ...threadData.anti_join_history } : {};
+        const warningCounts = threadData.anti_join_warnings && typeof threadData.anti_join_warnings === "object"
+          ? { ...threadData.anti_join_warnings } : {};
         const now = Date.now();
         let changed = false;
+        const sendJoinNotice = async message => {
+          try {
+            await sendAntiMessage(api, message, threadId, ThreadType.Group);
+          } catch (error) {
+            // Notification failure must not discard strike state or turn a
+            // successful kick into a false "Zalo refused" report.
+            console.error("[ANTI_JOIN] Không gửi được thông báo nhóm " + threadId + ":", error?.message || error);
+          }
+        };
         for (const member of members) {
           const joinedUid = String(member?.id || "");
           if (!joinedUid || (ownId && joinedUid === ownId)) continue;
           const history = (Array.isArray(histories[joinedUid]) ? histories[joinedUid] : [])
             .filter(timestamp => Number.isFinite(Number(timestamp)) && now - Number(timestamp) <= 10 * 60 * 1000);
           history.push(now);
-          if (history.length >= 3) {
-            try {
-              await kickGroupMember(api, joinedUid, threadId);
-              delete histories[joinedUid];
-              await sendAntiMessage(api, "⛔ Anti-Join: thành viên đã vào nhóm 3 lần trong 10 phút và bị kick.", threadId, ThreadType.Group);
-            } catch (error) {
-              histories[joinedUid] = history.slice(-3);
-              await sendAntiMessage(api, "⚠️ Anti-Join phát hiện spam vào nhóm nhưng chưa kick được: " + (error?.message || error), threadId, ThreadType.Group);
-            }
-          } else {
+
+          // The first join is normal. Rejoining starts the offence sequence:
+          // three warnings on rejoin attempts, then kick on the next attempt.
+          if (history.length === 1) {
             histories[joinedUid] = history;
+            delete warningCounts[joinedUid];
+          } else {
+            const currentWarnings = Math.min(3, Math.max(0, Math.floor(Number(warningCounts[joinedUid]) || 0)));
+            if (currentWarnings < 3) {
+              const nextWarnings = currentWarnings + 1;
+              warningCounts[joinedUid] = nextWarnings;
+              histories[joinedUid] = history.slice(-10);
+              const memberName = String(member?.dName || member?.name || joinedUid);
+              await sendJoinNotice(
+                "🚨 Anti-Join: " + memberName + " đã tái tham gia nhóm nhiều lần trong 10 phút. " +
+                "Cảnh cáo lần " + nextWarnings + "/3; lần tái phạm tiếp theo sẽ bị kick."
+              );
+            } else {
+              let kickError = null;
+              try {
+                await kickGroupMember(api, joinedUid, threadId);
+              } catch (error) {
+                kickError = error;
+              }
+
+              const memberName = String(member?.dName || member?.name || joinedUid);
+              if (kickError) {
+                histories[joinedUid] = history.slice(-10);
+                warningCounts[joinedUid] = 3;
+                await sendJoinNotice(
+                  "⚠️ Anti-Join: đã đủ 3 lần cảnh cáo nhưng Zalo chưa cho kick thành viên. " +
+                  "Bot sẽ thử lại khi thành viên tái tham gia: " + (kickError?.message || kickError)
+                );
+              } else {
+                delete histories[joinedUid];
+                delete warningCounts[joinedUid];
+                await sendJoinNotice(
+                  "⛔ Anti-Join: " + memberName + " đã vi phạm sau 3 lần cảnh cáo và bị kick khỏi nhóm."
+                );
+              }
+            }
           }
           changed = true;
         }
         if (changed) {
           threadData.anti_join_history = histories;
+          threadData.anti_join_warnings = warningCounts;
           const save = Threads.setDataAndWait || Threads.setData;
           await save.call(Threads, threadId, threadData);
         }
@@ -900,7 +981,13 @@ async function handleAntiEvent(context = {}) {
     const mediaBlock = mediaRules.find(([flag, expected]) =>
       threadData[flag] === true && kind === expected
     );
-    const qrBlocked = threadData.anti_qr === true && kind === "qr";
+    // Anti-QR also decodes actual image pixels: QR codes shared as an ordinary
+    // photo must not bypass the protection just because Zalo omitted QR metadata.
+    const qrImageDetected = threadData.anti_qr === true &&
+      kind === "photo" && threadData.anti_photo !== true
+      ? await imageContainsQr(data)
+      : false;
+    const qrBlocked = threadData.anti_qr === true && (kind === "qr" || qrImageDetected);
     const photoBlocked = threadData.anti_photo === true && (kind === "photo" || kind === "qr");
     if (mediaBlock || qrBlocked || photoBlocked) {
       const featureKey = mediaBlock?.[0] || (qrBlocked ? "anti_qr" : "anti_photo");
@@ -1050,7 +1137,9 @@ async function handleAntiEvent(context = {}) {
       if (cache.size > 10000) cache.delete(cache.keys().next().value);
     }
 
-    if (threadData.anti_spam === true) {
+    // Anti-Spam measures rapid plain-text messages only. Media payloads have
+    // dedicated Anti modes and must never contribute to the text spam counter.
+    if (threadData.anti_spam === true && kind === "text") {
       const now = Date.now();
       const cache = global.spamCache && typeof global.spamCache === "object"
         ? global.spamCache
@@ -1106,6 +1195,8 @@ module.exports._test = {
   isUnsafeLink,
   isExplicitAdultImage,
   getImageUrl,
+  decodeQrFromImageBuffer,
+  imageContainsQr,
   isPhotoMessage,
   isStickerMessage,
   shouldSkipSelfEvent,
@@ -1131,12 +1222,12 @@ const ANTI_MENU_ITEMS = Object.freeze([
   { key:"anti_file", label:"Chặn tập tin", detail:"Chặn tệp đính kèm", command:"/antifile", alias:"", icon:"FILE", tone:"#f18b1c" },
   { key:"anti_gif", label:"Chặn GIF", detail:"Chặn ảnh động", command:"/antigif", alias:"", icon:"GIF", tone:"#08aeba" },
   { key:"anti_danger_link", label:"Chặn link mời nhóm", detail:"Chặn link mời nhóm Zalo khác", command:"/antiinvite", alias:"", icon:"INV", tone:"#138fe5" },
-  { key:"anti_join", label:"Chặn spam vào nhóm", detail:"3 lần tham gia trong 10 phút sẽ kick", command:"/antijoin", alias:"", icon:"JOIN", tone:"#e83f9e" },
+  { key:"anti_join", label:"Chặn spam vào nhóm", detail:"3 lần tái tham gia bị cảnh cáo; lần tiếp theo sẽ kick", command:"/antijoin", alias:"", icon:"JOIN", tone:"#e83f9e" },
   { key:"anti_link", label:"Chặn tất cả liên kết", detail:"Chặn mọi URL", command:"/antilink", alias:"", icon:"URL", tone:"#08aeba" },
   { key:"anti_location", label:"Chặn vị trí", detail:"Chặn chia sẻ bản đồ / tọa độ", command:"/antilocation", alias:"", icon:"MAP", tone:"#4d9c77" },
   { key:"anti_other", label:"Chặn payload lỗi", detail:"Chặn payload unknown / error", command:"/antiother", alias:"", icon:"BUG", tone:"#e4b91e" },
   { key:"anti_photo", label:"Chặn hình ảnh", detail:"Chặn ảnh được gửi vào nhóm", command:"/antiphoto", alias:"", icon:"IMG", tone:"#e83f9e" },
-  { key:"anti_qr", label:"Chặn mã QR", detail:"Chặn payload được đánh dấu QR", command:"/antiqr", alias:"", icon:"QR", tone:"#a94ce5" },
+  { key:"anti_qr", label:"Chặn mã QR", detail:"Giải mã QR trong ảnh thường và chặn payload QR", command:"/antiqr", alias:"", icon:"QR", tone:"#a94ce5" },
   { key:"anti_reaction", label:"Chống spam cảm xúc", detail:"3 cảnh cáo, lần 4 kick", command:"/antireaction", alias:"", icon:"❤", tone:"#e83f9e" },
   { key:"anti_nude", label:"Chặn nội dung 18+", detail:"3 cảnh cáo, lần 4 kick", command:"/antisex", alias:"/antinude", icon:"18+", tone:"#e83f9e" },
   { key:"anti_spam", label:"Chặn spam tin nhắn", detail:"Hơn 5 tin chữ / 5 giây", command:"/antispam", alias:"", icon:"SP", tone:"#e4b91e" },
