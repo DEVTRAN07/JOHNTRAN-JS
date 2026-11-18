@@ -87,7 +87,7 @@ async function getBotGroupRole(api, threadId, options = {}) {
     .then(async () => {
       const [botId, response] = await Promise.all([
         getBotId(api),
-        api.getGroupInfo(groupId)
+        getUncachedGroupInfo(api, groupId)
       ]);
       const groupInfo = response?.gridInfoMap?.[groupId];
       return rememberRole(state, groupId, classifyBotGroupRole(groupInfo, botId));
