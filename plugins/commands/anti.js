@@ -223,7 +223,10 @@ function createMentionMessage(text, name, userId) {
 
 module.exports.handleEvent = async function (context = {}) {
   const event = context.event || {};
-  const eventType = context.eventType;
+  // Legacy direct callers historically passed only event/api/Threads.
+  // Missing eventType therefore means a normal incoming message; Undo callers
+  // must still identify themselves explicitly with eventType="undo".
+  const eventType = context.eventType || "message";
   const api = context.api;
   const Threads = context.Threads;
   const data = event.data || {};
