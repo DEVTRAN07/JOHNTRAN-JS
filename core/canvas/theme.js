@@ -519,7 +519,10 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
     : align === "right" ? x - totalWidth : x;
   let previousColorIndex = -1;
   let wordIndex = 0;
-  const seed = String(options.colorSeed ?? display) + ":" + x + ":" + y;
+  const canvasSeed = Number.isFinite(ctx.__jtRenderSeed)
+    ? ctx.__jtRenderSeed
+    : themeBackgrounds.getRenderSeed();
+  const seed = String(options.colorSeed ?? display) + ":" + x + ":" + y + ":" + canvasSeed;
   ctx.textAlign = "left";
 
   for (const token of tokens) {
@@ -569,6 +572,9 @@ function getCardPalette() {
 function newCanvas(width, height) {
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
+  // Every freshly rendered Canvas gets its own palette seed; text colors
+  // remain consistent inside one image but change on the next render.
+  ctx.__jtRenderSeed = Math.floor(Math.random() * 0x7fffffff);
   try {
     ctx.antialias = "best";
     ctx.quality = "best";
