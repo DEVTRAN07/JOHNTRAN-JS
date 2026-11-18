@@ -1283,20 +1283,30 @@ async function sendAntiMenu({ api, event, Threads }) {
     enabled:data[item.key] === true
   }));
 
+  // Show the runtime prerequisite beside the live switchboard. A persisted
+  // ON flag is not enough if the bot itself has lost its owner/deputy role.
+  let botRole = "unknown";
+  try { botRole = await getBotGroupRole(api, event.threadId); } catch {}
+  const botRoleNotice = botRole === "owner" || botRole === "deputy"
+    ? "✅ TÀI KHOẢN BOT ĐÃ CÓ QTV — Anti đang đủ điều kiện hoạt động."
+    : botRole === "member"
+      ? "⛔ BOT CHƯA CÓ QTV — Anti đang tạm ngừng xử lý. Hãy thêm bot làm phó nhóm."
+      : "⚠️ CHƯA XÁC MINH ĐƯỢC QTV CỦA BOT — Anti đang tạm ngừng xử lý.";
+
   let imagePath = null;
   try {
     imagePath = await renderCanvas("anti-protection-v2", { items, prefix });
     // The image already contains all six live statuses and concise usage
     // guidance. Send one caption with it; do not repeat the same table as text.
     await api.sendMessage({
-      msg:"🛡️ ANTI-PROTECTION V2",
+      msg:"🛡️ ANTI-PROTECTION V2\n" + botRoleNotice,
       attachments:[imagePath],
       ttlKind:"card"
     }, event.threadId, event.type);
   } catch (error) {
     console.error("[ANTI_MENU_V2] Canvas mới không render được:", error?.stack || error);
     return api.sendMessage({
-      msg:buildAntiMenuText(data, prefix) + "\n⚠️ Không tạo được ảnh Anti-Protection, bot đã gửi hướng dẫn dạng chữ."
+      msg:botRoleNotice + "\n\n" + buildAntiMenuText(data, prefix) + "\n⚠️ Không tạo được ảnh Anti-Protection, bot đã gửi hướng dẫn dạng chữ."
     }, event.threadId, event.type);
   } finally {
     if (imagePath) {
