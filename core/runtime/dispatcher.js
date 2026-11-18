@@ -35,16 +35,24 @@ async function dispatchCommand({
     };
     metrics?.track?.("command", { command: commandName });
 
-    const reply = api.__reply;
+    const reply = api?.__reply;
     let autoReacted = false;
     const reactAuto = (icon) => {
-      if (reply.reacted && !autoReacted) return;
+      if (reply?.reacted && !autoReacted) return;
+      if (typeof reply?.react !== "function") return;
       autoReacted = true;
       Promise.resolve(reply.react(icon)).catch(() => {});
     };
 
-    // Fast acknowledgement: show that the command has been received and is running.
-    reactAuto(Reactions.PRAY);
+    // Do not spend a Zalo API call on a status reaction for fast commands.
+    // Long-running commands still get a visible acknowledgement after a short
+    // grace period; the first outgoing message cancels it in Reply.markResponseStarted().
+    const configuredAckDelay = Number(command?.config?.ackDelayMs);
+    const ackDelayMs = Number.isFinite(configuredAckDelay)
+      ? Math.max(0, Math.min(5000, Math.floor(configuredAckDelay)))
+      : 600;
+    reply?.scheduleAcknowledgement?.(() => reactAuto(Reactions.PRAY), ackDelayMs);
+
     try {
       await command.run({
         args,
@@ -58,19 +66,25 @@ async function dispatchCommand({
         threadData,
         userData
       });
-      if (command?.config?.backgroundExecution !== true) {
+      // A quick command that already sent its result does not need an extra
+      // success reaction. Update status only when a working reaction was shown,
+      // or when the command completed without sending a response.
+      if (command?.config?.backgroundExecution !== true &&
+          (reply?.reacted === true || reply?._responseStarted !== true)) {
         reactAuto(Reactions.OK);
       }
     } catch (error) {
       logger.log(`Lỗi khi xử lý lệnh '${commandName}': ${error.message}`, "error", { source: "command", commandName, isGroup: event?.type === ThreadType.Group, groupId: event?.type === ThreadType.Group ? event?.threadId : "" });
       metrics?.track?.("error", { command: commandName });
-      reactAuto(Reactions.CRY);
+      // Send the useful error message first; reactions are secondary UI.
       try {
-        await reply.error("Đã xảy ra lỗi khi xử lý lệnh!");
+        await reply?.error?.("Đã xảy ra lỗi khi xử lý lệnh!");
       } catch {
         // Ignore reply failures; command errors are already logged.
       }
+      reactAuto(Reactions.CRY);
     } finally {
+      reply?.cancelAcknowledgement?.();
       reply?.finishCommand?.();
     }
   } catch (error) {
