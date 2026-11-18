@@ -145,8 +145,9 @@ async function dispatchGroupMessageBeforeGame({
 }
 
 async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = false } = {}) {
-  // Nối Từ and TLMN are group-only. Do not run their async handlers for private chats.
-  if (event?.type !== ThreadType.Group || !event?.threadId) return false;
+  // Keep Nối Từ available in any supported thread, but never send private chats
+  // through the group-only TLMN handler.
+  if (!event?.threadId || event?.type == null) return false;
   const selfMessage = isSelf === true || event?.isSelf === true;
   if (selfMessage && global.config?.allow_self_command !== true) return false;
 
@@ -169,7 +170,8 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
     });
   }
 
-  // TLMN receives plain-text card plays here, before passive message plugins.
+  // TLMN receives plain-text card plays only in groups, before passive plugins.
+  if (event?.type !== ThreadType.Group) return false;
   try {
     const tlmnCommand = require("../plugins/commands/tlmn");
     if (typeof tlmnCommand?.handleIncoming === "function") {
