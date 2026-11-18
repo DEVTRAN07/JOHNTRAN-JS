@@ -22,8 +22,6 @@ function drawText(ctx, value, x, y, scale, options = {}) {
   ctx.font = (options.weight || 600) + " " + size + "px " + (options.family || "Arial, sans-serif");
   const requestedColor = options.color || theme.PALETTE.ink2;
   const content = String(value ?? "");
-  const words = content.match(/[\p{L}\p{N}]+/gu) || [];
-  const semanticColor = [theme.PALETTE.green, theme.PALETTE.red, theme.PALETTE.gold].includes(requestedColor);
   ctx.shadowColor = options.shadow ? "rgba(0,0,0,.45)" : "transparent";
   ctx.shadowBlur = options.shadow ? Math.round(5 * scale) : 0;
   theme.drawMulticolorText(ctx, content, x, y, {
@@ -32,7 +30,7 @@ function drawText(ctx, value, x, y, scale, options = {}) {
     align: options.align || "left",
     baseline: options.baseline || "alphabetic",
     maxWidth: options.maxWidth,
-    multicolor: words.length > 1 && !semanticColor
+    multicolor: true
   });
   ctx.restore();
 }
