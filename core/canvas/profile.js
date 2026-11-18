@@ -10,11 +10,26 @@ const WIDTH = 750;
 const PAD = 40;
 
 function drawRandomText(ctx, value, x, y, options = {}) {
-  const size = options.size || 18;
+  const initialSize = options.size || 18;
+  const family = options.family || (options.bold ? "PB" : "P");
+  const display = theme.sanitizeGlyphs(String(value ?? ""));
+  let fittedSize = initialSize;
+  const makeFont = size => `${options.bold ? "bold " : ""}${size}px ${family}`;
+
   ctx.save();
-  theme.drawMulticolorText(ctx, String(value ?? ""), x, y, {
-    size,
-    family: options.family || (options.bold ? "PB" : "P"),
+  ctx.font = makeFont(fittedSize);
+  // This legacy profile canvas is fixed at 750px wide; do not use the scaled
+  // theme.font() helper here or long labels would be shrunk against 1280px.
+  while (options.maxWidth && ctx.measureText(display).width > options.maxWidth &&
+         fittedSize > 9) {
+    fittedSize = Math.max(9, fittedSize - 1);
+    ctx.font = makeFont(fittedSize);
+  }
+
+  theme.drawMulticolorText(ctx, display, x, y, {
+    size: fittedSize,
+    family,
+    font: ctx.font,
     color: options.color || "#ffffff",
     align: options.align || "left",
     maxWidth: options.maxWidth,
