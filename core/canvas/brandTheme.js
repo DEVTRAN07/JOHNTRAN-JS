@@ -1,79 +1,51 @@
 "use strict";
 
-const fs = require("fs");
-const menuPalette = require("./menuPalette");
-
-const paletteCache = new Map();
-const fileVersionCache = new Map();
-const DEFAULT_STAT_TTL_MS = 100;
-
-function fileVersion(filePath) {
-  const now = Date.now();
-  const cacheKey = String(filePath);
-  const cached = fileVersionCache.get(cacheKey);
-  // Render helpers call ensureTheme/palette getters many times while drawing
-  // one bitmap. Throttle stat() on the production theme file only; temporary
-  // files used by tests and explicit tools are always checked immediately.
-  if (filePath === menuPalette.THEME_FILE &&
-      cached && now - cached.checkedAt < DEFAULT_STAT_TTL_MS) {
-    return cached.version;
-  }
-
-  let version = "missing";
-  try {
-    const stat = fs.statSync(filePath);
-    version = String(stat.ino || "") + ":" + String(stat.mtimeMs) + ":" + String(stat.size);
-  } catch {
-    version = "missing";
-  }
-  fileVersionCache.set(cacheKey, { version, checkedAt: now });
-  return version;
-}
-
 /**
- * One palette for every JOHNTRAN Canvas output.
- * Blue Neon is the built-in brand; saved /theme selections are shared by
- * the main menu, folder cards and every command/status Canvas.
- *
- * Cache the resolved palette by the theme file's stat signature so
- * Canvas drawing helpers do not perform synchronous disk reads per text call.
+ * Fixed JOHNTRAN identity palette.
+ * The /theme command changes photography, not the brand colors.
  */
-function getPalette(filePath = menuPalette.THEME_FILE) {
-  const version = fileVersion(filePath);
-  const cached = paletteCache.get(filePath);
-  if (cached && cached.version === version) return cached.palette;
+const BRAND = Object.freeze({
+  label: "JOHNTRAN · Aurora Cyber",
+  accent: "#62dcff",
+  background: ["#030914", "#07182d", "#102b4b", "#040d1d"],
+  panel: ["#102b4b", "#08182c"],
+  card: ["#122c4b", "#091a31"],
+  footer: ["#0c2038", "#071426"],
+  border: "rgba(98,220,255,.54)",
+  cardBorder: "rgba(98,220,255,.36)",
+  glow: ["rgba(33,151,255,.22)", "rgba(118,94,255,.16)"],
+  infoFill: "rgba(98,220,255,.12)",
+  infoBorder: "rgba(98,220,255,.52)",
+  text: "#f4f9ff",
+  muted: "#a9bfd8"
+});
 
-  const palette = menuPalette.getPalette(filePath);
-  paletteCache.set(filePath, { version, palette });
-  return palette;
+function getPalette() {
+  return {
+    ...BRAND,
+    background: BRAND.background.slice(),
+    panel: BRAND.panel.slice(),
+    card: BRAND.card.slice(),
+    footer: BRAND.footer.slice(),
+    glow: BRAND.glow.slice()
+  };
 }
 
-function getThemeInfo(filePath = menuPalette.THEME_FILE) {
-  // Refresh the shared palette cache after a theme file was created/replaced.
-  getPalette(filePath);
-  return menuPalette.getThemeInfo(filePath);
+function getThemeInfo() {
+  return {
+    name: "aurora-cyber",
+    label: BRAND.label,
+    accent: BRAND.accent
+  };
 }
 
-function signature(filePath = menuPalette.THEME_FILE) {
-  getPalette(filePath);
-  return paletteCache.get(filePath)?.version || "missing";
-}
-
-function clearCache(filePath) {
-  if (filePath) {
-    paletteCache.delete(filePath);
-    fileVersionCache.delete(String(filePath));
-  } else {
-    paletteCache.clear();
-    fileVersionCache.clear();
-  }
+function signature() {
+  return "johntran-aurora-cyber-v1";
 }
 
 module.exports = {
   getPalette,
   getThemeInfo,
   signature,
-  clearCache,
-  fileVersion,
-  DEFAULT_STAT_TTL_MS
+  BRAND
 };
