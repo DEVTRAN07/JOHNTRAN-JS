@@ -174,7 +174,7 @@ function renderJobsCard(data = {}) {
     const state = lane.empty ? "" : lane.active + "/" + lane.concurrency + " chạy  ·  " + lane.pending + "/" + lane.maxPending + " chờ";
     const detail = lane.empty ? "Queue sẽ xuất hiện khi có tác vụ đầu tiên" :
       "Xong " + lane.completed + "  ·  Lỗi " + lane.failed + "  ·  Retry " + lane.retried + "  ·  Từ chối " + lane.rejected;
-    const timing = lane.empty ? "" : "Chờ TB " + Number(lane.avgWaitMs || 0).toFixed(1) + " ms  ·  Xử lý TB " + Number(lane.avgRunMs || 0).toFixed(1) + " ms  ·  Max chờ " + Number(lane.maxWaitMs || 0).toFixed(1) + " ms;
+    const timing = lane.empty ? "" : "Chờ TB " + Number(lane.avgWaitMs || 0).toFixed(1) + " ms  ·  Xử lý TB " + Number(lane.avgRunMs || 0).toFixed(1) + " ms  ·  Max chờ " + Number(lane.maxWaitMs || 0).toFixed(1) + " ms";
     text(ctx, title, S(PAD + 16), S(yy), 10, p.text, true, "left", full * .42);
     text(ctx, state, W - S(PAD + 16), S(yy), 9, p.accent, true, "right", full * .5);
     text(ctx, detail, S(PAD + 16), S(yy + 15), 8, p.muted, false, "left", full - S(32));
