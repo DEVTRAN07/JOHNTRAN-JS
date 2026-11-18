@@ -8,7 +8,7 @@ const state = {
   botStats: {}, selectedProfile: "", groupList: [], selectedGroupBot: "", groupBotProfile: null,
   chatData: { friends: { list: [] }, groups: { list: [] } },
   adminGroups: [], selectedThread: null, messages: [],
-  threadFilter: "all", chatStyle: { b:false, i:false, u:false, s:false, color:"", font:"" },
+  threadFilter: "all", chatStyle: { b:false, i:false, u:false, s:false, color:"", font:"", randomColor:false },
   groupFilter: "all", groupSort: "name-asc", groupStatusFlight: false,
   antiFeatures: {},
   groupBulkFlight: false, selectedGroupIds: new Set(),
@@ -57,6 +57,44 @@ const STATUS = {
 };
 const ZALO_COLORS = {"#f43f5e":"c_db342e","#f97316":"c_f27806","#f59e0b":"c_f7b503","#22c55e":"c_15a85f"};
 const ZALO_FONTS = {"13px":"f_13","18px":"f_18"};
+function buildRandomColorStyles(message, random = Math.random) {
+  const value = String(message ?? "");
+  const words = [...value.matchAll(/[\p{L}\p{N}]+/gu)];
+  const palette = Object.values(ZALO_COLORS);
+  if (!words.length || !palette.length) return [];
+
+  // Keep each message bounded while coloring every word, even in long messages.
+  const maxRuns = 120;
+  const wordsPerRun = Math.max(1, Math.ceil(words.length / maxRuns));
+  const ranges = [];
+  for (let index = 0; index < words.length; index += wordsPerRun) {
+    const first = words[index];
+    const last = words[Math.min(words.length - 1, index + wordsPerRun - 1)];
+    ranges.push({
+      start: first.index,
+      len: last.index + last[0].length - first.index
+    });
+  }
+
+  let previousColor = -1;
+  return ranges.map(range => {
+    const roll = Number(random());
+    let colorIndex = Number.isFinite(roll)
+      ? Math.floor(Math.max(0, Math.min(0.999999, roll)) * palette.length)
+      : 0;
+
+    // Adjacent words should not collapse into the same color.
+    if (palette.length > 1 && colorIndex === previousColor) {
+      const nextRoll = Number(random());
+      const offset = 1 + (Number.isFinite(nextRoll)
+        ? Math.floor(Math.max(0, Math.min(0.999999, nextRoll)) * (palette.length - 1))
+        : 0);
+      colorIndex = (previousColor + offset) % palette.length;
+    }
+    previousColor = colorIndex;
+    return { ...range, st: palette[colorIndex] };
+  });
+}
 const $escape = (value) => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const enc = value => encodeURIComponent(String(value ?? ""));
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -1337,7 +1375,11 @@ function buildZaloStyles(message) {
   const len = String(message).length;
   const push = st => styles.push({start:0,len,st});
   for (const k of ["b","i","u","s"]) if (state.chatStyle[k]) push(k);
-  if (state.chatStyle.color && ZALO_COLORS[state.chatStyle.color]) push(ZALO_COLORS[state.chatStyle.color]);
+  if (state.chatStyle.randomColor) {
+    styles.push(...buildRandomColorStyles(message));
+  } else if (state.chatStyle.color && ZALO_COLORS[state.chatStyle.color]) {
+    push(ZALO_COLORS[state.chatStyle.color]);
+  }
   if (state.chatStyle.font && ZALO_FONTS[state.chatStyle.font]) push(ZALO_FONTS[state.chatStyle.font]);
   return styles;
 }
@@ -1518,10 +1560,27 @@ function bindEvents() {
       const key=format.dataset.format; state.chatStyle[key]=!state.chatStyle[key];
       format.classList.toggle("active",state.chatStyle[key]); return;
     }
+    const randomColor=event.target.closest("[data-random-color]");
+    if (randomColor) {
+      state.chatStyle.randomColor=!state.chatStyle.randomColor;
+      if (state.chatStyle.randomColor) {
+        state.chatStyle.color="";
+        document.querySelectorAll(".color-chip").forEach(el=>el.classList.remove("active"));
+      }
+      randomColor.classList.toggle("active",state.chatStyle.randomColor);
+      randomColor.setAttribute("aria-pressed",String(state.chatStyle.randomColor));
+      return;
+    }
     const color=event.target.closest("[data-color]");
     if (color) {
       state.chatStyle.color=color.dataset.color;
+      state.chatStyle.randomColor=false;
       document.querySelectorAll(".color-chip").forEach(el=>el.classList.toggle("active",el===color));
+      const randomButton=document.querySelector("[data-random-color]");
+      if (randomButton) {
+        randomButton.classList.remove("active");
+        randomButton.setAttribute("aria-pressed","false");
+      }
       return;
     }
   });
