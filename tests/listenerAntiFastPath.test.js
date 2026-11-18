@@ -100,3 +100,36 @@ test("inactive Anti is marked checked so passive dispatch does not invoke it a s
   assert.equal(gameCalls, 1);
   assert.equal(cacheReads, 0);
 });
+
+
+test("listener records separate Anti and active-game dispatch latency", async () => {
+  const metrics = require("../core/metrics");
+  const before = new Map(
+    metrics.getListenerStageLatencyStats(100).map(item => [item.command, item.count])
+  );
+  const result = await listener.dispatchGroupMessageBeforeGame({
+    api: {},
+    event: {
+      threadId: "listener-stage-latency",
+      type: ThreadType.Group,
+      data: { uidFrom: "member-1", content: "ordinary chat" }
+    },
+    Threads: {},
+    threadData: { data: {} },
+    async antiDispatcher() {
+      await Promise.resolve();
+      return { checked: true, dispatched: false, consumed: false };
+    },
+    async gameDispatcher() {
+      await Promise.resolve();
+      return false;
+    }
+  });
+
+  assert.equal(result.consumed, false);
+  const after = new Map(
+    metrics.getListenerStageLatencyStats(100).map(item => [item.command, item.count])
+  );
+  assert.ok((after.get("anti-before-game") || 0) > (before.get("anti-before-game") || 0));
+  assert.ok((after.get("active-game-dispatch") || 0) > (before.get("active-game-dispatch") || 0));
+});

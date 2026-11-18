@@ -155,7 +155,9 @@ async function dispatchGroupMessageBeforeGame({
   antiDispatcher = dispatchAntiMessageBeforeGame,
   gameDispatcher = dispatchActiveGameMessage
 } = {}) {
+  const antiStartedAt = performance.now();
   const anti = await antiDispatcher({ api, event, Users, Threads, threadData, isSelf });
+  metrics.trackListenerStageLatency?.("anti-before-game", performance.now() - antiStartedAt);
   const antiChecked = anti?.checked === true || anti?.dispatched === true;
   if (anti?.consumed === true) {
     return {
@@ -166,7 +168,9 @@ async function dispatchGroupMessageBeforeGame({
     };
   }
 
+  const gameStartedAt = performance.now();
   const gameConsumed = await gameDispatcher({ api, event, Users, Threads, isSelf, threadData });
+  metrics.trackListenerStageLatency?.("active-game-dispatch", performance.now() - gameStartedAt);
   return {
     consumed: gameConsumed === true,
     source: gameConsumed === true ? "game" : null,

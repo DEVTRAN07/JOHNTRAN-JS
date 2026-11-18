@@ -122,3 +122,41 @@ test("handleEvent skips duplicate noitu/tlmn event wrappers after listener game 
     Threads.getCachedData = originalGetCachedData;
   }
 });
+
+
+test("handleEvent records latency for each passive event and command event handler", async () => {
+  const previousClient = global.client;
+  const metrics = require("../core/metrics");
+  const threadId = "handle-event-latency-" + Date.now();
+  const snapshot = {
+    threadId,
+    data: { bot_enabled: true }
+  };
+  const eventModule = {
+    config: { event_type: ["message"] },
+    async run() { await Promise.resolve(); }
+  };
+  const commandModule = {
+    config: { event_type: ["message"] },
+    async handleEvent() { await Promise.resolve(); }
+  };
+  global.client = {
+    events: new Map([["latency-probe", eventModule]]),
+    commands: new Map([["latency-command", commandModule]])
+  };
+
+  try {
+    await handleEvent("message", {
+      threadId,
+      type: ThreadType.Group,
+      data: { uidFrom: "member-1", content: "ordinary chat" }
+    }, {}, false, { threadData: snapshot });
+    await new Promise(resolve => setTimeout(resolve, 5));
+
+    const samples = metrics.getListenerStageLatencyStats(100);
+    assert.ok(samples.some(item => item.command === "event:latency-probe" && item.count >= 1));
+    assert.ok(samples.some(item => item.command === "command-event:latency-command" && item.count >= 1));
+  } finally {
+    global.client = previousClient;
+  }
+});

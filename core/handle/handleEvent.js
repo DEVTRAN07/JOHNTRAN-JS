@@ -1,6 +1,8 @@
 const logger = require("../../utils/logger");
 const { wrapForEvent } = require("../runtime/adapters/zalo");
 const { ThreadType } = require("zalo-client");
+const { performance } = require("node:perf_hooks");
+const metrics = require("../metrics");
 
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
@@ -121,41 +123,51 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
     events: eventSources,
     commands: commandSources,
     eventType,
-    onEventModule(eventModule, name) {
-      const context = createEventContext({
-        api, eventData, name, eventType, ThreadType, wrapForEvent
-      });
-      return eventModule.run({
-        api: context.api,
-        event: eventData,
-        eventType,
-        isSelf,
-        reply: context.reply,
-        Users,
-        Threads,
-        threadData: dispatchOptions.threadData || null,
-        replyData: context.replyData,
-        threadType: context.threadType
-      });
+    async onEventModule(eventModule, name) {
+      const startedAt = performance.now();
+      try {
+        const context = createEventContext({
+          api, eventData, name, eventType, ThreadType, wrapForEvent
+        });
+        return await eventModule.run({
+          api: context.api,
+          event: eventData,
+          eventType,
+          isSelf,
+          reply: context.reply,
+          Users,
+          Threads,
+          threadData: dispatchOptions.threadData || null,
+          replyData: context.replyData,
+          threadType: context.threadType
+        });
+      } finally {
+        metrics.trackListenerStageLatency?.("event:" + name, performance.now() - startedAt);
+      }
     },
-    onCommandModule(commandModule, name) {
-      const context = createEventContext({
-        api, eventData, name, eventType, ThreadType, wrapForEvent
-      });
-      return commandModule.handleEvent({
-        api: context.api,
-        event: eventData,
-        eventType,
-        isSelf,
-        reply: context.reply,
-        Users,
-        Threads,
-        threadData: dispatchOptions.threadData || null,
-        cachedThreadRecord: dispatchOptions.threadData || null,
-        cachedThreadCacheChecked: Boolean(dispatchOptions.threadData),
-        replyData: context.replyData,
-        threadType: context.threadType
-      });
+    async onCommandModule(commandModule, name) {
+      const startedAt = performance.now();
+      try {
+        const context = createEventContext({
+          api, eventData, name, eventType, ThreadType, wrapForEvent
+        });
+        return await commandModule.handleEvent({
+          api: context.api,
+          event: eventData,
+          eventType,
+          isSelf,
+          reply: context.reply,
+          Users,
+          Threads,
+          threadData: dispatchOptions.threadData || null,
+          cachedThreadRecord: dispatchOptions.threadData || null,
+          cachedThreadCacheChecked: Boolean(dispatchOptions.threadData),
+          replyData: context.replyData,
+          threadType: context.threadType
+        });
+      } finally {
+        metrics.trackListenerStageLatency?.("command-event:" + name, performance.now() - startedAt);
+      }
     },
     onError(error, kind, name) {
       const label = kind === "event" ? "event" : "handleEvent trong command";
