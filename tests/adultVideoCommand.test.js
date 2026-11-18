@@ -48,13 +48,43 @@ test("/vd 18+ formats player links instead of downloading or rehosting video fil
   assert.doesNotMatch(message, /attachments/);
 });
 
-test("/vd 18+ refuses group chats before making an API request", async () => {
-  let sent = null;
-  await command.run({
-    api: { sendMessage: async payload => { sent = payload; } },
-    event: { threadId: "group-1", type: ThreadType.Group, data: {} },
-    args: ["18+"]
+test("/vd 18+ is available in groups only to configured bot admins", () => {
+  const previousConfig = global.config;
+  const previousUsers = global.users;
+  global.config = { ...(previousConfig || {}), admin_bot: ["owner-uid"] };
+  global.users = previousUsers || {};
+
+  try {
+    const adminAccess = command._test.resolveAdultVideoAccess({
+      type: ThreadType.Group,
+      data: { uidFrom: "owner-uid" }
+    });
+    const memberAccess = command._test.resolveAdultVideoAccess({
+      type: ThreadType.Group,
+      data: { uidFrom: "member-uid" }
+    });
+
+    assert.deepEqual(adminAccess, { allowed: true, audience: "group" });
+    assert.equal(memberAccess.allowed, false);
+    assert.match(memberAccess.message, /chỉ admin bot/i);
+  } finally {
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+    if (previousUsers === undefined) delete global.users;
+    else global.users = previousUsers;
+  }
+});
+
+test("/vd 18+ retains private-chat support and rejects unknown thread types", () => {
+  const privateAccess = command._test.resolveAdultVideoAccess({
+    type: ThreadType.User,
+    data: { uidFrom: "regular-user" }
   });
-  assert.ok(sent);
-  assert.match(sent.msg, /chỉ hoạt động trong tin nhắn riêng/i);
+  const unknownAccess = command._test.resolveAdultVideoAccess({
+    type: 99,
+    data: { uidFrom: "regular-user" }
+  });
+
+  assert.deepEqual(privateAccess, { allowed: true, audience: "private" });
+  assert.equal(unknownAccess.allowed, false);
 });
