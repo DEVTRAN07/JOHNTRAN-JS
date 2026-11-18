@@ -636,7 +636,7 @@ async function measureStage(name, operation, timings) {
   }
 }
 
-async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
+async function processDiscordSticker({ api, event, mediaUrl, decorationId, resultCacheFile: resultCacheFileOverride }) {
   const totalStartedAt = Date.now();
   const timings = {};
   let sourcePath = null;
@@ -657,7 +657,7 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
 
     // A composition already uploaded to Zalo can be re-sent using one API
     // call. This is the only practical sub-second path after the first build.
-    const resultCacheFile = options.resultCacheFile || DEFAULT_RESULT_CACHE_FILE;
+    const resultCacheFile = resultCacheFileOverride || DEFAULT_RESULT_CACHE_FILE;
     const resultCacheKey = createResultCacheKey(normalizedUrl, decorationId);
     const cachedResult = readStickerResultCache(resultCacheKey, {
       filePath: resultCacheFile
