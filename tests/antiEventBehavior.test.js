@@ -73,9 +73,16 @@ function makeApi(options = {}) {
 }
 
 async function run(threadData, api, event, eventType = "message") {
+  const Threads = {
+    async getData() { return { data: threadData }; },
+    async setDataAndWait(_threadId, nextData) {
+      for (const key of Object.keys(threadData)) delete threadData[key];
+      Object.assign(threadData, nextData);
+      return { data: threadData };
+    }
+  };
   return anti.handleEvent({
-    event, api, eventType, isSelf: event?.isSelf === true,
-    Threads: { async getData() { return { data: threadData }; } }
+    event, api, eventType, isSelf: event?.isSelf === true, Threads
   });
 }
 
@@ -144,7 +151,7 @@ test("antispam sticker flood deletes six stickers from one member", async () => 
   assert.match(calls.sent[0].payload.msg, /dội bom sticker/i);
 });
 
-test("antinude calls moderation, deletes the image and verifies kick result", async () => {
+test("antinude deletes and warns three times before kicking on the fourth violation", async () => {
   const originalRequest = http.request;
   const previousKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "test-key";
@@ -159,14 +166,32 @@ test("antinude calls moderation, deletes the image and verifies kick result", as
   });
   try {
     const { api, calls } = makeApi();
-    await run({ anti_nude: true }, api, makeEvent({
+    const threadData = { anti_nude: true };
+    for (let strike = 1; strike <= 3; strike++) {
+      await run(threadData, api, makeEvent({
+        uidFrom: "deputy",
+        msgType: "chat.photo",
+        content: { href: "https://cdn.zaloapp.com/photo-" + strike + ".jpg" },
+        cliMsgId: "nude-cli-" + strike,
+        msgId: "nude-msg-" + strike
+      }));
+      assert.equal(calls.kicked.length, 0, "the first three violations must only warn");
+      assert.equal(threadData.anti_nude_warnings.deputy, strike, "warning count must be persisted for this member");
+      assert.match(calls.sent[strike - 1].payload.msg, new RegExp("cảnh cáo lần " + strike + "/3"));
+    }
+
+    await run(threadData, api, makeEvent({
       uidFrom: "deputy",
       msgType: "chat.photo",
-      content: { href: "https://cdn.zaloapp.com/photo.jpg" }
+      content: { href: "https://cdn.zaloapp.com/photo-4.jpg" },
+      cliMsgId: "nude-cli-4",
+      msgId: "nude-msg-4"
     }));
-    assert.equal(calls.deleted.length, 1);
-    assert.equal(calls.kicked.length, 1);
-    assert.match(calls.sent[0].payload.msg, /đã kick thành viên/i);
+
+    assert.equal(calls.deleted.length, 4, "every violating image must be removed");
+    assert.equal(calls.kicked.length, 1, "the fourth violation must kick the member");
+    assert.deepEqual(threadData.anti_nude_warnings, {}, "successful kick must clear the member's warning counter");
+    assert.match(calls.sent[3].payload.msg, /đã đủ 3 lần cảnh cáo và đã kick thành viên/i);
   } finally {
     http.request = originalRequest;
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
@@ -174,24 +199,28 @@ test("antinude calls moderation, deletes the image and verifies kick result", as
   }
 });
 
-test("antinude reports a Zalo errorMembers kick refusal", async () => {
+test("antinude keeps the three warnings when Zalo refuses to kick on the next violation", async () => {
   const originalRequest = http.request;
   const previousKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "test-key";
   http.request = async () => ({
     status: 200,
-    json: () => ({ results: [{ category_scores: { sexual: 0.99 } }] })
+    json: () => ({ results: [{ category_scores: { sexual: 0.99 }, category_applied_input_types: { sexual: ["image"] } }] })
   });
   try {
     const { api, calls } = makeApi({
       removeUserFromGroup: async uid => ({ errorMembers: [uid] })
     });
-    await run({ anti_nude: true }, api, makeEvent({
+    const threadData = { anti_nude: true, anti_nude_warnings: { member: 3 } };
+    await run(threadData, api, makeEvent({
+      uidFrom: "member",
       msgType: "chat.photo",
-      content: { href: "https://cdn.zaloapp.com/photo.jpg" }
+      content: { href: "https://cdn.zaloapp.com/photo-after-warnings.jpg" }
     }));
     assert.equal(calls.deleted.length, 1);
-    assert.match(calls.sent[0].payload.msg, /chưa kick được thành viên/i);
+    assert.equal(calls.kicked.length, 1, "kick must be attempted after three warnings");
+    assert.equal(threadData.anti_nude_warnings.member, 3, "failed kick must preserve the strike counter");
+    assert.match(calls.sent[0].payload.msg, /đã đủ 3 lần cảnh cáo nhưng Zalo chưa cho kick/i);
   } finally {
     http.request = originalRequest;
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
@@ -230,7 +259,8 @@ test("antinude self-test recalls an explicit bot image but never kicks the bot a
       type: ThreadType.Group
     });
     assert.equal(calls.kicked.length, 0, "Anti must never kick its own bot account during self testing");
-    assert.match(calls.sent[0].payload.msg, /bỏ qua kick tài khoản bot/i);
+    assert.equal(calls.sent[0].payload.msg.includes("cảnh cáo lần"), false, "bot self-test must not consume a warning");
+    assert.match(calls.sent[0].payload.msg, /bỏ qua cảnh cáo và kick tài khoản bot/i);
   } finally {
     http.request = originalRequest;
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
