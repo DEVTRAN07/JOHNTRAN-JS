@@ -569,9 +569,9 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId }) {
 
     const frameBuffer = fs.readFileSync(decorationPath);
     const staticFastPath =
-      /\\.(png|jpe?g)$/i.test(extension) &&
+      /\.(png|jpe?g)$/i.test(extension) &&
       !isAnimatedBuffer(source.buffer, extension) &&
-      /\\.png$/i.test(path.extname(decorationPath)) &&
+      /\.png$/i.test(path.extname(decorationPath)) &&
       !isAnimatedBuffer(frameBuffer, path.extname(decorationPath));
 
     currentStage = staticFastPath ? "canvas-static" : "ffmpeg";
