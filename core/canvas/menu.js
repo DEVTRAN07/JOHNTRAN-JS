@@ -543,4 +543,4 @@ async function renderFolderCard({
   return theme.save(result.canvas, "menu_folder");
 }
 
-module.exports = { renderMenuGrid, renderFolderCard, _test: { presenceBadgePosition, resolveFolderIconSlug } };
+module.exports = { renderMenuGrid, renderFolderCard, _test: { presenceBadgePosition, resolveFolderIconSlug, getMainMenuPalette } };
