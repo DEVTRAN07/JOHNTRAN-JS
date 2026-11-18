@@ -43,19 +43,82 @@ async function collectEnabledGroups(api, Threads) {
   );
 
   // QTV status is independent from /bot on/off and covers every joined group.
-  const keySummary = await collectBotGroupKeys(api, { groupIds: allIds });
-  const infoById = new Map(keySummary.allGroups.map(group => [group.gid, group]));
+  // Older test adapters and third-party wrappers may not expose getOwnId().
+  // Keep the legacy /bot status card working, but never guess that an
+  // unverified group has a QTV key.
+  const canVerifyBotRole =
+    typeof api?.getOwnId === "function" &&
+    typeof api?.getGroupInfo === "function";
+
+  let keySummary = {
+    botUid: "",
+    totalGroups: allIds.length,
+    allGroups: allIds.map(gid => ({
+      gid: String(gid),
+      name: String(settingsById.get(String(gid))?.group_name || ("Nhóm " + String(gid).slice(-6))),
+      avatar: "",
+      totalMember: 0,
+      role: "unknown"
+    })),
+    keyGroups: [],
+    noKeyGroups: [],
+    unknownGroups: [],
+    ownerCount: 0,
+    deputyCount: 0,
+    verificationAvailable: false
+  };
+  const infoById = new Map();
+
+  if (canVerifyBotRole) {
+    try {
+      keySummary = {
+        ...(await collectBotGroupKeys(api, { groupIds: allIds })),
+        verificationAvailable: true
+      };
+      for (const group of keySummary.allGroups) infoById.set(group.gid, group);
+    } catch (error) {
+      console.warn("[BOT_STATUS] Không xác minh được quyền QTV của bot:", error?.message || error);
+    }
+  }
 
   const enabledIds = allIds.filter(gid => isGroupBotEnabled(settingsById.get(String(gid))));
-  const groups = enabledIds.map(gid => {
-    const info = infoById.get(String(gid)) || {};
-    return {
-      gid: String(gid),
-      name: String(info.name || settingsById.get(String(gid))?.group_name || ("Nhóm " + String(gid).slice(-6))),
-      avatar: String(info.avatar || ""),
-      totalMember: Number(info.totalMember) || 0
-    };
-  });
+  const groups = [];
+
+  // When role inspection is available, reuse the names/details gathered from
+  // the same Zalo response. Otherwise retain the previous enabled-only lookup.
+  if (keySummary.verificationAvailable) {
+    for (const gid of enabledIds) {
+      const info = infoById.get(String(gid)) || {};
+      groups.push({
+        gid: String(gid),
+        name: String(info.name || settingsById.get(String(gid))?.group_name || ("Nhóm " + String(gid).slice(-6))),
+        avatar: String(info.avatar || ""),
+        totalMember: Number(info.totalMember) || 0
+      });
+    }
+  } else {
+    for (let offset = 0; offset < enabledIds.length; offset += GROUP_INFO_CONCURRENCY) {
+      const batch = enabledIds.slice(offset, offset + GROUP_INFO_CONCURRENCY);
+      const items = await Promise.all(batch.map(async gid => {
+        let info = stats.getCachedGroupInfo(gid);
+        if (!info && typeof api?.getGroupInfo === "function") {
+          info = await api.getGroupInfo(gid);
+        }
+        const group = info?.gridInfoMap?.[gid] || {};
+        return {
+          gid: String(gid),
+          name: String(group.name || settingsById.get(String(gid))?.group_name || ("Nhóm " + String(gid).slice(-6))),
+          avatar: String(group.avt || group.fullAvt || ""),
+          totalMember: Number(group.totalMember) || 0
+        };
+      }));
+      groups.push(...items);
+    }
+  }
+
+  if (!keySummary.verificationAvailable) {
+    keySummary.unknownGroups = keySummary.allGroups;
+  }
 
   return {
     ...keySummary,
@@ -125,9 +188,11 @@ async function sendStatusCard({ api, event, Threads }) {
       attachments: [imagePath],
       ttlKind: "card"
     }, event.threadId, event.type);
-    await api.sendMessage({
-      msg: buildBotGroupKeyStatus(result)
-    }, event.threadId, event.type);
+    if (result.verificationAvailable) {
+      await api.sendMessage({
+        msg: buildBotGroupKeyStatus(result)
+      }, event.threadId, event.type);
+    }
     return true;
   } finally {
     if (imagePath) {
