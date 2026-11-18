@@ -37,7 +37,7 @@ module.exports.run = async ({ args, event, api, reply }) => {
     });
   }
 
-  await reply.working();
+  // Dispatcher handles delayed progress for long TTS requests.
   const tempDir = path.join(__dirname, "temp");
   const filePath = path.join(tempDir, "tts_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7) + ".mp3");
 
