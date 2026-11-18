@@ -1345,6 +1345,19 @@ module.exports.run = async function ({ api, event, args, Threads }) {
   const record = await Threads.getData(threadId);
   const data = { ...(record?.data || {}) };
   const newValue = mode === "on" ? true : mode === "off" ? false : data[key] !== true;
+
+  // Keep the legacy /anti link|undo|spam route consistent with dedicated
+  // Anti commands. Disabling is always allowed for a verified group QTV,
+  // but enabling must be rejected unless the bot itself is group owner/deputy.
+  if (newValue) {
+    const botRole = await getBotGroupRole(api, threadId);
+    if (botRole !== "owner" && botRole !== "deputy") {
+      return api.sendMessage({
+        msg:"⛔ Không thể bật Anti: tài khoản bot chưa có quyền QTV trong nhóm. Hãy thêm bot làm phó nhóm rồi bật lại."
+      }, threadId, type);
+    }
+  }
+
   data[key] = newValue;
 
   const save = Threads.setDataAndWait || Threads.setData;
