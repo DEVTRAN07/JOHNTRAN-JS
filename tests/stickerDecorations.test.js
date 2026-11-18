@@ -29,7 +29,7 @@ function fixtureTree() {
 test("Discord decoration catalog builds stable IDs and pairs static/animated assets", () => {
   const catalog = buildCatalog(fixtureTree(), "test-sha", 1234);
   assert.equal(catalog.sourceSha, "test-sha");
-  assert.equal(catalog.total, 3);
+  assert.equal(catalog.total, 4);
 
   const shop = catalog.items.find(item => item.id === "shop-anime-in-love");
   assert.equal(shop.name, "In Love");
@@ -73,7 +73,7 @@ test("decoration catalog fetches once, persists the result, and supports filters
   const catalog = createDecorationCatalog({ fetchImpl, cacheFile, ttlMs: 1000, now: () => 2000 });
   const first = await catalog.getDecorations({ limit: 2 });
   assert.equal(requests, 1);
-  assert.equal(first.total, 3);
+  assert.equal(first.total, 4);
   assert.equal(first.items.length, 2);
   assert.equal(first.sourceSha, "catalog-sha");
 
