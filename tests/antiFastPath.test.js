@@ -87,3 +87,48 @@ test("Anti still verifies the bot group role before enforcing a detected link vi
   assert.equal(groupInfoCalls, 1);
   assert.equal(sendCalls, 0, "moderation must remain disabled when the bot is not a group admin");
 });
+
+
+test("a slow Anti danger-link scan does not block the next ordinary group message", async () => {
+  let releaseScanStarted;
+  const scanStarted = new Promise(resolve => { releaseScanStarted = resolve; });
+  const api = {
+    async getOwnId() { return "bot-id"; },
+    async getGroupInfo(id) {
+      return { gridInfoMap: { [id]: { creatorId: "owner-id", adminIds: ["bot-id"] } } };
+    },
+    scanURL() {
+      releaseScanStarted();
+      return new Promise(() => {});
+    }
+  };
+  const groupId = "anti-no-head-of-line";
+  const first = anti.handleEvent(makeContext({
+    groupId,
+    content: "https://example.com/suspicious",
+    flags: { anti_danger_link: true },
+    api
+  }));
+
+  await scanStarted;
+  const second = anti.handleEvent(makeContext({
+    groupId,
+    content: "tin nhan binh thuong",
+    flags: { anti_danger_link: true },
+    api,
+    uid: "member-2"
+  }));
+
+  let timeout;
+  try {
+    await Promise.race([
+      second,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("second message waited behind the stalled scan")), 250);
+      })
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+  assert.ok(first && typeof first.then === "function");
+});
