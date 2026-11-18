@@ -3,12 +3,14 @@
 const fs = require("node:fs");
 const { withRequesterMention } = require("../../core/mentions");
 const game = require("../../core/runtime/services/games/caroService");
-const { renderCanvas } = require("../../core/canvas/workerRender");
+const workerRender = require("../../core/canvas/workerRender");
 
 // One live Caro canvas card per group. A replacement is sent first; only
 // after Zalo returns its message IDs do we recall the previous board image.
 const boardCards = new Map();
 const boardUpdateQueues = new Map();
+const pendingModeSelections = new Map();
+const PENDING_MODE_SELECTION_MS = 55 * 1000;
 
 function snapshotBoardSession(session) {
   return {
@@ -58,7 +60,14 @@ async function recallBoardMessages(api, threadId, type, messages) {
   const failed = [];
   for (const target of pending) {
     try {
-      await api.undo({ msgId: target.msgId, cliMsgId: target.cliMsgId }, String(threadId), type);
+      const response = await api.undo(
+        { msgId: target.msgId, cliMsgId: target.cliMsgId },
+        String(threadId),
+        type
+      );
+      if (response === false || response?.success === false) {
+        throw new Error("Zalo từ chối thu hồi card cũ");
+      }
       recalled += 1;
     } catch (error) {
       failed.push(target);
@@ -178,6 +187,88 @@ async function send(api, event, msg) {
   return api.sendMessage(withRequesterMention(event, { msg }), event.threadId, event.type);
 }
 
+function getRawApi(api) {
+  if (!api || typeof api.sendMessage !== "function" ||
+      !Object.prototype.hasOwnProperty.call(api, "sendMessage")) return api;
+  const parent = Object.getPrototypeOf(api);
+  return parent && typeof parent.sendMessage === "function" ? parent : api;
+}
+
+function selectionKey(threadId, uid) {
+  return String(threadId || "") + ":" + String(uid || "");
+}
+
+function rememberModeSelection(threadId, uid, now = Date.now()) {
+  if (!threadId || !uid) return false;
+  const key = selectionKey(threadId, uid);
+  pendingModeSelections.set(key, now + PENDING_MODE_SELECTION_MS);
+  if (pendingModeSelections.size > 500) {
+    for (const [entry, expiresAt] of pendingModeSelections) {
+      if (expiresAt <= now) pendingModeSelections.delete(entry);
+      if (pendingModeSelections.size <= 350) break;
+    }
+  }
+  return true;
+}
+
+function hasPendingModeSelection(threadId, uid, now = Date.now()) {
+  const key = selectionKey(threadId, uid);
+  const expiresAt = pendingModeSelections.get(key);
+  if (!expiresAt) return false;
+  if (expiresAt <= now) {
+    pendingModeSelections.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function clearModeSelection(threadId, uid) {
+  return pendingModeSelections.delete(selectionKey(threadId, uid));
+}
+
+function parseModeChoice(value) {
+  const text = String(value || "").trim().toLocaleLowerCase("vi-VN");
+  const match = text.match(/^(?:ch[oọ]n\s*)?([12])$/u);
+  return match ? (match[1] === "1" ? "solo" : "pvp") : null;
+}
+
+function parseCellChoice(value) {
+  const text = String(value || "").trim().toLocaleLowerCase("vi-VN");
+  const match = text.match(/^(?:ch[oọ]n\s*)?(\d{1,3})$/u);
+  if (!match) return null;
+  const cell = Number(match[1]);
+  // Let the engine produce its normal out-of-range reply for 000 or 257–999.
+  return Number.isInteger(cell) && cell >= 0 && cell <= 999 ? cell : null;
+}
+
+function modeMenuText(prefix) {
+  return [
+    "⚔️ CARO 16×16 · CHỌN CHẾ ĐỘ",
+    "",
+    "1️⃣ ĐẤU VỚI AI — Solo, đánh luân phiên với Bot.",
+    "2️⃣ ĐẤU PvP — Tạo phòng để người khác tham gia.",
+    "",
+    "👉 Gửi 1 hoặc “chọn 1” để đấu AI.",
+    "👉 Gửi 2 hoặc “chọn 2” để tạo phòng PvP.",
+    "",
+    "Lệnh nhanh: " + prefix + "caro solo | " + prefix + "caro pvp",
+    "⏳ Lựa chọn có hiệu lực trong 55 giây."
+  ].join("\n");
+}
+
+async function openModeMenu(context) {
+  const { api, event } = context;
+  const threadId = String(event?.threadId || "");
+  const uid = String(event?.data?.uidFrom || "");
+  const current = game.get(threadId);
+  if (current && current.status !== "ended") {
+    return sendBoard(api, event, current, "⚔️ BÀN CỜ CARO HIỆN TẠI");
+  }
+  rememberModeSelection(threadId, uid);
+  const prefix = global.config?.prefix || "/";
+  return send(api, event, modeMenuText(prefix));
+}
+
 async function isGameEnabled(Threads, threadId) {
   if (!Threads || !threadId) return true;
   let record = Threads.getCachedData?.(threadId);
@@ -246,16 +337,20 @@ async function sendBoard(api, event, session, heading, extraLines = []) {
     let imagePath;
     const caption = boardCaption(boardSession, heading, extraLines);
     try {
-      imagePath = await renderCanvas("caro", { session: boardSession }, { timeout: 20000, poolSize: 1 });
+      imagePath = await workerRender.renderCanvas("caro", { session: boardSession }, { timeout: 20000, poolSize: 1 });
 
       // recallAfterMs: 0 disables the generic 60-second TTL for the live board.
       // Send the new board first; sendBoardReplacement recalls the old card only
       // after this send succeeds and Zalo supplies the new message IDs.
-      const response = await sendBoardReplacement(api, threadId, event.type, () =>
-        api.sendMessage(withRequesterMention(event, {
+      // Match the live-card replacement lifecycle used by Tiến Lên/Sâm:
+      // send through raw Zalo API, confirm IDs, then recall the previous card.
+      const rawApi = getRawApi(api);
+      const response = await sendBoardReplacement(rawApi, threadId, event.type, () =>
+        rawApi.sendMessage(withRequesterMention(event, {
           msg: caption,
           attachments: [imagePath],
-          recallAfterMs: 0
+          recallAfterMs: 0,
+          ttlKind: "card"
         }), threadId, event.type)
       );
       return response;
@@ -279,6 +374,9 @@ function help(prefix) {
     "⚔️ GAME CỜ CARO 16×16",
     "",
     "🎮 CHẾ ĐỘ CHƠI",
+    "Gõ " + prefix + "caro để mở menu chọn nhanh:",
+    "• Gửi 1 / chọn 1 — Đấu Bot AI (Solo).",
+    "• Gửi 2 / chọn 2 — Tạo phòng PvP.",
     `${prefix}caro solo [x/o] [truoc/sau] — Đấu Bot AI`,
     `${prefix}caro pvp [x/o] — Tạo phòng 2 người`,
     "join caro hoặc " + prefix + "caro join — Tham gia phòng PvP",
@@ -485,7 +583,10 @@ async function handleSpecial({ api, event, Users }, action) {
     }
     if (result.cancelled) {
       game.finish(threadId);
-      return send(api, event, "👋 Bạn đã rời phòng. Ván Caro đã được hủy, không tính thắng/thua.");
+      return sendBoard(api, event, result.session, "⚔️ PHÒNG CARO ĐÃ HỦY", [
+        "👋 Chủ phòng đã rời phòng chờ.",
+        "Ván đã hủy, không cộng/trừ sao."
+      ]);
     }
     result.reason = "leave";
     return settleGame({ api, event, Users, result });
@@ -493,9 +594,12 @@ async function handleSpecial({ api, event, Users }, action) {
 
   if (action === "stop") {
     if (session.ownerId !== uid && !isAdmin(uid)) return send(api, event, "⛔ Chỉ chủ phòng hoặc Admin mới được hủy ván.");
-    game.stop(threadId);
+    const stopped = game.stop(threadId);
     game.finish(threadId);
-    return send(api, event, "🛑 Đã hủy ván Caro. Không cộng/trừ sao.");
+    return sendBoard(api, event, stopped || session, "⚔️ CARO ĐÃ HỦY", [
+      "🛑 Chủ phòng/Admin đã hủy ván.",
+      "Không cộng/trừ sao."
+    ]);
   }
   return false;
 }
@@ -528,22 +632,44 @@ async function handleMove({ api, event, Users }, text) {
 
 async function handleIncoming(context = {}) {
   const { event, isSelf, Threads } = context;
-  if (isSelf) return;
-  const content = String(event?.data?.content || "").trim();
-  if (!content) return;
-  const prefix = global.config?.prefix || "/";
-  if (content.startsWith(prefix)) return;
+  const selfMessage = isSelf === true || event?.isSelf === true;
+  // config.yml allows same-account testing; accept the bot's own move only
+  // when allow_self_command is explicitly enabled.
+  if (selfMessage && global.config?.allow_self_command !== true) return false;
 
-  const lower = content.toLowerCase();
+  const content = String(event?.data?.content || "").trim();
+  if (!content) return false;
+  const prefix = global.config?.prefix || "/";
+  if (content.startsWith(prefix)) return false;
+
+  const lower = content.toLocaleLowerCase("vi-VN");
   const threadId = String(event?.threadId || "");
-  if (!threadId) return;
+  const uid = String(event?.data?.uidFrom || "");
+  if (!threadId || !uid) return false;
 
   if (lower === "join caro") return joinRoom(context);
   if (["lose", "leave", "stop"].includes(lower)) return handleSpecial(context, lower);
-  if (!/^\d{1,3}$/.test(lower)) return;
 
-  if (!await isGameEnabled(Threads, threadId)) return;
-  return handleMove(context, lower);
+  const session = game.get(threadId);
+  const cell = parseCellChoice(lower);
+  if (session?.status === "active" && cell !== null) {
+    if (!await isGameEnabled(Threads, threadId)) {
+      return send(context.api, event, "🚫 Game Caro đã được Admin tắt trong nhóm này.");
+    }
+    return handleMove(context, String(cell));
+  }
+
+  // Outside an active game, only treat a number as a mode choice when this
+  // user recently opened /caro. Explicit "chọn 1/2" is accepted directly.
+  const mode = parseModeChoice(lower);
+  const hasPendingChoice = hasPendingModeSelection(threadId, uid);
+  const explicitChoice = /^(?:ch[oọ]n\s*)[12]$/u.test(lower);
+  if (mode && (hasPendingChoice || explicitChoice)) {
+    clearModeSelection(threadId, uid);
+    return module.exports.run({ ...context, args: [mode] });
+  }
+
+  return false;
 }
 
 async function leaderboard(Users, mode = "all", month = null) {
@@ -625,8 +751,23 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   const prefix = global.config?.prefix || "/";
   if (!uid || !threadId) return;
 
-  const action = String(args[0] || "help").toLowerCase();
-  const rest = args.slice(1).map(value => String(value).toLowerCase());
+  const actionText = args.map(value => String(value)).join(" ").trim();
+  let action = String(args[0] || "").toLocaleLowerCase("vi-VN");
+  const rest = args.slice(1).map(value => String(value).toLocaleLowerCase("vi-VN"));
+
+  if (!args.length) return openModeMenu({ api, event, Users, Threads });
+
+  const activeSession = game.get(threadId);
+  const commandCell = parseCellChoice(actionText);
+  if (activeSession?.status === "active" && commandCell !== null) {
+    return handleMove({ api, event, Users }, String(commandCell));
+  }
+
+  const selectedMode = parseModeChoice(actionText);
+  if (selectedMode) {
+    clearModeSelection(threadId, uid);
+    action = selectedMode;
+  }
 
   if (action === "help") return send(api, event, help(prefix));
 
@@ -634,13 +775,20 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     if (!isAdmin(uid)) return send(api, event, "⛔ Chỉ Admin bot mới được bật/tắt Game Caro.");
     try {
       await setGameEnabled(Threads, threadId, action === "on");
-      if (action === "off" && game.get(threadId)) {
-        game.stop(threadId);
-        game.finish(threadId);
+      if (action === "off") {
+        const stopped = game.get(threadId);
+        if (stopped) {
+          game.stop(threadId);
+          game.finish(threadId);
+          return sendBoard(api, event, stopped, "⚔️ CARO ĐÃ HỦY", [
+            "🚫 Admin đã tắt Game Caro trong nhóm.",
+            "Ván đã hủy, không cộng/trừ sao."
+          ]);
+        }
       }
       return send(api, event, action === "on"
         ? "✅ Đã bật Game Caro trong nhóm hiện tại."
-        : "🚫 Đã tắt Game Caro trong nhóm hiện tại. Ván đang chạy (nếu có) đã được hủy, không tính sao.");
+        : "🚫 Đã tắt Game Caro trong nhóm hiện tại.");
     } catch (error) {
       return send(api, event, "❌ Không thể lưu cài đặt Caro: " + error.message);
     }
@@ -739,9 +887,12 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     if (!result.ok) return send(api, event, "⚠️ Nhóm đang có ván Caro. Gõ board để xem hoặc stop để hủy.");
     const session = result.session;
     const guestSymbol = symbol === "X" ? "O" : "X";
-    game.watchLobby(threadId, async () => {
+    game.watchLobby(threadId, async ({ session: expiredSession }) => {
       game.finish(threadId);
-      await send(api, event, "⌛ Phòng Caro đã tự hủy vì 5 phút không có người tham gia.");
+      await sendBoard(api, event, expiredSession || session, "⚔️ PHÒNG CARO HẾT HẠN", [
+        "⌛ Phòng tự hủy vì 5 phút không có người tham gia.",
+        "Không cộng/trừ sao."
+      ]);
     });
     await sendBoard(api, event, session, "⚔️ ĐÃ TẠO PHÒNG CARO PvP", [
       `👤 ${session.players[symbol].name}: quân ${symbol}`,
@@ -767,6 +918,12 @@ module.exports._test = {
   recallPreviousBoard,
   sendBoardReplacement,
   enqueueBoardUpdate,
+  rememberModeSelection,
+  hasPendingModeSelection,
+  clearModeSelection,
+  parseModeChoice,
+  parseCellChoice,
+  modeMenuText,
   leaderboard,
   updateCaroStats,
   help,

@@ -27,10 +27,10 @@ jobs:
       - name: Benchmark hot command paths
         run: npm run benchmark:hotpath
       - name: Render actual canvas previews
-        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feature/unified-canvas') || startsWith(github.head_ref, 'design/canvas-unified-menu-style') || startsWith(github.head_ref, 'feat/canvas-show-more-photo-anti-single-message')))
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feature/unified-canvas') || startsWith(github.head_ref, 'design/canvas-unified-menu-style') || startsWith(github.head_ref, 'feat/canvas-show-more-photo-anti-single-message') || startsWith(github.head_ref, 'fix/caro-self-input-selection-recall')))
         run: node scripts/render-canvas-previews.js
       - name: Upload canvas preview images
-        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feature/unified-canvas') || startsWith(github.head_ref, 'design/canvas-unified-menu-style') || startsWith(github.head_ref, 'feat/canvas-show-more-photo-anti-single-message')))
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feature/unified-canvas') || startsWith(github.head_ref, 'design/canvas-unified-menu-style') || startsWith(github.head_ref, 'feat/canvas-show-more-photo-anti-single-message') || startsWith(github.head_ref, 'fix/caro-self-input-selection-recall')))
         uses: actions/upload-artifact@v4
         with:
           name: johntran-canvas-previews

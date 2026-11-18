@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const engine = require("../core/games/caroEngine");
 const game = require("../core/runtime/services/games/caroService");
 const caroCommand = require("../plugins/commands/caro");
+const workerRender = require("../core/canvas/workerRender");
 
 test("Caro engine creates a 16x16 board with 256 empty cells", () => {
   const board = engine.createBoard();
@@ -360,4 +361,227 @@ test("Caro score persistence converts storage failures into a recoverable result
   }, created.session.players.X, "solo", "win");
   assert.equal(score, null, "a temporary DB failure must not escape the score helper");
   game.finish(threadId);
+});
+
+
+test("Caro bare command opens a mode menu and a plain 1 starts Solo", async () => {
+  const threadId = "caro-menu-select-" + Date.now();
+  const uid = "caro-menu-player";
+  const originalConfig = global.config;
+  const originalRender = workerRender.renderCanvas;
+  const sent = [];
+  let messageId = 0;
+  workerRender.renderCanvas = async () => "/tmp/caro-menu-test-preview.png";
+  global.config = { ...(originalConfig || {}), prefix: "/", allow_self_command: false };
+
+  const api = {
+    async sendMessage(payload, targetThreadId, type) {
+      sent.push({ payload, threadId: targetThreadId, type });
+      const id = ++messageId;
+      return { message: { msgId: id, cliMsgId: "caro-menu-" + id }, attachment: [] };
+    },
+    async undo() { return { success: true }; }
+  };
+  const event = {
+    threadId,
+    type: 2,
+    data: { uidFrom: uid, dName: "Caro Menu Player", content: "" }
+  };
+  const Threads = {
+    getCachedData() { return { data: {} }; },
+    async getData() { return { data: {} }; }
+  };
+
+  try {
+    await caroCommand.run({ args: [], api, event, Users: {}, Threads });
+    assert.match(sent[0].payload.msg, /1️⃣ ĐẤU VỚI AI/);
+    assert.match(sent[0].payload.msg, /2️⃣ ĐẤU PvP/);
+    assert.equal(caroCommand._test.hasPendingModeSelection(threadId, uid), true);
+
+    await caroCommand.handleIncoming({
+      api,
+      event: { ...event, data: { ...event.data, content: "1" } },
+      isSelf: false,
+      Users: {},
+      Threads
+    });
+
+    const session = game.get(threadId);
+    assert.ok(session, "choosing 1 should create the solo session");
+    assert.equal(session.mode, "solo");
+    assert.equal(session.players.X.uid, uid);
+    assert.equal(session.moves, 0);
+    assert.equal(caroCommand._test.hasPendingModeSelection(threadId, uid), false);
+    assert.ok(sent.length >= 2, "the selected mode should send the initial board");
+    assert.match(sent.at(-1).payload.msg, /BẮT ĐẦU CARO SOLO/);
+  } finally {
+    game.finish(threadId);
+    caroCommand._test.clearModeSelection(threadId, uid);
+    workerRender.renderCanvas = originalRender;
+    if (originalConfig === undefined) delete global.config;
+    else global.config = originalConfig;
+  }
+});
+
+test("Caro accepts the bot account's own cell input when allow_self_command is enabled", async () => {
+  const threadId = "caro-self-cell-" + Date.now();
+  const uid = "same-bot-test-account";
+  const originalConfig = global.config;
+  const originalRender = workerRender.renderCanvas;
+  const sent = [];
+  let messageId = 0;
+  workerRender.renderCanvas = async () => "/tmp/caro-self-cell-preview.png";
+  global.config = { ...(originalConfig || {}), prefix: "/", allow_self_command: true };
+  game.startSolo(threadId, { uid, name: "Bot/Test Account", symbol: "X", humanFirst: true });
+
+  const api = {
+    async sendMessage(payload, targetThreadId, type) {
+      sent.push({ payload, threadId: targetThreadId, type });
+      const id = ++messageId;
+      return { message: { msgId: id, cliMsgId: "caro-self-" + id }, attachment: [] };
+    },
+    async undo() { return { success: true }; }
+  };
+  const Threads = {
+    getCachedData() { return { data: {} }; },
+    async getData() { return { data: {} }; }
+  };
+
+  try {
+    await caroCommand.handleIncoming({
+      api,
+      event: {
+        threadId,
+        type: 2,
+        isSelf: true,
+        data: { uidFrom: uid, dName: "Bot/Test Account", content: "1" }
+      },
+      isSelf: true,
+      Users: {},
+      Threads
+    });
+
+    const session = game.get(threadId);
+    assert.equal(session.board[0], "X", "cell 1 must be placed by the human");
+    assert.equal(session.moves, 2, "AI should answer immediately after the human move");
+    assert.equal(session.turnUid, uid, "the turn should return to the human after the AI reply");
+    assert.ok(sent.some(item => /CẬP NHẬT BÀN CỜ CARO/.test(item.payload.msg)));
+  } finally {
+    game.finish(threadId);
+    workerRender.renderCanvas = originalRender;
+    if (originalConfig === undefined) delete global.config;
+    else global.config = originalConfig;
+  }
+});
+
+test("Caro recalls an old card only when Zalo confirms undo succeeded", async () => {
+  const threadId = "caro-recall-false-result";
+  const target = { msgId: 7001, cliMsgId: "caro-undo-rejected" };
+  caroCommand._test.rememberBoardResponse(threadId, { attachment: [target] });
+
+  assert.equal(await caroCommand._test.recallPreviousBoard({
+    async undo() { return { success: false }; }
+  }, threadId, 2), false, "a false Zalo result must remain pending for retry");
+
+  let attempts = 0;
+  assert.equal(await caroCommand._test.recallPreviousBoard({
+    async undo() { attempts += 1; return { success: true }; }
+  }, threadId, 2), true);
+  assert.equal(attempts, 1);
+});
+
+
+test("Caro stop replaces the old live board with a final cancelled card", async () => {
+  const threadId = "caro-stop-recall-" + Date.now();
+  const uid = "caro-stop-owner";
+  const originalRender = workerRender.renderCanvas;
+  const sent = [];
+  const undone = [];
+  let nextId = 8000;
+  workerRender.renderCanvas = async () => "/tmp/caro-stop-recall.png";
+  const created = game.startSolo(threadId, { uid, name: "Owner", humanFirst: true });
+  assert.equal(created.ok, true);
+  caroCommand._test.rememberBoardResponse(threadId, {
+    attachment: [{ msgId: 7999, cliMsgId: "old-caro-live-board" }]
+  });
+
+  const api = {
+    async sendMessage(payload, targetThreadId, type) {
+      sent.push({ payload, threadId: targetThreadId, type });
+      const id = ++nextId;
+      return { message: { msgId: id, cliMsgId: "caro-stop-" + id }, attachment: [] };
+    },
+    async undo(payload, targetThreadId, type) {
+      undone.push({ payload, threadId: targetThreadId, type });
+      return { success: true };
+    }
+  };
+
+  try {
+    await caroCommand.handleIncoming({
+      api,
+      event: { threadId, type: 2, data: { uidFrom: uid, content: "stop" } },
+      isSelf: false,
+      Users: {}
+    });
+
+    assert.equal(game.get(threadId), null, "the cancelled room should be removed");
+    assert.equal(sent.length, 1, "the cancellation should replace the old board with one final card");
+    assert.match(sent[0].payload.msg, /CARO ĐÃ HỦY/);
+    assert.match(sent[0].payload.msg, /Không cộng\/trừ sao/);
+    assert.deepEqual(undone, [{
+      payload: { msgId: 7999, cliMsgId: "old-caro-live-board" },
+      threadId,
+      type: 2
+    }]);
+  } finally {
+    game.finish(threadId);
+    workerRender.renderCanvas = originalRender;
+  }
+});
+
+test("Caro leaving a waiting PvP lobby replaces the old board card", async () => {
+  const threadId = "caro-leave-lobby-recall-" + Date.now();
+  const uid = "caro-lobby-owner";
+  const originalRender = workerRender.renderCanvas;
+  const sent = [];
+  const undone = [];
+  let nextId = 8100;
+  workerRender.renderCanvas = async () => "/tmp/caro-lobby-leave.png";
+  const created = game.startPvp(threadId, { uid, name: "Lobby Owner" });
+  assert.equal(created.ok, true);
+  caroCommand._test.rememberBoardResponse(threadId, {
+    attachment: [{ msgId: 8099, cliMsgId: "old-caro-lobby-board" }]
+  });
+
+  const api = {
+    async sendMessage(payload, targetThreadId, type) {
+      sent.push({ payload, threadId: targetThreadId, type });
+      const id = ++nextId;
+      return { message: { msgId: id, cliMsgId: "caro-lobby-end-" + id }, attachment: [] };
+    },
+    async undo(payload, targetThreadId, type) {
+      undone.push({ payload, threadId: targetThreadId, type });
+      return { success: true };
+    }
+  };
+
+  try {
+    await caroCommand.handleIncoming({
+      api,
+      event: { threadId, type: 2, data: { uidFrom: uid, content: "leave" } },
+      isSelf: false,
+      Users: {}
+    });
+
+    assert.equal(game.get(threadId), null);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].payload.msg, /PHÒNG CARO ĐÃ HỦY/);
+    assert.deepEqual(undone.map(item => item.payload), [
+      { msgId: 8099, cliMsgId: "old-caro-lobby-board" }
+    ]);
+  } finally {
+    game.finish(threadId);
+    workerRender.renderCanvas = originalRender;
+  }
 });
