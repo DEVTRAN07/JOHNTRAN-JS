@@ -7,75 +7,74 @@ const os = require("node:os");
 const path = require("node:path");
 const {
   SOURCE,
-  buildCatalog,
-  createDecorationCatalog,
-  safeRawUrl
+  readManifest,
+  createDecorationCatalog
 } = require("../core/stickerDecorations");
 
-function fixtureTree() {
-  return [
-    { type: "blob", path: "shop/anime/in_love.png" },
-    { type: "blob", path: "archive/spring/apng/blossom1.png" },
-    { type: "blob", path: "archive/spring/gif/blossom1.gif" },
-    { type: "blob", path: "archive/halloween/ghosts.png" },
-    { type: "blob", path: "etc/aprilfools/get_clowned_static.png" },
-    { type: "blob", path: "etc/aprilfools/get_clowned.webp" },
-    { type: "blob", path: "etc/default_old/discordred.png" },
-    { type: "blob", path: "archive/spring/gif/desktop.ini" },
-    { type: "tree", path: "shop/anime" }
-  ];
+function fixtureManifest() {
+  return {
+    version: 2,
+    sourceCommit: "a".repeat(40),
+    generatedAt: "2026-11-18T00:00:00.000Z",
+    source: SOURCE.repositoryUrl,
+    total: 3,
+    items: [
+      {
+        id: "shop-anime-in-love", name: "In Love", category: "shop", collection: "anime",
+        animated: false, staticAvailable: true, staticUrl: "https://cdn.jsdelivr.net/sample/in-love.png",
+        staticFallbackUrl: "https://raw.githubusercontent.com/sample/in-love.png",
+        animatedUrl: null, animatedFallbackUrl: null, sourcePath: "shop/anime/in_love.png"
+      },
+      {
+        id: "archive-spring-blossom1", name: "Blossom1", category: "archive", collection: "spring",
+        animated: true, staticAvailable: false,
+        staticUrl: "https://cdn.jsdelivr.net/sample/blossom1.png",
+        staticFallbackUrl: "https://raw.githubusercontent.com/sample/blossom1.png",
+        animatedUrl: "https://cdn.jsdelivr.net/sample/blossom1.gif",
+        animatedFallbackUrl: "https://raw.githubusercontent.com/sample/blossom1.gif",
+        sourcePath: "archive/spring/apng/blossom1.png"
+      },
+      {
+        id: "etc-aprilfools-get-clowned", name: "Get Clowned", category: "etc", collection: "aprilfools2024",
+        animated: true, staticAvailable: true,
+        staticUrl: "https://cdn.jsdelivr.net/sample/get-clowned.png",
+        staticFallbackUrl: "https://raw.githubusercontent.com/sample/get-clowned.png",
+        animatedUrl: "https://cdn.jsdelivr.net/sample/get-clowned.webp",
+        animatedFallbackUrl: "https://raw.githubusercontent.com/sample/get-clowned.webp",
+        sourcePath: "etc/aprilfools2024/get_clowned_static.png"
+      }
+    ]
+  };
 }
 
-test("Discord decoration catalog builds stable IDs and pairs static/animated assets", () => {
-  const catalog = buildCatalog(fixtureTree(), "test-sha", 1234);
-  assert.equal(catalog.sourceSha, "test-sha");
-  assert.equal(catalog.total, 4);
+test("bundled Discord catalog is complete and does not depend on the GitHub tree API", async () => {
+  const manifest = readManifest();
+  assert.equal(manifest.version, 2);
+  assert.match(manifest.sourceCommit, /^[a-f0-9]{40}$/);
+  assert.equal(manifest.items.length, manifest.total);
+  assert.ok(manifest.total >= 100);
+  assert.ok(manifest.items.every(item =>
+    item.id && item.name && item.staticUrl && item.staticFallbackUrl &&
+    item.sourcePath && item.source === undefined || item.source === undefined
+  ));
 
-  const shop = catalog.items.find(item => item.id === "shop-anime-in-love");
-  assert.equal(shop.name, "In Love");
-  assert.equal(shop.animated, false);
-  assert.match(shop.staticUrl, /shop\/anime\/in_love\.png$/);
-  assert.equal(shop.animatedUrl, null);
-
-  const spring = catalog.items.find(item => item.id === "archive-spring-blossom1");
-  assert.equal(spring.animated, true);
-  assert.match(spring.animatedUrl, /archive\/spring\/gif\/blossom1\.gif$/);
-  assert.match(spring.staticUrl, /archive\/spring\/apng\/blossom1\.png$/);
-
-  const april = catalog.items.find(item => item.id === "etc-aprilfools-get-clowned");
-  assert.match(april.staticUrl, /get_clowned_static\.png$/);
-  assert.match(april.animatedUrl, /get_clowned\.webp$/);
-  assert.equal(april.animated, true);
+  const catalog = createDecorationCatalog();
+  const result = await catalog.getDecorations({ limit: 100 });
+  assert.equal(result.total, manifest.total);
+  assert.equal(result.sourceSha, manifest.sourceCommit);
+  assert.equal(result.stale, false);
 });
 
-test("Discord decoration URLs are locked to the configured public asset repository", () => {
-  assert.match(safeRawUrl("shop/anime/in_love.png"), /^https:\/\/raw\.githubusercontent\.com\/uhidontkno\/DiscordAvatarDecorations\/main\//);
-  assert.equal(safeRawUrl("../secrets.png"), null);
-  assert.equal(safeRawUrl("other/repo/file.png"), null);
-  assert.equal(safeRawUrl("shop/anime/file.exe"), null);
-  assert.equal(SOURCE.repositoryUrl, "https://github.com/uhidontkno/DiscordAvatarDecorations");
-});
-
-test("decoration catalog fetches once, persists the result, and supports filters and pagination", async t => {
+test("decoration catalog filters, paginates and finds an exact ID from local manifest", async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-decoration-catalog-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const cacheFile = path.join(dir, "catalog.json");
-  let requests = 0;
-  const fetchImpl = async url => {
-    requests += 1;
-    assert.equal(url, SOURCE.treeUrl);
-    return {
-      ok: true,
-      status: 200,
-      async json() { return { sha: "catalog-sha", tree: fixtureTree() }; }
-    };
-  };
-  const catalog = createDecorationCatalog({ fetchImpl, cacheFile, ttlMs: 1000, now: () => 2000 });
+  const file = path.join(dir, "manifest.json");
+  fs.writeFileSync(file, JSON.stringify(fixtureManifest()));
+  const catalog = createDecorationCatalog({ manifestFile: file });
+
   const first = await catalog.getDecorations({ limit: 2 });
-  assert.equal(requests, 1);
-  assert.equal(first.total, 4);
+  assert.equal(first.total, 3);
   assert.equal(first.items.length, 2);
-  assert.equal(first.sourceSha, "catalog-sha");
 
   const page = await catalog.getDecorations({ query: "clowned", limit: 5 });
   assert.equal(page.total, 1);
@@ -83,37 +82,26 @@ test("decoration catalog fetches once, persists the result, and supports filters
 
   const animated = await catalog.getDecorations({ animated: true, limit: 10 });
   assert.equal(animated.total, 2);
-  const selected = await catalog.getDecoration("shop-anime-in-love");
-  assert.equal(selected.name, "In Love");
-  assert.equal(requests, 1);
-  assert.ok(fs.existsSync(cacheFile));
+  const inLove = await catalog.getDecoration("shop-anime-in-love");
+  assert.equal(inLove.name, "In Love");
+  assert.equal(await catalog.getDecoration("not-found"), null);
+  assert.equal((await catalog.getRandomDecoration()).id.length > 0, true);
 });
 
-test("decoration catalog serves stale cache immediately while refreshing in background", async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-decoration-stale-"));
+test("explicit catalog refresh reloads the bundled manifest without any network request", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-decoration-refresh-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const cacheFile = path.join(dir, "catalog.json");
-  let now = 1000;
-  let requests = 0;
-  let releaseRefresh;
-  const fetchImpl = async () => {
-    requests += 1;
-    if (requests === 1) {
-      return { ok: true, async json() { return { sha: "old", tree: fixtureTree() }; } };
-    }
-    await new Promise(resolve => { releaseRefresh = resolve; });
-    return { ok: true, async json() { return { sha: "new", tree: fixtureTree() }; } };
-  };
-  const catalog = createDecorationCatalog({ fetchImpl, cacheFile, ttlMs: 10, now: () => now });
+  const file = path.join(dir, "manifest.json");
+  const oldManifest = fixtureManifest();
+  fs.writeFileSync(file, JSON.stringify(oldManifest));
+  const catalog = createDecorationCatalog({ manifestFile: file });
+
   await catalog.getDecorations();
-  now = 2000;
-  const stale = await catalog.getDecorations();
-  assert.equal(stale.stale, true);
-  assert.equal(stale.sourceSha, "old");
-  assert.equal(requests, 2);
-  releaseRefresh();
-  await new Promise(resolve => setImmediate(resolve));
-  const fresh = await catalog.getDecorations();
-  assert.equal(fresh.sourceSha, "new");
-  assert.equal(fresh.stale, false);
+  const nextManifest = fixtureManifest();
+  nextManifest.sourceCommit = "b".repeat(40);
+  fs.writeFileSync(file, JSON.stringify(nextManifest));
+
+  const refreshed = await catalog.refresh();
+  assert.equal(refreshed.sourceCommit, "b".repeat(40));
+  assert.equal((await catalog.getDecorations()).sourceSha, "b".repeat(40));
 });
