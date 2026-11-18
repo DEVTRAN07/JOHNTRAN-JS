@@ -36,9 +36,9 @@ test("theme library contains the three requested photo sources and a local cache
   const backgrounds = themeBackgrounds.getBackgrounds();
   assert.equal(backgrounds.length, 3);
   assert.deepEqual(backgrounds.map(item => item.id), ["1", "2", "3"]);
-  assert.match(backgrounds[0].url, /hinh-nen-gai-xinh-sexy-27\\.jpg$/);
-  assert.match(backgrounds[1].url, /hinh-nen-gai-xinh-sexy-18\\.jpg$/);
-  assert.match(backgrounds[2].url, /hinh-nen-gai-xinh-sexy-16\\.jpg$/);
+  assert.ok(backgrounds[0].url.endsWith("hinh-nen-gai-xinh-sexy-27.jpg"));
+  assert.ok(backgrounds[1].url.endsWith("hinh-nen-gai-xinh-sexy-18.jpg"));
+  assert.ok(backgrounds[2].url.endsWith("hinh-nen-gai-xinh-sexy-16.jpg"));
   assert.ok(fs.existsSync(path.join(themeBackgrounds.THEME_DIR, "README.md")));
 });
 
