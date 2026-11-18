@@ -434,8 +434,10 @@ async function renderMenuGrid({ requesterName, requesterAvatarUrl, botVersion, p
   ctx.shadowBlur = S(10);
   ctx.shadowOffsetY = S(4);
   const footerFill = ctx.createLinearGradient(footerX, footerY, footerX, footerY + footerH);
-  footerFill.addColorStop(0, palette.footer[0]);
-  footerFill.addColorStop(1, palette.footer[1]);
+  // The footer used to be an opaque solid block, unlike the glass folder tiles.
+  // Keep only a light tint so the selected photo remains visible underneath.
+  footerFill.addColorStop(0, theme.rgba(palette.footer[0], 0.075));
+  footerFill.addColorStop(1, theme.rgba(palette.footer[1], 0.12));
   ctx.fillStyle = footerFill;
   ctx.fill();
   ctx.restore();
