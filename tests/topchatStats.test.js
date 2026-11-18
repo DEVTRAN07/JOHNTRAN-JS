@@ -73,3 +73,14 @@ test("vietnamDateKey reuses current-date formatting and still accepts explicit i
   assert.equal(vietnamDateKey(undefined), expected);
   assert.equal(vietnamDateKey("2026-11-11T17:00:00.000Z"), "2026-11-12");
 });
+
+
+test("Vietnam day-range comparison handles the exact UTC+7 midnight boundary", () => {
+  const { isTimestampInVietnamDate } = require("../core/topchat/stats");
+  const beforeMidnight = Date.parse("2026-11-11T16:59:59.999Z");
+  const midnight = Date.parse("2026-11-11T17:00:00.000Z");
+  assert.equal(isTimestampInVietnamDate(beforeMidnight, "2026-11-11"), true);
+  assert.equal(isTimestampInVietnamDate(midnight, "2026-11-11"), false);
+  assert.equal(isTimestampInVietnamDate(midnight, "2026-11-12"), true);
+  assert.equal(isTimestampInVietnamDate(midnight + 86400000, "2026-11-12"), false);
+});

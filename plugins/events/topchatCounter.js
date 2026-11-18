@@ -1,6 +1,6 @@
 "use strict";
 
-const { vietnamDateKey, isGroupMessage, messageText, messageTimestamp, avatarUrl } = require("../../core/topchat/stats");
+const { vietnamDateKey, isTimestampInVietnamDate, isGroupMessage, messageText, messageTimestamp, avatarUrl } = require("../../core/topchat/stats");
 
 const writeQueues = new Map();
 const seenMessages = new Map();
@@ -121,7 +121,7 @@ function isCountableMessage(message, dateKey, prefix, receivedAt = 0) {
   // A live WebSocket frame is known to have arrived now even when its payload
   // omits ts. Historical messages never use this receive-time fallback.
   const timestamp = messageTimestamp(data.ts ?? data.timestamp) || receivedAt;
-  if (!timestamp || vietnamDateKey(timestamp) !== dateKey) return false;
+  if (!timestamp || !isTimestampInVietnamDate(timestamp, dateKey)) return false;
   const content = messageText(data.content);
   if (prefix && content.startsWith(prefix)) return false;
   return Boolean(content || data.msgType || data.propertyExt || data.attachment || data.attachments);

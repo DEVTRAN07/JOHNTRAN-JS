@@ -3,6 +3,9 @@
 const { pickAvatar } = require("../runtime/avatarUrl");
 
 const TIME_ZONE = "Asia/Ho_Chi_Minh";
+const VIETNAM_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+let cachedBoundsDateKey = "";
+let cachedDayBounds = null;
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: TIME_ZONE,
   year: "numeric",
@@ -33,6 +36,25 @@ function vietnamDateKey(value) {
   }
   const date = value instanceof Date ? value : new Date(value);
   return formatVietnamDateKey(date);
+}
+
+function getVietnamDayBounds(dateKey) {
+  const key = String(dateKey || "");
+  if (key === cachedBoundsDateKey && cachedDayBounds) return cachedDayBounds;
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(key);
+  if (!match) return null;
+  const start = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) - VIETNAM_UTC_OFFSET_MS;
+  if (!Number.isFinite(start)) return null;
+  cachedBoundsDateKey = key;
+  cachedDayBounds = { start, end: start + 24 * 60 * 60 * 1000 };
+  return cachedDayBounds;
+}
+
+function isTimestampInVietnamDate(timestamp, dateKey) {
+  const value = Number(timestamp);
+  if (!Number.isFinite(value) || value <= 0) return false;
+  const bounds = getVietnamDayBounds(dateKey);
+  return Boolean(bounds && value >= bounds.start && value < bounds.end);
 }
 
 function isGroupMessage(message) {
@@ -91,7 +113,7 @@ function aggregateMessages(messages, dateKey, prefix = "/", selfUid = "", exclud
     if (!uid || uid === "0" || (selfUid && uid === String(selfUid))) continue;
 
     const timestamp = messageTimestamp(data.ts ?? data.timestamp ?? message?.timestamp);
-    if (!timestamp || vietnamDateKey(timestamp) !== dateKey) continue;
+    if (!timestamp || !isTimestampInVietnamDate(timestamp, dateKey)) continue;
     if (isCommand(data, prefix)) continue;
 
     // Text, media, sticker and other message types all count as one message.
@@ -123,6 +145,7 @@ function buildRanking(counts, limit = 10) {
 
 module.exports = {
   vietnamDateKey,
+  isTimestampInVietnamDate,
   isGroupMessage,
   messageData,
   messageText,
