@@ -647,6 +647,63 @@ async function measureStage(name, operation, timings) {
   }
 }
 
+
+async function sendCachedStickerForIdentity({
+  api,
+  event,
+  decorationId,
+  identity,
+  resultCacheFile
+} = {}) {
+  if (!api || !event?.threadId || typeof api.sendCustomStickerUrl !== "function") {
+    return null;
+  }
+  const decoration = getDecoration(decorationId);
+  if (!decoration || !identity) return null;
+
+  const cacheFile = resultCacheFile || DEFAULT_RESULT_CACHE_FILE;
+  const key = createIdentityResultCacheKey(identity, decorationId);
+  const cached = readStickerResultCache(key, {
+    filePath: cacheFile,
+    ttlMs: AVATAR_RESULT_CACHE_TTL_MS
+  });
+  if (!cached) return null;
+
+  stickerService.registerStickerApi(api);
+  const startedAt = Date.now();
+  try {
+    const sent = await api.sendCustomStickerUrl({
+      staticImgUrl: stickerService.buildStickerUrl(cached.cdnUrl, cached.format === "webp"),
+      animationImgUrl: stickerService.buildStickerUrl(cached.cdnUrl, cached.format === "webp"),
+      threadId: event.threadId,
+      threadType: event.type,
+      reply: getReplyQuote(event)?.msgId || null,
+      width: cached.width,
+      height: cached.height
+    });
+    const totalMs = Date.now() - startedAt;
+    console.info("[stk] identityCache=HIT send=" + totalMs + "ms");
+    return {
+      path: null,
+      width: cached.width,
+      height: cached.height,
+      size: 0,
+      animated: cached.animated,
+      format: cached.format,
+      cached: true,
+      cachedBy: "uid",
+      response: sent,
+      decoration,
+      timings: { cacheSend: totalMs, totalMs }
+    };
+  } catch (error) {
+    if (!isExpiredCdnError(error)) throw error;
+    deleteStickerResultCache(key, { filePath: cacheFile });
+    console.warn("[stk] CDN avatar cache đã hết hạn; sẽ tạo lại sticker.");
+    return null;
+  }
+}
+
 async function processDiscordSticker({ api, event, mediaUrl, decorationId, resultCacheFile: resultCacheFileOverride, cacheIdentity }) {
   const totalStartedAt = Date.now();
   const timings = {};
@@ -884,5 +941,6 @@ module.exports = {
   writeStickerResultCache,
   deleteStickerResultCache,
   RESULT_CACHE_TTL_MS,
+  sendCachedStickerForIdentity,
   processDiscordSticker
 };
