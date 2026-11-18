@@ -105,6 +105,97 @@ test("static Discord STK Canvas fast path renders a circular avatar and transpar
   fs.rmSync(output.path, { force: true });
 });
 
+
+test("Discord STK result cache persists uploaded CDN URLs and expires entries", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-result-cache-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cacheFile = path.join(dir, "results.json");
+  const mediaUrl = "https://zalo-chat-static.zadn.vn/avatar/user-1.png?token=abc";
+  const key = service.createResultCacheKey(mediaUrl, 12);
+  assert.equal(key, service.createResultCacheKey(mediaUrl, 12));
+  assert.notEqual(key, service.createResultCacheKey(mediaUrl, 13));
+
+  assert.equal(service.writeStickerResultCache(key, {
+    cdnUrl: "https://f123.zdn.vn/sticker/user-1.png",
+    format: "png",
+    width: 288,
+    height: 288,
+    animated: false
+  }, { filePath: cacheFile, now: 1000 }), true);
+
+  assert.deepEqual(service.readStickerResultCache(key, {
+    filePath: cacheFile,
+    now: 1500
+  }), {
+    cdnUrl: "https://f123.zdn.vn/sticker/user-1.png",
+    format: "png",
+    width: 288,
+    height: 288,
+    animated: false,
+    cachedAt: 1000
+  });
+  assert.equal(service.readStickerResultCache(key, {
+    filePath: cacheFile,
+    now: 1000 + service.RESULT_CACHE_TTL_MS + 1
+  }), null, "expired CDN entries must not be reused");
+
+  assert.equal(service.deleteStickerResultCache(key, { filePath: cacheFile }), true);
+  assert.equal(service.readStickerResultCache(key, { filePath: cacheFile, now: 1500 }), null);
+  assert.equal(service.writeStickerResultCache("unsafe", {
+    cdnUrl: "http://example.com/sticker.png"
+  }, { filePath: cacheFile, now: 1500 }), false, "only HTTPS CDN URLs may be cached");
+});
+
+test("Discord STK result-cache hit skips source download, rendering and Zalo upload", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-result-hit-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cacheFile = path.join(dir, "results.json");
+  const mediaUrl = "https://zalo-chat-static.zadn.vn/avatar/user-2.png?token=stable";
+  const key = service.createResultCacheKey(mediaUrl, 42);
+  service.writeStickerResultCache(key, {
+    cdnUrl: "https://f456.zdn.vn/sticker/user-2.png",
+    format: "png",
+    width: 288,
+    height: 288,
+    animated: false
+  }, { filePath: cacheFile });
+
+  const originalRegister = stickerService.registerStickerApi;
+  const originalFetch = stickerService.fetchSource;
+  const calls = [];
+  stickerService.registerStickerApi = () => ({});
+  stickerService.fetchSource = async () => {
+    throw new Error("cache hit must not download source media");
+  };
+  const api = {
+    sendCustomStickerUrl: async options => {
+      calls.push(options);
+      return { sent: true };
+    },
+    uploadStickerImage: async () => {
+      throw new Error("cache hit must not upload a second time");
+    }
+  };
+
+  try {
+    const result = await service.processDiscordSticker({
+      api,
+      event: { threadId: "thread-1", type: 1, data: {} },
+      mediaUrl,
+      decorationId: 42,
+      resultCacheFile: cacheFile
+    });
+    assert.equal(result.cached, true);
+    assert.equal(result.response.sent, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].threadId, "thread-1");
+    assert.match(calls[0].staticImgUrl, /^https:\/\//);
+  } finally {
+    stickerService.registerStickerApi = originalRegister;
+    stickerService.fetchSource = originalFetch;
+  }
+});
+
 test("STK asset inventory resolves exact and alternate frame names", t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-assets-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
