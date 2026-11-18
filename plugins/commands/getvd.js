@@ -6,6 +6,7 @@ const os = require("os");
 const { parseQuote, hint } = require("../../core/mediaReply");
 const { getBuffer: queuedGetBuffer, getJson: queuedGetJson } = require("../../core/runtime/queuedHttp");
 const { ThreadType } = require("zalo-client");
+const { isBotAdmin } = require("../../core/runtime/requesterGreeting");
 
 const ADULT_VIDEO_API = "https://adultembed.com/api/v1/";
 const ADULT_PLAYER_BASE = "https://adultembed.com/player/embed/";
@@ -40,6 +41,29 @@ function normalizeAdultVideoResults(payload) {
   return rows.filter(item => Number.isSafeInteger(Number(item?.id)) && Number(item.id) > 0);
 }
 
+function resolveAdultVideoAccess(event) {
+  const type = event?.type;
+  if (type === ThreadType.User) {
+    return { allowed: true, audience: "private" };
+  }
+  if (type === ThreadType.Group) {
+    const uid = event?.data?.uidFrom;
+    if (!isBotAdmin(uid)) {
+      return {
+        allowed: false,
+        audience: "group",
+        message: "🔒 Chỉ admin bot mới được gửi kết quả video 18+ vào nhóm. Hãy nhờ quản trị viên bot thực hiện lệnh."
+      };
+    }
+    return { allowed: true, audience: "group" };
+  }
+  return {
+    allowed: false,
+    audience: "unknown",
+    message: "🔒 Lệnh /vd 18+ chỉ hỗ trợ chat riêng hoặc nhóm Zalo."
+  };
+}
+
 function formatAdultVideoResults(items, query = "") {
   const rows = (Array.isArray(items) ? items : []).slice(0, 5).map((item, index) => {
     const id = Number(item.id);
@@ -56,8 +80,9 @@ function formatAdultVideoResults(items, query = "") {
   const heading = query ? "🔎 TÌM VIDEO 18+ · " + cleanDisplayText(query, 80) : "🎲 VIDEO 18+ NGẪU NHIÊN";
   return [
     "🔞 " + heading,
-    "Chỉ dành cho người từ đủ 18 tuổi và nơi việc truy cập nội dung này là hợp pháp.",
-    "Không chia sẻ nội dung này cho người chưa thành niên.",
+    "NỘI DUNG CHỈ DÀNH CHO NGƯỜI TỪ ĐỦ 18 TUỔI.",
+    "Không mở hoặc chia sẻ nếu bạn chưa đủ 18 tuổi; chỉ truy cập khi hợp pháp tại nơi bạn ở.",
+    "Quản trị viên nhóm cần thông báo trước cho thành viên về nội dung người lớn.",
     "━━━━━━━━━━━━━━━━━━",
     ...(rows.length ? rows : ["Không tìm thấy video phù hợp. Thử từ khóa khác."]),
     "━━━━━━━━━━━━━━━━━━",
@@ -67,17 +92,18 @@ function formatAdultVideoResults(items, query = "") {
 
 async function runAdultVideo({ api, event, args }) {
   const { threadId, type } = event || {};
-  if (type !== ThreadType.User) {
-    return api.sendMessage({
-      plain: true,
-      msg: "🔒 Lệnh /vd 18+ chỉ hoạt động trong tin nhắn riêng, không gửi nội dung người lớn vào nhóm."
-    }, threadId, type);
+  const access = resolveAdultVideoAccess(event);
+  if (!access.allowed) {
+    return api.sendMessage({ plain: true, msg: access.message }, threadId, type);
   }
 
   const query = args.slice(1).join(" ").trim().slice(0, 120);
+  const audienceNotice = access.audience === "group"
+    ? "🔞 LƯU Ý: Kết quả sau đây là nội dung 18+. Chỉ thành viên đủ 18 tuổi mới được mở; quản trị viên nhóm vui lòng bảo đảm mọi thành viên phù hợp trước khi tiếp tục."
+    : "🔞 Chỉ tiếp tục khi bạn đã đủ 18 tuổi và việc truy cập hợp pháp tại nơi bạn ở.";
   await api.sendMessage({
     plain: true,
-    msg: "🔞 Bạn đang yêu cầu nội dung 18+. Chỉ tiếp tục khi bạn đã đủ 18 tuổi và việc truy cập hợp pháp tại nơi bạn ở. Đang tìm video..."
+    msg: audienceNotice + " Đang tìm video..."
   }, threadId, type);
 
   const response = await queuedGetJson(buildAdultVideoApiUrl(args), {
@@ -167,5 +193,6 @@ module.exports._test = {
   isAdultVideoRequest,
   buildAdultVideoApiUrl,
   normalizeAdultVideoResults,
-  formatAdultVideoResults
+  formatAdultVideoResults,
+  resolveAdultVideoAccess
 };
