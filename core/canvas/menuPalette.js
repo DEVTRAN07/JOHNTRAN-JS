@@ -4,10 +4,18 @@ const fs = require("fs");
 const path = require("path");
 
 const THEME_FILE = path.join(__dirname, "..", "..", "data", "menu-theme.json");
-const DEFAULT_THEME = "gold";
+const DEFAULT_THEME = "blue-neon";
 const HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
 const PRESETS = Object.freeze({
+  "blue-neon": Object.freeze({
+    label: "JOHNTRAN · Blue Neon",
+    accent: "#62dcff",
+    background: ["#030914", "#07182d", "#102b4b", "#040d1d"],
+    panel: ["#102b4b", "#08182c"],
+    card: ["#122c4b", "#091a31"],
+    footer: ["#0c2038", "#071426"]
+  }),
   gold: Object.freeze({
     label: "Gold · Đen nhũ vàng",
     accent: "#d4af37",
@@ -59,7 +67,9 @@ const PRESETS = Object.freeze({
 });
 
 const ALIASES = Object.freeze({
-  default: "gold", reset: "gold", editorial: "gold", classic: "gold", vang: "gold",
+  default: "blue-neon", reset: "blue-neon", editorial: "blue-neon", classic: "blue-neon",
+  neon: "blue-neon", johntran: "blue-neon", brand: "blue-neon",
+  vang: "gold",
   blue: "ocean", xanhduong: "ocean", bien: "ocean",
   tim: "purple",
   green: "emerald", xanhla: "emerald", ngoc: "emerald",
