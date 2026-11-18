@@ -74,7 +74,7 @@ async function renderSearchGrid(query, tracks, { page = 1, totalPages = 1, sourc
   await theme.paintBackground(ctx, W, H);
 
   theme.label(ctx, "JOHNTRAN MUSIC  /  SEARCH", pad, S(28), { size: 10 });
-  theme.text(ctx, theme.truncate(ctx, query || "Kết quả tìm kiếm", W - pad * 2), pad, S(67), {
+  theme.text(ctx, query || "Kết quả tìm kiếm", pad, S(67), {
     size: 27, family: "JT-Display-Bold", color: p.ink, maxWidth: W - pad * 2
   });
   theme.text(ctx, shown.length + " BÀI HÁT  ·  " + (source || "SOUNDCLOUD") +
