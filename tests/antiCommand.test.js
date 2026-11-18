@@ -20,7 +20,7 @@ const command = (() => {
   return require("../plugins/commands/anti");
 })();
 
-test("bare /anti sends the Anti-Protection image first and the status/instructions below", async () => {
+test("bare /anti sends one Anti-Protection image with no duplicate plaintext table", async () => {
   const sent = [];
   const data = {
     anti_nude: true,
@@ -49,7 +49,7 @@ test("bare /anti sends the Anti-Protection image first and the status/instructio
     assert.deepEqual(rendered[0].data.items.map(item => item.enabled), [
       true, true, false, true, false, false
     ], "the /anti image must mirror the exact group flags also managed by Panel");
-    assert.equal(sent.length, 2, "the image and text guide are sent as two ordered messages");
+    assert.equal(sent.length, 1, "the image and its caption are the only message when Canvas succeeds");
     assert.deepEqual(sent[0].payload.attachments, [rendered[0].file]);
     assert.match(sent[0].payload.msg, /ANTI-PROTECTION V2/);
     assert.match(sent[1].payload.msg, /antinude on\|off/);
