@@ -2148,11 +2148,13 @@ function shouldQueueIncoming(context = {}) {
 
   const threadId = String(event?.threadId || "");
   const uid = String(event?.data?.uidFrom || "");
-  if (!threadId || !isEnabled(Threads, threadId)) return false;
+  if (!threadId) return false;
 
   const lower = engine.normalizeText(content);
   const room = game.get(threadId);
-  if (!room) return lower === "go";
+  // With no in-memory room, only the creation keyword can use group settings.
+  if (!room) return lower === "go" && isEnabled(Threads, threadId);
+  if (!isEnabled(Threads, threadId)) return false;
 
   // A room being settled must consume messages until the financial operation
   // completes; preserve the existing safety response for every non-command.

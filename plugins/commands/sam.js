@@ -1156,9 +1156,18 @@ async function handleIncomingImpl(context = {}) {
 module.exports.run = context => withRoomLock(
   context?.event?.threadId, () => runCommand(context)
 );
-module.exports.handleIncoming = context => withRoomLock(
-  context?.event?.threadId, () => handleIncomingImpl(context)
-);
+function hasActiveRoom(threadId) {
+  return Boolean(threadId && game.get(String(threadId)));
+}
+
+module.exports.hasActiveRoom = hasActiveRoom;
+module.exports.handleIncoming = context => {
+  const threadId = context?.event?.threadId;
+  // Persisted rooms are restored in onLoad before listeners begin. Skip lock
+  // acquisition and storage access for groups with no in-memory Sâm table.
+  if (!hasActiveRoom(threadId)) return false;
+  return withRoomLock(threadId, () => handleIncomingImpl(context));
+};
 module.exports._test = {
   privateDestination, roomCaption, gameConflict, gameGuide, help,
   sendPrivateGameGuide, distributeHands, sendPrivateHand,

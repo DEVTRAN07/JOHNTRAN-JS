@@ -15,5 +15,6 @@ module.exports.config = {
 };
 
 module.exports.run = async function (context) {
+  if (!sam.hasActiveRoom?.(context?.event?.threadId)) return false;
   return sam.handleIncoming(context);
 };

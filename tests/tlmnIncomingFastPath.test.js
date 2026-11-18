@@ -76,3 +76,21 @@ test.after(() => {
   if (previousConfig === undefined) delete global.config;
   else global.config = previousConfig;
 });
+
+
+test("TLMN avoids group-setting lookup for unrelated chat when no room exists", () => {
+  global.config = { prefix: "/" };
+  let cacheReads = 0;
+  const context = {
+    isSelf: false,
+    Threads: { getCachedData() { cacheReads++; return { data: { tlmn_enabled: true } }; } },
+    event: {
+      type: ThreadType.Group,
+      threadId: "tlmn-no-room-no-config-read",
+      data: { uidFrom: "player-1", content: "chào cả nhóm" }
+    }
+  };
+
+  assert.equal(command._test.shouldQueueIncoming(context), false);
+  assert.equal(cacheReads, 0);
+});

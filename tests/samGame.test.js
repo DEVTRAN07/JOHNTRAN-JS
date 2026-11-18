@@ -1483,3 +1483,53 @@ test("GameVH Sâm timeout plays the highest card when Báo 1 requires a response
   assert.equal(room.currentCombo.mainRank, 15);
   game.removeRoom(threadId);
 });
+
+
+test("Sâm incoming fast path skips storage for groups without a live table", async () => {
+  const threadId = "sam-incoming-no-room-fast";
+  let cacheReads = 0;
+  let durableReads = 0;
+  const result = command.handleIncoming({
+    event: {
+      threadId,
+      type: require("zalo-client").ThreadType.Group,
+      data: { uidFrom: "member-1", content: "chào cả nhóm" }
+    },
+    Threads: {
+      getCachedData() { cacheReads++; return null; },
+      async getData() { durableReads++; return { data: {} }; }
+    }
+  });
+
+  assert.equal(command.hasActiveRoom(threadId), false);
+  assert.equal(result, false);
+  assert.equal(cacheReads, 0);
+  assert.equal(durableReads, 0);
+});
+
+test("Sâm incoming fast path uses the restored in-memory room without re-reading storage", async () => {
+  const threadId = "sam-incoming-live-room-fast";
+  const created = game.create(threadId, { uid: "host", name: "Host" }, { id: "81691" });
+  assert.equal(created.ok, true);
+  let cacheReads = 0;
+  let durableReads = 0;
+  try {
+    assert.equal(command.hasActiveRoom(threadId), true);
+    const result = await command.handleIncoming({
+      event: {
+        threadId,
+        type: require("zalo-client").ThreadType.Group,
+        data: { uidFrom: "member-1", content: "chào cả nhóm" }
+      },
+      Threads: {
+        getCachedData() { cacheReads++; return null; },
+        async getData() { durableReads++; return { data: {} }; }
+      }
+    });
+    assert.equal(result, false);
+    assert.equal(cacheReads, 0);
+    assert.equal(durableReads, 0);
+  } finally {
+    game.removeRoom(threadId);
+  }
+});
