@@ -87,14 +87,16 @@ function inspectGuardViolation(data, thread = {}) {
   return { blockedUrl, badword };
 }
 
-async function readGuardThread(Threads, threadId) {
-  let record = null;
-  try { record = Threads?.getCachedData?.(String(threadId)) || null; } catch {}
+async function readGuardThread(Threads, threadId, initialRecord = null) {
+  let record = initialRecord || null;
+  if (!record) {
+    try { record = Threads?.getCachedData?.(String(threadId)) || null; } catch {}
+  }
   if (!record) record = await Threads.getData(threadId);
   return { ...(record?.data || record || {}) };
 }
 
-module.exports.run = async function ({ api, event, Threads, isSelf }) {
+module.exports.run = async function ({ api, event, Threads, isSelf, threadData = null }) {
   if (isSelf) return;
   const { data = {}, threadId } = event || {};
   const uid = String(data.uidFrom || "");
@@ -103,7 +105,7 @@ module.exports.run = async function ({ api, event, Threads, isSelf }) {
   // Fast reject before any group-admin API request or serialized queue.
   let initialThread;
   try {
-    initialThread = await readGuardThread(Threads, threadId);
+    initialThread = await readGuardThread(Threads, threadId, threadData);
   } catch {
     return;
   }

@@ -63,3 +63,29 @@ test("Rank uses the hot group snapshot and skips writes during a member EXP cool
 test.after(() => {
   global.config = previousConfig;
 });
+
+
+test("Rank uses the listener-provided snapshot without reading the cache again", async () => {
+  let cacheReads = 0;
+  let writes = 0;
+  const uid = "member-listener-snapshot";
+  await rank.run({
+    api: {},
+    event: {
+      threadId: "rank-listener-snapshot",
+      type: 1,
+      isSelf: false,
+      data: { uidFrom: uid, content: "hello group" }
+    },
+    threadData: { data: { event_rank: true, ["rankExp_" + uid]: Date.now() } },
+    Threads: {
+      getCachedData() { cacheReads++; throw new Error("listener snapshot should be reused"); },
+      async getData() { throw new Error("listener snapshot should be enough"); },
+      async setData() { writes++; }
+    },
+    isSelf: false
+  });
+
+  assert.equal(cacheReads, 0);
+  assert.equal(writes, 0);
+});

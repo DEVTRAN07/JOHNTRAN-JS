@@ -34,7 +34,7 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
   // Use the synchronous hot cache so the event path never waits for a database round-trip.
   const isGroupEvent = isGroupEventPayload(eventType, eventData);
   if (isGroupEvent && eventData?.threadId) {
-    const thread = Threads.getCachedData?.(eventData.threadId);
+    const thread = dispatchOptions.threadData || Threads.getCachedData?.(eventData.threadId);
     // Fail closed: an uncached/missing setting remains OFF until /bot on.
     if (!isGroupBotEnabled(thread)) return;
   }
@@ -115,6 +115,7 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
         reply: context.reply,
         Users,
         Threads,
+        threadData: dispatchOptions.threadData || null,
         replyData: context.replyData,
         threadType: context.threadType
       });
@@ -131,6 +132,9 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
         reply: context.reply,
         Users,
         Threads,
+        threadData: dispatchOptions.threadData || null,
+        cachedThreadRecord: dispatchOptions.threadData || null,
+        cachedThreadCacheChecked: Boolean(dispatchOptions.threadData),
         replyData: context.replyData,
         threadType: context.threadType
       });

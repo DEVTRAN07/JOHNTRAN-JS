@@ -175,3 +175,29 @@ test("Guard does not call Zalo group-role APIs for harmless messages in an enabl
   assert.equal(groupRoleCalls, 0);
   assert.equal(storageReads, 0);
 });
+
+
+test("Guard reuses the listener-provided group snapshot for its cheap prefilter", async () => {
+  let cacheReads = 0;
+  let storageReads = 0;
+  let groupRoleCalls = 0;
+  const threadId = "guard-listener-snapshot";
+  const api = {
+    async getGroupInfo() { groupRoleCalls++; return { gridInfoMap: {} }; },
+    async getOwnId() { groupRoleCalls++; return "bot-id"; }
+  };
+  await guard.run({
+    api,
+    event: makeEvent(threadId, "hello everyone", "listener-snapshot"),
+    threadData: { data: { event_guard: false } },
+    Threads: {
+      getCachedData() { cacheReads++; throw new Error("listener snapshot should be reused"); },
+      async getData() { storageReads++; throw new Error("listener snapshot should be enough"); }
+    },
+    isSelf: false
+  });
+
+  assert.equal(cacheReads, 0);
+  assert.equal(storageReads, 0);
+  assert.equal(groupRoleCalls, 0);
+});

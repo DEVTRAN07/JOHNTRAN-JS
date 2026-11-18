@@ -24,7 +24,7 @@ function expForLevel(level) {
   return Math.round(BASE_LEVEL_EXP * Math.pow(level, 1.4));
 }
 
-module.exports.run = async function ({ api, event, Threads, isSelf }) {
+module.exports.run = async function ({ api, event, Threads, isSelf, threadData = null }) {
   if (isSelf) return;
 
   const { data, threadId } = event;
@@ -38,8 +38,10 @@ module.exports.run = async function ({ api, event, Threads, isSelf }) {
   // Chỉ chạy khi nhóm đã bật
   // The listener's group snapshot is already hot for normal messages.
   // Do not await a storage read when no cached rank setting is enabled.
-  let record = null;
-  try { record = Threads.getCachedData?.(String(threadId)) || null; } catch {}
+  let record = threadData || null;
+  if (!record) {
+    try { record = Threads.getCachedData?.(String(threadId)) || null; } catch {}
+  }
   if (!record) record = await Threads.getData(threadId);
   const thread = { ...(record?.data || record || {}) };
   if (!thread.event_rank) return;

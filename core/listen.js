@@ -309,7 +309,10 @@ function startListening(api) {
 
     const dispatchMessageEvents = (dispatchOptions = {}) => {
       if (isGroupThread && !groupBotEnabled) return;
-      Promise.resolve(handleEvent("message", event, api, event.isSelf === true, dispatchOptions))
+      Promise.resolve(handleEvent("message", event, api, event.isSelf === true, {
+        ...dispatchOptions,
+        threadData
+      }))
         .catch((err) => logger.log(`Lỗi handleEvent message (bỏ qua): ${err.message}`, "warn", {
           source: "listener-event",
           isGroup: event?.type === ThreadType.Group,
