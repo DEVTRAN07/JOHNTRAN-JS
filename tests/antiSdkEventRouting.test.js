@@ -69,7 +69,9 @@ function installAntiRuntime({ threadId, initialData }) {
     : null;
   Threads.getData = async id => {
     calls.getData++;
-    return { threadId: id, data: state };
+    // The production controller returns a detached snapshot; avoid aliasing
+    // state into the write mock, which would erase the snapshot before copy.
+    return { threadId: id, data: { ...state } };
   };
   Threads.setDataAndWait = async (_id, next) => {
     calls.saved++;
