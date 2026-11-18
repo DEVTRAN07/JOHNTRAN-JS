@@ -2,6 +2,8 @@
 
 const { test, after } = require("node:test");
 const workerPool = require("../core/workerPool");
+const fs = require("node:fs");
+const { renderCanvas } = require("../core/canvas/workerRender");
 
 after(async () => {
   await workerPool.shutdown();
