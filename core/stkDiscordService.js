@@ -655,9 +655,7 @@ async function sendCachedStickerForIdentity({
   identity,
   resultCacheFile
 } = {}) {
-  if (!api || !event?.threadId || typeof api.sendCustomStickerUrl !== "function") {
-    return null;
-  }
+  if (!api || !event?.threadId) return null;
   const decoration = getDecoration(decorationId);
   if (!decoration || !identity) return null;
 
@@ -670,6 +668,7 @@ async function sendCachedStickerForIdentity({
   if (!cached) return null;
 
   stickerService.registerStickerApi(api);
+  if (typeof api.sendCustomStickerUrl !== "function") return null;
   const startedAt = Date.now();
   try {
     const sent = await api.sendCustomStickerUrl({
