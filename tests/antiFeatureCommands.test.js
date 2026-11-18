@@ -2,6 +2,13 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const workerRender = require("../core/canvas/workerRender");
+const originalRenderCanvas = workerRender.renderCanvas;
+const renderedCards = [];
+workerRender.renderCanvas = async (type, data) => {
+  renderedCards.push({ type, data });
+  return "/tmp/jt-anti-feature-test.png";
+};
 
 const commands = {
   antinude: require("../plugins/commands/antinude"),
@@ -81,10 +88,15 @@ test("all four commands persist their independent on/off settings", async () => 
       const fixture = makeContext(command, "on");
       await commands[command].run(fixture.context);
       assert.equal(fixture.data[key], true, command + " should be enabled");
+      assert.match(fixture.messages[0].msg, /THÔNG BÁO HỆ THỐNG/i);
+      assert.deepEqual(fixture.messages[0].attachments, ["/tmp/jt-anti-feature-test.png"]);
+      assert.equal(renderedCards.at(-1).type, "card");
+      assert.match(renderedCards.at(-1).data.subtitle, /Đã bật thành công/);
 
       fixture.context.args = ["off"];
       await commands[command].run(fixture.context);
       assert.equal(fixture.data[key], false, command + " should be disabled");
+      assert.match(renderedCards.at(-1).data.subtitle, /Đã tắt thành công/);
     }
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
@@ -116,4 +128,9 @@ test("antinude cannot be enabled without an AI API key", async () => {
     if (previousAlias === undefined) delete process.env.JT_ANTINUDE_OPENAI_API_KEY;
     else process.env.JT_ANTINUDE_OPENAI_API_KEY = previousAlias;
   }
+});
+
+
+test.after(() => {
+  workerRender.renderCanvas = originalRenderCanvas;
 });
