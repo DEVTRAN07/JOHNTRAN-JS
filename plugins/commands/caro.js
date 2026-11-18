@@ -60,7 +60,14 @@ async function recallBoardMessages(api, threadId, type, messages) {
   const failed = [];
   for (const target of pending) {
     try {
-      await api.undo({ msgId: target.msgId, cliMsgId: target.cliMsgId }, String(threadId), type);
+      const response = await api.undo(
+        { msgId: target.msgId, cliMsgId: target.cliMsgId },
+        String(threadId),
+        type
+      );
+      if (response === false || response?.success === false) {
+        throw new Error("Zalo từ chối thu hồi card cũ");
+      }
       recalled += 1;
     } catch (error) {
       failed.push(target);
@@ -329,16 +336,20 @@ async function sendBoard(api, event, session, heading, extraLines = []) {
     let imagePath;
     const caption = boardCaption(boardSession, heading, extraLines);
     try {
-      imagePath = await renderCanvas("caro", { session: boardSession }, { timeout: 20000, poolSize: 1 });
+      imagePath = await workerRender.renderCanvas("caro", { session: boardSession }, { timeout: 20000, poolSize: 1 });
 
       // recallAfterMs: 0 disables the generic 60-second TTL for the live board.
       // Send the new board first; sendBoardReplacement recalls the old card only
       // after this send succeeds and Zalo supplies the new message IDs.
-      const response = await sendBoardReplacement(api, threadId, event.type, () =>
-        api.sendMessage(withRequesterMention(event, {
+      // Match the live-card replacement lifecycle used by Tiến Lên/Sâm:
+      // send through raw Zalo API, confirm IDs, then recall the previous card.
+      const rawApi = getRawApi(api);
+      const response = await sendBoardReplacement(rawApi, threadId, event.type, () =>
+        rawApi.sendMessage(withRequesterMention(event, {
           msg: caption,
           attachments: [imagePath],
-          recallAfterMs: 0
+          recallAfterMs: 0,
+          ttlKind: "card"
         }), threadId, event.type)
       );
       return response;
