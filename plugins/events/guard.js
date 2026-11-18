@@ -63,9 +63,9 @@ function badwordHit(text) {
 }
 
 function getMessageText(data) {
-  if (typeof data?.content === "string") return data.content;
+  // Include caption plus nested Zalo metadata (shared cards, links, propertyExt).
   try { return JSON.stringify(data || ""); }
-  catch { return ""; }
+  catch { return String(data?.content || ""); }
 }
 
 function withDeleteStatus(deleted, error) {
