@@ -130,7 +130,7 @@ test("Canvas text does not truncate the end of a long label", () => {
 
 test("Canvas keeps every line of multiline text and colors its words", () => {
   const { ctx } = theme.newCanvas(640, 220);
-  const fullText = "Dòng đầu tiên có đủ chữ\\nDòng thứ hai cũng không bị mất\\nDòng ba kết thúc ở đây";
+  const fullText = "Dòng đầu tiên có đủ chữ\nDòng thứ hai cũng không bị mất\nDòng ba kết thúc ở đây";
   const result = theme.drawMulticolorText(ctx, fullText, 20, 40, {
     size: 22,
     maxWidth: 560,
