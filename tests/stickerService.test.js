@@ -205,3 +205,47 @@ test("FFmpeg composes a transparent decoration overlay over a still image and re
   assert.equal(pixelAlpha(Math.floor(result.width / 2), Math.floor(result.height / 2)), 255,
     "circle centre must remain opaque");
 });
+
+
+test("Zalo request supports per-request timeout and retry overrides for STK media", async () => {
+  const zaloHttp = require("../vendor/zalo-client/dist/cjs/core/http.cjs");
+  let calls = 0;
+  let observedSignal = null;
+  const ctx = {
+    cookie: { getCookieString: async () => "" },
+    userAgent: "JOHNTRAN-STK-test",
+    options: {
+      retry: {
+        timeoutMs: 60000,
+        limit: 3,
+        delayMs: 0,
+        maxDelayMs: 0,
+        methods: ["GET", "HEAD"]
+      },
+      polyfill: async (_url, options) => {
+        calls += 1;
+        observedSignal = options.signal;
+        assert.equal(Object.prototype.hasOwnProperty.call(options, "timeoutMs"), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(options, "retries"), false);
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener("abort", () => reject(new Error("per-request timeout")), {
+            once: true
+          });
+        });
+      }
+    }
+  };
+
+  await assert.rejects(
+    zaloHttp.request(ctx, "https://files.zdn.vn/sticker.png", {
+      timeoutMs: 25,
+      retries: 0
+    }),
+    /per-request timeout/
+  );
+
+  assert.equal(calls, 1, "retries=0 must prevent repeated 60-second media downloads");
+  assert.ok(observedSignal?.aborted, "the per-request timeout must abort the HTTP request");
+  assert.equal(ctx.options.retry.timeoutMs, 60000, "global Zalo timeout must not be changed");
+  assert.equal(ctx.options.retry.limit, 3, "global retry policy must not be changed");
+});
