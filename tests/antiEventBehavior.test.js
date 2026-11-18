@@ -486,3 +486,109 @@ test("Anti Link preserves all three warnings when Zalo refuses the fourth-offenc
   assert.equal(threadData.anti_link_warnings.member, 3);
   assert.match(calls.sent[0].payload.msg, /Zalo từ chối kick/i);
 });
+
+test("Anti-Join counts repeated group joins and kicks on the third join within ten minutes", async () => {
+  const { api, calls } = makeApi();
+  const threadData = { anti_join: true };
+  for (let join = 1; join <= 2; join++) {
+    await run(threadData, api, {
+      threadId: "anti-join-group",
+      type: "join",
+      data: { updateMembers: [{ id: "repeat-member", dName: "Repeat Member" }] }
+    }, "group_event");
+    assert.equal(calls.kicked.length, 0, "the first two joins must only be recorded");
+    assert.equal(threadData.anti_join_history["repeat-member"].length, join);
+  }
+
+  await run(threadData, api, {
+    threadId: "anti-join-group",
+    type: "join",
+    data: { updateMembers: [{ id: "repeat-member", dName: "Repeat Member" }] }
+  }, "group_event");
+
+  assert.deepEqual(calls.kicked, [{ uid: "repeat-member", gid: "anti-join-group" }]);
+  assert.equal(threadData.anti_join_history["repeat-member"], undefined,
+    "successful kick clears the repeated-join history");
+  assert.ok(calls.sent.some(item => /Anti-Join/.test(item.payload.msg)));
+});
+
+test("Anti-Join retains its three-join history and retries when Zalo refuses the kick", async () => {
+  const { api, calls } = makeApi({
+    removeUserFromGroup: async uid => ({ errorMembers: [uid] })
+  });
+  const threadData = { anti_join: true };
+  const joinEvent = {
+    threadId: "anti-join-retry-group",
+    type: "join",
+    data: { updateMembers: [{ id: "repeat-member", dName: "Repeat Member" }] }
+  };
+
+  for (let join = 1; join <= 4; join++) {
+    await run(threadData, api, joinEvent, "group_event");
+  }
+
+  assert.equal(calls.kicked.length, 2,
+    "the third join attempts a kick; a later join retries after the API failure");
+  assert.equal(threadData.anti_join_history["repeat-member"].length, 4);
+  assert.ok(calls.sent.some(item => /chưa kick được/.test(item.payload.msg)));
+});
+
+test("Anti-Reaction issues three warnings then kicks on the fourth spam burst", async () => {
+  global.antiReactionSpamCache = new Map();
+  const { api, calls } = makeApi();
+  const threadData = { anti_reaction: true };
+  const reactionEvent = {
+    threadId: "anti-reaction-group",
+    type: ThreadType.Group,
+    data: { uidFrom: "reaction-spammer", dName: "Reaction Spammer" }
+  };
+
+  for (let burst = 1; burst <= 3; burst++) {
+    for (let reaction = 1; reaction <= 6; reaction++) {
+      await run(threadData, api, reactionEvent, "reaction");
+    }
+    assert.equal(calls.kicked.length, 0, "the first three spam bursts only warn");
+    assert.equal(threadData.anti_reaction_warnings["reaction-spammer"], burst);
+  }
+
+  for (let reaction = 1; reaction <= 6; reaction++) {
+    await run(threadData, api, reactionEvent, "reaction");
+  }
+
+  assert.deepEqual(calls.kicked, [{
+    uid: "reaction-spammer",
+    gid: "anti-reaction-group"
+  }]);
+  assert.equal(threadData.anti_reaction_warnings["reaction-spammer"], undefined,
+    "a successful fourth-offence kick clears the warning counter");
+  assert.equal(calls.sent.length, 4);
+  assert.match(calls.sent[0].payload.msg, /Cảnh cáo 1\/3/);
+  assert.match(calls.sent[1].payload.msg, /Cảnh cáo 2\/3/);
+  assert.match(calls.sent[2].payload.msg, /Cảnh cáo 3\/3/);
+  assert.match(calls.sent[3].payload.msg, /bị kick khỏi nhóm/i);
+});
+
+test("Anti-Reaction preserves three warnings when Zalo refuses the fourth-burst kick", async () => {
+  global.antiReactionSpamCache = new Map();
+  const { api, calls } = makeApi({
+    removeUserFromGroup: async uid => ({ errorMembers: [uid] })
+  });
+  const threadData = {
+    anti_reaction: true,
+    anti_reaction_warnings: { "reaction-spammer": 3 }
+  };
+  const reactionEvent = {
+    threadId: "anti-reaction-retry-group",
+    type: ThreadType.Group,
+    data: { uidFrom: "reaction-spammer", dName: "Reaction Spammer" }
+  };
+
+  for (let reaction = 1; reaction <= 6; reaction++) {
+    await run(threadData, api, reactionEvent, "reaction");
+  }
+
+  assert.equal(calls.kicked.length, 1);
+  assert.equal(threadData.anti_reaction_warnings["reaction-spammer"], 3);
+  assert.ok(calls.sent.some(item => /chưa kick được/.test(item.payload.msg)));
+});
+
