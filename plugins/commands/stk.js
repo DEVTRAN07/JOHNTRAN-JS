@@ -1,14 +1,11 @@
 "use strict";
 
-const fs = require("node:fs");
-const path = require("node:path");
 const { enqueue } = require("../../core/jobQueue");
 const { parseQuote } = require("../../core/mediaReply");
 const { getUserAvatar, getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const stkDiscord = require("../../core/stkDiscordService");
 
 const PREFIX = () => global.config?.prefix || "/";
-const MENU_IMAGE = path.join(stkDiscord.DECOR_DIR, "menu.jpg");
 
 module.exports.config = {
   name: "stk",
@@ -135,33 +132,29 @@ async function sendMenu(api, event) {
   const tag = "@" + name;
   const mentions = uid ? [{ uid, pos: 0, len: tag.length }] : [];
 
-  if (fs.existsSync(MENU_IMAGE)) {
-    try {
-      return await api.sendMessage(
-        {
-          msg: "✨ AVATAR DECORATION — DISCORD (200 KHUNG) ✨",
-          mentions,
-          attachments: [MENU_IMAGE],
-          ttlKind: "media"
-        },
-        event.threadId,
-        event.type
-      );
-    } catch (error) {
-      console.error("[stk] Không gửi được menu.jpg:", error?.message || error);
-    }
+  try {
+    const menuPath = await stkDiscord.ensureMenuFile();
+    return await api.sendMessage(
+      {
+        msg: "✨ AVATAR DECORATION — DISCORD (200 KHUNG) ✨",
+        mentions,
+        attachments: [menuPath],
+        ttlKind: "media"
+      },
+      event.threadId,
+      event.type
+    );
+  } catch (error) {
+    console.error("[stk] Không tải/gửi được menu Discord:", error?.message || error);
+    const assets = stkDiscord.getAssetStatus();
+    const warning = [
+      "⚠️ Không tải được menu.jpg từ kho raw GitHub.",
+      "Nguồn ảnh: " + stkDiscord.RAW_BASE_URL,
+      "Cache hiện có: " + assets.available + "/" + assets.total + " khung.",
+      "Lỗi: " + String(error?.message || error).slice(0, 220)
+    ];
+    return safeSend(api, event, helpText() + "\n\n" + warning.join("\n"), mentions);
   }
-
-  const assets = stkDiscord.getAssetStatus();
-  const warning = [
-    "⚠️ Chưa có ảnh menu: data/discord_decor/menu.jpg.",
-    "Kho khung đã có: " + assets.available + "/" + assets.total + ".",
-    assets.missingCount
-      ? "Còn thiếu " + assets.missingCount + " file khung. Ví dụ: " +
-        assets.missing.slice(0, 5).map(item => "#" + item.id + " " + item.file).join(", ") + "."
-      : "Đã đủ 200 file khung; chỉ cần bổ sung menu.jpg."
-  ];
-  return safeSend(api, event, helpText() + "\n\n" + warning.join("\n"), mentions);
 }
 
 function isNotFoundError(error) {
@@ -232,20 +225,6 @@ module.exports.run = async function ({ api, event, args }) {
   const decoration = stkDiscord.getDecoration(options.decorationId);
   if (!decoration) {
     return safeSend(api, event, "❌ Không tìm thấy khung #" + options.decorationId + ".");
-  }
-
-  // Fail early when the selected local asset is missing; do not queue work
-  // that cannot succeed and do not leave an ⏳ reaction behind.
-  try {
-    stkDiscord.findDecorationFile(options.decorationId);
-  } catch (error) {
-    return safeSend(
-      api,
-      event,
-      "❌ " + String(error?.message || error) +
-      "\nĐặt file khung vào: data/discord_decor/" +
-      "\nTên file chuẩn: " + decoration.file
-    );
   }
 
   const quotedUrl = getQuotedMediaUrl(event);
