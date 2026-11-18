@@ -126,7 +126,7 @@ module.exports.config = {
   version: "4.0.0",
   role: 0,
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
-  description: "Reply video để gửi lại bản gốc hoặc tìm video 18+ trong chat riêng",
+  description: "Reply video để gửi lại bản gốc hoặc tìm video 18+ trong chat riêng/nhóm (admin bot)",
   category: "Tiện ích",
   usage: "getvd (reply video) | vd 18+ [từ khóa]",
   cooldowns: 10,
