@@ -63,3 +63,40 @@ test("Discord STK compositor produces a transparent 288px WebP with a circular a
   assert.ok(pixelAlpha(36, 144) > 0, "avatar is placed at the Python offset");
   fs.rmSync(output.path, { force: true });
 });
+
+
+test("STK asset inventory resolves exact and alternate frame names", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-assets-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const first = service.getDecoration(1);
+  const second = service.getDecoration(2);
+  const firstPath = path.join(dir, first.file);
+  const secondPath = path.join(dir, "2_custom.webp");
+  fs.writeFileSync(firstPath, Buffer.from("frame-1"));
+  fs.writeFileSync(secondPath, Buffer.from("frame-2"));
+  fs.writeFileSync(path.join(dir, "menu.jpg"), Buffer.from("menu"));
+
+  assert.equal(service.resolveDecorationFile(1, dir), firstPath);
+  assert.equal(service.resolveDecorationFile(2, dir), secondPath);
+  assert.equal(service.resolveDecorationFile(3, dir), null);
+
+  const status = service.getAssetStatus(dir);
+  assert.equal(status.total, 200);
+  assert.equal(status.available, 2);
+  assert.equal(status.missingCount, 198);
+  assert.equal(status.menu.exists, true);
+  assert.equal(status.missing[0].id, 3);
+});
+
+test("STK asset inventory identifies a missing menu and an empty frame file", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-stk-assets-empty-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const first = service.getDecoration(1);
+  fs.writeFileSync(path.join(dir, first.file), Buffer.alloc(0));
+  const status = service.getAssetStatus(dir);
+  assert.equal(status.menu.exists, false);
+  assert.equal(status.available, 0);
+  assert.equal(status.missingCount, 200);
+});
