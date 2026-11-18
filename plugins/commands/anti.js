@@ -73,7 +73,7 @@ function forgetAntiSelfEchoes(keys) {
   for (const key of Array.isArray(keys) ? keys : []) antiSelfEchoes.delete(key);
 }
 
-function isAntiGeneratedSelfEcho(event) {
+function isAntiGeneratedSelfEcho(event, consume = true) {
   const data = event?.data || {};
   const threadId = String(event?.threadId || "");
   if (!threadId) return false;
@@ -81,7 +81,7 @@ function isAntiGeneratedSelfEcho(event) {
   let matched = false;
   for (const key of echoKeysFromPayload(threadId, data)) {
     if (!antiSelfEchoes.has(key)) continue;
-    antiSelfEchoes.delete(key);
+    if (consume) antiSelfEchoes.delete(key);
     matched = true;
   }
   return matched;
@@ -347,19 +347,25 @@ function buildDeleteDestination(event) {
   };
 }
 
-async function deleteGroupMessage(api, event) {
+async function isBotAuthoredMessage(api, event) {
+  if (event?.isSelf === true) return true;
+  if (typeof api?.getOwnId !== "function") return false;
+  try {
+    const ownId = String(await api.getOwnId() || "");
+    return Boolean(ownId && ownId === String(event?.data?.uidFrom || ""));
+  } catch {
+    return false;
+  }
+}
+
+async function deleteGroupMessage(api, event, options = {}) {
   const destination = buildDeleteDestination(event);
 
   // zalo-client explicitly rejects deleteMessage(..., false) for a message
   // sent by the logged-in bot account. Zalo requires the undo endpoint for
   // that case; regular members' messages still use group deleteMessage.
-  let ownId = "";
-  if (typeof api?.getOwnId === "function") {
-    try { ownId = String(await api.getOwnId()); }
-    catch { /* event.isSelf remains a reliable fallback when supplied */ }
-  }
-  const isBotMessage = event?.isSelf === true ||
-    (ownId && ownId === String(destination.data.uidFrom));
+  const isBotMessage = options.isBotMessage === true ||
+    await isBotAuthoredMessage(api, event);
 
   if (isBotMessage) {
     if (typeof api?.undo !== "function") {
@@ -414,11 +420,21 @@ module.exports.handleEvent = async function (context = {}) {
   const Threads = context.Threads;
   const data = event.data || {};
   const threadId = String(event.threadId || "");
-  const userId = String(data.uidFrom || "");
-  const name = data.dName || "Bạn";
+  const undoCliMsgId = eventType === "undo"
+    ? (data.content?.cliMsgId ?? data.cliMsgId)
+    : null;
+  const cachedUndoMessage = undoCliMsgId == null
+    ? null
+    : getMessageCache()[String(undoCliMsgId)];
+  const userId = String(data.uidFrom || (eventType === "undo" ? cachedUndoMessage?.uidFrom : "") || "");
+  const name = data.dName || (eventType === "undo" ? cachedUndoMessage?.dName : "") || "Bạn";
   const isGroup = event.type === ThreadType.Group || event.isGroup === true;
 
-  if (!isGroup || !threadId || !userId) return;
+  if (!isGroup || !threadId || (!userId && eventType !== "undo")) return;
+  if (eventType === "undo" && !userId) {
+    logAntiSkip(threadId, "sự kiện thu hồi không có uid người gửi và không tìm thấy bản tin trong cache");
+    return;
+  }
   if (shouldSkipSelfEvent(context)) {
     logAntiSkip(threadId, "tin do bot gửi bị chặn bởi allow_self_anti hoặc là phản hồi Anti do bot tạo");
     return;
@@ -465,10 +481,12 @@ module.exports.handleEvent = async function (context = {}) {
   try {
     // Undo payload from zalo-client has isGroup=true and no ThreadType field.
     if (threadData.anti_undo === true && eventType === "undo") {
-      const undoCliMsgId = data.content?.cliMsgId ?? data.cliMsgId;
       if (undoCliMsgId == null) return;
-      const cached = getMessageCache()[String(undoCliMsgId)];
-      if (!cached || (cached.threadId && String(cached.threadId) !== threadId)) return;
+      const cached = cachedUndoMessage;
+      if (!cached || (cached.threadId && String(cached.threadId) !== threadId)) {
+        logAntiSkip(threadId, "không tìm thấy tin gốc trong cache để khôi phục (cliMsgId=" + String(undoCliMsgId) + ")");
+        return;
+      }
 
       const timeSend = cached.timestamp || cached.ts || Date.now();
       const timeUndo = data.ts || Date.now();
@@ -585,14 +603,19 @@ module.exports.handleEvent = async function (context = {}) {
             if (moderation.explicit) {
               let deleteError = null;
               let kickError = null;
-              try { await deleteGroupMessage(api, event); }
+              const botAuthored = await isBotAuthoredMessage(api, event);
+              try { await deleteGroupMessage(api, event, { isBotMessage: botAuthored }); }
               catch (error) { deleteError = error; }
-              try { await kickGroupMember(api, userId, threadId); }
-              catch (error) { kickError = error; }
+              // Self-test mode must never remove the bot account from its own group.
+              if (!botAuthored) {
+                try { await kickGroupMember(api, userId, threadId); }
+                catch (error) { kickError = error; }
+              }
 
               const actions = [];
-              actions.push(deleteError ? "chưa xóa được ảnh" : "đã xóa ảnh");
-              actions.push(kickError ? "chưa kick được thành viên" : "đã kick thành viên");
+              actions.push(deleteError ? "chưa thu hồi/xóa được ảnh" : (botAuthored ? "đã thu hồi ảnh thử nghiệm" : "đã xóa ảnh"));
+              if (botAuthored) actions.push("bỏ qua kick tài khoản bot khi tự kiểm tra");
+              else actions.push(kickError ? "chưa kick được thành viên" : "đã kick thành viên");
               return sendNotice(
                 "⛔ AI phát hiện ảnh vi phạm (điểm sexual " +
                 Math.round(moderation.score * 100) + "%). {member}: " +
@@ -730,6 +753,8 @@ module.exports._test = {
   rememberAntiSelfEcho,
   clearAntiSelfEchoes: () => antiSelfEchoes.clear(),
   buildDeleteDestination,
+  isBotAuthoredMessage,
+  deleteGroupMessage,
   kickGroupMember
 };
 
