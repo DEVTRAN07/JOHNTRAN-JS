@@ -87,3 +87,36 @@ test("slow dispatcher handler does not send a universal processing message", asy
 
   assert.equal(sent.length, 0);
 });
+
+
+test("background command dispatcher does not mark a sticker complete before its job finishes", async () => {
+  const { dispatchCommand } = require("../core/runtime/dispatcher");
+  const reactions = [];
+  let finished = false;
+  const reply = {
+    reacted: false,
+    react(icon) {
+      reactions.push(icon);
+      this.reacted = true;
+      return Promise.resolve(true);
+    },
+    finishCommand() {}
+  };
+
+  await dispatchCommand({
+    command: {
+      config: { backgroundExecution: true },
+      run: async () => { finished = true; }
+    },
+    commandName: "stk",
+    args: ["12"],
+    event: { data: { content: "/stk 12" }, mentions: [] },
+    api: { __reply: reply },
+    logger: { log() {} },
+    metrics: { track() {} },
+    Reactions: { PRAY: "working", OK: "ok", CRY: "cry" }
+  });
+
+  assert.equal(finished, true);
+  assert.deepEqual(reactions, ["working"]);
+});
