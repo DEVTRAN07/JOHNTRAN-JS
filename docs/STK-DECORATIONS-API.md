@@ -11,8 +11,8 @@ STK dùng catalog nhẹ nằm trong bot và lấy ảnh từ kho công khai:
 1. Gửi ảnh, sticker, GIF hoặc video vào Zalo.
 2. Reply đúng tin media đó.
 3. Gõ /stk để gửi menu 200 khung.
-4. Reply ảnh/sticker/GIF/video và gõ /stk dis 1 đến /stk dis 200 để ghép khung.
-5. /stk dis không có số vẫn được hỗ trợ như lệnh mở menu cũ.
+4. Reply ảnh/sticker/GIF/video và gõ /stk 1 đến /stk 200 để ghép khung.
+5. Cú pháp /stk dis đã bị gỡ.
 
 Khi không reply media, bot thử lấy avatar Zalo của người gửi lệnh. Nếu media reply bị 404, bot thử dùng avatar của chủ tin được reply, tương tự Python.
 
@@ -20,8 +20,7 @@ Khi không reply media, bot thử lấy avatar Zalo của người gửi lệnh.
 
 - Bot không chứa 200 ảnh trong repository.
 - /stk chỉ tải menu.jpg.
-- /stk dis cũng có thể mở menu nếu không có số.
-- /stk dis N chỉ tải file PNG của ID N, không tải toàn bộ kho.
+- /stk N chỉ tải file PNG của ID N, không tải toàn bộ kho.
 - Ảnh được lưu ở thư mục stk-discord trong Persistent Disk nếu JT_PERSISTENT_DIR được cấu hình; trên Render hiện khai báo mount /opt/render/project/data nên cache ở /opt/render/project/data/stk-discord.
 - Khi chạy local mà không có JT_PERSISTENT_DIR, cache nằm trong cache/stk-discord/.
 - Cache mặc định có thời hạn 7 ngày; sau thời hạn đó bot thử cập nhật từ raw GitHub.
@@ -43,4 +42,6 @@ Lệnh này kiểm tra catalog và trạng thái cache, không tải hàng loạ
 - Khung Discord được ghép phía trên avatar.
 - APNG/GIF/WebP động và video được giữ chuyển động (tối đa 5 giây).
 - Đầu ra WebP được giảm chất lượng theo từng mức, giới hạn 512 KB.
-- Tác vụ chạy trong hàng đợi sticker; bot gửi trạng thái ⏳ rồi phản hồi kết quả và reaction ✅ nếu API Zalo hỗ trợ.
+- Lệnh phản hồi ngay và đưa tác vụ vào hàng đợi nền; kết quả được gửi sau khi xử lý xong.
+- Khung và media được tải đồng thời; bộ mã hóa dùng tối đa hai cấu hình FFmpeg thay vì thử năm cấu hình liên tiếp.
+- Không thể bảo đảm toàn bộ quá trình dưới 1 giây vì còn thời gian tải ảnh, encode và upload/send qua máy chủ Zalo.
