@@ -4,6 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const theme = require("./theme");
+const themeBackgrounds = require("./themeBackgrounds");
 
 const S = theme.S;
 const W = theme.WIDTH;
@@ -21,7 +22,8 @@ function safeText(ctx, value, maxWidth) {
 function drawText(ctx, value, x, y, size, color, bold, align, maxWidth) {
   ctx.save();
   ctx.font = theme.font(size, bold ? "JT-Round-Bold" : "JT-Round");
-  ctx.fillStyle = color;
+  const accentText = color === theme.PALETTE.accent || color === theme.PALETTE.accent2;
+  ctx.fillStyle = accentText ? theme.randomTextColor(String(value) + ":" + x + ":" + y) : color;
   ctx.textAlign = align || "left";
   ctx.textBaseline = "alphabetic";
   ctx.fillText(safeText(ctx, value, maxWidth), x, y);
@@ -134,53 +136,113 @@ function renderEventSettings(data = {}) {
 function renderThemeSettings(data = {}) {
   theme.initFonts();
   const palette = theme.getCardPalette();
-  const presets = Array.isArray(data.presets) ? data.presets.slice(0, 8) : [];
-  const rows = Math.max(1, Math.ceil(presets.length / 2));
-  const bodyHeight = S(220 + rows * 118);
-  const result = theme.newCanvas(W, bodyHeight);
+  const current = themeBackgrounds.getCurrent();
+  const backgrounds = themeBackgrounds.getBackgrounds();
+  const margin = S(24);
+  const gap = S(13);
+  const headerY = S(22);
+  const headerH = S(86);
+  const cardsY = headerY + headerH + S(20);
+  const cardW = (W - margin * 2 - gap * 2) / 3;
+  const cardH = S(360);
+  const footerY = cardsY + cardH + S(18);
+  const height = footerY + S(88);
+
+  const result = theme.newCanvas(W, height);
   const ctx = result.ctx;
-  drawBackdrop(ctx, W, bodyHeight, palette);
-  const current = data.current || {};
-  drawHeader(ctx, "MENU THEME", current.label || "Bảng màu giao diện",
-    "ĐANG DÙNG: " + String(current.name || "gold").toUpperCase(), palette);
+  drawBackdrop(ctx, W, height, palette);
 
-  const currentY = S(105);
-  const currentX = S(PAD);
-  const fullWidth = W - S(PAD * 2);
-  drawPanel(ctx, currentX, currentY, fullWidth, S(62), palette);
-  const swatch = String(current.accent || palette.accent);
-  rounded(ctx, currentX + S(14), currentY + S(14), S(34), S(34), S(8));
-  ctx.fillStyle = /^#[0-9a-f]{6}$/i.test(swatch) ? swatch : palette.accent;
-  ctx.fill();
-  drawText(ctx, current.label || "Theme hiện tại", currentX + S(60), currentY + S(27), 11, palette.text, true);
-  drawText(ctx, "Màu nhấn " + swatch, currentX + S(60), currentY + S(45), 8.5, palette.muted, false);
+  theme.panel(ctx, margin, headerY, W - margin * 2, headerH, S(16), palette.accent);
+  drawText(ctx, "JOHNTRAN  /  PHOTO THEME LIBRARY",
+    margin + S(18), headerY + S(28), 9, palette.accent, true);
+  drawText(ctx, "AURORA CYBER BACKGROUNDS",
+    margin + S(18), headerY + S(57), 21, palette.text, true);
+  drawText(ctx, current.random ? "RANDOM ROTATION" : "ĐANG CHỌN ẢNH " + current.selected,
+    W - margin - S(18), headerY + S(54), 9, palette.accent, true, "right");
 
-  const gap = S(10);
-  const cardWidth = (fullWidth - gap) / 2;
-  const cardY = currentY + S(76);
-  presets.forEach((preset, index) => {
-    const col = index % 2;
-    const row = Math.floor(index / 2);
-    const x = currentX + col * (cardWidth + gap);
-    const y = cardY + row * S(118);
-    drawPanel(ctx, x, y, cardWidth, S(104), palette);
-    const accent = /^#[0-9a-f]{6}$/i.test(String(preset.accent || "")) ? preset.accent : palette.accent;
-    rounded(ctx, x + S(12), y + S(12), S(36), S(36), S(8));
-    ctx.fillStyle = accent;
+  backgrounds.forEach((background, index) => {
+    const x = margin + index * (cardW + gap);
+    const y = cardsY;
+    const image = themeBackgrounds.getImage(background.id);
+    theme.panel(ctx, x, y, cardW, cardH, S(16), palette.accent);
+
+    const thumbX = x + S(8);
+    const thumbY = y + S(8);
+    const thumbW = cardW - S(16);
+    const thumbH = cardH - S(16);
+    rounded(ctx, thumbX, thumbY, thumbW, thumbH, S(12));
+    ctx.save();
+    ctx.clip();
+    if (image) {
+      const scale = Math.max(thumbW / image.width, thumbH / image.height);
+      const drawWidth = image.width * scale;
+      const drawHeight = image.height * scale;
+      ctx.drawImage(image, thumbX + (thumbW - drawWidth) / 2,
+        thumbY + (thumbH - drawHeight) / 2, drawWidth, drawHeight);
+    } else {
+      const fallback = ctx.createLinearGradient(thumbX, thumbY, thumbX + thumbW, thumbY + thumbH);
+      fallback.addColorStop(0, "#07182d");
+      fallback.addColorStop(.52, "#123c5c");
+      fallback.addColorStop(1, "#251d4d");
+      ctx.fillStyle = fallback;
+      ctx.fillRect(thumbX, thumbY, thumbW, thumbH);
+      drawText(ctx, "ẢNH SẼ TẢI KHI BOT CÓ KẾT NỐI",
+        thumbX + thumbW / 2, thumbY + thumbH / 2, 8, palette.text, true, "center", thumbW - S(18));
+    }
+
+    const photoShade = ctx.createLinearGradient(0, thumbY + thumbH * .40, 0, thumbY + thumbH);
+    photoShade.addColorStop(0, "rgba(2,8,18,0)");
+    photoShade.addColorStop(.60, "rgba(2,8,18,.24)");
+    photoShade.addColorStop(1, "rgba(2,8,18,.90)");
+    ctx.fillStyle = photoShade;
+    ctx.fillRect(thumbX, thumbY, thumbW, thumbH);
+
+    // Small Aurora haze and cyan edge make the photo preview read as a theme card.
+    const haze = ctx.createRadialGradient(
+      thumbX + thumbW * .78, thumbY + thumbH * .20, 0,
+      thumbX + thumbW * .78, thumbY + thumbH * .20, thumbW * .70
+    );
+    haze.addColorStop(0, "rgba(56,220,255,.25)");
+    haze.addColorStop(1, "rgba(56,220,255,0)");
+    ctx.fillStyle = haze;
+    ctx.fillRect(thumbX, thumbY, thumbW, thumbH);
+    ctx.restore();
+
+    rounded(ctx, thumbX, thumbY, thumbW, thumbH, S(12));
+    ctx.strokeStyle = background.selected
+      ? "rgba(110,255,230,.95)" : "rgba(98,220,255,.70)";
+    ctx.lineWidth = background.selected ? S(2.2) : S(1);
+    ctx.shadowColor = "rgba(47,220,255,.72)";
+    ctx.shadowBlur = S(9);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    rounded(ctx, thumbX + S(10), thumbY + S(10), S(34), S(28), S(9));
+    ctx.fillStyle = "rgba(4,14,30,.72)";
     ctx.fill();
-    drawText(ctx, String(preset.name || "custom").toUpperCase(), x + S(58), y + S(28), 10, palette.text, true, "left", cardWidth - S(72));
-    drawText(ctx, preset.label || "Màu tùy chỉnh", x + S(58), y + S(45), 8, palette.muted, false, "left", cardWidth - S(72));
-    drawText(ctx, accent.toLowerCase(), x + S(13), y + S(70), 9, palette.accent, true);
-    const selected = String(current.name || "").toLowerCase() === String(preset.name || "").toLowerCase();
-    drawText(ctx, selected ? "ĐANG DÙNG" : "GÕ /theme " + (preset.name || "custom"),
-      x + S(13), y + S(89), 8, selected ? "#7de0ab" : palette.muted, true, "left", cardWidth - S(24));
+    drawText(ctx, background.id, thumbX + S(27), thumbY + S(29),
+      12, palette.accent, true, "center");
+
+    drawText(ctx, background.name.toUpperCase(),
+      thumbX + S(13), thumbY + thumbH - S(60), 10,
+      theme.randomTextColor(background.id + ":theme-title"), true,
+      "left", thumbW - S(26));
+    drawText(ctx, "NỀN ẢNH  /  AURORA CYBER",
+      thumbX + S(13), thumbY + thumbH - S(40), 7.4,
+      palette.text, true);
+    drawText(ctx, background.selected ? "ĐANG CHỌN" : "GÕ /theme " + background.id,
+      thumbX + S(13), thumbY + thumbH - S(18), 8.5,
+      background.selected ? "#8dffe8" : palette.accent, true);
   });
 
-  drawText(ctx, "Tùy chỉnh: /theme #RRGGBB  ·  Mặc định: /theme reset",
-    currentX + S(4), bodyHeight - S(22), 8.5, palette.muted, false, "left", fullWidth - S(8));
+  theme.panel(ctx, margin, footerY, W - margin * 2, S(70), S(14), palette.accent);
+  drawText(ctx, "CHỌN NỀN:  /theme 1  ·  /theme 2  ·  /theme 3",
+    margin + S(17), footerY + S(27), 10, palette.accent, true);
+  drawText(ctx, "NGẪU NHIÊN: /theme random  ·  TIẾP THEO: /theme next  ·  RESET: /theme reset",
+    margin + S(17), footerY + S(49), 8.2, palette.text, false);
+
   return saveCard(result.canvas);
 }
-
 
 
 function renderAdminCard(data = {}) {
