@@ -59,7 +59,7 @@ const ZALO_COLORS = {"#f43f5e":"c_db342e","#f97316":"c_f27806","#f59e0b":"c_f7b5
 const ZALO_FONTS = {"13px":"f_13","18px":"f_18"};
 function buildRandomColorStyles(message, random = Math.random) {
   const value = String(message ?? "");
-  const words = [...value.matchAll(/[\\p{L}\\p{N}]+/gu)];
+  const words = [...value.matchAll(/[\p{L}\p{N}]+/gu)];
   const palette = Object.values(ZALO_COLORS);
   if (!words.length || !palette.length) return [];
 
