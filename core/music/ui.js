@@ -5,6 +5,44 @@ const { TextStyle } = require("zalo-client");
 const models = require("./models");
 
 const WIDTH = 30;
+const RANDOM_TEXT_COLORS = Object.freeze([
+  TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green
+]);
+const MAX_RANDOM_COLOR_RUNS = 120;
+
+function randomWordColorStyles(text, startOffset = 0, random = Math.random) {
+  const value = String(text ?? "");
+  const words = [...value.matchAll(/[\p{L}\p{N}]+/gu)];
+  if (!words.length) return [];
+
+  const wordsPerRun = Math.max(1, Math.ceil(words.length / MAX_RANDOM_COLOR_RUNS));
+  const ranges = [];
+  for (let index = 0; index < words.length; index += wordsPerRun) {
+    const first = words[index];
+    const last = words[Math.min(words.length - 1, index + wordsPerRun - 1)];
+    ranges.push({
+      start: startOffset + first.index,
+      len: last.index + last[0].length - first.index
+    });
+  }
+
+  let previousColor = -1;
+  return ranges.map(range => {
+    const roll = Number(random());
+    let colorIndex = Number.isFinite(roll)
+      ? Math.floor(Math.max(0, Math.min(0.999999, roll)) * RANDOM_TEXT_COLORS.length)
+      : 0;
+    if (RANDOM_TEXT_COLORS.length > 1 && colorIndex === previousColor) {
+      const nextRoll = Number(random());
+      const offset = 1 + (Number.isFinite(nextRoll)
+        ? Math.floor(Math.max(0, Math.min(0.999999, nextRoll)) * (RANDOM_TEXT_COLORS.length - 1))
+        : 0);
+      colorIndex = (previousColor + offset) % RANDOM_TEXT_COLORS.length;
+    }
+    previousColor = colorIndex;
+    return { ...range, st: RANDOM_TEXT_COLORS[colorIndex] };
+  });
+}
 
 function pad(text, width) {
   const fill = Math.max(2, width - String(text).length);
@@ -32,11 +70,14 @@ function searchList({ providerLabel, query, tracks, page, totalPages }) {
   tracks.forEach((track, i) => {
     const num = String(i + 1).padStart(2, " ");
     const dur = models.formatDuration(track.duration);
-    const line = `${num}. ♪ ${track.title} — ${track.artist}  [${dur}]`;
+    const titleAndArtist = `${track.title} — ${track.artist}`;
+    const line = `${num}. ♪ ${titleAndArtist}  [${dur}]`;
     lines.push(line);
-    // đậm: số thứ tự + tên bài (đến dấu —)
     const start = offsetOf(lines, lines.length - 1);
-    styles.push({ start, len: num.length + 4 + String(track.title).length, st: TextStyle.Bold });
+    // Keep the number/record marker bold; random colors are applied word-by-word
+    // to the title and artist so color and bold styles never overlap.
+    styles.push({ start, len: num.length + 4, st: TextStyle.Bold });
+    styles.push(...randomWordColorStyles(titleAndArtist, start + num.length + 4));
   });
 
   lines.push("");
@@ -91,4 +132,4 @@ function offsetOf(lines, i) {
   return offset;
 }
 
-module.exports = { searchList, usageList, nowPlaying };
+module.exports = { searchList, usageList, nowPlaying, randomWordColorStyles };
