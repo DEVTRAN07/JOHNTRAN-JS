@@ -59,12 +59,6 @@ function rr(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function fit(ctx, text, w) {
-  let t = String(text ?? "");
-  if (ctx.measureText(t).width <= w) return t;
-  while (t.length > 1 && ctx.measureText(t + "…").width > w) t = t.slice(0, -1);
-  return t + "…";
-}
 
 // Tải ảnh: chỉ nhận URL tuyệt đối, resolve redirect cả tương đối
 async function loadImg(url, depth = 0) {
