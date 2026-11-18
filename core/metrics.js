@@ -1,5 +1,6 @@
 "use strict";
 
+const { performance } = require("node:perf_hooks");
 const fs = require("fs");
 const path = require("path");
 const { db } = require("./runtime/adapters/database");
@@ -47,6 +48,11 @@ function createMetricsStore(backend, options = {}) {
   const recentLatencies = [];
   const commandLatencies = new Map();
   const commandExecutionLatencies = new Map();
+  const listenerStageLatencies = new Map();
+  const zaloApiLatencies = new Map();
+  const firstResponseLatencies = new Map();
+  const incomingMessageAt = new Map();
+  const MAX_PENDING_FIRST_RESPONSES = 2048;
   const MAX_COMMAND_LATENCY_KEYS = 100;
   const MAX_COMMAND_LATENCY_SAMPLES = 100;
   let latencyCount = 0;
@@ -211,6 +217,58 @@ function createMetricsStore(backend, options = {}) {
     recordCommandSamples(commandExecutionLatencies, commandName, durationMs);
   }
 
+  function getMessageLatencyKey(event) {
+    const data = event?.data || {};
+    const messageId = data.cliMsgId ?? data.msgId;
+    if (messageId == null || messageId === "") return null;
+    return `${String(event?.threadId ?? data.idTo ?? "")}:${String(messageId)}`;
+  }
+
+  function trackIncomingMessage(event, at = performance.now()) {
+    const key = getMessageLatencyKey(event);
+    if (!key) return false;
+    const timestamp = Number(at);
+    incomingMessageAt.delete(key);
+    incomingMessageAt.set(key, Number.isFinite(timestamp) ? timestamp : performance.now());
+    while (incomingMessageAt.size > MAX_PENDING_FIRST_RESPONSES) {
+      const oldest = incomingMessageAt.keys().next().value;
+      if (oldest === undefined) break;
+      incomingMessageAt.delete(oldest);
+    }
+    return true;
+  }
+
+  function trackFirstResponseLatency(event, at = performance.now()) {
+    const key = getMessageLatencyKey(event);
+    if (!key || !incomingMessageAt.has(key)) return false;
+    const startedAt = incomingMessageAt.get(key);
+    incomingMessageAt.delete(key);
+    const timestamp = Number(at);
+    const elapsed = Math.max(0, (Number.isFinite(timestamp) ? timestamp : performance.now()) - startedAt);
+    recordCommandSamples(firstResponseLatencies, "first_response", elapsed);
+    return true;
+  }
+
+  function trackListenerStageLatency(stage, durationMs) {
+    recordCommandSamples(listenerStageLatencies, stage, durationMs);
+  }
+
+  function getListenerStageLatencyStats(limit = 5) {
+    return summarizeCommandSamples(listenerStageLatencies, limit);
+  }
+
+  function trackZaloApiLatency(method, durationMs) {
+    recordCommandSamples(zaloApiLatencies, method, durationMs);
+  }
+
+  function getZaloApiLatencyStats(limit = 5) {
+    return summarizeCommandSamples(zaloApiLatencies, limit);
+  }
+
+  function getFirstResponseLatencyStats() {
+    return summarizeCommandSamples(firstResponseLatencies, 1)[0] || null;
+  }
+
   function getCommandLatencyStats(limit = 5) {
     return summarizeCommandSamples(commandLatencies, limit);
   }
@@ -234,7 +292,7 @@ function createMetricsStore(backend, options = {}) {
     return flush();
   }
 
-  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
+  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats, trackIncomingMessage, trackFirstResponseLatency, getFirstResponseLatencyStats, trackListenerStageLatency, getListenerStageLatencyStats, trackZaloApiLatency, getZaloApiLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
 }
 
 const metricsStore = createMetricsStore(db, {
