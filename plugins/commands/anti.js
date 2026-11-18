@@ -633,7 +633,11 @@ function createMentionMessage(text, name, userId) {
   };
 }
 
-async function enforceAntiViolation({ api, event, Threads, sendNotice, userId, reason, warningKey, deleteEvents }) {
+async function enforceAntiViolation({ api, event, Threads, sendNotice, userId, ensureBotKey, reason, warningKey, deleteEvents, ensureBotKey }) {
+  // Verify only after a local rule has positively identified a violation.
+  if (typeof ensureBotKey === "function" && !(await ensureBotKey())) {
+    return { consumed: false, skipped: true };
+  }
   const targets = Array.isArray(deleteEvents) && deleteEvents.length ? deleteEvents : [event];
   const botAuthored = await isBotAuthoredMessage(api, event);
   const deleteResults = await Promise.allSettled(
@@ -748,14 +752,29 @@ async function handleAntiEvent(context = {}) {
   const relevantKeys = getRelevantAntiProtectionKeys(eventType);
   if (!relevantKeys.some(key => threadData[key] === true)) return;
 
-  // Only groups with the matching protection enabled need a live bot-key check.
-  let botRole = "unknown";
-  try { botRole = await getBotGroupRole(api, threadId); }
-  catch (error) { logAntiSkip(threadId, "không xác minh được key QTV của bot: " + (error?.message || error)); return; }
-  if (botRole !== "owner" && botRole !== "deputy") {
-    logAntiSkip(threadId, "tài khoản bot chưa được xác minh là trưởng/phó nhóm (role=" + botRole + ")");
-    return;
-  }
+  // Verify the bot key lazily, only when an actual protection needs to
+  // delete/restore a message, warn, or kick. Harmless text must not wait for
+  // a live getGroupInfo round-trip just because an Anti switch is enabled.
+  let botKeyCheck = null;
+  const ensureBotKey = () => {
+    if (!botKeyCheck) {
+      botKeyCheck = (async () => {
+        let botRole = "unknown";
+        try {
+          botRole = await getBotGroupRole(api, threadId);
+        } catch (error) {
+          logAntiSkip(threadId, "không xác minh được key QTV của bot: " + (error?.message || error));
+          return false;
+        }
+        if (botRole !== "owner" && botRole !== "deputy") {
+          logAntiSkip(threadId, "tài khoản bot chưa được xác minh là trưởng/phó nhóm (role=" + botRole + ")");
+          return false;
+        }
+        return true;
+      })();
+    }
+    return botKeyCheck;
+  };
 
   // Anti rules apply uniformly to every human group member, including
   // the group owner and deputies. QTV privilege is enforced only by the
@@ -773,6 +792,7 @@ async function handleAntiEvent(context = {}) {
     if (eventType === "group_event") {
       if (threadData.anti_join === true && String(event.type || "").toLowerCase() === "join") {
         const members = Array.isArray(data.updateMembers) ? data.updateMembers : [];
+        if (!members.length || !(await ensureBotKey())) return;
         // Reuse the UID already resolved during bot-role validation so a
         // transient second lookup failure cannot classify the bot as a member.
         let ownId = "";
@@ -867,6 +887,7 @@ async function handleAntiEvent(context = {}) {
         return;
       }
       cache.delete(cacheKey);
+      if (!(await ensureBotKey())) return;
       const strikes = threadData.anti_reaction_warnings && typeof threadData.anti_reaction_warnings === "object"
         ? { ...threadData.anti_reaction_warnings } : {};
       const current = Math.min(3, Math.max(0, Math.floor(Number(strikes[userId]) || 0)));
@@ -902,6 +923,7 @@ async function handleAntiEvent(context = {}) {
         logAntiSkip(threadId, "không tìm thấy tin gốc trong cache để khôi phục (cliMsgId=" + String(undoCliMsgId) + ")");
         return;
       }
+      if (!(await ensureBotKey())) return;
 
       const timeSend = cached.timestamp || cached.ts || Date.now();
       const timeUndo = data.ts || Date.now();
@@ -1033,7 +1055,7 @@ async function handleAntiEvent(context = {}) {
       const featureKey = mediaBlock?.[0] || (qrBlocked ? "anti_qr" : "anti_photo");
       const label = mediaBlock?.[2] || (qrBlocked ? "mã QR" : "hình ảnh");
       return enforceAntiViolation({
-        api, event, Threads, sendNotice, userId,
+        api, event, Threads, sendNotice, userId, ensureBotKey,
         warningKey: featureKey + "_warnings",
         reason: "nhóm không cho phép gửi " + label + "."
       });
@@ -1041,7 +1063,7 @@ async function handleAntiEvent(context = {}) {
 
     if (threadData.anti_other === true && isMalformedAntiPayload(data)) {
       return enforceAntiViolation({
-        api, event, Threads, sendNotice, userId,
+        api, event, Threads, sendNotice, userId, ensureBotKey,
         warningKey: "anti_other_warnings",
         reason: "payload lỗi hoặc không được Zalo hỗ trợ."
       });
@@ -1049,7 +1071,7 @@ async function handleAntiEvent(context = {}) {
 
     if (threadData.anti_taghide === true && hasHiddenMention(data)) {
       return enforceAntiViolation({
-        api, event, Threads, sendNotice, userId,
+        api, event, Threads, sendNotice, userId, ensureBotKey,
         warningKey: "anti_taghide_warnings",
         reason: "không được dùng nhắc tên ẩn hoặc mention sai vị trí."
       });
@@ -1059,7 +1081,7 @@ async function handleAntiEvent(context = {}) {
       const blockedWord = findAntiBadWord(data);
       if (blockedWord) {
         return enforceAntiViolation({
-          api, event, Threads, sendNotice, userId,
+          api, event, Threads, sendNotice, userId, ensureBotKey,
           warningKey: "anti_word_warnings",
           reason: "phát hiện từ ngữ bị cấm (" + blockedWord + ")."
         });
@@ -1069,6 +1091,7 @@ async function handleAntiEvent(context = {}) {
     if (threadData.anti_nude === true && isPhotoMessage(data)) {
       const imageUrl = getImageUrl(data);
       if (imageUrl) {
+        if (!(await ensureBotKey())) return;
         const checkId = threadId + ":" + String(data.cliMsgId || data.msgId || imageUrl);
         if (!nudeModerationInFlight.has(checkId)) {
           nudeModerationInFlight.add(checkId);
@@ -1121,6 +1144,7 @@ async function handleAntiEvent(context = {}) {
     const urls = extractMessageUrls(data);
 
     if (urls.length && threadData.anti_danger_link === true) {
+      if (!(await ensureBotKey())) return;
       let blockedUrl = null;
       for (const url of urls) {
         if (await isUnsafeLink(url, api)) {
@@ -1130,7 +1154,7 @@ async function handleAntiEvent(context = {}) {
       }
       if (blockedUrl) {
         return enforceAntiViolation({
-          api, event, Threads, sendNotice, userId,
+          api, event, Threads, sendNotice, userId, ensureBotKey,
           warningKey: "anti_link_warnings",
           reason: "phát hiện link mời nhóm khác trên Zalo hoặc URL không an toàn (" + blockedUrl.slice(0, 90) + ")."
         });
@@ -1139,7 +1163,7 @@ async function handleAntiEvent(context = {}) {
 
     if (urls.length && threadData.anti_link === true) {
       return enforceAntiViolation({
-        api, event, Threads, sendNotice, userId,
+        api, event, Threads, sendNotice, userId, ensureBotKey,
         warningKey: "anti_link_warnings",
         reason: "không được gửi link trong nhóm này."
       });
@@ -1163,7 +1187,7 @@ async function handleAntiEvent(context = {}) {
       if (history.length > 5) {
         cache.delete(cacheKey);
         return enforceAntiViolation({
-          api, event, Threads, sendNotice, userId,
+          api, event, Threads, sendNotice, userId, ensureBotKey,
           warningKey: "anti_sticker_spam_warnings",
           reason: "không được dội bom sticker (hơn 5 sticker trong 4 giây).",
           deleteEvents: history.map(item => ({
@@ -1208,7 +1232,7 @@ async function handleAntiEvent(context = {}) {
             data: item.data
           }));
         return enforceAntiViolation({
-          api, event, Threads, sendNotice, userId,
+          api, event, Threads, sendNotice, userId, ensureBotKey,
           warningKey: "anti_spam_warnings",
           reason: "vui lòng không spam: gửi tin nhắn quá dồn dập (hơn 5 tin trong 5 giây).",
           deleteEvents: deleteEvents.length ? deleteEvents : [event]
@@ -1253,7 +1277,8 @@ module.exports._test = {
   extractPlainMessageText,
   findAntiBadWord,
   hasHiddenMention,
-  isMalformedAntiPayload
+  isMalformedAntiPayload,
+  handleAntiEvent
 };
 
 
