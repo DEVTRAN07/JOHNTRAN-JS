@@ -1282,7 +1282,8 @@ module.exports._test = {
   findAntiBadWord,
   hasHiddenMention,
   isMalformedAntiPayload,
-  handleAntiEvent
+  handleAntiEvent,
+  getRelevantAntiProtectionKeys
 };
 
 
