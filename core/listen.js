@@ -216,8 +216,8 @@ function startListening(api) {
 
   // ===== Xử lý 1 tin nhắn (dùng chung cho realtime và backfill sau reconnect) =====
   const onMessage = async (event, options = {}) => {
-    const receivedAt = Number.isFinite(Number(options.receivedAt))
-      ? Number(options.receivedAt)
+    const receivedAt = typeof options.receivedAt === "number" && Number.isFinite(options.receivedAt)
+      ? options.receivedAt
       : performance.now();
     const preprocessingStartedAt = performance.now();
 
