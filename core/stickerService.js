@@ -191,14 +191,20 @@ async function convertMedia(inputPath, overlayPath, outputBasePath, options = {}
     const overlayInput = overlayAnimated
       ? ["-stream_loop", "-1", "-i", overlayPath]
       : ["-loop", "1", "-framerate", String(profile.fps), "-i", overlayPath];
+    // Keep a square transport canvas for Zalo, but make the actual sticker a
+    // true circle. The one-pixel alpha ramp smooths the edge without a halo.
+    const circleAlpha =
+      "alpha(X,Y)*max(0\\,min(1\\,min(W\\,H)/2-hypot(X-W/2\\,Y-H/2)))";
     const baseFilter =
       "[0:v]scale=" + size + ":" + size + ":force_original_aspect_ratio=increase:flags=lanczos," +
       "crop=" + size + ":" + size + ",setsar=1[base];" +
       "[1:v]scale=" + size + ":" + size + ":flags=lanczos,format=rgba[frame];" +
-      "[base][frame]overlay=0:0:format=auto,fps=" + profile.fps;
+      "[base][frame]overlay=0:0:format=auto,format=rgba," +
+      "geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='" + circleAlpha + "',fps=" +
+      profile.fps + "[circle]";
     const filter = webp
-      ? baseFilter + ",format=yuv420p[sticker]"
-      : baseFilter + ",split[anim][paletteSource];" +
+      ? baseFilter + ";[circle]format=yuva420p[sticker]"
+      : baseFilter + ";[circle]split[anim][paletteSource];" +
         "[paletteSource]palettegen=stats_mode=diff[palette];" +
         "[anim][palette]paletteuse=dither=sierra2_4a[sticker]";
 
@@ -231,6 +237,8 @@ async function convertMedia(inputPath, overlayPath, outputBasePath, options = {}
           height: size,
           format: webp ? "webp" : "gif",
           animated: outputAnimated,
+          shape: "circle",
+          transparent: true,
           size: stat.size
         };
       }
