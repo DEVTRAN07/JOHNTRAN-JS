@@ -47,6 +47,10 @@ function createMetricsStore(backend, options = {}) {
   const recentLatencies = [];
   const commandLatencies = new Map();
   const commandExecutionLatencies = new Map();
+  const firstResponseLatencies = new Map();
+  const zaloSendLatencies = [];
+  let zaloSendSuccessCount = 0;
+  let zaloSendFailureCount = 0;
   const MAX_COMMAND_LATENCY_KEYS = 100;
   const MAX_COMMAND_LATENCY_SAMPLES = 100;
   let latencyCount = 0;
@@ -219,6 +223,44 @@ function createMetricsStore(backend, options = {}) {
     return summarizeCommandSamples(commandExecutionLatencies, limit);
   }
 
+  // User-visible latency: message receipt until the first outgoing send begins.
+  function trackFirstResponseLatency(commandName, durationMs) {
+    recordCommandSamples(firstResponseLatencies, commandName, durationMs);
+  }
+
+  function getFirstResponseLatencyStats(limit = 5) {
+    return summarizeCommandSamples(firstResponseLatencies, limit);
+  }
+
+  // Zalo network send time is measured separately from local processing.
+  function trackZaloSendLatency(durationMs, success = true) {
+    const value = Number(durationMs);
+    if (!Number.isFinite(value) || value < 0) return;
+    if (success) zaloSendSuccessCount++;
+    else zaloSendFailureCount++;
+    zaloSendLatencies.push({ durationMs: value, success: Boolean(success) });
+    if (zaloSendLatencies.length > 200) zaloSendLatencies.shift();
+  }
+
+  function getZaloSendLatencyStats() {
+    if (!zaloSendLatencies.length) {
+      return { count: 0, success: 0, failed: 0, avgMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0, lastMs: 0 };
+    }
+    const values = zaloSendLatencies.map(item => item.durationMs);
+    const sorted = [...values].sort((a, b) => a - b);
+    const percentile = ratio => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
+    return {
+      count: zaloSendLatencies.length,
+      success: zaloSendSuccessCount,
+      failed: zaloSendFailureCount,
+      avgMs: Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)),
+      p50Ms: Number(percentile(0.5).toFixed(2)),
+      p95Ms: Number(percentile(0.95).toFixed(2)),
+      maxMs: Number(Math.max(...values).toFixed(2)),
+      lastMs: Number(values[values.length - 1].toFixed(2))
+    };
+  }
+
   function topCommands(day = todayKey(now()), limit = 5) {
     const stats = getDayStats(day);
     return Object.entries(stats.byCommand)
@@ -234,7 +276,7 @@ function createMetricsStore(backend, options = {}) {
     return flush();
   }
 
-  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
+  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, trackFirstResponseLatency, getFirstResponseLatencyStats, trackZaloSendLatency, getZaloSendLatencyStats, getLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
 }
 
 const metricsStore = createMetricsStore(db, {
