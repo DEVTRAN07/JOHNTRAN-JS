@@ -692,3 +692,15 @@ test("Solo start does not send an opening prompt after its session is replaced d
     else global.config = previousConfig;
   }
 });
+
+
+test("idle groups skip Nối Từ event handling, active sessions are detected", () => {
+  assert.equal(command.hasActiveGameForThread("idle-noitu-group"), false);
+  const session = noituEngine.createSession("active-noitu-group", "player-1", "Player", () => 0);
+  gameService.sessions.set("active-noitu-group", session);
+  try {
+    assert.equal(command.hasActiveGameForThread("active-noitu-group"), true);
+  } finally {
+    gameService.sessions.delete("active-noitu-group");
+  }
+});

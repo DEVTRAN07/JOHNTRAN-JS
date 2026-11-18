@@ -144,13 +144,19 @@ async function dispatchGroupMessageBeforeGame({
 }
 
 async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = false } = {}) {
+  // Keep Nối Từ available in any supported thread, but never send private chats
+  // through the group-only TLMN handler.
+  if (!event?.threadId || event?.type == null) return false;
   const selfMessage = isSelf === true || event?.isSelf === true;
   if (selfMessage && global.config?.allow_self_command !== true) return false;
 
   // Preserve Nối Từ priority: a message consumed by it must not reach another game.
   try {
     const noituCommand = require("../plugins/commands/noitu");
-    if (typeof noituCommand?.handleEvent === "function") {
+    const hasActiveGame = typeof noituCommand?.hasActiveGameForThread === "function"
+      ? noituCommand.hasActiveGameForThread(event.threadId)
+      : true;
+    if (hasActiveGame && typeof noituCommand?.handleEvent === "function") {
       const consumed = await noituCommand.handleEvent({
         api, event, eventType: "message", isSelf: false, Users, Threads
       });
@@ -163,7 +169,8 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
     });
   }
 
-  // TLMN receives plain-text card plays here, before passive message plugins.
+  // TLMN receives plain-text card plays only in groups, before passive plugins.
+  if (event?.type !== ThreadType.Group) return false;
   try {
     const tlmnCommand = require("../plugins/commands/tlmn");
     if (typeof tlmnCommand?.handleIncoming === "function") {

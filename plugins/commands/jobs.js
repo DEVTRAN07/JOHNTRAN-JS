@@ -16,6 +16,7 @@ function formatLane(name, lane) {
     "• " + name + ": " + lane.active + " chạy / " + lane.pending + " chờ (tối đa " + lane.concurrency + ")",
     "  Hoàn tất " + lane.completed + " · lỗi " + lane.failed + " · retry " + lane.retried + " · từ chối " + lane.rejected
   ];
+  if (lane.waitCount > 0 || lane.runCount > 0) lines.push("  ⚡ Chờ TB " + Number(lane.avgWaitMs || 0).toFixed(1) + " ms · xử lý TB " + Number(lane.avgRunMs || 0).toFixed(1) + " ms · max chờ " + Number(lane.maxWaitMs || 0).toFixed(1) + " ms");
   for (const job of lane.runningJobs || []) lines.push("  ↳ Đang chạy: " + job.label + " · " + (job.runningForMs / 1000).toFixed(1) + "s");
   for (const job of lane.pendingJobs || []) lines.push("  ↳ Đang chờ: " + job.label + " · " + (job.waitingForMs / 1000).toFixed(1) + "s");
   if (lane.oldestPendingMs > 0) lines.push("  ⏱️ Tác vụ chờ lâu nhất: " + (lane.oldestPendingMs / 1000).toFixed(1) + "s");

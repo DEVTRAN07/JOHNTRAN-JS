@@ -239,3 +239,14 @@ test("STK worker lane defaults to two concurrent jobs", () => {
   assert.equal(STICKER_CONCURRENCY, 2);
   assert.equal(DEFAULT_LANES.sticker.concurrency, 2);
 });
+
+
+test("job queue reports average queue wait and execution time", async () => {
+  const before = stats()["test-queue-timing"] || { waitCount: 0, runCount: 0 };
+  await enqueue("test-queue-timing", async () => "done", { concurrency: 1 });
+  const after = stats()["test-queue-timing"];
+  assert.equal(after.waitCount, before.waitCount + 1);
+  assert.equal(after.runCount, before.runCount + 1);
+  assert.ok(after.avgWaitMs >= 0);
+  assert.ok(after.avgRunMs >= 0);
+});

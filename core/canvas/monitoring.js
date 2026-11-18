@@ -146,7 +146,7 @@ function renderJobsCard(data = {}) {
   const caches = (data.caches || []).slice(0, 10);
   const laneRows = lanes.length ? lanes : [{ empty: true }];
   const workerRows = workers.length ? workers : [{ empty: true }];
-  const queueH = S(42 + laneRows.length * 40 + 13);
+  const queueH = S(42 + laneRows.length * 52 + 13);
   const workerH = S(42 + workerRows.length * 34 + 13);
   const cacheH = S(42 + Math.max(1, Math.ceil(caches.length / 2)) * 39 + 13);
   let y = 96;
@@ -168,15 +168,17 @@ function renderJobsCard(data = {}) {
   panel(ctx, S(PAD), S(queueY), full, queueH, p, p.panel);
   text(ctx, "HÀNG ĐỢI TÁC VỤ", S(PAD + 15), S(queueY + 25), 10, p.accent, true);
   laneRows.forEach((lane, i) => {
-    const yy = queueY + 49 + i * 40;
+    const yy = queueY + 49 + i * 52;
     if (i) { ctx.save(); ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.beginPath(); ctx.moveTo(S(PAD + 14), S(yy - 18)); ctx.lineTo(W - S(PAD + 14), S(yy - 18)); ctx.stroke(); ctx.restore(); }
     const title = lane.empty ? "Chưa có tác vụ nào được đưa vào queue" : lane.name;
     const state = lane.empty ? "" : lane.active + "/" + lane.concurrency + " chạy  ·  " + lane.pending + "/" + lane.maxPending + " chờ";
     const detail = lane.empty ? "Queue sẽ xuất hiện khi có tác vụ đầu tiên" :
       "Xong " + lane.completed + "  ·  Lỗi " + lane.failed + "  ·  Retry " + lane.retried + "  ·  Từ chối " + lane.rejected;
+    const timing = lane.empty ? "" : "Chờ TB " + Number(lane.avgWaitMs || 0).toFixed(1) + " ms  ·  Xử lý TB " + Number(lane.avgRunMs || 0).toFixed(1) + " ms  ·  Max chờ " + Number(lane.maxWaitMs || 0).toFixed(1) + " ms";
     text(ctx, title, S(PAD + 16), S(yy), 10, p.text, true, "left", full * .42);
     text(ctx, state, W - S(PAD + 16), S(yy), 9, p.accent, true, "right", full * .5);
     text(ctx, detail, S(PAD + 16), S(yy + 15), 8, p.muted, false, "left", full - S(32));
+    text(ctx, timing, S(PAD + 16), S(yy + 28), 8, p.accent, false, "left", full - S(32));
   });
   panel(ctx, S(PAD), S(workerY), full, workerH, p, p.panel);
   text(ctx, "WORKER POOL", S(PAD + 15), S(workerY + 25), 10, p.accent, true);

@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
+const { ThreadType } = require("zalo-client");
 
 const noituPath = require.resolve("../plugins/commands/noitu");
 const tlmnPath = require.resolve("../plugins/commands/tlmn");
@@ -19,12 +20,14 @@ function mockModule(filename, exports) {
 
 const originalConfig = global.config;
 const calls = { noitu: [], tlmn: [] };
-mockModule(noituPath, {
+const noituMock = {
+  hasActiveGameForThread: () => true,
   async handleEvent(context) {
     calls.noitu.push(context);
     return false;
   }
-});
+};
+mockModule(noituPath, noituMock);
 mockModule(tlmnPath, {
   async handleIncoming(context) {
     calls.tlmn.push(context);
@@ -60,6 +63,54 @@ test("plain text messages reach TLMN after Nối Từ declines them", async () =
   assert.equal(calls.tlmn[0].Users, Users);
   assert.equal(calls.tlmn[0].Threads, Threads);
   assert.equal(calls.tlmn[0].isSelf, false);
+});
+
+test("private messages skip group-only game dispatch entirely", async () => {
+  calls.noitu.length = 0;
+  calls.tlmn.length = 0;
+  global.config = { allow_self_command: true };
+  noituMock.hasActiveGameForThread = () => false;
+
+  const consumed = await listener.dispatchActiveGameMessage({
+    api: {},
+    event: { type: ThreadType.User, threadId: "user-1", data: { uidFrom: "player-1", content: "hello" } },
+    Users: {},
+    Threads: {},
+    isSelf: false
+  });
+
+  assert.equal(consumed, false);
+  assert.equal(calls.noitu.length, 0);
+  assert.equal(calls.tlmn.length, 0);
+  noituMock.hasActiveGameForThread = () => true;
+});
+
+test("private Nối Từ session stays available while TLMN remains group-only", async () => {
+  calls.noitu.length = 0;
+  calls.tlmn.length = 0;
+  global.config = { allow_self_command: false };
+  noituMock.hasActiveGameForThread = () => true;
+  noituMock.handleEvent = async context => {
+    calls.noitu.push(context);
+    return true;
+  };
+
+  const consumed = await listener.dispatchActiveGameMessage({
+    api: {},
+    event: { type: ThreadType.User, threadId: "user-game-1", data: { uidFrom: "player-1", content: "sinh viên" } },
+    Users: {},
+    Threads: {},
+    isSelf: false
+  });
+
+  assert.equal(consumed, true);
+  assert.equal(calls.noitu.length, 1);
+  assert.equal(calls.tlmn.length, 0);
+  noituMock.handleEvent = async context => {
+    calls.noitu.push(context);
+    return false;
+  };
+  noituMock.hasActiveGameForThread = () => true;
 });
 
 test("self-account plain text is ignored unless allow_self_command is enabled", async () => {

@@ -1093,6 +1093,13 @@ function stopNoituGames(threadId) {
   if (noituRoom.get(threadId)) noituRoom.finish(threadId);
 }
 
+function hasActiveGameForThread(threadId) {
+  const key = String(threadId || "");
+  if (!key) return false;
+  return [game.get(key), quickNoitu.get(key), ghepChu.get(key), noituRoom.get(key)]
+    .some(session => session?.status === "active");
+}
+
 async function handleActiveGameText(context) {
   if (!isNoituEnabled(context.Threads || defaultThreads, context.event?.threadId)) return false;
   if (await handleNoituRoomText(context)) return true;
@@ -1378,4 +1385,5 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
   return sendGuide(api, event, prefix, isNoituEnabled(Threads || defaultThreads, threadId));
 };
 module.exports.handleEvent = handleActiveGameText;
-module.exports._test = { help, leaderboard, resetNoituScores, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleSoloBotText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn, clearSoloTurnTimers, clearQuickNoituTimer, clearGhepChuTimer, scheduleQuickNoituExpiry, scheduleGhepChuExpiry, quickNoituTimers, ghepChuTimers, isCurrentSoloSession, recallSoloLastPrompt, getSentMessageRefs, playerMentionPayload, addSoloPromptReaction, scheduleSoloTurn, finishSoloTimeout, finishSoloLoss, isNoituEnabled, setNoituEnabled, stopNoituGames, checkNoituWord, currentMonthKey, SOLO_TURN_MS };
+module.exports.hasActiveGameForThread = hasActiveGameForThread;
+module.exports._test = { hasActiveGameForThread, help, leaderboard, resetNoituScores, sendGuide, ghepChuCardData, startGhepChu, startQuickNoitu, handleQuickNoituText, startNoituRoom, startNoituRoomGame, handleNoituRoomText, handleGhepChuText, handleNoiTuText, handleSoloBotText, handleActiveGameText, getPlainMessage, updateNoituScore, createSoloBotSession, startSoloBotGame, playSoloBotTurn, clearSoloTurnTimers, clearQuickNoituTimer, clearGhepChuTimer, scheduleQuickNoituExpiry, scheduleGhepChuExpiry, quickNoituTimers, ghepChuTimers, isCurrentSoloSession, recallSoloLastPrompt, getSentMessageRefs, playerMentionPayload, addSoloPromptReaction, scheduleSoloTurn, finishSoloTimeout, finishSoloLoss, isNoituEnabled, setNoituEnabled, stopNoituGames, checkNoituWord, currentMonthKey, SOLO_TURN_MS };

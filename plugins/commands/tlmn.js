@@ -2136,14 +2136,53 @@ async function handleIncoming(context = {}) {
   return false;
 }
 
+function shouldQueueIncoming(context = {}) {
+  const { event, isSelf, Threads } = context;
+  if ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true) return false;
+  if (event?.type !== ThreadType.Group) return false;
+
+  const content = String(event?.data?.content || "").trim();
+  if (!content) return false;
+  const prefix = String(global.config?.prefix || "!");
+  if (content.startsWith(prefix)) return false;
+
+  const threadId = String(event?.threadId || "");
+  const uid = String(event?.data?.uidFrom || "");
+  if (!threadId || !isEnabled(Threads, threadId)) return false;
+
+  const lower = engine.normalizeText(content);
+  const room = game.get(threadId);
+  if (!room) return lower === "go";
+
+  // A room being settled must consume messages until the financial operation
+  // completes; preserve the existing safety response for every non-command.
+  if (room.cancelPending) return true;
+
+  // These controls are evaluated before the playing-state/player check by the
+  // original handler, so keep their existing reachability.
+  if (lower === "stop" || lower === "leave") return true;
+
+  if (room.status === "waiting") {
+    return lower === "go" || lower === "start" || /^join\s+\d{5}$/.test(lower);
+  }
+  if (room.status !== "playing" || !room.activeUids?.includes(uid)) return false;
+
+  if (["goi y", "goiy", "hint", "suggest", "auto", "danh nhanh", "ra nhanh",
+    "tu dong", "bo", "pass", "skip"].includes(lower)) return true;
+
+  return /(10|[3-9]|[jqka2])(ch|dt|b|r|c|t)/i.test(lower) ||
+    /^(doi(\s*thong)?|doithong|pair|double|sam(\s*co)?|triple|tu\s*quy|tuquy|four|sanh|straight|le|single)\b/.test(lower) ||
+    /^(chon|select|vi\s*tri|vitri)\b/.test(lower);
+}
+
 module.exports.run = context => withRoomActionLock(
   context?.event?.threadId,
   () => runCommand(context)
 );
-module.exports.handleIncoming = context => withRoomActionLock(
-  context?.event?.threadId,
-  () => handleIncoming(context)
-);
+module.exports.handleIncoming = context => {
+  if (!shouldQueueIncoming(context)) return false;
+  return withRoomActionLock(context?.event?.threadId, () => handleIncoming(context));
+};
 
 module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
   if (!Threads?.getAll) return;
@@ -2271,5 +2310,5 @@ module.exports._test = {
   RESERVE_MULTIPLIER,
   finalizeRoomCleanup, recallRoomCards, recallPrivateHand, withRoomActionLock, doLeave,
   clearStartCountdownTimer, scheduleStartCountdown, completeStartCountdown,
-  countdownReactionIcon, reactStartCountdown
+  countdownReactionIcon, reactStartCountdown, shouldQueueIncoming
 };
