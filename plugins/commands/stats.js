@@ -10,11 +10,15 @@ module.exports.config = {
   author: BRAND, description: "Thống kê hoạt động bot và cache dạng Canvas",
   category: "Hệ thống", usage: "stats", cooldowns: 5, dependencies: { canvas: "" }
 };
-function buildText(daily, caches, top, latency, slow, handlers) {
+function buildText(daily, caches, top, latency, slow, handlers, firstResponses = [], zaloSend = null) {
   const topLines = top.length ? top.map((v, i) => (i + 1) + ". " + v[0] + ": " + v[1] + " lần") : ["Chưa có dữ liệu"];
   const cacheLines = Object.entries(caches).map(([n, v]) => n + ": " + v.size + "/" + v.max + " (hit " + v.hitRate + ")");
   const slowLines = slow.length ? slow.map(v => v.command + ": P95 " + v.p95Ms + " ms · TB " + v.avgMs + " ms") : ["Chưa đủ dữ liệu"];
   const handlerLines = handlers.length ? handlers.map(v => v.command + ": P95 " + v.p95Ms + " ms · TB " + v.avgMs + " ms") : ["Chưa đủ dữ liệu"];
+  const firstResponseLines = firstResponses.length ? firstResponses.map(v => v.command + ": P95 " + v.p95Ms + " ms · TB " + v.avgMs + " ms") : ["Chưa có mẫu phản hồi đầu tiên"];
+  const zaloSendLine = zaloSend?.count
+    ? "Zalo send RTT: P95 " + zaloSend.p95Ms + " ms · TB " + zaloSend.avgMs + " ms · lỗi " + zaloSend.failed
+    : "Chưa có mẫu gửi Zalo";
   return [
     "📊 THỐNG KÊ HOẠT ĐỘNG", "Ngày: " + daily.day, "",
     "Lệnh: " + daily.commands + "  •  Lỗi: " + daily.errors,
@@ -23,7 +27,9 @@ function buildText(daily, caches, top, latency, slow, handlers) {
     "🏆 TOP LỆNH", ...topLines, "", "⚡ ĐỘ TRỄ LỆNH",
     latency ? "P50: " + latency.p50Ms + " ms  •  P95: " + latency.p95Ms + " ms  •  Gần nhất: " + latency.lastMs + " ms" : "Chưa có dữ liệu",
     "🐢 LỆNH CHẬM (TOÀN BỘ ĐƯỜNG XỬ LÝ)", ...slowLines,
-    "⚙️ HANDLER CHẬM (CHỈ PHẦN COMMAND.RUN)", ...handlerLines, "", "🧠 CACHE", ...cacheLines, "",
+    "⚙️ HANDLER CHẬM (CHỈ PHẦN COMMAND.RUN)", ...handlerLines, "",
+    "🚦 PHẢN HỒI ĐẦU TIÊN (NHẬN TIN → BẮT ĐẦU GỬI)", ...firstResponseLines,
+    zaloSendLine, "", "🧠 CACHE", ...cacheLines, "",
     BRAND + " • uptime " + Math.floor(process.uptime() / 60) + " phút"
   ].join("\n");
 }
@@ -37,11 +43,14 @@ module.exports.run = async function ({ api, event, reply }) {
   const latency = metrics.getLatencyStats?.();
   const slow = metrics.getCommandLatencyStats?.(5) || [];
   const handlers = metrics.getCommandExecutionLatencyStats?.(5) || [];
-  const fallback = buildText(daily, caches, top, latency, slow, handlers);
+  const firstResponses = metrics.getFirstResponseLatencyStats?.(5) || [];
+  const zaloSend = metrics.getZaloSendLatencyStats?.() || null;
+  const fallback = buildText(daily, caches, top, latency, slow, handlers, firstResponses, zaloSend);
   let imagePath;
   try {
     imagePath = await renderCanvas("stats", {
       daily, latency: latency || {}, topCommands: top, slowCommands: slow, slowHandlers: handlers,
+      firstResponses, zaloSend: zaloSend || {},
       caches: Object.entries(caches).map(([name, v]) => ({ name, size: v.size, max: v.max, hitRate: v.hitRate })),
       uptime: Math.floor(process.uptime() / 60) + " phút"
     }, { timeout: 30000, poolSize: 2 });
