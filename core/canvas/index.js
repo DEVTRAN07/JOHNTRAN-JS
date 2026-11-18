@@ -16,19 +16,7 @@ const THEMES = {
 };
 function sanitize(value) { return theme.sanitizeGlyphs(value); }
 function wrapText(ctx, value, maxWidth) {
-  const lines = [];
-  for (const paragraph of String(value ?? "").split("\n")) {
-    const words = paragraph.split(/\s+/).filter(Boolean);
-    if (!words.length) { lines.push(""); continue; }
-    let current = "";
-    for (const word of words) {
-      const next = current ? current + " " + word : word;
-      if (current && ctx.measureText(next).width > maxWidth) { lines.push(current); current = word; }
-      else current = next;
-    }
-    if (current) lines.push(current);
-  }
-  return lines;
+  return theme.wrapText(ctx, value, maxWidth);
 }
 function measureContent(spec = {}) {
   theme.initFonts(); theme.ensureTheme();
