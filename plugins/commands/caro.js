@@ -237,7 +237,8 @@ function parseCellChoice(value) {
   const match = text.match(/^(?:ch[oọ]n\s*)?(\d{1,3})$/u);
   if (!match) return null;
   const cell = Number(match[1]);
-  return Number.isInteger(cell) && cell >= 1 && cell <= 256 ? cell : null;
+  // Let the engine produce its normal out-of-range reply for 000 or 257–999.
+  return Number.isInteger(cell) && cell >= 0 && cell <= 999 ? cell : null;
 }
 
 function modeMenuText(prefix) {
@@ -750,13 +751,14 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
 
   if (!args.length) return openModeMenu({ api, event, Users, Threads });
 
+  const activeSession = game.get(threadId);
+  const commandCell = parseCellChoice(actionText);
+  if (activeSession?.status === "active" && commandCell !== null) {
+    return handleMove({ api, event, Users }, String(commandCell));
+  }
+
   const selectedMode = parseModeChoice(actionText);
   if (selectedMode) {
-    const activeSession = game.get(threadId);
-    if (activeSession?.status === "active") {
-      const selectedCell = parseCellChoice(actionText);
-      if (selectedCell !== null) return handleMove({ api, event, Users }, String(selectedCell));
-    }
     clearModeSelection(threadId, uid);
     action = selectedMode;
   }
