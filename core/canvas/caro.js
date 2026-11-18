@@ -32,7 +32,7 @@ function drawText(ctx, value, x, y, scale, options = {}) {
     align: options.align || "left",
     baseline: options.baseline || "alphabetic",
     maxWidth: options.maxWidth,
-    multicolor: words.length > 1 && !semanticColor
+    multicolor: !semanticColor && (words.length > 1 || words.some(word => Array.from(word).length > 1))
   });
   ctx.restore();
 }
