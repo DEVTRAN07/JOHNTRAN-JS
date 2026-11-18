@@ -254,13 +254,9 @@ module.exports.handleEvent = async function (context = {}) {
   ];
   if (!activeFlags.some(key => threadData[key] === true)) return;
 
-  let adminPromise = null;
-  const isAdminOrUnknown = async () => {
-    if (!adminPromise) {
-      adminPromise = getGroupAdminState(api, threadId, userId).catch(() => null);
-    }
-    return (await adminPromise) !== false;
-  };
+  // Anti rules apply uniformly to every human group member, including
+  // the group owner and deputies. QTV privilege is enforced only by the
+  // command that changes Anti settings, never by message moderation.
   const sendNotice = (message) => api.sendMessage(
     createMentionMessage(message, name, userId),
     threadId,
@@ -383,7 +379,7 @@ module.exports.handleEvent = async function (context = {}) {
 
     if (threadData.anti_nude === true && isPhotoMessage(data)) {
       const imageUrl = getImageUrl(data);
-      if (imageUrl && !(await isAdminOrUnknown())) {
+      if (imageUrl) {
         const checkId = threadId + ":" + String(data.cliMsgId || data.msgId || imageUrl);
         if (!nudeModerationInFlight.has(checkId)) {
           nudeModerationInFlight.add(checkId);
@@ -419,7 +415,7 @@ module.exports.handleEvent = async function (context = {}) {
 
     const urls = extractMessageUrls(data);
 
-    if (urls.length && threadData.anti_danger_link === true && !(await isAdminOrUnknown())) {
+    if (urls.length && threadData.anti_danger_link === true) {
       let blockedUrl = null;
       for (const url of urls) {
         if (await isUnsafeLink(url, api)) {
@@ -440,7 +436,6 @@ module.exports.handleEvent = async function (context = {}) {
     }
 
     if (urls.length && threadData.anti_link === true) {
-      if (await isAdminOrUnknown()) return;
       let deleteError = null;
       try { await deleteGroupMessage(api, event); }
       catch (error) { deleteError = error; }
@@ -452,49 +447,48 @@ module.exports.handleEvent = async function (context = {}) {
     }
 
     if (threadData.anti_sticker_spam === true && isStickerMessage(data)) {
-      if (!(await isAdminOrUnknown())) {
-        const now = Date.now();
-        const cache = global.antiStickerSpamCache instanceof Map
-          ? global.antiStickerSpamCache
-          : (global.antiStickerSpamCache = new Map());
-        const cacheKey = threadId + ":" + userId;
-        const history = (cache.get(cacheKey) || []).filter(item => now - item.at <= 4000);
-        if (data.cliMsgId != null && data.msgId != null) {
-          history.push({
-            at: now,
-            data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
-          });
-        }
+      const now = Date.now();
+      const cache = global.antiStickerSpamCache instanceof Map
+        ? global.antiStickerSpamCache
+        : (global.antiStickerSpamCache = new Map());
+      const cacheKey = threadId + ":" + userId;
+      const history = (cache.get(cacheKey) || []).filter(item => now - item.at <= 4000);
 
-        if (history.length > 5) {
-          cache.delete(cacheKey);
-          const results = await Promise.allSettled(history.map(item => deleteGroupMessage(api, {
-            threadId,
-            type: ThreadType.Group,
-            data: item.data
-          })));
-          const deleted = results.filter(item => item.status === "fulfilled").length;
-          const warnings = global.antiStickerSpamWarnings instanceof Map
-            ? global.antiStickerSpamWarnings
-            : (global.antiStickerSpamWarnings = new Map());
-          const lastWarning = warnings.get(cacheKey) || 0;
-          if (now - lastWarning >= 10000) {
-            warnings.set(cacheKey, now);
-            return sendNotice(
-              deleted
-                ? "🚫 {member}, không được dội bom sticker! Bot đã xóa " + deleted + "/" + history.length + " sticker."
-                : "🚫 {member}, phát hiện dội bom sticker nhưng Zalo không cho bot xóa sticker."
-            );
-          }
-          return;
-        }
-        cache.set(cacheKey, history);
-        if (cache.size > 10000) cache.delete(cache.keys().next().value);
+      if (data.cliMsgId != null && data.msgId != null) {
+        history.push({
+          at: now,
+          data: { cliMsgId: data.cliMsgId, msgId: data.msgId, uidFrom: userId }
+        });
       }
+
+      if (history.length > 5) {
+        cache.delete(cacheKey);
+        const results = await Promise.allSettled(history.map(item => deleteGroupMessage(api, {
+          threadId,
+          type: ThreadType.Group,
+          data: item.data
+        })));
+        const deleted = results.filter(item => item.status === "fulfilled").length;
+        const warnings = global.antiStickerSpamWarnings instanceof Map
+          ? global.antiStickerSpamWarnings
+          : (global.antiStickerSpamWarnings = new Map());
+        const lastWarning = warnings.get(cacheKey) || 0;
+        if (now - lastWarning >= 10000) {
+          warnings.set(cacheKey, now);
+          return sendNotice(
+            deleted
+              ? "🚫 {member}, không được dội bom sticker! Bot đã xóa " + deleted + "/" + history.length + " sticker."
+              : "🚫 {member}, phát hiện dội bom sticker nhưng Zalo không cho bot xóa sticker."
+          );
+        }
+        return;
+      }
+
+      cache.set(cacheKey, history);
+      if (cache.size > 10000) cache.delete(cache.keys().next().value);
     }
 
     if (threadData.anti_spam === true) {
-      if (await isAdminOrUnknown()) return;
       const now = Date.now();
       const cache = global.spamCache && typeof global.spamCache === "object"
         ? global.spamCache
