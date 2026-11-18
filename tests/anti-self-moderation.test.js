@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const anti = require("../plugins/commands/anti");
 const { ThreadType } = require("zalo-client");
-const { shouldProcessUndoEvent } = require("../core/listen");
+const { shouldProcessUndoEvent, shouldCacheIncomingMessage } = require("../core/listen");
+const { updateMessageCache, getMessageCache } = require("../utils/messageCache");
 const { getDispatchSources } = require("../core/handle/handleEvent")._test;
 
 const originalConfig = global.config;
@@ -80,6 +81,110 @@ test("Anti-generated bot replies are ignored to prevent self-moderation loops", 
   };
 
   assert.equal(anti._test.shouldSkipSelfEvent(context), true);
+});
+
+test("self-test message cache stores bot test messages but excludes Anti-generated replies", () => {
+  const previousConfig = global.config;
+  anti._test.clearAntiSelfEchoes();
+  global.config = { allow_self_anti: true };
+  const threadId = "self-test-cache-group";
+  const botMessage = {
+    threadId,
+    type: ThreadType.Group,
+    isSelf: true,
+    data: {
+      uidFrom: "bot-account",
+      cliMsgId: "bot-cache-cli",
+      msgId: "bot-cache-msg",
+      msgType: "webchat",
+      content: "Tin thử nghiệm cần được cache"
+    }
+  };
+  assert.equal(shouldCacheIncomingMessage(botMessage), true);
+
+  const antiNotice = "🚫 Anti đã xử lý vi phạm";
+  anti._test.rememberAntiSelfEcho(threadId, { msg: antiNotice });
+  const antiEvent = {
+    threadId,
+    type: ThreadType.Group,
+    isSelf: true,
+    data: { uidFrom: "bot-account", content: antiNotice }
+  };
+  assert.equal(shouldCacheIncomingMessage(antiEvent), false);
+  assert.equal(
+    anti._test.shouldSkipSelfEvent({ isSelf: true, event: antiEvent }),
+    true,
+    "cache decision must not consume the Anti echo marker before Anti handles the event"
+  );
+
+  if (previousConfig === undefined) delete global.config;
+  else global.config = previousConfig;
+});
+
+test("antirecall restores a bot-authored test message from the self-test cache", async () => {
+  const previousConfig = global.config;
+  global.config = { allow_self_anti: true };
+  const threadId = "self-antirecall-group";
+  const cliMsgId = "bot-self-recall-" + Date.now();
+  const sent = [];
+  const originalMessage = {
+    threadId,
+    type: ThreadType.Group,
+    isSelf: true,
+    data: {
+      uidFrom: "bot-account",
+      dName: "Bot",
+      cliMsgId,
+      msgId: "bot-original-msg",
+      msgType: "webchat",
+      content: "Nội dung do bot gửi để thử Anti Undo",
+      ts: Date.now()
+    }
+  };
+
+  try {
+    assert.equal(shouldCacheIncomingMessage(originalMessage), true);
+    updateMessageCache(originalMessage);
+
+    const api = {
+      getOwnId() { return "bot-account"; },
+      async getGroupInfo(gid) {
+        return { gridInfoMap: { [gid]: { creatorId: "bot-account", adminIds: [] } } };
+      },
+      async sendMessage(payload, gid, type) {
+        sent.push({ payload, gid, type });
+        return { message: { msgId: "notice-msg", cliMsgId: "notice-cli" } };
+      }
+    };
+    const undoEvent = {
+      threadId,
+      isGroup: true,
+      isSelf: true,
+      data: {
+        uidFrom: "bot-account",
+        dName: "Bot",
+        ts: Date.now(),
+        content: { cliMsgId }
+      }
+    };
+
+    await anti.handleEvent({
+      api,
+      event: undoEvent,
+      eventType: "undo",
+      isSelf: true,
+      Threads: { async getData() { return { data: { anti_undo: true } }; } }
+    });
+
+    assert.equal(sent.length, 1, "the recalled bot test message is restored once");
+    assert.match(sent[0].payload.msg, /Nội dung do bot gửi để thử Anti Undo/);
+    assert.equal(sent[0].gid, threadId);
+    assert.equal(sent[0].type, ThreadType.Group);
+  } finally {
+    delete getMessageCache()[cliMsgId];
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+  }
 });
 
 test("URL extraction covers plain text, recommended links, and nested Zalo metadata", () => {
