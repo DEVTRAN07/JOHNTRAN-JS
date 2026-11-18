@@ -47,7 +47,7 @@ const ANTI_PROTECTION_ITEMS = Object.freeze([
   { key:"anti_voice", label:"Chặn tin nhắn thoại", detail:"Chặn voice được gửi vào nhóm", command:"/antivoice", icon:"VOX", tone:"purple" },
   { key:"anti_word", label:"Chặn từ ngữ thô tục", detail:"Đối chiếu danh sách từ cấm tiếng Việt", command:"/antiword", icon:"TXT", tone:"pink" },
   { key:"anti_undo", label:"Chống thu hồi tin nhắn", detail:"Khôi phục chữ, ảnh, video, voice và sticker", command:"/antirecall", icon:"↶", tone:"purple" }
-]);;
+]);
 const STATUS = {
   online:["Đang chạy","online"],offline:["Chưa chạy","offline"],stopped:["Đã dừng","stopped"],
   restarting:["Đang khởi động lại","starting"],starting:["Đang khởi động","starting"],
