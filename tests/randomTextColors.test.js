@@ -128,6 +128,20 @@ test("Canvas text does not truncate the end of a long label", () => {
   assert.ok(result.segments > 1);
 });
 
+test("Canvas keeps every line of multiline text and colors its words", () => {
+  const { ctx } = theme.newCanvas(640, 220);
+  const fullText = "Dòng đầu tiên có đủ chữ\\nDòng thứ hai cũng không bị mất\\nDòng ba kết thúc ở đây";
+  const result = theme.drawMulticolorText(ctx, fullText, 20, 40, {
+    size: 22,
+    maxWidth: 560,
+    color: "#ffffff",
+    multicolor: true
+  });
+
+  assert.equal(result.text, fullText);
+  assert.equal(result.segments, 16);
+});
+
 test("each newly rendered Canvas gets a palette seed for randomized card text", () => {
   const { ctx } = theme.newCanvas(320, 120);
   assert.ok(Number.isSafeInteger(ctx.__jtRenderSeed));
