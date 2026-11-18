@@ -36,6 +36,8 @@ const BACKGROUNDS = Object.freeze([
 
 const loaded = new Map();
 const pending = new Map();
+const failedUntil = new Map();
+const FAILURE_RETRY_MS = 60 * 1000;
 let activeImage = null;
 let activeBackgroundId = "";
 let renderSeed = Math.floor(Math.random() * 0x7fffffff);
@@ -118,6 +120,7 @@ function isJpeg(buffer) {
 async function loadBackground(definition) {
   if (loaded.has(definition.id)) return loaded.get(definition.id);
   if (pending.has(definition.id)) return pending.get(definition.id);
+  if ((failedUntil.get(definition.id) || 0) > Date.now()) return null;
 
   const task = (async () => {
     try {
@@ -164,6 +167,7 @@ async function loadBackground(definition) {
       loaded.set(definition.id, image);
       return image;
     } catch (error) {
+      failedUntil.set(definition.id, Date.now() + FAILURE_RETRY_MS);
       console.warn("[CANVAS_THEME] Không tải được " + definition.file + ": " + (error?.message || error));
       return null;
     } finally {
@@ -199,13 +203,21 @@ async function prepare(options = {}) {
 
   activeImage = null;
   activeBackgroundId = "";
-  for (const definition of candidate) {
-    if (!definition) continue;
-    const image = loaded.get(definition.id) || await loadBackground(definition);
-    if (image) {
-      activeImage = image;
-      activeBackgroundId = definition.id;
-      break;
+  const preferred = candidate[0];
+  if (preferred) {
+    activeImage = loaded.get(preferred.id) || await loadBackground(preferred);
+    if (activeImage) activeBackgroundId = preferred.id;
+  }
+  if (!activeImage && candidate.length > 1) {
+    const fallbackCandidates = candidate.slice(1);
+    const results = await Promise.all(fallbackCandidates.map(async definition => ({
+      definition,
+      image: loaded.get(definition.id) || await loadBackground(definition)
+    })));
+    const fallback = results.find(item => item.image);
+    if (fallback) {
+      activeImage = fallback.image;
+      activeBackgroundId = fallback.definition.id;
     }
   }
 
@@ -253,5 +265,6 @@ module.exports = {
   getActiveImage,
   getImage,
   getRenderSeed,
-  getBackgrounds
+  getBackgrounds,
+  FAILURE_RETRY_MS
 };
