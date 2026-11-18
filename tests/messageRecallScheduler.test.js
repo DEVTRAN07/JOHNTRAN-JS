@@ -8,8 +8,8 @@ const helpers = message._test;
 
 test("recall countdown uses a bounded number of clock updates", () => {
   const updates = helpers.getRecallCountdownUpdates(60000);
-  assert.equal(updates.length, 5);
-  assert.deepEqual(updates.map(item => item.waitMs), [10000, 20000, 30000, 40000, 50000]);
+  assert.equal(updates.length, 3);
+  assert.deepEqual(updates.map(item => item.waitMs), [15000, 30000, 45000]);
   assert.equal(updates.at(-1).icon, "⏰");
 });
 

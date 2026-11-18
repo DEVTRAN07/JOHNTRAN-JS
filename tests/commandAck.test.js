@@ -24,34 +24,41 @@ function createWrapped() {
   return { wrapped: wrapApi(api, event.threadId, event.type, "slowcmd", event), sent };
 }
 
-test("universal processing acknowledgement is disabled", async () => {
+// Status is a delayed reaction only; it must never add another message to the chat.
+test("delayed acknowledgement is a reaction callback, never a processing text message", async () => {
   const { wrapped, sent } = createWrapped();
-  assert.equal(wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 }), false);
+  const statuses = [];
+  assert.equal(wrapped.__reply.scheduleAcknowledgement(() => statuses.push("working"), 10), true);
   await delay(30);
+  assert.deepEqual(statuses, ["working"]);
   assert.equal(sent.length, 0);
   assert.equal(sent.some(item => /Đang xử lý lệnh/.test(item.msg || "")), false);
 });
 
-test("command sends only its own text result", async () => {
+test("the first text reply cancels a pending acknowledgement", async () => {
   const { wrapped, sent } = createWrapped();
-  wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 });
+  const statuses = [];
+  wrapped.__reply.scheduleAcknowledgement(() => statuses.push("working"), 10);
   await wrapped.sendMessage({ msg: "Kết quả lệnh" }, "ack-group", 2);
   await delay(30);
+  assert.deepEqual(statuses, []);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].msg, "Kết quả lệnh");
 });
 
-test("voice/media command output does not get a processing text message", async () => {
+test("voice/media output cancels the pending acknowledgement", async () => {
   const { wrapped, sent } = createWrapped();
-  wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 });
+  const statuses = [];
+  wrapped.__reply.scheduleAcknowledgement(() => statuses.push("working"), 10);
   await wrapped.sendVoice({ voiceUrl: "https://example.invalid/audio.aac" });
   await delay(30);
+  assert.deepEqual(statuses, []);
   assert.equal(sent.length, 1);
   assert.ok(sent[0].voice);
 });
 
-test("slow outgoing text does not create a universal processing message", async () => {
-  const sent = [];
+test("starting a slow outgoing send cancels the duplicate acknowledgement request", async () => {
+  const sent = [], statuses = [];
   const api = {
     async sendMessage(payload) {
       sent.push(payload);
@@ -62,12 +69,12 @@ test("slow outgoing text does not create a universal processing message", async 
   const event = { threadId: "ack-slow-send", type: 2, data: { msgId: 1, cliMsgId: 1 } };
   const wrapped = wrapApi(api, event.threadId, event.type, "slowcmd", event);
 
-  wrapped.__reply.scheduleAcknowledgement({ delayMs: 10 });
+  wrapped.__reply.scheduleAcknowledgement(() => statuses.push("working"), 10);
   await wrapped.sendMessage({ msg: "Kết quả chậm" });
   await delay(30);
 
+  assert.deepEqual(statuses, []);
   assert.equal(sent.length, 1);
-  assert.equal(sent.some(item => /Đang xử lý lệnh/.test(item.msg || "")), false);
 });
 
 test("slow dispatcher handler does not send a universal processing message", async () => {
@@ -95,18 +102,40 @@ test("background command dispatcher does not mark a sticker complete before its 
   let finished = false;
   const reply = {
     reacted: false,
+    _responseStarted: false,
+    _commandCompleted: false,
+    _ackTimer: null,
+    scheduleAcknowledgement(callback, delayMs = 600) {
+      this._ackTimer = setTimeout(() => {
+        this._ackTimer = null;
+        if (!this._responseStarted && !this._commandCompleted) {
+          reactions.push("working");
+          this.reacted = true;
+          callback();
+        }
+      }, delayMs);
+      this._ackTimer.unref?.();
+      return true;
+    },
+    cancelAcknowledgement() {
+      if (this._ackTimer) clearTimeout(this._ackTimer);
+      this._ackTimer = null;
+    },
+    finishCommand() {
+      this._commandCompleted = true;
+      this.cancelAcknowledgement();
+    },
     react(icon) {
       reactions.push(icon);
       this.reacted = true;
       return Promise.resolve(true);
-    },
-    finishCommand() {}
+    }
   };
 
   await dispatchCommand({
     command: {
-      config: { backgroundExecution: true },
-      run: async () => { finished = true; }
+      config: { backgroundExecution: true, ackDelayMs: 5 },
+      run: async () => { await delay(25); finished = true; }
     },
     commandName: "stk",
     args: ["12"],

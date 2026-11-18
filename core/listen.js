@@ -5,6 +5,8 @@ const logger = require("../utils/logger");
 const { reportComponent } = require("./runtime/recovery");
 const { updateMessageCache, getMessageCache } = require("../utils/index");
 const { ThreadType } = require("zalo-client");
+const { performance } = require("node:perf_hooks");
+const metrics = require("./metrics");
 const { createCipherReadyGate, requestOldMessagesThen } = require("./topchat/historyBootstrap");
 const { createReconnectFailureTracker } = require("./topchat/reconnectState");
 const {
@@ -214,6 +216,11 @@ function startListening(api) {
 
   // ===== Xử lý 1 tin nhắn (dùng chung cho realtime và backfill sau reconnect) =====
   const onMessage = async (event, options = {}) => {
+    const receivedAt = typeof options.receivedAt === "number" && Number.isFinite(options.receivedAt)
+      ? options.receivedAt
+      : performance.now();
+    const preprocessingStartedAt = performance.now();
+
     // allow_private_command: false → bỏ qua HOÀN TOÀN tin riêng (cả lệnh lẫn auto-reply)
     if (event.type === ThreadType.User && global.config.allow_private_command === false) {
       return;
@@ -233,6 +240,8 @@ function startListening(api) {
       panelBridge.recordIncoming(event);
     } catch { /* bỏ qua */ }
 
+    metrics.trackListenerStageLatency?.("message-preprocess", performance.now() - preprocessingStartedAt);
+
     // Backfill only records missed messages; historical commands/events must
     // never be executed again after reconnect.
     if (!shouldExecuteMessageCommand(options)) return;
@@ -240,6 +249,7 @@ function startListening(api) {
     // Active groups are normally already cached. Use the synchronous cache
     // hit so a hot message can enter command parsing without an avoidable
     // Promise/microtask boundary; cold groups retain the safe async fallback.
+    const threadLookupStartedAt = performance.now();
     let threadData = null;
     try {
       threadData = Threads.getCachedData?.(event.threadId) || null;
@@ -248,6 +258,7 @@ function startListening(api) {
       // DB (Supabase) hỏng / timeout → vẫn chạy lệnh với threadInfo rỗng
       logger.log(`Lỗi đọc dữ liệu nhóm ${event.threadId} (bỏ qua): ${err.message}`, "warn", { source: "listener-database", isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
     }
+    metrics.trackListenerStageLatency?.("thread-data", performance.now() - threadLookupStartedAt);
 
     // Chuẩn hoá @mention → event.mentions = [{ uid }] để mọi lệnh dùng chung
     try {
@@ -284,6 +295,7 @@ function startListening(api) {
     };
 
     if (canRunCommand && typeof content === "string" && content.startsWith(prefix)) {
+      metrics.trackListenerStageLatency?.("receive-to-command", performance.now() - receivedAt);
       // Start command parsing immediately. Passive event handlers run on the
       // next event-loop turn so they cannot delay the command hot path.
       Promise.resolve(handleCommand(content, event, api, threadInfo, prefix, threadData)).catch((err) => {
@@ -355,6 +367,7 @@ function startListening(api) {
   };
 
   const handleIncoming = (event, options = {}) => {
+    const receivedAt = performance.now();
     // Observe the raw SDK event before duplicate/self filters so /topchat can
     // distinguish "listener received nothing" from "self/duplicate was skipped".
     const topchatCounter = require("../plugins/events/topchatCounter");
@@ -363,6 +376,7 @@ function startListening(api) {
     const cliMsgId = event?.data?.cliMsgId;
     if (cliMsgId && processedIds.has(cliMsgId)) return; // trùng lặp (server gửi lại / backfill)
     markProcessed(cliMsgId);
+    metrics.trackIncomingMessage?.(event, receivedAt);
 
     // Count every group event for diagnostics. The counter still excludes
     // bot-self messages from the actual member ranking.
@@ -372,7 +386,7 @@ function startListening(api) {
       });
     }
 
-    Promise.resolve(onMessage(event, options)).catch((err) => {
+    Promise.resolve(onMessage(event, { ...options, receivedAt })).catch((err) => {
       logger.log(`Lỗi listener message: ${err.message}`, "error");
     });
   };
