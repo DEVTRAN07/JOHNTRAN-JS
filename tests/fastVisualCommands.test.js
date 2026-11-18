@@ -24,7 +24,7 @@ workerRender.renderCanvas = originalRenderCanvas;
 global.config = { prefix: "/", name_bot: "JOHNTRAN" };
 global.client = { commands: new Map() };
 
-function mockApi() {
+function mockApi(sent = []) {
   return {
     getUserInfo() {
       // Simulate a slow optional profile request; menu must not await it.
@@ -35,6 +35,7 @@ function mockApi() {
       return new Promise(() => {});
     },
     sendMessage(payload) {
+      sent.push(payload);
       return Promise.resolve({
         message: { msgId: Date.now(), cliMsgId: Date.now() },
         payload
@@ -44,7 +45,8 @@ function mockApi() {
 }
 
 test("menu creates and sends its card under one second without waiting for profile API", async () => {
-  const api = mockApi();
+  const sent = [];
+  const api = mockApi(sent);
   const event = {
     threadId: "fast-menu-thread",
     type: 2,
@@ -56,6 +58,8 @@ test("menu creates and sends its card under one second without waiting for profi
   const elapsed = performance.now() - started;
 
   assert.ok(elapsed < 1000, `menu fast path took ${elapsed.toFixed(1)}ms`);
+  assert.match(sent[0]?.msg || "", /Đang chuẩn bị menu/, "progress acknowledgement must be first");
+  assert.ok(sent.some(item => Array.isArray(item.attachments)), "the visual menu card must still be sent");
   assert.equal(renderRequests.filter(type => type === "menu").length, 1, "menu must still request a canvas card");
 });
 

@@ -29,7 +29,20 @@ module.exports.run = async function ({ api, event }) {
 
   let imagePath;
   try {
-    const profile = await getRequesterProfile(api, event, { waitMs: 300, fetchTimeoutMs: 1200, skipAvatarWarm: true });
+    // A cold Canvas worker can take seconds to start. Acknowledge first so the
+    // user sees an immediate response while the visual card is being prepared.
+    try {
+      await api.sendMessage(
+        { msg: "⏳ Đang chuẩn bị menu chức năng, thẻ danh mục sẽ được gửi ngay sau đó." },
+        event.threadId,
+        event.type
+      );
+    } catch (ackError) {
+      console.warn("[MENU_ACK] Không gửi được tin báo tiến độ:", ackError?.message || ackError);
+    }
+
+    // Profile/avatar is decorative; refresh it without adding a wait to menu.
+    const profile = await getRequesterProfile(api, event, { waitMs: 0, fetchTimeoutMs: 1200, skipAvatarWarm: true });
     const groups = folders.collectMenuGroups(commands, senderId);
 
     // Thứ tự ưu tiên hiển thị menu (từ quan trọng/popular đến ít)

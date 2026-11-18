@@ -141,12 +141,13 @@ test("/scl search results are sent as styled text without waiting for Canvas", a
       }
     });
 
-    assert.equal(sent.length, 1, "search must send one result message");
-    assert.match(sent[0].payload.msg, /NHẠC · SOUNDCLOUD/);
-    assert.match(sent[0].payload.msg, /Instant Result/);
-    assert.ok(Array.isArray(sent[0].payload.styles) && sent[0].payload.styles.length > 0,
+    assert.equal(sent.length, 2, "search sends a progress acknowledgement followed by one result");
+    assert.match(sent[0].payload.msg, /Đang tìm/, "progress acknowledgement must be first");
+    assert.match(sent[1].payload.msg, /NHẠC · SOUNDCLOUD/);
+    assert.match(sent[1].payload.msg, /Instant Result/);
+    assert.ok(Array.isArray(sent[1].payload.styles) && sent[1].payload.styles.length > 0,
       "the result uses native Zalo text styles");
-    assert.equal(sent[0].payload.attachments, undefined);
+    assert.equal(sent[1].payload.attachments, undefined);
     assert.equal(searchCanvasRenderCalls, beforeRenders,
       "the search list must not render or upload a Canvas image");
   } finally {
@@ -178,8 +179,9 @@ test("/scl search does not wait for a stalled Zalo working reaction", async () =
       }
     });
     assert.ok(Date.now() - started < 500, "search path must not wait for reaction API completion");
-    assert.equal(sent.length, 1);
-    assert.match(sent[0].msg, /Fast/);
+    assert.equal(sent.length, 2);
+    assert.match(sent[0].msg, /Đang tìm/);
+    assert.match(sent[1].msg, /Fast/);
   } finally {
     music.search = originalSearch;
     music.getProvider = originalGetProvider;

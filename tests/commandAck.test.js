@@ -149,3 +149,28 @@ test("background command dispatcher does not mark a sticker complete before its 
   assert.equal(finished, true);
   assert.deepEqual(reactions, ["working"]);
 });
+
+
+test("first response latency is sampled after the Zalo send request completes", async () => {
+  const metrics = require("../core/metrics");
+  const { performance } = require("node:perf_hooks");
+  const event = {
+    threadId: "ack-metric-group",
+    type: 2,
+    data: { msgId: "ack-metric-message", cliMsgId: "ack-metric-client" }
+  };
+  const before = metrics.getFirstResponseLatencyStats()?.count || 0;
+  metrics.trackIncomingMessage(event, performance.now());
+  const wrapped = wrapApi({
+    async sendMessage() {
+      await delay(55);
+      return { message: { msgId: 55, cliMsgId: 55 } };
+    }
+  }, event.threadId, event.type, "slowcmd", event);
+
+  await wrapped.sendMessage({ msg: "API response delay test" });
+  const after = metrics.getFirstResponseLatencyStats();
+
+  assert.equal(after?.count, before + 1);
+  assert.ok(after.maxMs >= 45, `expected the API round-trip in the metric, got ${after.maxMs}ms`);
+});
