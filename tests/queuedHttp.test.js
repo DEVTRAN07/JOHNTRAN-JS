@@ -34,7 +34,7 @@ test("queued HTTP buffer fetches use the shared download lane", async () => {
   }
 });
 
-test("queued HTTP metadata requests use the shared download lane", async () => {
+test("queued HTTP metadata requests use the dedicated control lane", async () => {
   const original = http.getJson;
   let received;
   http.getJson = async (url, options) => {
@@ -42,7 +42,7 @@ test("queued HTTP metadata requests use the shared download lane", async () => {
     return { status: 200, data: { ok: true } };
   };
 
-  const before = stats().download?.completed || 0;
+  const before = stats().http?.completed || 0;
   try {
     const result = await queuedHttp.getJson("https://media.example/info", {
       timeout: 7000,
@@ -54,8 +54,42 @@ test("queued HTTP metadata requests use the shared download lane", async () => {
       url: "https://media.example/info",
       options: { timeout: 7000, retries: 0 }
     });
-    assert.equal(stats().download.completed, before + 1);
+    assert.equal(stats().http.completed, before + 1);
   } finally {
     http.getJson = original;
   }
+});
+
+
+test("queued HTTP buffer assets can use an independent asset lane", async () => {
+  const original = http.getBuffer;
+  let received;
+  http.getBuffer = async (url, options) => {
+    received = { url, options };
+    return { status: 200, buffer: Buffer.from("asset") };
+  };
+
+  const before = stats().asset?.completed || 0;
+  try {
+    const result = await queuedHttp.getBuffer("https://cdn.example/avatar.png", {
+      timeout: 2500,
+      queueLane: "asset",
+      queuePriority: 8
+    });
+    assert.equal(result.buffer.toString(), "asset");
+    assert.deepEqual(received, {
+      url: "https://cdn.example/avatar.png",
+      options: { timeout: 2500 }
+    });
+    assert.equal(stats().asset.completed, before + 1);
+  } finally {
+    http.getBuffer = original;
+  }
+});
+
+test("HTTP control lane is independent from binary download lane", () => {
+  const { DEFAULT_LANES } = require("../core/jobQueue");
+  assert.equal(DEFAULT_LANES.http.concurrency, 3);
+  assert.equal(DEFAULT_LANES.asset.concurrency, 2);
+  assert.equal(DEFAULT_LANES.download.concurrency, require("../core/jobQueue").DOWNLOAD_CONCURRENCY);
 });
