@@ -121,3 +121,57 @@ test("Guard does not duplicate URL warnings when Anti-Link owns link moderation"
   assert.equal(fixture.calls.kicked.length, 0);
   assert.equal(fixture.calls.sent.length, 0);
 });
+
+
+test("Guard skips inactive groups before group-role verification or storage reads", async () => {
+  let groupRoleCalls = 0;
+  let storageReads = 0;
+  const threadId = "guard-fast-off";
+  const api = {
+    async getGroupInfo() { groupRoleCalls++; return { gridInfoMap: {} }; },
+    async getOwnId() { groupRoleCalls++; return "bot-id"; }
+  };
+  const Threads = {
+    getCachedData() { return { threadId, data: { event_guard: false } }; },
+    async getData() { storageReads++; throw new Error("unexpected storage read"); }
+  };
+
+  await guard.run({
+    api,
+    event: makeEvent(threadId, "hello everyone", "fast-off"),
+    Threads,
+    isSelf: false
+  });
+
+  assert.equal(groupRoleCalls, 0);
+  assert.equal(storageReads, 0);
+});
+
+test("Guard does not call Zalo group-role APIs for harmless messages in an enabled group", async () => {
+  let groupRoleCalls = 0;
+  let storageReads = 0;
+  const threadId = "guard-fast-harmless";
+  const api = {
+    async getGroupInfo() { groupRoleCalls++; return { gridInfoMap: {} }; },
+    async getOwnId() { groupRoleCalls++; return "bot-id"; }
+  };
+  const Threads = {
+    getCachedData() {
+      return {
+        threadId,
+        data: { event_guard: true, guard_allowed_hosts: [], anti_link: false, anti_danger_link: false }
+      };
+    },
+    async getData() { storageReads++; throw new Error("cache should satisfy this message"); }
+  };
+
+  await guard.run({
+    api,
+    event: makeEvent(threadId, "hello everyone", "fast-harmless"),
+    Threads,
+    isSelf: false
+  });
+
+  assert.equal(groupRoleCalls, 0);
+  assert.equal(storageReads, 0);
+});
