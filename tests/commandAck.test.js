@@ -24,6 +24,7 @@ function createWrapped() {
   return { wrapped: wrapApi(api, event.threadId, event.type, "slowcmd", event), sent };
 }
 
+// Status is a delayed reaction only; it must never add another message to the chat.
 test("delayed acknowledgement is a reaction callback, never a processing text message", async () => {
   const { wrapped, sent } = createWrapped();
   const statuses = [];
