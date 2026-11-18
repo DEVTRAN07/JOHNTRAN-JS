@@ -8,23 +8,45 @@ function drawAvatar(ctx, item, x, y, size, accent) {
   const S = theme.S, p = theme.PALETTE;
   const image = avatarCache.getAvatar(item?.avatar);
   ctx.save();
-  ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2); ctx.clip();
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+  ctx.clip();
+
   if (image) {
     const scale = Math.max(size / image.width, size / image.height);
     const w = image.width * scale, h = image.height * scale;
     ctx.drawImage(image, x + (size - w) / 2, y + (size - h) / 2, w, h);
   } else {
     const g = ctx.createLinearGradient(x, y, x + size, y + size);
-    g.addColorStop(0, "#244864"); g.addColorStop(1, "#14283d");
-    ctx.fillStyle = g; ctx.fillRect(x, y, size, size);
+    g.addColorStop(0, "#102b4b");
+    g.addColorStop(.55, "#123b5b");
+    g.addColorStop(1, "#241d50");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, size, size);
+
+    const nameParts = String(item?.name || "?").trim().split(/\\s+/).filter(Boolean);
+    const initials = nameParts.length > 1
+      ? (Array.from(nameParts[0])[0] + Array.from(nameParts[nameParts.length - 1])[0]).toUpperCase()
+      : Array.from(nameParts[0] || "?").slice(0, 2).join("").toUpperCase();
     ctx.font = theme.font(Math.max(14, size / S(2.5)), "JT-Bold");
-    ctx.fillStyle = accent || p.accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const initial = Array.from(String(item?.name || "?").trim())[0] || "?";
-    ctx.fillText(theme.sanitizeGlyphs(initial.toUpperCase()), x + size / 2, y + size / 2);
+    ctx.fillStyle = theme.randomTextColor(initials + ":topchat");
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(54,222,255,.82)";
+    ctx.shadowBlur = S(6);
+    ctx.fillText(theme.sanitizeGlyphs(initials), x + size / 2, y + size / 2);
   }
   ctx.restore();
-  ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 + S(2), 0, Math.PI * 2);
-  ctx.strokeStyle = accent || p.accent; ctx.lineWidth = S(2); ctx.stroke();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2 + S(2), 0, Math.PI * 2);
+  ctx.strokeStyle = accent || p.accent;
+  ctx.lineWidth = S(2);
+  ctx.shadowColor = "rgba(50,220,255,.72)";
+  ctx.shadowBlur = S(6);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawRankCard(ctx, item, rank, x, y, width, height, featured = false) {
