@@ -28,7 +28,7 @@ function readDailyCounts(thread) {
   return { today, counts };
 }
 
-const AVATAR_LOOKUP_TIMEOUT_MS = 700;
+const AVATAR_LOOKUP_TIMEOUT_MS = 1100;
 const AVATAR_LOOKUP_CONCURRENCY = 6;
 
 async function resolveMemberAvatar(api, uid) {
