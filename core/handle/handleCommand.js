@@ -3,6 +3,7 @@ const { wrapForThread } = require("../runtime/adapters/zalo");
 const metrics = require("../metrics");
 const fs = require("fs");
 const { performance } = require("node:perf_hooks");
+const messageTiming = require("../runtime/messageTiming");
 
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
@@ -219,6 +220,7 @@ async function handleCommand(messageText, event = null, api = null, threadInfo =
   const commandName = isCommandMessage
     ? String(messageText.slice(prefix.length).trim().split(/\s+/, 1)[0] || "unknown").toLowerCase()
     : "";
+  if (isCommandMessage) messageTiming.markCommand(event, commandName);
 
   try {
     return await runCommandPipeline(messageText, event, api, threadInfo, prefix, threadData);
