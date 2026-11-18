@@ -8,8 +8,13 @@ const utils = require("../utils");
 // Keep this command-flow test deterministic: the real command schedules an
 // optional decorative Now Playing canvas after the audio has been sent.
 const workerRender = require("../core/canvas/workerRender");
+const Threads = require("../core/controller/controllerThreads");
 const originalRenderCanvas = workerRender.renderCanvas;
-workerRender.renderCanvas = async () => __filename;
+let searchCanvasRenderCalls = 0;
+workerRender.renderCanvas = async () => {
+  searchCanvasRenderCalls++;
+  return __filename;
+};
 const musicCommand = require("../core/music/command");
 workerRender.renderCanvas = originalRenderCanvas;
 
@@ -92,5 +97,61 @@ test("/scl next/prev keeps the selected quality in the pending result", async ()
     music.setPending = original.setPending;
     music.getProvider = original.getProvider;
     music.clearPending(key);
+  }
+});
+
+
+test("/scl search results are sent as styled text without waiting for Canvas", async () => {
+  const originalSearch = music.search;
+  const originalGetProvider = music.getProvider;
+  const originalThreadsGetData = Threads.getData;
+  const beforeRenders = searchCanvasRenderCalls;
+  const sent = [];
+  const uniqueQuery = "fast-search-" + Date.now();
+
+  music.getProvider = () => ({ name: "scl", label: "SoundCloud" });
+  music.search = async (_provider, query) => [{
+    id: "fast-track-" + query,
+    title: "Instant Result",
+    artist: "JOHNTRAN",
+    duration: 125
+  }];
+  Threads.getData = async () => ({ data: {} });
+
+  try {
+    await musicCommand.runMusic("scl", {
+      api: {
+        async sendMessage(payload, threadId, type) {
+          sent.push({ payload, threadId, type });
+          return { ok: true };
+        }
+      },
+      event: {
+        threadId: "scl-fast-search-" + Date.now(),
+        type: 1,
+        data: { uidFrom: "scl-test-user" }
+      },
+      args: [uniqueQuery],
+      reply: {
+        async working() {},
+        async done() {},
+        async failed() {},
+        async error(message) { throw new Error(message); },
+        async card() {}
+      }
+    });
+
+    assert.equal(sent.length, 1, "search must send one result message");
+    assert.match(sent[0].payload.msg, /NHẠC · SOUNDCLOUD/);
+    assert.match(sent[0].payload.msg, /Instant Result/);
+    assert.ok(Array.isArray(sent[0].payload.styles) && sent[0].payload.styles.length > 0,
+      "the result uses native Zalo text styles");
+    assert.equal(sent[0].payload.attachments, undefined);
+    assert.equal(searchCanvasRenderCalls, beforeRenders,
+      "the search list must not render or upload a Canvas image");
+  } finally {
+    music.search = originalSearch;
+    music.getProvider = originalGetProvider;
+    Threads.getData = originalThreadsGetData;
   }
 });

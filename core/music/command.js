@@ -127,8 +127,9 @@ async function showResults(api, threadId, type, provider, query, tracks, page) {
   const safePage = Math.min(Math.max(page, 1), totalPages);
   const slice = tracks.slice((safePage - 1) * perPage, safePage * perPage);
 
-  // Gửi card ảnh như giao diện nhạc ban đầu. Canvas chạy trong worker riêng;
-  // nếu renderer gặp lỗi thì vẫn có danh sách chữ để người dùng chọn bài.
+  // Search results use Zalo's native styled text: one API call, no Canvas
+  // worker wait or temporary image upload. The decorative Now Playing card
+  // remains a separate low-priority background task after the audio is sent.
   const styled = ui.searchList({
     providerLabel: provider.label.toUpperCase(),
     query,
@@ -136,32 +137,7 @@ async function showResults(api, threadId, type, provider, query, tracks, page) {
     page: safePage,
     totalPages
   });
-  const cacheKey = `search|${provider.name}|${query}|${safePage}`;
-
-  try {
-    const cardPath = await enqueue("canvas", () => renderCached(cacheKey, () =>
-      renderCanvas("music-grid", {
-        query,
-        tracks: slice,
-        options: {
-          page: safePage,
-          totalPages,
-          source: provider.label.toUpperCase()
-        }
-      })
-    ), {
-      key: `music-grid|${provider.name}|${query}|${safePage}`,
-      label: `Vẽ card nhạc: ${query.slice(0, 32)}`
-    });
-
-    if (!cardPath || !fs.existsSync(cardPath)) {
-      throw new Error("Không tạo được ảnh card kết quả nhạc.");
-    }
-    return await api.sendMessage({ msg: "", attachments: cardPath }, threadId, type);
-  } catch (error) {
-    logger.log(`[music] Render card tìm kiếm lỗi: ${error.message || error}`, "warn");
-    return api.sendMessage({ ...styled }, threadId, type);
-  }
+  return api.sendMessage({ ...styled }, threadId, type);
 }
 
 function parseOptions(args) {
