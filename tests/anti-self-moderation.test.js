@@ -299,6 +299,28 @@ test("Anti link recalls a bot self-test message with undo instead of deleteMessa
   assert.match(calls.sent[0].payload.msg, /URL không an toàn/i);
 });
 
+test("the supplied Zalo group-invite URL is recalled when sent by the bot in self-test mode", async () => {
+  const calls = await runLinkModeration({
+    isSelf: true,
+    senderId: "bot-account",
+    allowSelf: true,
+    featureKey: "anti_danger_link",
+    url: "https://zalo.me/g/trfrv1vrakhqeocdpxpo",
+    isSafe: true
+  });
+
+  assert.equal(calls.groupLookups, 1);
+  assert.equal(calls.scanned.length, 0, "Zalo group invitations are recognized directly");
+  assert.equal(calls.deleted.length, 0, "bot-authored messages must not call deleteMessage");
+  assert.deepEqual(calls.undone, [{
+    payload: { msgId: "original-msg", cliMsgId: "original-cli" },
+    threadId: "anti-e2e-group",
+    type: ThreadType.Group
+  }], "the exact bot-authored group-invite message must be recalled");
+  assert.equal(calls.sent.length, 1);
+  assert.match(calls.sent[0].payload.msg, /link mời nhóm khác/i);
+});
+
 test("Anti link continues to moderate ordinary members while self testing is disabled", async () => {
   const calls = await runLinkModeration({
     isSelf: false,
