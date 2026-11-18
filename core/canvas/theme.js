@@ -517,24 +517,21 @@ function drawMulticolorText(ctx, value, x, y, options = {}) {
   const totalWidth = tokens.reduce((sum, token) => sum + ctx.measureText(token).width, 0);
   let cursor = align === "center" ? x - totalWidth / 2
     : align === "right" ? x - totalWidth : x;
-  let previousColorIndex = -1;
   let wordIndex = 0;
   const canvasSeed = Number.isFinite(ctx.__jtRenderSeed)
     ? ctx.__jtRenderSeed
     : themeBackgrounds.getRenderSeed();
   const seed = String(options.colorSeed ?? display) + ":" + x + ":" + y + ":" + canvasSeed;
+  // Choose a randomized starting color once, then cycle the palette. This keeps
+  // consecutive words distinct and prevents adjacent hashes colliding.
+  const startingColorIndex = RANDOM_TEXT_COLORS.indexOf(randomTextColor(seed + ":sequence"));
+  const startIndex = startingColorIndex >= 0 ? startingColorIndex : 0;
   ctx.textAlign = "left";
 
   for (const token of tokens) {
     const width = ctx.measureText(token).width;
     if (/[\p{L}\p{N}]/u.test(token)) {
-      let colorIndex = RANDOM_TEXT_COLORS.indexOf(randomTextColor(seed + ":" + wordIndex));
-      if (colorIndex < 0) colorIndex = 0;
-      // A sentence should visibly alternate, even with an unlucky hash sequence.
-      if (RANDOM_TEXT_COLORS.length > 1 && colorIndex === previousColorIndex) {
-        colorIndex = (colorIndex + 1) % RANDOM_TEXT_COLORS.length;
-      }
-      previousColorIndex = colorIndex;
+      const colorIndex = (startIndex + wordIndex) % RANDOM_TEXT_COLORS.length;
       ctx.fillStyle = RANDOM_TEXT_COLORS[colorIndex];
       wordIndex++;
     } else {
