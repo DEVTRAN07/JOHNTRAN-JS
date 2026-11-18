@@ -13,9 +13,9 @@ module.exports.config = {
   version: "2.0.0",
   role: 0,
   author: "JOHNTRAN",
-  description: "Ghép 200 khung Discord vào ảnh, sticker, GIF hoặc video",
+  description: "Xem menu 200 khung Discord và ghép khung vào ảnh, sticker, GIF hoặc video",
   category: "Tiện ích",
-  usage: "stk dis [1-200] (reply ảnh/sticker/GIF/video)",
+  usage: "stk (menu) | stk dis [1-200] (reply ảnh/sticker/GIF/video)",
   cooldowns: 3,
   preferCommandOnBare: true,
   dependencies: {}
@@ -25,7 +25,11 @@ function parseArguments(args) {
   const tokens = Array.isArray(args)
     ? args.map(value => String(value ?? "").trim()).filter(Boolean)
     : [];
-  if (!tokens.length || tokens[0].toLowerCase() !== "dis") {
+  // Bare /stk opens the Discord decoration menu.
+  if (!tokens.length) {
+    return { help: false, menu: true, decorationId: null, error: null };
+  }
+  if (tokens[0].toLowerCase() !== "dis") {
     return { help: true, menu: false, decorationId: null, error: null };
   }
 
@@ -115,10 +119,11 @@ function helpText(prefix = PREFIX()) {
   return [
     "✨ DISCORD AVATAR DECORATION — 200 KHUNG ✨",
     "",
+    "Xem danh sách 200 khung: " + prefix + "stk",
     "1. Reply vào ảnh, sticker, GIF hoặc video.",
     "2. Gõ: " + prefix + "stk dis <1-200>",
     "",
-    "Xem menu: " + prefix + "stk dis",
+    "Có thể dùng " + prefix + "stk dis để mở lại menu.",
     "Ví dụ: " + prefix + "stk dis 12",
     "",
     "Không reply media? Bot sẽ thử dùng avatar Zalo của người gửi lệnh."
