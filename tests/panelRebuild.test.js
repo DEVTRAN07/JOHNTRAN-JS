@@ -26,6 +26,54 @@ test("rebuilt panel JavaScript parses without browser-side dependencies", () => 
   assert.doesNotThrow(() => new vm.Script(js, { filename: "docs/panel.js" }));
 });
 
+test("Panel chat generates randomized multi-color word spans with UTF-16-safe offsets", () => {
+  const start = js.indexOf("function buildRandomColorStyles(");
+  const end = js.indexOf("\\n}", start);
+  assert.ok(start >= 0 && end > start, "random color span builder must exist");
+  const source = js.slice(start, end + 2);
+  const build = vm.runInNewContext("(" + source + ")", {
+    ZALO_COLORS: {
+      "#f43f5e":"c_db342e",
+      "#f97316":"c_f27806",
+      "#f59e0b":"c_f7b503",
+      "#22c55e":"c_15a85f"
+    }
+  });
+  const message = "Chào 🌈 các bạn JOHNTRAN!";
+  const styles = build(message, () => 0);
+  assert.deepEqual(styles.map(style => message.slice(style.start, style.start + style.len)),
+    ["Chào", "các", "bạn", "JOHNTRAN"]);
+  assert.ok(styles.every(style => ["c_db342e","c_f27806","c_f7b503","c_15a85f"].includes(style.st)));
+  assert.ok(styles.some((style, index) => index > 0 && style.st !== styles[index - 1].st),
+    "adjacent words must visibly alternate colors");
+
+  const longMessage = Array.from({ length: 240 }, (_, index) => "word" + index).join(" ");
+  const longStyles = build(longMessage, () => 0.25);
+  assert.equal(longStyles.length, 120, "long messages must stay within the safe style-run cap");
+  const lastStyle = longStyles[longStyles.length - 1];
+  assert.ok(longMessage.slice(lastStyle.start, lastStyle.start + lastStyle.len).endsWith("word239"),
+    "all words, including the tail, must be included when spans are grouped");
+});
+
+test("Panel exposes a random multi-color control and preserves single-color override", () => {
+  assert.match(html, /data-random-color/);
+  assert.match(html, /aria-pressed="false"/);
+  assert.match(js, /state\.chatStyle\.randomColor/);
+  assert.match(js, /styles\.push\(\.\.\.buildRandomColorStyles\(message\)\)/);
+  assert.match(js, /randomButton\.setAttribute\("aria-pressed","false"\)/);
+  assert.match(css, /\.random-color-btn\.active/);
+});
+
+test("Panel bridge validates and forwards enough safe styles for multi-color sentences", () => {
+  const sendStart = panelBridge.indexOf('if (route === "/send" && req.method === "POST")');
+  const sendEnd = panelBridge.indexOf('if (route === "/storage-status")', sendStart);
+  const sendRoute = panelBridge.slice(sendStart, sendEnd > sendStart ? sendEnd : undefined);
+  assert.match(sendRoute, /Number\.isInteger\(st\.start\)/);
+  assert.match(sendRoute, /st\.start \+ st\.len <= messageText\.length/);
+  assert.match(sendRoute, /allowedStyles\.has\(st\.st\)/);
+  assert.match(sendRoute, /slice\(0, 128\)/);
+});
+
 test("bot cards render their status, uptime, port and action controls", () => {
   const start = js.indexOf("function renderBots()");
   const end = js.indexOf("function renderTopCommands", start);
