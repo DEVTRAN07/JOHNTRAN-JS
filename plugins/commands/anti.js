@@ -7,6 +7,7 @@ const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getGroupAdminState } = require("../../core/runtime/groupAdmin");
 const fsSync = require("fs");
 const { getBotGroupRole } = require("../../core/runtime/botGroupKey");
+const { sendAntiToggleNotice } = require("../../core/runtime/antiToggle");
 
 const ANTI_SELF_ECHO_TTL_MS = 60_000;
 const ANTI_SELF_ECHO_LIMIT = 3000;
@@ -967,8 +968,27 @@ module.exports.run = async function ({ api, event, args, Threads }) {
   const save = Threads.setDataAndWait || Threads.setData;
   await save.call(Threads, threadId, data);
 
-  return api.sendMessage({
-    msg:"✅ Đã " + (newValue ? "bật" : "tắt") + " chế độ Anti " +
-      key.replace("anti_", "").toUpperCase() + "."
-  }, threadId, type);
+  const notices = {
+    anti_link: {
+      label: "Anti-Link",
+      detail: "Chặn mọi URL được gửi trong nhóm."
+    },
+    anti_undo: {
+      label: "Anti-Recall",
+      detail: "Lưu và khôi phục nội dung khi thành viên thu hồi tin nhắn."
+    },
+    anti_spam: {
+      label: "Anti-Spam",
+      detail: "Phát hiện và xử lý tin nhắn văn bản gửi dồn dập."
+    }
+  };
+  const notice = notices[key] || {
+    label: "Anti-" + key.replace("anti_", "").toUpperCase(),
+    detail: "Thiết lập bảo vệ nhóm đã được cập nhật."
+  };
+  return sendAntiToggleNotice(api, threadId, type, {
+    label: notice.label,
+    enabled: newValue,
+    detail: notice.detail
+  });
 };

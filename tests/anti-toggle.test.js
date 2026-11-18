@@ -3,6 +3,13 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { ThreadType } = require("zalo-client");
+const workerRender = require("../core/canvas/workerRender");
+const originalRenderCanvas = workerRender.renderCanvas;
+const renderedCards = [];
+workerRender.renderCanvas = async (type, data) => {
+  renderedCards.push({ type, data });
+  return "/tmp/jt-anti-toggle-test.png";
+};
 const { FEATURES, runAntiToggle } = require("../core/runtime/antiToggle");
 
 function makeContext({ requesterId = "group-owner", botRole = "owner", initial = {} } = {}) {
@@ -53,11 +60,17 @@ test("all dedicated Anti commands map to the correct persisted group flags", asy
       await runAntiToggle(featureName, context);
       assert.equal(calls.saved?.[spec.key], true, featureName + " must enable " + spec.key);
       assert.equal(calls.sent.length, 1);
-      assert.match(calls.sent[0].payload.msg, /BẬT/i);
+      assert.match(calls.sent[0].payload.msg, /THÔNG BÁO HỆ THỐNG/i);
+      assert.deepEqual(calls.sent[0].payload.attachments, ["/tmp/jt-anti-toggle-test.png"]);
+      assert.equal(calls.sent[0].payload.ttlKind, "card");
+      assert.equal(renderedCards.at(-1).type, "card");
+      assert.match(renderedCards.at(-1).data.title, /THÔNG BÁO HỆ THỐNG/);
+      assert.match(renderedCards.at(-1).data.subtitle, /Đã bật thành công/);
 
       context.args = ["off"];
       await runAntiToggle(featureName, context);
       assert.equal(calls.saved?.[spec.key], false, featureName + " must disable " + spec.key);
+      assert.match(renderedCards.at(-1).data.subtitle, /Đã tắt thành công/);
     }
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
@@ -92,5 +105,27 @@ test("antinude cannot be enabled without an OpenAI API key", async () => {
     else process.env.OPENAI_API_KEY = previousKey;
     if (previousAlias === undefined) delete process.env.JT_ANTINUDE_OPENAI_API_KEY;
     else process.env.JT_ANTINUDE_OPENAI_API_KEY = previousAlias;
+  }
+});
+
+
+test.after(() => {
+  workerRender.renderCanvas = originalRenderCanvas;
+});
+
+
+test("Anti toggle keeps a readable confirmation when Canvas rendering fails", async () => {
+  const previousRender = workerRender.renderCanvas;
+  workerRender.renderCanvas = async () => { throw new Error("Canvas test failure"); };
+  const { context, calls } = makeContext();
+  try {
+    await runAntiToggle("antilink", context);
+    assert.equal(calls.saved?.anti_danger_link, true);
+    assert.equal(calls.sent.length, 1);
+    assert.match(calls.sent[0].payload.msg, /ℹ️ THÔNG BÁO HỆ THỐNG/);
+    assert.match(calls.sent[0].payload.msg, /Đã bật thành công chế độ Anti-Link/);
+    assert.equal(calls.sent[0].payload.attachments, undefined);
+  } finally {
+    workerRender.renderCanvas = previousRender;
   }
 });

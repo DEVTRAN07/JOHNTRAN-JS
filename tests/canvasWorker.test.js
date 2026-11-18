@@ -298,3 +298,37 @@ test("canvas worker renders the redesigned Sâm and Tiến Lên tables and priva
     }
   }
 });
+
+
+test("canvas worker renders a successful Anti toggle system notice card", async () => {
+  const outputPath = await renderCanvas("card", {
+    brand: "JOHNTRAN",
+    chip: "ANTI / ENABLED",
+    theme: "success",
+    title: "THÔNG BÁO HỆ THỐNG",
+    subtitle: "Đã bật thành công chế độ Anti-Link cho nhóm!",
+    sections: [{
+      title: "CẬP NHẬT BẢO VỆ NHÓM",
+      lines: [
+        "Anti-Link",
+        "Trạng thái: ĐANG BẬT",
+        "Chặn link mời nhóm Zalo khác và URL không an toàn."
+      ]
+    }],
+    footer: "JOHNTRAN  •  GROUP SECURITY"
+  }, { timeout: 20000, poolSize: 1 });
+
+  try {
+    const png = fs.readFileSync(outputPath);
+    assert.ok(png.length > 1000, "Anti toggle notice must render visible Canvas content");
+    assert.equal(
+      png.subarray(0, 8).toString("hex"),
+      "89504e470d0a1a0a",
+      "Anti toggle notice must be a PNG"
+    );
+    assert.ok(png.readUInt32BE(16) >= 700, "notice card must preserve the configured Canvas width");
+    assert.ok(png.readUInt32BE(20) >= 230, "notice card must have enough height for its content");
+  } finally {
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+});
