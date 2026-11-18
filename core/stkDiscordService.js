@@ -103,7 +103,7 @@ function buildFilterGraph(fps = DEFAULT_FPS) {
       ",format=gray,geq=lum='" + circleMask + "'[circle]",
     "[decor]alphaextract,format=gray[decorAlpha]",
     "[circle][decorAlpha]blend=all_mode=lighten[mask]",
-    "[rgb][mask]alphamerge,format=yuva420p[out]"
+    "[rgb][mask]alphamerge,format=bgra[out]"
   ].join(";");
 }
 
@@ -182,7 +182,7 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
       "-q:v", String(profile.quality),
       "-compression_level", "4",
       "-preset", "picture",
-      "-pix_fmt", "yuva420p",
+      "-pix_fmt", "bgra",
       "-loop", "0",
       outputPath
     );
