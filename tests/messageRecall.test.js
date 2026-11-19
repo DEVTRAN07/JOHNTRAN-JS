@@ -366,6 +366,14 @@ test("CommonJS image captions preserve randomized text colors", async () => {
   assert.ok(new Set(appliedColors).size >= 3, "caption should use several different colors");
   assert.ok(textProperties.styles.every(style => RANDOM_COLORS.has(style.st)),
     "the caption should not lose the randomized style metadata");
+  const mentionEnd = "@Nguyễn Văn A".length;
+  assert.ok(textProperties.styles.every(style =>
+    style.start + style.len <= 0 || style.start >= mentionEnd),
+  "caption colors must not overlap the Zalo mention span");
+  assert.ok(textProperties.styles.some(style => style.start >= caption.indexOf("🤖")),
+    "the greeting line beneath the tagged name must carry colors");
+  assert.ok(textProperties.styles.some(style => style.start >= caption.indexOf("👉")),
+    "the prompt line beneath the tagged name must carry colors");
 });
 
 
