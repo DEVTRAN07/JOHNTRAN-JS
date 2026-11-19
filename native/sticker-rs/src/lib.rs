@@ -2,7 +2,7 @@ use napi::bindgen_prelude::{AsyncTask, Buffer, Env, Task};
 use napi::{Error, Result, Status};
 use napi_derive::napi;
 use image::imageops::{self, FilterType};
-use image::io::Reader as ImageReader;
+use image::ImageReader;
 use image::{DynamicImage, GenericImageView, ImageFormat, RgbaImage};
 use std::io::Cursor;
 
@@ -31,7 +31,7 @@ pub struct EncodeResult {
     pub format: String,
     pub width: u32,
     pub height: u32,
-    pub size: u64,
+    pub size: u32,
 }
 
 fn load_image(buf: &[u8]) -> Result<DynamicImage> {
@@ -78,12 +78,11 @@ fn render_static_composition(
 
     // Crop the user image to a square, then apply a one-pixel antialiased
     // circular alpha boundary. This mirrors the previous Canvas fast path.
-    let avatar = imageops::resize_to_fill(
-        &source.to_rgba8(),
+    let avatar = source.resize_to_fill(
         avatar_size,
         avatar_size,
         FilterType::Lanczos3,
-    );
+    ).to_rgba8();
     let mut output = RgbaImage::new(size, size);
     let center = avatar_size as f32 / 2.0;
     let radius = center;
@@ -142,7 +141,7 @@ fn compose_static_result(
         format: "webp".to_string(),
         width: size,
         height: size,
-        size: encoded_size,
+        size: encoded_size as u32,
     })
 }
 
