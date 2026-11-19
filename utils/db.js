@@ -2,7 +2,6 @@ const fs = require("fs");
 const path = require("path");
 const logger = require("./logger");
 const { JsonStore } = require("../core/storage");
-const { SupabaseStore } = require("../core/storage/supabase");
 const { getJsonPersistenceStatus } = require("../core/storage/diagnostics");
 
 function resolveDatabaseConfig(env = process.env) {
@@ -58,6 +57,8 @@ let db;
 let dbFile = null;
 
 if (DATABASE_CONFIG.driver === "supabase") {
+  // Load the remote SDK only when an operator explicitly enables it.
+  const { SupabaseStore } = require("../core/storage/supabase");
   db = new SupabaseStore(DATABASE_CONFIG.url, DATABASE_CONFIG.serviceKey);
   logger.log("Database: Supabase (bot_threads / bot_users / bot_metrics / bot_stats / bot_media_cache)", "info");
 } else {
