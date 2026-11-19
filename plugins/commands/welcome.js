@@ -157,7 +157,7 @@ function makePersonalMessage(member, kind = "welcome") {
   const prefix = isGoodbye ? "👋 Tạm biệt " : "👋 Chào mừng ";
   const suffix = isGoodbye
     ? " đã rời nhóm. Chúc bạn mọi điều tốt đẹp!"
-    : " đến với nhóm!\\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!";
+    : " đến với nhóm!\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!";
   const uid = String(member?.uid || "");
   const name = cleanText(member?.name, "bạn");
   if (!uid) return { msg: prefix + name + suffix };
