@@ -163,7 +163,31 @@ function getStorageDiagnostics() {
   }
 }
 
-function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null, mediaResources = null, storage = null) {
+function formatMessageCacheDiagnostics(stats = null) {
+  if (!stats || typeof stats !== "object") {
+    return ["  • Chưa đọc được message-cache"];
+  }
+  const native = stats.nativePersistence || {};
+  const mutations = stats.nativePendingMutations || {};
+  return [
+    "  • Bản ghi đang giữ: " + Math.max(0, Number(stats.entries) || 0),
+    "  • Rust sidecar: " + (native.available === true ? "đang hoạt động" : "không hoạt động (fallback)"),
+    "  • IPC queue: chờ " + Math.max(0, Number(mutations.pending) || 0) +
+      " · đã gửi " + Math.max(0, Number(mutations.sent) || 0) +
+      " · lỗi " + Math.max(0, Number(mutations.failed) || 0) +
+      " · batch " + Math.max(1, Number(mutations.batchSize) || 1),
+    "  • Flush: " + Math.max(0, Number(stats.asyncFlushCount) || 0) +
+      " · lỗi " + Math.max(0, Number(stats.asyncFlushFailures) || 0) +
+      " · lần gần nhất " + formatMs(stats.asyncFlushLastMs)
+  ];
+}
+
+function getMessageCacheDiagnostics() {
+  try { return require("../../utils/messageCache").getMessageCacheStats(); }
+  catch { return null; }
+}
+
+function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null, mediaResources = null, storage = null, messageCache = null) {
   const latency = source.getLatencyStats?.() || {};
   const commands = source.getCommandLatencyStats?.(6) || [];
   const handlers = source.getCommandExecutionLatencyStats?.(6) || [];
@@ -215,6 +239,9 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
     "🗄️ DATABASE / PERSISTENCE",
     ...formatStorageDiagnostics(storage),
     "",
+    "📨 MESSAGE CACHE / RUST IPC",
+    ...formatMessageCacheDiagnostics(messageCache),
+    "",
     "🚦 HÀNG ĐỢI / WORKER",
     ...formatQueueAndWorkerPressure(jobQueues, workers),
     "",
@@ -262,9 +289,10 @@ module.exports.run = async function ({ api, event, reply }) {
     };
   } catch {}
   const storage = getStorageDiagnostics();
-  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers, mediaResources, storage);
+  const messageCache = getMessageCacheDiagnostics();
+  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers, mediaResources, storage, messageCache);
   if (typeof reply?.text === "function") return reply.text(report);
   return api.sendMessage({ msg: report }, event.threadId, event.type);
 };
 
-module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, buildSpeedReport };
+module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, buildSpeedReport };
