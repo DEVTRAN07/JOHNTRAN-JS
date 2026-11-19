@@ -94,6 +94,36 @@ function shouldProcessUndoEvent(event) {
   return event?.isSelf !== true || global.config?.allow_self_anti === true;
 }
 
+function resolveMessageModerationSkips({
+  isGroupThread = false,
+  threadData = null,
+  threadInfo = null,
+  antiCommand = null,
+  skipAnti = false,
+  skipGuard = false
+} = {}) {
+  let skipAntiHandler = skipAnti === true || !isGroupThread;
+  let skipGuardHandler = skipGuard === true || !isGroupThread;
+  const hasSnapshot = Boolean(threadData && typeof threadData === "object");
+
+  // When the listener has a trusted group snapshot, it can safely avoid
+  // constructing wrappers for disabled moderation modules. If the snapshot
+  // is unavailable, fail open and let the modules perform their own fallback.
+  if (isGroupThread && hasSnapshot) {
+    const source = threadData?.data || threadData;
+    const getRelevantKeys = antiCommand?._test?.getRelevantAntiProtectionKeys;
+    if (!skipAntiHandler && typeof getRelevantKeys === "function") {
+      const relevantKeys = getRelevantKeys("message");
+      skipAntiHandler = !relevantKeys.some(key => source?.[key] === true);
+    }
+    if (!skipGuardHandler) {
+      skipGuardHandler = (threadInfo?.event_guard ?? source?.event_guard) !== true;
+    }
+  }
+
+  return { skipAnti: skipAntiHandler, skipGuard: skipGuardHandler };
+}
+
 function shouldCacheIncomingMessage(event) {
   if (!event) return false;
   if (event.isSelf !== true) return true;
@@ -383,25 +413,19 @@ function startListening(api) {
       if (isGroupThread && !groupBotEnabled) return;
 
       // The listener already has the group's committed settings snapshot.
-      // Do not create Guard/Anti event contexts for protections that are OFF:
-      // enabled protections still run on command text exactly as before.
-      let skipAnti = dispatchOptions.skipAnti === true || !isGroupThread;
-      let skipGuard = dispatchOptions.skipGuard === true || !isGroupThread;
-      if (isGroupThread && threadData && typeof threadData === "object") {
-        const antiCommand = global.client?.commands?.get?.("anti");
-        const getRelevantKeys = antiCommand?._test?.getRelevantAntiProtectionKeys;
-        if (typeof getRelevantKeys === "function") {
-          const source = threadData?.data || threadData;
-          const relevantKeys = getRelevantKeys("message");
-          skipAnti = skipAnti || !relevantKeys.some(key => source?.[key] === true);
-        }
-        skipGuard = skipGuard || threadInfo.event_guard !== true;
-      }
+      // Avoid building event wrappers for disabled moderation modules.
+      const moderationSkips = resolveMessageModerationSkips({
+        isGroupThread,
+        threadData,
+        threadInfo,
+        antiCommand: global.client?.commands?.get?.("anti"),
+        skipAnti: dispatchOptions.skipAnti,
+        skipGuard: dispatchOptions.skipGuard
+      });
 
       Promise.resolve(handleEvent("message", event, api, event.isSelf === true, {
         ...dispatchOptions,
-        skipAnti,
-        skipGuard,
+        ...moderationSkips,
         // Top Chat is handled separately and prefixed commands use a direct
         // diagnostics increment instead of a background no-op.
         skipTopchatCounter: isGroupMessage(event),
@@ -878,3 +902,5 @@ module.exports.shouldCacheIncomingMessage = shouldCacheIncomingMessage;
 module.exports.getThreadDataForMessage = getThreadDataForMessage;
 
 module.exports.computeReconnectDelay = computeReconnectDelay;
+
+module.exports.resolveMessageModerationSkips = resolveMessageModerationSkips;
