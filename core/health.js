@@ -58,6 +58,8 @@ function getEventLoopMetrics(options = {}) {
 
 function speedPayload() {
   const metrics = safe(() => require("./metrics"), null);
+  const jobQueue = safe(() => require("./jobQueue"), null);
+  const mediaLimits = safe(() => require("./mediaResourceLimits"), null);
   return {
     status: "ok",
     uptimeSeconds: Math.floor(process.uptime()),
@@ -70,8 +72,14 @@ function speedPayload() {
     commandExecutionLatency: safe(() => metrics?.getCommandExecutionLatencyStats?.(10), []),
     zaloApiLatency: safe(() => metrics?.getZaloApiLatencyStats?.(10), []),
     httpTransport: safe(() => require("./http/transport").getZaloHttpTransportStats(), null),
-    jobQueues: safe(() => require("./jobQueue").stats(), {}),
+    jobQueues: safe(() => jobQueue?.stats?.(), {}),
     workers: safe(() => require("./workerPool").stats(), {}),
+    mediaResources: safe(() => ({
+      availableCpus: mediaLimits?.getAvailableCpuCount?.() || null,
+      ffmpegThreads: mediaLimits?.FFMPEG_THREADS || null,
+      stickerConcurrency: jobQueue?.STICKER_CONCURRENCY || null,
+      downloadConcurrency: jobQueue?.DOWNLOAD_CONCURRENCY || null
+    }), null),
     topchat: safe(() => require("../plugins/events/topchatCounter").getStats(), {})
   };
 }
