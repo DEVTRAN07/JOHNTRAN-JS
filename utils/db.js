@@ -22,12 +22,23 @@ function resolveDatabaseConfig(env = process.env) {
     throw new Error("Cấu hình xung đột: JT_DB_DRIVER=supabase nhưng SUPABASE_DISABLE=true.");
   }
 
-  const forceJson = requestedDriver === "json" || disabled;
-  if (forceJson) return { driver: "json", url: "", serviceKey: "", forced: true };
-
-  const anySupabaseValue = Boolean(url || serviceKey);
+  const explicitlyJson = requestedDriver === "json";
   const explicitlySupabase = requestedDriver === "supabase";
-  if (explicitlySupabase || anySupabaseValue) {
+  const remoteDatabaseEnabled = String(env.JT_ENABLE_REMOTE_DATABASE || "").trim().toLowerCase() === "true";
+
+  // Old .env files may already contain JT_DB_DRIVER=supabase and credentials.
+  // Require a second, deliberate opt-in so a copied template cannot silently
+  // restore remote I/O or block startup on a database network round-trip.
+  if (!explicitlySupabase || !remoteDatabaseEnabled) {
+    return {
+      driver: "json",
+      url: "",
+      serviceKey: "",
+      forced: explicitlyJson || disabled || explicitlySupabase
+    };
+  }
+
+  if (explicitlySupabase && remoteDatabaseEnabled) {
     if (!url || !serviceKey) {
       throw new Error(
         "Thiếu cấu hình Supabase: cần SUPABASE_URL và SUPABASE_SECRET_KEY " +
@@ -50,8 +61,8 @@ if (DATABASE_CONFIG.driver === "supabase") {
   db = new SupabaseStore(DATABASE_CONFIG.url, DATABASE_CONFIG.serviceKey);
   logger.log("Database: Supabase (bot_threads / bot_users / bot_metrics / bot_stats / bot_media_cache)", "info");
 } else {
-  if (DATABASE_CONFIG.forced && (process.env.SUPABASE_URL || process.env.SUPABASE_SERVICE_KEY)) {
-    logger.log("Database: forced JSON store (JT_DB_DRIVER/SUPABASE_DISABLE) mặc dù Supabase env có sẵn", "warn");
+  if (process.env.SUPABASE_URL || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY) {
+    logger.log("Database: bỏ qua Supabase credentials vì chưa chọn JT_DB_DRIVER=supabase; đang dùng JSON local.", "warn");
   }
 
   // Khi có Persistent Disk nhưng không chỉ định JT_DB_FILE, đặt file JSON
