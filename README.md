@@ -435,6 +435,7 @@ JOHNTRAN-JS/
 
 - VPS Ubuntu 22.04/24.04 hoặc máy chủ riêng có kết nối Internet ổn định.
 - Node.js **22** (tối thiểu 20.18) và npm.
+- Rust toolchain (**rustc** và **cargo**) để build message-cache sidecar khi chạy trực tiếp trên VPS; Dockerfile chính tự build phần này.
 - Giữ thư mục `data/`, `logs/`, tài khoản/cookie và cấu hình ở nơi có lưu trữ bền vững.
 
 ### Cài đặt và chạy trên VPS
