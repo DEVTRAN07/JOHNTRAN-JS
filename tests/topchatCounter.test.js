@@ -37,6 +37,7 @@ function fakeThreads(initial = {}) {
   return {
     rows,
     async getData(threadId) {
+      this.getDataCalls = (this.getDataCalls || 0) + 1;
       return rows.get(String(threadId)) || { threadId: String(threadId), data: {} };
     },
     getCachedData(threadId) {
@@ -432,6 +433,8 @@ test("topchat keeps filtered-only realtime diagnostics in memory without a datab
   });
 
   assert.equal(Threads.writeCount || 0, 0, "a filtered command must not trigger a row upsert");
+  assert.equal(Threads.getDataCalls || 0, 0, "a filtered command must not cold-load storage");
+  assert.equal(counter._test.writeQueues.has(threadId), false, "a filtered command must bypass the serial write queue");
   assert.equal(mapCalls, 0, "a filtered command must not rebuild the 5,000-ID dedupe Set");
   assert.equal(counter._test.pendingGroups.has(threadId), false, "diagnostics-only events must not leave a pending DB batch");
 

@@ -59,3 +59,20 @@ test("detailed /metrics remains protected", () => {
     global.config = previousConfig;
   }
 });
+
+
+test("public /speed exposes only aggregate latency diagnostics without resetting event-loop samples", () => {
+  const { eventLoopHistogram } = require("../core/health")._test || {};
+  const response = request("/speed");
+  assert.equal(response.status, 200);
+  const payload = JSON.parse(response.body);
+  assert.equal(payload.status, "ok");
+  assert.ok(payload.eventLoop && typeof payload.eventLoop.p95Ms === "number");
+  assert.ok(payload.firstResponseLatency === null || typeof payload.firstResponseLatency.count === "number");
+  assert.ok(Array.isArray(payload.listenerStageLatency));
+  assert.ok(Array.isArray(payload.zaloApiLatency));
+  assert.ok(payload.topchat && typeof payload.topchat.activeWriteQueues === "number");
+  assert.equal("today" in payload, false);
+  assert.equal("topCommands" in payload, false);
+  assert.equal("messageCache" in payload, false);
+});

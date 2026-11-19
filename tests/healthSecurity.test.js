@@ -38,6 +38,10 @@ test("health stays public while operational metrics require the Panel token", ()
     const health = request("/health");
     assert.equal(health.status, 200, "uptime checks must remain public");
 
+    const speed = request("/speed");
+    assert.equal(speed.status, 200, "aggregate latency diagnostics must be inspectable without a Panel token");
+    assert.ok(Array.isArray(JSON.parse(speed.body).listenerStageLatency));
+
     const deniedWithoutToken = request("/metrics");
     assert.equal(deniedWithoutToken.status, 401);
     assert.equal(deniedWithoutToken.headers["Cache-Control"], "no-store");

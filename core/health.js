@@ -43,7 +43,7 @@ function healthPayload() {
   };
 }
 
-function getEventLoopMetrics() {
+function getEventLoopMetrics(options = {}) {
   const toMs = value => Number.isFinite(value) ? Number((value / 1e6).toFixed(2)) : 0;
   const snapshot = {
     minMs: toMs(eventLoopHistogram.min),
@@ -52,8 +52,24 @@ function getEventLoopMetrics() {
     p95Ms: toMs(eventLoopHistogram.percentile(95)),
     p99Ms: toMs(eventLoopHistogram.percentile(99))
   };
-  eventLoopHistogram.reset();
+  if (options.reset !== false) eventLoopHistogram.reset();
   return snapshot;
+}
+
+function speedPayload() {
+  const metrics = safe(() => require("./metrics"), null);
+  return {
+    status: "ok",
+    uptimeSeconds: Math.floor(process.uptime()),
+    memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    eventLoop: safe(() => getEventLoopMetrics({ reset: false }), null),
+    firstResponseLatency: safe(() => metrics?.getFirstResponseLatencyStats?.(), null),
+    listenerStageLatency: safe(() => metrics?.getListenerStageLatencyStats?.(20), []),
+    commandLatency: safe(() => metrics?.getCommandLatencyStats?.(10), []),
+    commandExecutionLatency: safe(() => metrics?.getCommandExecutionLatencyStats?.(10), []),
+    zaloApiLatency: safe(() => metrics?.getZaloApiLatencyStats?.(10), []),
+    topchat: safe(() => require("../plugins/events/topchatCounter").getStats(), {})
+  };
 }
 
 function metricsPayload() {
@@ -102,6 +118,10 @@ function requestHandler(req, res) {
       return sendJson(200, { ...healthPayload(), status: global.api ? "ok" : "starting" });
     case "/ping":
       return sendJson(200, { pong: true });
+    case "/speed":
+      // Only aggregate timings and bounded queue counters are public. No chat
+      // content, user IDs, command arguments, tokens or database credentials.
+      return sendJson(200, speedPayload());
     case "/metrics": {
       // Health stays public for uptime monitors; detailed operational metrics
       // require the same Panel Bearer Token used by the management API.
@@ -112,7 +132,7 @@ function requestHandler(req, res) {
       return sendJson(200, metricsPayload());
     }
     default:
-      return sendJson(404, { error: "not found", endpoints: ["/health", "/ping", "/metrics"] });
+      return sendJson(404, { error: "not found", endpoints: ["/health", "/ping", "/speed", "/metrics"] });
   }
 }
 
@@ -143,4 +163,4 @@ function startHealthServer() {
   return server;
 }
 
-module.exports = { startHealthServer, healthPayload, requestHandler, getEventLoopMetrics };
+module.exports = { startHealthServer, healthPayload, requestHandler, getEventLoopMetrics, speedPayload };

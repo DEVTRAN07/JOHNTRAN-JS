@@ -261,8 +261,42 @@ async function flushAll(Threads) {
 
 async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source = "live") {
   if (!threadId || !Array.isArray(messages) || !messages.length || !Threads) return 0;
+
+  // Live traffic has already entered onMessage, which primes the synchronous
+  // thread cache before this queued microtask runs. Use that cache to discard
+  // commands, empty events and stale messages before they enter the per-group
+  // serial write queue. These events only update bounded in-memory diagnostics.
+  let liveMessages = messages;
+  let cachedThreadRecord = null;
+  if (source === "live" && typeof Threads.getCachedData === "function") {
+    try {
+      const candidate = Threads.getCachedData(threadId);
+      if (candidate && typeof candidate.then !== "function") cachedThreadRecord = candidate;
+    } catch {}
+  }
+  if (source === "live" && cachedThreadRecord) {
+    const cachedThread = cachedThreadRecord?.data || cachedThreadRecord;
+    const prefix = String(cachedThread.prefix || global.config?.prefix || "/");
+    const receivedAt = Date.now();
+    const eligible = [];
+    let rejected = 0;
+    for (const message of messages) {
+      if (isCountableMessage(message, dateKey, prefix, receivedAt)) eligible.push(message);
+      else rejected++;
+    }
+
+    if (rejected > 0) {
+      const diagnostic = getOrCreateRuntimeDiagnostics(threadId);
+      diagnostic.received += rejected;
+      diagnostic.rejected += rejected;
+      diagnostic.lastSeenAt = Date.now();
+    }
+    liveMessages = eligible;
+    if (!liveMessages.length) return 0;
+  }
+
   return enqueueGroupWrite(threadId, async () => {
-    const record = Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
+    const record = cachedThreadRecord || Threads.getCachedData?.(threadId) || await Threads.getData(threadId);
     const thread = record?.data || {};
     const prefix = String(thread.prefix || global.config?.prefix || "/");
 
@@ -288,7 +322,7 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
       ? getOrCreateRuntimeDiagnostics(threadId)
       : null;
 
-    for (const message of messages) {
+    for (const message of liveMessages) {
       if (realtimeDiagnostics) {
         realtimeDiagnostics.received++;
         realtimeDiagnostics.lastSeenAt = Date.now();
