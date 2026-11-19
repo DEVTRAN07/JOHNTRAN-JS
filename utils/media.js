@@ -80,19 +80,35 @@ async function processVideo(videoPath, threadId, type, api = null) {
   }
 }
 
-async function processAudio(audioPath, threadId, type, api = null) {
-    const outputPath = audioPath.replace(/\.mp3$/, ".aac");
+async function processAudio(audioPath, threadId, type, api = null, operations = {}) {
+    const extension = path.extname(String(audioPath || "")).toLowerCase();
+    const alreadyAac = extension === ".aac";
+    const parsedPath = path.parse(audioPath);
+    const outputPath = alreadyAac
+      ? audioPath
+      : path.join(parsedPath.dir, parsedPath.name + ".aac");
+    const upload = operations.uploadFile || uploadFile;
+    const convert = operations.convertMp3ToAac || convertMp3ToAac;
+
     try {
-        await convertMp3ToAac(audioPath, outputPath);
-        const audioUrl = (await uploadFile(outputPath, threadId, type, api))[0].fileUrl + ".aac";
+        // HLS is delivered as AAC/ADTS. Upload it directly and do not ask
+        // FFmpeg to read and write the same path (a previous .aac call did
+        // exactly that, then attempted to unlink the same file twice).
+        if (!alreadyAac) await convert(audioPath, outputPath);
+        const uploaded = await upload(outputPath, threadId, type, api);
+        const first = Array.isArray(uploaded) ? uploaded[0] : uploaded;
+        const fileUrl = String(first?.fileUrl || first?.url || "").trim();
+        if (!fileUrl) throw new Error("Zalo không trả URL file âm thanh sau upload.");
+        const audioUrl = /\.aac(?:$|[?#])/i.test(fileUrl) ? fileUrl : fileUrl + ".aac";
 
-        fs.unlinkSync(audioPath);
-        fs.unlinkSync(outputPath);
-
+        await Promise.all([...new Set([audioPath, outputPath])].map(file =>
+          fs.promises.rm(file, { force: true }).catch(() => {})
+        ));
         return audioUrl;
     } catch (error) {
-        tryUnlink(audioPath);
-        tryUnlink(outputPath);
+        await Promise.all([...new Set([audioPath, outputPath])].map(file =>
+          fs.promises.rm(file, { force: true }).catch(() => {})
+        ));
         throw error;
     }
 }
