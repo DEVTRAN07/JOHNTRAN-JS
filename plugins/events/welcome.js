@@ -12,7 +12,7 @@ module.exports.config = {
   author: "JOHNTRAN",
   description: "Tự động chào/tạm biệt từng thành viên bằng Canvas riêng có ảnh đại diện",
   category: "Sự kiện",
-  usage: "welcome on|off | welcome out on|off | welcome test",
+  usage: "welcome on|off | welcome test",
   cooldowns: 0
 };
 
@@ -348,7 +348,10 @@ module.exports.run = async function ({
     ? threadData.data
     : (threadData && typeof threadData === "object" ? threadData : null);
   const thread = cached || (await Threads.getData(threadId))?.data || {};
-  const enabled = kind === "welcome" ? thread.event_welcome === true : thread.event_goodbye === true;
+  // One group-wide switch now controls both JOIN and OUT. Treat event_welcome
+  // as the master flag so groups that previously enabled JOIN automatically
+  // receive OUT after this update, even if the legacy event_goodbye field is false.
+  const enabled = thread.event_welcome === true;
   if (!enabled) return;
 
   const members = newMembers(eventData);
@@ -389,24 +392,27 @@ module.exports.run = async function ({
     const member = joined[index];
     const cardPath = cards[index];
     const message = makePersonalMessage(member, kind);
-    const payload = {
-      ...message,
-      ...(cardPath ? { attachments: [cardPath], ttlKind: "card" } : {})
-    };
+
+    // Send the Canvas as its own bubble first. The personalized @mention is a
+    // second text bubble so it always appears directly below the person's card.
+    if (cardPath) {
+      try {
+        await api.sendMessage({
+          msg: "",
+          attachments: [cardPath],
+          ttlKind: "card"
+        }, threadId, threadType || ThreadType.Group);
+      } catch (error) {
+        console.error("[WELCOME_CARD_SEND]", member.uid, error?.stack || error);
+      } finally {
+        cleanupCard(cardPath);
+      }
+    }
 
     try {
-      await api.sendMessage(payload, threadId, threadType || ThreadType.Group);
+      await api.sendMessage(message, threadId, threadType || ThreadType.Group);
     } catch (error) {
-      console.error("[WELCOME_SEND]", member.uid, error?.stack || error);
-      if (cardPath) {
-        try {
-          await api.sendMessage(message, threadId, threadType || ThreadType.Group);
-        } catch (fallbackError) {
-          console.error("[WELCOME_FALLBACK]", member.uid, fallbackError?.message || fallbackError);
-        }
-      }
-    } finally {
-      cleanupCard(cardPath);
+      console.error("[WELCOME_TAG_SEND]", member.uid, error?.stack || error);
     }
   }
 };
