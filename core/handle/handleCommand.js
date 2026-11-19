@@ -172,7 +172,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   // đã đăng ký làm admin group qua Panel. Ngăn trường hợp uidFrom bị giả mạo
   // (spoof) thành ID admin từ nhóm lẻ / tin riêng (đã chặn riêng ở trên).
   if (role === 2 && config.admin?.require_admin_group_for_sensitive) {
-    const adminGroups = readAdminGroups();
+    const adminGroups = await readAdminGroups();
     const isAdminGroup = Array.isArray(adminGroups) && adminGroups.includes(String(threadId));
     if (!isAdminGroup) {
       return wrappedApi.sendMessage({
