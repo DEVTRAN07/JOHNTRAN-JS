@@ -133,18 +133,23 @@ async function requester(api, event) {
   }
 }
 
-async function sendCard({ api, event, reply, spec }) {
+async function sendCard({ api, event, reply, spec, caption }) {
   let cardPath = null;
   try {
     cardPath = await welcomeCanvas.renderWelcomeCard(spec);
+    // Zalo displays msg + mentions directly below the attached Canvas image.
     return await api.sendMessage({
-      msg: "",
+      ...(caption || { msg: "" }),
       attachments: [cardPath],
       ttlKind: "card"
     }, event.threadId, event.type);
   } catch (error) {
     const message = "Không thể tạo Canvas welcome: " + (error?.message || "Lỗi không xác định");
     console.error("[WELCOME_COMMAND]", error?.stack || error);
+    if (caption) {
+      // Keep the personalized text/tag available even if image rendering fails.
+      return api.sendMessage(caption, event.threadId, event.type);
+    }
     if (reply?.error) return reply.error(message);
     return api.sendMessage({ msg: message }, event.threadId, event.type);
   } finally {
@@ -156,7 +161,7 @@ function makePersonalMessage(member, kind = "welcome") {
   const isGoodbye = kind === "goodbye";
   const prefix = isGoodbye ? "👋 Tạm biệt " : "👋 Chào mừng ";
   const suffix = isGoodbye
-    ? " đã rời nhóm. Chúc bạn mọi điều tốt đẹp!"
+    ? " Chúc bạn mọi điều tốt đẹp!"
     : " đến với nhóm!\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!";
   const uid = String(member?.uid || "");
   const name = cleanText(member?.name, "bạn");
@@ -168,15 +173,10 @@ function makePersonalMessage(member, kind = "welcome") {
 }
 
 async function sendPreview({ api, event, reply, spec, member, mode }) {
-  await sendCard({ api, event, reply, spec });
-  // A separate message makes the tag render below, not as a Canvas caption.
-  const tag = makePersonalMessage(member, mode);
-  try {
-    return await api.sendMessage(tag, event.threadId, event.type);
-  } catch (error) {
-    console.error("[WELCOME_PREVIEW_TAG]", error?.stack || error);
-    return false;
-  }
+  // Attach caption + @mention to the Canvas itself, so Zalo shows the text
+  // immediately below the image in the same message bubble.
+  const caption = makePersonalMessage(member, mode);
+  return sendCard({ api, event, reply, spec, caption });
 }
 
 module.exports.run = async function ({
