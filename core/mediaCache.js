@@ -337,7 +337,9 @@ class MediaCache {
 
   async _refreshLocalFileCount() {
     let count = 0;
-    const knownTypes = new Map();
+    // Merge the on-disk scan with in-flight writes already indexed in memory;
+    // a background refresh must not erase a key written while readdir was pending.
+    const knownTypes = new Map(this._knownTypes);
     for (const type of VALID_TYPES) {
       try {
         const names = await fs.promises.readdir(path.join(this.cacheDir, type));
@@ -367,7 +369,7 @@ class MediaCache {
     const expiresAt = Date.now() + ttl;
     const contentType = (metadata.contentType) || this._contentTypeFor(t);
 
-    const localEntry = this._readLocal(t, key);
+    const localEntry = await this._readLocal(t, key);
     if (localEntry) {
       this._stats.hits++;
       return { url: this.getUrl(key), key: key, cached: true };
