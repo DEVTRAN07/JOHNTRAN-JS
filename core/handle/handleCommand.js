@@ -37,7 +37,7 @@ const BUILTINS_WITHOUT_USER_DATA = new Set([
   "antiword", "autodown", "autokick", "autosend", "bot", "card", "caro", "cmd",
   "delmsg", "events", "getavt", "getlink", "getvd", "getvoice", "girl", "hon",
   "id", "infofb", "jobs", "lyric", "menu", "noi", "noitu", "reloadconfig",
-  "restart", "sam", "scl", "spam", "spamsticker", "stats", "status", "stk",
+  "restart", "sam", "scl", "spam", "spamsticker", "speed", "stats", "status", "stk",
   "theme", "tiktok", "tlmn", "topchat", "vdgirl", "welcome"
 ]);
 
