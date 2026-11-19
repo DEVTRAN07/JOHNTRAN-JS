@@ -971,6 +971,12 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId, resul
     return { ...output, response: sent, decoration, timings };
   } catch (error) {
     timings.totalMs = Date.now() - totalStartedAt;
+    // Preserve the exact failing stage for the asynchronous command wrapper,
+    // which adds a searchable error ID to the chat response and error journal.
+    if (error && typeof error === "object" && !error.stickerStage) {
+      error.stickerStage = currentStage;
+      error.stickerTimings = { ...timings };
+    }
     console.error(
       "[stk] failed #" + decorationId +
       " stage=" + currentStage +
