@@ -61,6 +61,8 @@ function createMetricsStore(backend, options = {}) {
   const zaloApiLatencies = new Map();
   const zaloSdkPhaseLatencies = new Map();
   const firstResponseLatencies = new Map();
+  const firstResponseStartLatencies = new Map();
+  const firstResponseStartedMessages = new Set();
   const messageDeliveryAgeLatencies = new Map();
   const incomingMessageAt = new Map();
   const MAX_PENDING_FIRST_RESPONSES = 2048;
@@ -255,11 +257,32 @@ function createMetricsStore(backend, options = {}) {
 
     const timestamp = Number(at);
     incomingMessageAt.delete(key);
+    firstResponseStartedMessages.delete(key);
     incomingMessageAt.set(key, Number.isFinite(timestamp) ? timestamp : performance.now());
     while (incomingMessageAt.size > MAX_PENDING_FIRST_RESPONSES) {
       const oldest = incomingMessageAt.keys().next().value;
       if (oldest === undefined) break;
       incomingMessageAt.delete(oldest);
+      firstResponseStartedMessages.delete(oldest);
+    }
+    return true;
+  }
+
+  // Records the moment the bot starts its first outgoing Zalo request.
+  // Keep the incoming timestamp until the send resolves so completion latency
+  // remains a separate measurement.
+  function trackFirstResponseStartLatency(event, at = performance.now(), commandName = null) {
+    const key = getMessageLatencyKey(event);
+    if (!key || !incomingMessageAt.has(key) || firstResponseStartedMessages.has(key)) return false;
+
+    firstResponseStartedMessages.add(key);
+    const startedAt = incomingMessageAt.get(key);
+    const timestamp = Number(at);
+    const elapsed = Math.max(0, (Number.isFinite(timestamp) ? timestamp : performance.now()) - startedAt);
+    recordCommandSamples(firstResponseStartLatencies, "first_response_start", elapsed);
+    const command = String(commandName || "").trim().toLowerCase();
+    if (command) {
+      recordCommandSamples(firstResponseStartLatencies, `first_response_start:${command}`, elapsed);
     }
     return true;
   }
@@ -269,6 +292,7 @@ function createMetricsStore(backend, options = {}) {
     if (!key || !incomingMessageAt.has(key)) return false;
     const startedAt = incomingMessageAt.get(key);
     incomingMessageAt.delete(key);
+    firstResponseStartedMessages.delete(key);
     const timestamp = Number(at);
     const elapsed = Math.max(0, (Number.isFinite(timestamp) ? timestamp : performance.now()) - startedAt);
     recordCommandSamples(firstResponseLatencies, "first_response", elapsed);
@@ -307,6 +331,10 @@ function createMetricsStore(backend, options = {}) {
     return summarizeCommandSamples(firstResponseLatencies, 1)[0] || null;
   }
 
+  function getFirstResponseStartLatencyStats() {
+    return summarizeCommandSamples(firstResponseStartLatencies, 1)[0] || null;
+  }
+
   function getMessageDeliveryAgeStats() {
     return summarizeCommandSamples(messageDeliveryAgeLatencies, 1)[0] || null;
   }
@@ -314,6 +342,14 @@ function createMetricsStore(backend, options = {}) {
   function getFirstResponseLatencyByCommandStats(limit = 10) {
     const prefix = "first_response:";
     return summarizeCommandSamples(firstResponseLatencies, MAX_COMMAND_LATENCY_KEYS)
+      .filter(item => item.command.startsWith(prefix))
+      .slice(0, Math.max(0, Number(limit) || 0))
+      .map(item => ({ ...item, command: item.command.slice(prefix.length) }));
+  }
+
+  function getFirstResponseStartLatencyByCommandStats(limit = 10) {
+    const prefix = "first_response_start:";
+    return summarizeCommandSamples(firstResponseStartLatencies, MAX_COMMAND_LATENCY_KEYS)
       .filter(item => item.command.startsWith(prefix))
       .slice(0, Math.max(0, Number(limit) || 0))
       .map(item => ({ ...item, command: item.command.slice(prefix.length) }));
@@ -342,7 +378,16 @@ function createMetricsStore(backend, options = {}) {
     return flush();
   }
 
-  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats, trackIncomingMessage, trackFirstResponseLatency, getFirstResponseLatencyStats, getFirstResponseLatencyByCommandStats, getMessageDeliveryAgeStats, trackListenerStageLatency, getListenerStageLatencyStats, trackZaloApiLatency, getZaloApiLatencyStats, trackZaloSdkPhaseLatency, getZaloSdkPhaseLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
+  return {
+    track, trackLatency, trackCommandLatency, trackCommandExecutionLatency,
+    getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats,
+    trackIncomingMessage, trackFirstResponseStartLatency, trackFirstResponseLatency,
+    getFirstResponseStartLatencyStats, getFirstResponseStartLatencyByCommandStats,
+    getFirstResponseLatencyStats, getFirstResponseLatencyByCommandStats,
+    getMessageDeliveryAgeStats, trackListenerStageLatency, getListenerStageLatencyStats,
+    trackZaloApiLatency, getZaloApiLatencyStats, trackZaloSdkPhaseLatency,
+    getZaloSdkPhaseLatencyStats, getDayStats, topCommands, allDays, flush, dispose
+  };
 }
 
 const metricsStore = createMetricsStore(db, {

@@ -250,6 +250,7 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
   const listener = readMetric("getListenerStageLatencyStats", 4) || [];
   const apiCalls = readMetric("getZaloApiLatencyStats", 3) || [];
   const sdkPhases = readMetric("getZaloSdkPhaseLatencyStats", 3) || [];
+  const firstResponseStart = readMetric("getFirstResponseStartLatencyByCommandStats", 3) || [];
   const firstResponse = readMetric("getFirstResponseLatencyByCommandStats", 3) || [];
   const messageDeliveryAge = readMetric("getMessageDeliveryAgeStats") || null;
   const loop = eventLoop;
@@ -320,10 +321,13 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
     "🧮 GIỚI HẠN TÀI NGUYÊN MEDIA",
     ...formatMediaResources(mediaResources),
     "",
-    "🚀 NHẬN TIN → PHẢN HỒI ĐẦU TIÊN",
+    "🚀 NHẬN TIN → BẮT ĐẦU GỬI LẦN ĐẦU",
+    ...formatRows(firstResponseStart, "/"),
+    "",
+    "📨 NHẬN TIN → PHẢN HỒI ĐẦU TIÊN HOÀN TẤT",
     ...formatRows(firstResponse, "/"),
     "",
-    "Ghi chú: P95 là thời gian 95% mẫu không vượt quá; API Zalo gồm cả thời gian chờ mạng.",
+    "Ghi chú: mốc bắt đầu gửi đo xử lý nội bộ trước API; mốc hoàn tất có cả thời gian chờ Zalo. P95 là thời gian 95% mẫu không vượt quá.",
     "Dữ liệu chỉ là thống kê trong bộ nhớ kể từ lần bot khởi động gần nhất."
   ].join("\n");
   return limitSpeedReport(report);

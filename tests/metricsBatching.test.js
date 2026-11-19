@@ -156,6 +156,33 @@ test("metrics expose bounded latency summaries per command", () => {
   metrics.dispose();
 });
 
+test("first outgoing send start is measured separately and only once per incoming message", () => {
+  const backend = createFakeDb();
+  const metrics = createMetricsStore(backend, { flushDelayMs: 60000 });
+  const event = { threadId: "send-start-group", data: { cliMsgId: "send-start-1" } };
+
+  assert.equal(metrics.trackIncomingMessage(event, 100), true);
+  assert.equal(metrics.trackFirstResponseStartLatency(event, 135, "stk"), true);
+  assert.equal(metrics.trackFirstResponseStartLatency(event, 150, "stk"), false,
+    "multiple outgoing messages must not create multiple first-send samples");
+
+  const started = metrics.getFirstResponseStartLatencyStats();
+  assert.equal(started.count, 1);
+  assert.equal(started.p50Ms, 35);
+  assert.deepEqual(
+    metrics.getFirstResponseStartLatencyByCommandStats(5).map(item => [item.command, item.p95Ms]),
+    [["stk", 35]]
+  );
+
+  // Completion remains a separate value that includes the Zalo API wait.
+  assert.equal(metrics.trackFirstResponseLatency(event, 225, "stk"), true);
+  assert.equal(metrics.getFirstResponseLatencyStats().p95Ms, 125);
+  assert.equal(metrics.trackFirstResponseStartLatency(event, 230, "stk"), false);
+  assert.equal(backend.writes.length, 0);
+  metrics.dispose();
+});
+
+
 test("metrics isolate listener stages, first response and Zalo API latency", () => {
   const backend = createFakeDb();
   const metrics = createMetricsStore(backend, { flushDelayMs: 60000 });
