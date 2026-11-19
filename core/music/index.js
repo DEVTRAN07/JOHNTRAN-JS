@@ -130,14 +130,20 @@ function redactStreamDiagnostics(value) {
     .replace(/(client_id|token|secret|sig|signature)=([^&\s]+)/gi, "$1=[redacted]");
 }
 
-function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
+function downloadHlsToAac(streamUrl, filePath, quality = null) {
   return new Promise((resolve, reject) => {
     const ffmpegPath = resolveFfmpegPath({ staticPath: ffmpegStaticPath });
     if (!ffmpegPath) {
       return reject(new Error("Không tìm thấy FFmpeg. Hãy cài FFmpeg hệ thống hoặc đặt biến môi trường FFMPEG_PATH."));
     }
 
-    const bitrate = Number(quality) === 320 ? 320 : 160;
+    // SoundCloud HLS is already AAC. Keep the source packets by default
+    // instead of encoding AAC -> MP3 -> AAC. Only re-encode once when the
+    // user explicitly chooses a bitrate, and write AAC/ADTS directly.
+    const requestedQuality = Number(quality);
+    const audioCodecArgs = [128, 320].includes(requestedQuality)
+      ? ["-c:a", "aac", "-b:a", requestedQuality + "k"]
+      : ["-c:a", "copy"];
     const args = [
       "-hide_banner", "-loglevel", "warning", "-y",
       "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
@@ -149,9 +155,9 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
       "-reconnect_streamed", "1",
       "-reconnect_delay_max", "5",
       "-i", streamUrl,
-      "-vn", "-c:a", "libmp3lame", "-b:a", `${bitrate}k`,
+      "-vn", ...audioCodecArgs,
       "-threads", String(FFMPEG_THREADS),
-      "-f", "mp3", filePath
+      "-f", "adts", filePath
     ];
 
     execFile(ffmpegPath, args, {
@@ -162,15 +168,15 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
       if (error) {
         try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch { /* ignore */ }
         const diagnostic = redactStreamDiagnostics(stderr).split(/\r?\n/).filter(Boolean).slice(-8).join(" | ");
-        const code = error.code ? `code=${error.code}` : "";
-        const signal = error.signal ? `signal=${error.signal}` : "";
+        const code = error.code ? "code=" + error.code : "";
+        const signal = error.signal ? "signal=" + error.signal : "";
         const detail = diagnostic || [code, signal, error.errno, error.syscall].filter(Boolean).join(", ") || "FFmpeg không trả stderr";
-        return reject(new Error(`FFmpeg AAC/HLS thất bại [binary=${ffmpegPath}]: ` + detail));
+        return reject(new Error("FFmpeg AAC/HLS thất bại [binary=" + ffmpegPath + "]: " + detail));
       }
 
       try {
         if (!fs.existsSync(filePath) || fs.statSync(filePath).size < 1024) {
-          throw new Error("FFmpeg không tạo được file âm thanh hợp lệ.");
+          throw new Error("FFmpeg không tạo được file AAC hợp lệ.");
         }
         resolve(filePath);
       } catch (validationError) {
@@ -185,11 +191,13 @@ async function downloadToFile(streamUrl, extension, options = {}) {
   const { quality = null } = options;
   const tempDir = path.join(__dirname, "..", "..", "plugins", "commands", "temp");
   fs.mkdirSync(tempDir, { recursive: true });
-  const filePath = path.join(tempDir, `music_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`);
+  const isHls = Boolean(streamUrl && typeof streamUrl === "object" && streamUrl.protocol === "hls");
+  const outputExtension = isHls ? "aac" : extension;
+  const filePath = path.join(tempDir, `music_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${outputExtension}`);
 
-  // SoundCloud AAC streams are HLS playlists. Try 160k first, then the
-  // 96k alternative supplied by SoundCloud when available for this track.
-  if (streamUrl && typeof streamUrl === "object" && streamUrl.protocol === "hls") {
+  // SoundCloud AAC streams are HLS playlists. Download/stream-copy AAC
+  // directly; no intermediate MP3 file is created.
+  if (isHls) {
     const candidates = [...new Set([
       streamUrl.url,
       ...(Array.isArray(streamUrl.fallbackUrls) ? streamUrl.fallbackUrls : [])
@@ -199,7 +207,7 @@ async function downloadToFile(streamUrl, extension, options = {}) {
     for (let index = 0; index < candidates.length; index++) {
       const candidateUrl = assertSoundCloudStreamUrl(candidates[index]);
       try {
-        return await enqueue("music-audio", () => downloadHlsToMp3(candidateUrl, filePath, quality), {
+        return await enqueue("music-audio", () => downloadHlsToAac(candidateUrl, filePath, quality), {
           key: `audio-hls|${candidateUrl}`,
           label: index === 0 ? "Tải AAC/HLS SoundCloud" : "Thử luồng AAC/HLS dự phòng"
         });
