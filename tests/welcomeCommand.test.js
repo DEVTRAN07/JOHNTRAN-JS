@@ -86,6 +86,7 @@ test("welcome test resolves caller avatar and real profile name", async () => {
     assert.equal(f.sent[3].payload.mentions[0].uid, "test-requester-uid");
     assert.match(f.sent[3].payload.msg, /Tạm biệt @\./);
     assert.deepEqual(rendered.at(-1).member, {
+      uid: "test-requester-uid",
       name: "Quang Profile",
       avatarUrl: "https://example.com/quang-profile.jpg"
     });
