@@ -469,7 +469,7 @@ Dùng PM2 hoặc systemd để tự khởi động lại tiến trình sau reboo
 
 ## 🔧 Yêu cầu
 
-- **Node.js** phiên bản **v20.18 trở lên** (khuyến nghị Node.js 22, đồng nhất Docker/CI)
+- **Node.js** phiên bản **v20.18 trở lên** (khuyến nghị Node.js 22)
 
 - **Khi sử dụng hệ điều hành Windowns bạn cần phải cài các font trong plugins/cache/... để có font chữ cho canvas**
 
