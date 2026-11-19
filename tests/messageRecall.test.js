@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { wrapApi, DEFAULT_AUTO_RECALL_MS } = require("../core/message");
+const fs = require("node:fs");
+const { wrapApi, sendStyledRawMessage, DEFAULT_AUTO_RECALL_MS } = require("../core/message");
 const { sendMessageFactory } = require("../vendor/zalo-client/dist/cjs/api/sendMessage.cjs");
 const { encodeAES, decodeAES } = require("../vendor/zalo-client/dist/cjs/core/crypto.cjs");
 const { CookieJar } = require("tough-cookie");
@@ -319,4 +320,47 @@ test("CommonJS image captions preserve randomized text colors", async () => {
   assert.ok(new Set(appliedColors).size >= 3, "caption should use several different colors");
   assert.ok(textProperties.styles.every(style => RANDOM_COLORS.has(style.st)),
     "the caption should not lose the randomized style metadata");
+});
+
+test("raw game sends keep random colors while preserving mentions and attachments", async () => {
+  const sent = [];
+  const rawApi = {
+    async sendMessage(payload, threadId, type) {
+      sent.push({ payload, threadId, type });
+      return { message: { msgId: 41, cliMsgId: "raw-styled-game" }, attachment: [] };
+    }
+  };
+  const payload = {
+    msg: "🎲 Trận đấu đã sẵn sàng mời người chơi",
+    mentions: [{ uid: "12345", pos: 4, len: 6 }],
+    attachments: ["/tmp/game-card.png"],
+    recallAfterMs: 0,
+    ttlKind: "card"
+  };
+
+  const response = await sendStyledRawMessage(rawApi, payload, "game-thread", 1);
+  assert.equal(response.message.cliMsgId, "raw-styled-game");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].threadId, "game-thread");
+  assert.equal(sent[0].type, 1);
+  assert.equal(sent[0].payload.msg, payload.msg);
+  assert.deepEqual(sent[0].payload.mentions, payload.mentions);
+  assert.deepEqual(sent[0].payload.attachments, payload.attachments);
+  assert.equal(sent[0].payload.recallAfterMs, 0);
+  const colors = sent[0].payload.styles.map(style => style.st);
+  assert.ok(colors.length >= 6, "each caption token should receive a color");
+  assert.ok(colors.every(color => RANDOM_COLORS.has(color)));
+  assert.ok(new Set(colors).size > 1, "raw game captions should use multiple colors");
+});
+
+test("Caro, Sâm and Tiến Lên route deliberate raw sends through shared text styling", () => {
+  for (const file of ["caro.js", "sam.js", "tlmn.js"]) {
+    const source = fs.readFileSync(require.resolve("../plugins/commands/" + file), "utf8");
+    assert.match(source, /sendStyledRawMessage/,
+      file + " must use the shared styler for raw SDK sends");
+    assert.doesNotMatch(source, /\b(?:rawApi|sender|rawApiInstance)\.sendMessage\s*\(/,
+      file + " must not bypass random text styling");
+    assert.doesNotMatch(source, /getRawApi\(api\)\.sendMessage\s*\(/,
+      file + " must not send directly from getRawApi()");
+  }
 });

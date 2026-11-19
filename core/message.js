@@ -480,6 +480,20 @@ function defineWrapped(wrapped, name, fn) {
   });
 }
 
+function sendStyledRawMessage(api, message, threadId, type) {
+  if (typeof api?.sendMessage !== "function") {
+    throw new TypeError("Zalo API sendMessage() is required");
+  }
+
+  let outgoing = message;
+  try {
+    outgoing = styledText.randomize(message);
+  } catch (error) {
+    logger.log("Không thể tô màu tin nhắn gửi qua raw API: " + (error?.message || error), "warn");
+  }
+  return api.sendMessage(outgoing, threadId, type);
+}
+
 function wrapApi(api, threadId, type, commandName, event = null) {
   if (!api) return api;
   const wrapped = Object.create(api);
@@ -599,6 +613,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
 module.exports = {
   Reply,
   wrapApi,
+  sendStyledRawMessage,
   DEFAULT_AUTO_RECALL_MS,
   extractRecallOptions,
   scheduleRecall,

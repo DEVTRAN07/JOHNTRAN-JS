@@ -8,6 +8,7 @@ const game = require("../../core/runtime/services/games/samService");
 const engine = require("../../core/games/samEngine");
 const wallet = require("./tlmn")._test;
 const { sendGameGuideOnce } = require("../../core/games/gameGuideDelivery");
+const { sendStyledRawMessage } = require("../../core/message");
 
 const locks = new Map();
 const cleanupTimers = new Map();
@@ -126,10 +127,8 @@ async function sendPrivateGameGuide(api, Users, uid) {
     Users,
     uid: userId,
     gameKey: "sam_rules_v2",
-    send: () => getRawApi(api).sendMessage(
-      { msg: gameGuide() },
-      destination.threadId,
-      destination.type
+    send: () => sendStyledRawMessage(
+      getRawApi(api), { msg: gameGuide() }, destination.threadId, destination.type
     )
   });
   if (!result.ok) console.warn("[SAM_PRIVATE_GUIDE]", result.code);
@@ -175,7 +174,7 @@ async function sendPrivateHand(api, room, player, hand, turn = false) {
       isTurn: Boolean(turn)
     }, { timeout: 20000, poolSize: 1 });
     const response = await sendReplacement(api, key, destination, sender =>
-      sender.sendMessage({ msg: message, attachments: [imagePath] },
+      sendStyledRawMessage(sender, { msg: message, attachments: [imagePath] },
         destination.threadId, destination.type)
     );
     return Boolean(response);
@@ -183,7 +182,7 @@ async function sendPrivateHand(api, room, player, hand, turn = false) {
     console.error("[SAM_CANVAS_HAND]", error?.message || error);
     try {
       const response = await sendReplacement(api, key, destination, sender =>
-        sender.sendMessage({ msg: message }, destination.threadId, destination.type)
+        sendStyledRawMessage(sender, { msg: message }, destination.threadId, destination.type)
       );
       return Boolean(response);
     } catch (sendError) {
@@ -249,14 +248,14 @@ async function sendGroupRoom(api, event, room, notice = "") {
       notice: String(notice || "")
     }, { timeout: 20000, poolSize: 1 });
     return await sendReplacement(api, key, destination, sender =>
-      sender.sendMessage(withRequesterMention(event, {
+      sendStyledRawMessage(sender, withRequesterMention(event, {
         msg: textCaption, attachments: [imagePath]
       }), destination.threadId, destination.type)
     );
   } catch (error) {
     console.error("[SAM_CANVAS]", error?.message || error);
     return sendReplacement(api, key, destination, sender =>
-      sender.sendMessage(withRequesterMention(event, { msg: textCaption }),
+      sendStyledRawMessage(sender, withRequesterMention(event, { msg: textCaption }),
         destination.threadId, destination.type)
     );
   } finally {
