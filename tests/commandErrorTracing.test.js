@@ -79,7 +79,10 @@ test("command errors keep a private response and log a searchable stack referenc
   assert.equal(logs[0].context.commandName, "sample");
   assert.equal(logs[0].context.code, "ERR_SYNTHETIC_TEST");
 
-  assert.deepEqual(errorCounters, [{ event: "error", meta: { command: "sample" } }]);
+  assert.deepEqual(errorCounters, [
+    { event: "command", meta: { command: "sample" } },
+    { event: "error", meta: { command: "sample" } }
+  ]);
   assert.equal(executionSamples.length, 1);
   assert.equal(executionSamples[0].command, "sample");
   assert.ok(executionSamples[0].duration >= 0);
@@ -106,7 +109,9 @@ test("command error logging does not replace the original failure when metrics t
     api: { __reply: reply },
     logger: { log(message, level, context) { logs.push({ message, level, context }); } },
     metrics: {
-      track() { throw new Error("metrics must not mask command error"); },
+      track(event) {
+        if (event === "error") throw new Error("metrics must not mask command error");
+      },
       trackCommandExecutionLatency() {}
     },
     Reactions: { CRY: "cry" }
