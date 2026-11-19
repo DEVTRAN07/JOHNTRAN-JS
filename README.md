@@ -443,8 +443,13 @@ JOHNTRAN-JS/
 git clone https://github.com/DEVTRAN07/JOHNTRAN-JS.git
 cd JOHNTRAN-JS
 npm ci
+# Cài Rust/Cargo trước đó (Ubuntu: sudo apt install cargo)
+npm run build:message-cache
 cp .env.example .env
 ```
+
+
+**Quan trọng về hiệu năng:** VPS chạy Node trực tiếp phải build Rust message-cache sidecar một lần sau `npm ci` bằng `npm run build:message-cache`. Sidecar xử lý serialize/ghi cache ở tiến trình riêng; nếu thiếu binary, bot vẫn chạy nhưng phải fallback serialize JSON cache trên event loop, có thể gây khựng định kỳ khi cache lớn. Dockerfile chính đã tự build và chép sidecar trong image.
 
 Điền thông tin Zalo, admin, Supabase (nếu dùng) và Panel token vào `.env`; không commit file này. Cấu hình `config.yml`, sau đó chạy:
 
