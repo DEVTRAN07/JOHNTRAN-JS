@@ -66,7 +66,7 @@ test("command errors keep a private response and log a searchable stack referenc
   });
 
   assert.equal(replies.length, 2);
-  assert.match(replies[0], /^Đã xảy ra lỗi khi xử lý lệnh!\\nMã lỗi: [A-F0-9]{8}$/);
+  assert.match(replies[0], /^Đã xảy ra lỗi khi xử lý lệnh!\nMã lỗi: [A-F0-9]{8}$/);
   assert.equal(replies[1], "reaction:cry");
   assert.equal(finished, true);
 
@@ -113,6 +113,6 @@ test("command error logging does not replace the original failure when metrics t
   });
 
   assert.equal(replies.length, 1);
-  assert.match(replies[0], /^Đã xảy ra lỗi khi xử lý lệnh!\\nMã lỗi: [A-F0-9]{8}$/);
+  assert.match(replies[0], /^Đã xảy ra lỗi khi xử lý lệnh!\nMã lỗi: [A-F0-9]{8}$/);
   assert.match(logs[0].message, /original failure/);
 });
