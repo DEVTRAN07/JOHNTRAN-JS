@@ -133,12 +133,12 @@ async function requester(api, event) {
   }
 }
 
-async function sendCard({ api, event, reply, spec }) {
+async function sendCard({ api, event, reply, spec, caption = "" }) {
   let cardPath = null;
   try {
     cardPath = await welcomeCanvas.renderWelcomeCard(spec);
     return await api.sendMessage({
-      msg: "",
+      msg: caption,
       attachments: [cardPath],
       ttlKind: "card"
     }, event.threadId, event.type);
@@ -151,34 +151,18 @@ async function sendCard({ api, event, reply, spec }) {
     cleanupLater(cardPath);
   }
 }
-
 function makePersonalMessage(member, kind = "welcome") {
   const isGoodbye = kind === "goodbye";
   const prefix = isGoodbye ? "👋 Tạm biệt " : "👋 Chào mừng ";
   const suffix = isGoodbye
     ? " đã rời nhóm. Chúc bạn mọi điều tốt đẹp!"
     : " đến với nhóm!\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!";
-  const uid = String(member?.uid || "");
-  const name = cleanText(member?.name, "bạn");
-  if (!uid) return { msg: prefix + name + suffix };
-  return {
-    msg: prefix + "@." + suffix,
-    mentions: [{ pos: prefix.length, uid, len: 2 }]
-  };
+  return { msg: prefix + "@" + cleanText(member?.name, "bạn") + suffix };
 }
-
 async function sendPreview({ api, event, reply, spec, member, mode }) {
-  await sendCard({ api, event, reply, spec });
-  // A separate message makes the tag render below, not as a Canvas caption.
-  const tag = makePersonalMessage(member, mode);
-  try {
-    return await api.sendMessage(tag, event.threadId, event.type);
-  } catch (error) {
-    console.error("[WELCOME_PREVIEW_TAG]", error?.stack || error);
-    return false;
-  }
+  const caption = makePersonalMessage(member, mode).msg;
+  return sendCard({ api, event, reply, spec, caption });
 }
-
 module.exports.run = async function ({
   api, event, args = [], Threads, reply, threadData
 }) {
