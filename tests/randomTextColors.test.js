@@ -193,11 +193,11 @@ test("Rust N-API colorizer preserves UTF-16 offsets and skips tagged mention ran
     return;
   }
 
-  const msg = "🤖 Chào bạn nhé\\n👉 你好";
+  const msg = "🤖 Chào bạn nhé\n👉 你好";
   const spans = nativeRuntime.randomColorStyles(msg, [
     TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green
   ]);
-  const expected = [...msg.matchAll(/\\S+/gu)].map(match => ({
+  const expected = [...msg.matchAll(/\S+/gu)].map(match => ({
     start: match.index,
     len: match[0].length
   }));

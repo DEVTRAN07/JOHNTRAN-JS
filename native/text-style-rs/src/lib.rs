@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn token_offsets_match_javascript_utf16_indices() {
-        let text = "🤖 Chào bạn nhé\\n👉 你好";
+        let text = "🤖 Chào bạn nhé\n👉 你好";
         let styles = tokenize_utf16(text, &colors(), &[]);
         let spans: Vec<(u32, u32)> = styles.iter().map(|s| (s.start, s.len)).collect();
         assert_eq!(spans, vec![(0, 2), (3, 4), (8, 3), (12, 3), (16, 2), (19, 2)]);
@@ -124,6 +124,6 @@ mod tests {
     fn empty_input_produces_no_styles() {
         let colors = vec!["red".to_string(), "green".to_string()];
         assert!(tokenize_utf16("", &colors, &[]).is_empty());
-        assert!(tokenize_utf16("   \\n\\t", &colors, &[]).is_empty());
+        assert!(tokenize_utf16("   \n\t", &colors, &[]).is_empty());
     }
 }
