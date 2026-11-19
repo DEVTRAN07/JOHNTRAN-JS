@@ -199,7 +199,7 @@ test("JOIN hydration stops after group-member profile already provides the avata
     async getGroupMembersInfo(ids) {
       calls.push(["group", ids]);
       return { profiles: {
-        fast-user_0: { id: "fast-user", displayName: "Resolved Fast User", avatar: "https://example.com/fast.jpg" }
+        "fast-user_0": { id: "fast-user", displayName: "Resolved Fast User", avatar: "https://example.com/fast.jpg" }
       }};
     },
     async getUserInfo() { calls.push(["user"]); throw new Error("Must not perform redundant user lookup"); },
@@ -221,7 +221,7 @@ test("OUT hydration uses avatar-only endpoint only when user profile has no avat
     async getUserInfo(ids, size) {
       calls.push(["user", ids, size]);
       return { changed_profiles: {
-        former-user_0: { userId: "former-user", displayName: "Former User", avatar: "" }
+        "former-user_0": { userId: "former-user", displayName: "Former User", avatar: "" }
       }};
     },
     async getAvatarUrlProfile(ids, size) {
