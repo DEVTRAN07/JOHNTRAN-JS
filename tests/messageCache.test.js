@@ -113,3 +113,41 @@ test("message cache periodic flush writes asynchronously and reports flush stati
     await cacheModule.flushMessageCache();
   }
 });
+
+test("Rust message-cache sidecar persists updates outside the Node process", async t => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const cacheModule = require("../utils/messageCache");
+  const binary = cacheModule.resolveNativeCacheBinary();
+  if (!fs.existsSync(binary)) {
+    t.skip("Rust sidecar is built in CI/production images only");
+    return;
+  }
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-rust-cache-test-"));
+  const file = path.join(dir, "message_cache.json");
+  fs.writeFileSync(file, JSON.stringify({
+    existing: { msgId: "old-message", cliMsgId: "existing" },
+    removed: { msgId: "delete-me", cliMsgId: "removed" }
+  }));
+
+  const writer = cacheModule.createNativeCacheWriter(binary, file);
+  assert.ok(writer, "native writer should start");
+  try {
+    writer.upsert("existing", { msgId: "new-message", cliMsgId: "existing" });
+    writer.upsert("inserted", { msgId: "inserted-message", cliMsgId: "inserted" });
+    writer.delete("removed");
+
+    const result = await writer.flush();
+    assert.equal(result.ok, true, result.error);
+    const saved = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.equal(saved.existing.msgId, "new-message");
+    assert.equal(saved.inserted.msgId, "inserted-message");
+    assert.equal(Object.hasOwn(saved, "removed"), false);
+    assert.equal(result.entries, 2);
+  } finally {
+    await writer.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

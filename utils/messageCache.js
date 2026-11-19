@@ -1,5 +1,7 @@
 const fs = require("fs");
 const path = require("path");
+const readline = require("node:readline");
+const { spawn } = require("node:child_process");
 const logger = require("./logger");
 
 const messageCachePath = path.join(__dirname, "..", "data", "message_cache.json");
@@ -20,6 +22,142 @@ let asyncFlushLastMs = 0;
 const CACHE_FLUSH_DELAY = 5000;
 const MAX_MESSAGE_CACHE_ENTRIES = 50000;
 const MESSAGE_CACHE_EVICTION_BATCH = 2500;
+
+function resolveNativeCacheBinary() {
+    const configured = String(process.env.JT_MESSAGE_CACHE_NATIVE_PATH || "").trim();
+    if (configured) return configured;
+    const executable = process.platform === "win32" ? "jt-message-cache.exe" : "jt-message-cache";
+    return path.join(__dirname, "..", "native", "bin", executable);
+}
+
+function createNativeCacheWriter(binaryPath, filePath) {
+    if (!binaryPath || !fs.existsSync(binaryPath)) return null;
+
+    let child;
+    try {
+        child = spawn(binaryPath, [filePath], { stdio: ["pipe", "pipe", "pipe"] });
+    } catch (error) {
+        logger.log("Không thể khởi chạy Rust message-cache: " + error.message, "warn");
+        return null;
+    }
+
+    let active = true;
+    let nextId = 0;
+    const pending = new Map();
+    const lines = readline.createInterface({ input: child.stdout });
+
+    const failPending = reason => {
+        for (const [id, entry] of pending) {
+            clearTimeout(entry.timer);
+            entry.resolve({ ok: false, error: reason || "Rust cache worker stopped" });
+            pending.delete(id);
+        }
+    };
+
+    lines.on("line", line => {
+        let result;
+        try { result = JSON.parse(line); } catch { return; }
+        const id = Number(result?.id);
+        const entry = pending.get(id);
+        if (!entry) return;
+        pending.delete(id);
+        clearTimeout(entry.timer);
+        entry.resolve(result);
+    });
+
+    child.on("error", error => {
+        active = false;
+        failPending(error?.message || "Rust cache worker error");
+        logger.log("Rust message-cache worker lỗi: " + (error?.message || error), "warn");
+    });
+    child.on("exit", (code, signal) => {
+        active = false;
+        failPending("Rust cache worker exited: code=" + code + ", signal=" + signal);
+    });
+    child.stdin.on("error", error => {
+        active = false;
+        failPending(error?.message || "Rust cache worker stdin error");
+    });
+    child.stderr.on("data", chunk => {
+        const message = String(chunk || "").trim();
+        if (message) logger.log("[message-cache-rs] " + message.slice(0, 500), "warn");
+    });
+
+    function send(payload) {
+        if (!active || child.stdin.destroyed || !child.stdin.writable) return false;
+        try {
+            child.stdin.write(JSON.stringify(payload) + "\n");
+            return true;
+        } catch {
+            active = false;
+            return false;
+        }
+    }
+
+    return {
+        upsert(key, value) {
+            return send({ op: "upsert", key: String(key), value });
+        },
+        delete(key) {
+            return send({ op: "delete", key: String(key) });
+        },
+        flush(timeoutMs = 30000) {
+            if (!active) return Promise.resolve({ ok: false, error: "Rust cache worker unavailable" });
+            const id = ++nextId;
+            return new Promise(resolve => {
+                const timer = setTimeout(() => {
+                    pending.delete(id);
+                    resolve({ ok: false, error: "Rust cache flush timed out" });
+                }, Math.max(1000, Number(timeoutMs) || 30000));
+                timer.unref?.();
+                pending.set(id, { resolve, timer });
+                if (!send({ op: "flush", id })) {
+                    pending.delete(id);
+                    clearTimeout(timer);
+                    resolve({ ok: false, error: "Could not write flush command to Rust worker" });
+                }
+            });
+        },
+        close() {
+            if (!child.stdin.destroyed) child.stdin.end();
+            if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+            return new Promise(resolve => child.once("exit", resolve));
+        },
+        terminate() {
+            active = false;
+            failPending("Rust cache worker terminated during shutdown");
+            try { child.kill("SIGKILL"); } catch {}
+            try { child.stdin.destroy(); } catch {}
+        },
+        stats() {
+            return {
+                available: active,
+                pid: child.pid || null,
+                pendingFlushes: pending.size,
+                binary: binaryPath
+            };
+        }
+    };
+}
+
+const nativeCacheWriter = createNativeCacheWriter(resolveNativeCacheBinary(), messageCachePath);
+
+function mirrorCacheMutations(cache) {
+    return new Proxy(cache, {
+        set(target, key, value) {
+            const result = Reflect.set(target, key, value);
+            if (result && typeof key === "string") nativeCacheWriter?.upsert(key, value);
+            return result;
+        },
+        deleteProperty(target, key) {
+            const existed = Object.prototype.hasOwnProperty.call(target, key);
+            const result = Reflect.deleteProperty(target, key);
+            if (result && existed && typeof key === "string") nativeCacheWriter?.delete(key);
+            return result;
+        }
+    });
+}
+
 
 function enforceMessageCacheLimit(cache, maxEntries = MAX_MESSAGE_CACHE_ENTRIES) {
     if (!cache || typeof cache !== 'object') return 0;
@@ -48,7 +186,7 @@ function loadMessageCacheFromDisk() {
 
 function readMessageJson() {
     if (messageCacheMem === null) {
-        messageCacheMem = loadMessageCacheFromDisk();
+        messageCacheMem = mirrorCacheMutations(loadMessageCacheFromDisk());
         // Old deployments may already have persisted an oversized cache.
         // Enforce the cap immediately on startup/first read, not only when a
         // new message arrives, then persist the trimmed auxiliary cache.
@@ -103,7 +241,35 @@ function writeMessageJsonAsync(data) {
 
 function flushMessageCache() {
     cacheFlushTimer = null;
-    return messageCacheMem ? writeMessageJsonAsync(messageCacheMem) : Promise.resolve(false);
+    if (!messageCacheMem) return Promise.resolve(false);
+
+    // Production uses a Rust sidecar. The full 50k-entry JSON snapshot is
+    // serialized and atomically persisted in a separate process, never on the
+    // Zalo listener's Node.js event loop.
+    if (nativeCacheWriter?.stats().available) {
+        const startedAt = Date.now();
+        return nativeCacheWriter.flush().then(result => {
+            if (result?.ok === true) {
+                asyncFlushCount++;
+                asyncFlushLastMs = Math.max(
+                    0,
+                    Number(result.durationMs) || (Date.now() - startedAt)
+                );
+                return true;
+            }
+
+            asyncFlushFailures++;
+            logger.log("Rust message-cache flush thất bại: " + String(result?.error || "unknown"), "warn");
+            return writeMessageJsonAsync(messageCacheMem);
+        }).catch(error => {
+            asyncFlushFailures++;
+            logger.log("Rust message-cache flush lỗi: " + (error?.message || error), "warn");
+            return writeMessageJsonAsync(messageCacheMem);
+        });
+    }
+
+    // Local development / unsupported platforms keep the legacy compatible writer.
+    return writeMessageJsonAsync(messageCacheMem);
 }
 
 function scheduleCacheFlush() {
@@ -117,6 +283,9 @@ process.on("exit", () => {
         clearTimeout(cacheFlushTimer);
         cacheFlushTimer = null;
     }
+    // Stop the sidecar before writing the authoritative current JS snapshot.
+    // This prevents an in-flight older Rust snapshot from winning a shutdown race.
+    nativeCacheWriter?.terminate();
     if (messageCacheMem) writeMessageJson(messageCacheMem);
 });
 
@@ -152,7 +321,11 @@ function getMessageCacheStats() {
         maxEntries: MAX_MESSAGE_CACHE_ENTRIES,
         asyncFlushCount,
         asyncFlushFailures,
-        asyncFlushLastMs
+        asyncFlushLastMs,
+        nativePersistence: nativeCacheWriter?.stats() || {
+            available: false,
+            reason: "Rust message-cache binary not built for this environment"
+        }
     };
 }
 
@@ -211,5 +384,7 @@ module.exports = {
     updateMessageCache,
     enforceMessageCacheLimit,
     getMessageCacheStats,
+    createNativeCacheWriter,
+    resolveNativeCacheBinary,
     MAX_MESSAGE_CACHE_ENTRIES
 };

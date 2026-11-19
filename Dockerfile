@@ -1,37 +1,32 @@
-# Dockerfile cho Render/Koyeb (free) — deploy bot 24/7
-FROM node:22-slim
+# Build the high-volume message-cache persistence worker in Rust.
+FROM rust:1.86-bookworm AS rust-build
+WORKDIR /build
+COPY rust/message-cache ./rust/message-cache
+RUN cargo build --manifest-path rust/message-cache/Cargo.toml --release
 
-# yt-dlp NIGHTLY (bản thường xuyên fix chống chặn YouTube hơn bản ổn định)
-# + ffmpeg (xử lý video/nhạc) + thư viện cho canvas
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl python3 python3-pip \
-    ffmpeg \
-    libcairo2 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
-    fonts-dejavu-core \
-    ca-certificates \
-    && pip3 install --break-system-packages -U --pre yt-dlp \
-    && ffmpeg -hide_banner -version >/dev/null \
-    && rm -rf /var/lib/apt/lists/* && yt-dlp --version
-
+# Install Node production dependencies with the native build libraries required
+# by the existing Canvas package.
+FROM node:22.22.1-bookworm-slim AS node-deps
 WORKDIR /app
-# copy package.json + vendor TRƯỚC để npm ci tìm thấy zalo-client (file:vendor/zalo-client)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ pkg-config \
+    libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
+    && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
-COPY vendor ./vendor
 RUN npm ci --omit=dev
-COPY . .
 
-# Koyeb/Render/Northflank inject PORT — health server + panel tự mở đúng port đó.
-# PORT=8000 là mặc định nếu nền tảng không inject (Northflank đọc từ EXPOSE).
+FROM node:22.22.1-bookworm-slim AS runtime
+WORKDIR /app
 ENV NODE_ENV=production
-ENV TZ=Asia/Ho_Chi_Minh
-ENV YTDLP_PATH=/usr/local/bin/yt-dlp
-ENV FFMPEG_PATH=/usr/bin/ffmpeg
-ENV PORT=8000
-EXPOSE 8000
-
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
+    libjpeg62-turbo libgif7 librsvg2-2 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=node-deps /app/node_modules ./node_modules
+COPY . .
+RUN mkdir -p native/bin
+COPY --from=rust-build /build/rust/message-cache/target/release/jt-message-cache ./native/bin/jt-message-cache
+RUN chmod 755 ./native/bin/jt-message-cache
+EXPOSE 10000
 CMD ["node", "index.js"]

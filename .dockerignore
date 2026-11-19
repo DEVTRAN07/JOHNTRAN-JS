@@ -1,24 +1,12 @@
-node_modules
 .git
-cookie.json
+.github
+node_modules
+**/target
+data/*
 account.json
-data/
+cookie.json
+cookies.txt
 qr.png
 *.log
 .env
-
-# Local tooling and documentation are not part of the runtime image
-.github
-.kilo
-app
-deploy
-scripts
-tests
-reference-images
-
-# Generated/runtime data must never be baked into an image layer
-assets/cache
-core/assets/cache
-plugins/commands/temp
-plugins/events/temp
-logs
+.env.*

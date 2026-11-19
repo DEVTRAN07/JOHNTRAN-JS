@@ -21,6 +21,15 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Compile and test Rust message-cache sidecar
+        run: |
+          cargo test --manifest-path rust/message-cache/Cargo.toml
+          cargo build --manifest-path rust/message-cache/Cargo.toml --release
+          mkdir -p native/bin
+          cp rust/message-cache/target/release/jt-message-cache native/bin/jt-message-cache
+          chmod +x native/bin/jt-message-cache
       - run: npm test
       - run: node scripts/test-commands.js
       - run: node scripts/test-all.js

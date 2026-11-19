@@ -36,3 +36,7 @@ cache/temp/
 *.tmp
 *.scratch
 *.session
+
+# Rust build outputs and production sidecar binary
+**/target/
+native/bin/jt-message-cache*

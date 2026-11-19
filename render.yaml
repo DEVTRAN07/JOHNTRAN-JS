@@ -1,13 +1,11 @@
 services:
   - type: web
     name: JOHNTRAN-JS
-    env: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: starter
-    buildCommand: npm ci --omit=dev
-    startCommand: node index.js
     envVars:
-      - key: NODE_VERSION
-        value: "22.22.1"
       - key: JT_ACCOUNT_FILE
         value: /opt/render/project/data/account.json
       - key: JT_DB_FILE
