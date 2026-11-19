@@ -6,7 +6,7 @@ const { sendMessageFactory } = require("../vendor/zalo-client/dist/cjs/api/sendM
 const { encodeAES, decodeAES } = require("../vendor/zalo-client/dist/cjs/core/crypto.cjs");
 const { CookieJar } = require("tough-cookie");
 const { TextStyle, ThreadType } = require("zalo-client");
-const { isIntentionalRecall, _test: intentionalRecallTest } = require("../core/runtime/intentionalRecall");
+const { isIntentionalRecall } = require("../core/runtime/intentionalRecall");
 const RANDOM_COLORS = new Set([TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green]);
 
 test("CommonJS sendMessage returns the same cliMsgId it sent to Zalo", async () => {
