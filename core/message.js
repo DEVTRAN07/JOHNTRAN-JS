@@ -637,7 +637,6 @@ module.exports = {
     addRecallClock,
     getRecallCountdownUpdates,
     isRecallCountdownEnabled,
-    shouldPrepareImageCaption,
     getRecallReactionQueueStats: () => ({
       active: activeRecallReactions,
       pending: recallReactionQueue.length,
