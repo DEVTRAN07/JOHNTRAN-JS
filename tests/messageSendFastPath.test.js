@@ -23,6 +23,51 @@ test("text-only replies stay on the short styled-message path", async () => {
   assert.equal(sent[0].type, 1);
 });
 
+test("wrapped Zalo send records request start before API completion", async () => {
+  const metrics = require("../core/metrics");
+  const { performance } = require("node:perf_hooks");
+  const event = {
+    threadId: "first-send-start-wrapper",
+    type: 1,
+    data: { cliMsgId: "first-send-start-wrapper-1" }
+  };
+  const commandName = "first-send-probe";
+  const beforeStart = metrics.getFirstResponseStartLatencyByCommandStats(100)
+    .find(item => item.command === commandName)?.count || 0;
+  const beforeComplete = metrics.getFirstResponseLatencyByCommandStats(100)
+    .find(item => item.command === commandName)?.count || 0;
+  metrics.trackIncomingMessage(event, performance.now());
+
+  let resolveSend;
+  const api = {
+    sendMessage() {
+      return new Promise(resolve => { resolveSend = resolve; });
+    }
+  };
+  const wrapped = wrapApi(api, event.threadId, event.type, commandName, event);
+  const pending = wrapped.sendMessage({ msg: "first response", recallAfterMs: 0 });
+
+  const started = metrics.getFirstResponseStartLatencyByCommandStats(100)
+    .find(item => item.command === commandName);
+  assert.equal(started?.count, beforeStart + 1,
+    "the first-send metric must be recorded when the Zalo API call starts");
+  assert.equal(
+    metrics.getFirstResponseLatencyByCommandStats(100)
+      .find(item => item.command === commandName)?.count || 0,
+    beforeComplete,
+    "the completion metric must not be recorded while the API promise is pending"
+  );
+
+  resolveSend({ message: null, attachment: [] });
+  await pending;
+  assert.equal(
+    metrics.getFirstResponseLatencyByCommandStats(100)
+      .find(item => item.command === commandName)?.count,
+    beforeComplete + 1
+  );
+});
+
+
 test("image caption stays text below the Canvas in one styled message", async () => {
   const sent = [];
   const api = {
