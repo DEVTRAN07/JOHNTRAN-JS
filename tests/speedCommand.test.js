@@ -20,6 +20,7 @@ test("/speed reports end-to-end, handler, listener, API and first-response timin
     getListenerStageLatencyStats: () => [{ command: "thread-data", avgMs: 3, p95Ms: 5, count: 9 }],
     getZaloApiLatencyStats: () => [{ command: "sendMessage", avgMs: 650, p95Ms: 780, count: 9 }],
     getZaloSdkPhaseLatencyStats: () => [{ command: "cookie-headers", avgMs: 1.4, p95Ms: 3, count: 9 }],
+    getFirstResponseStartLatencyByCommandStats: () => [{ command: "stk", avgMs: 110, p95Ms: 140, count: 3 }],
     getFirstResponseLatencyByCommandStats: () => [{ command: "stk", avgMs: 760, p95Ms: 850, count: 3 }]
   };
 
@@ -32,7 +33,9 @@ test("/speed reports end-to-end, handler, listener, API and first-response timin
   assert.match(report, /sendMessage/);
   assert.match(report, /CÁC PHA BÊN TRONG ZALO-CLIENT/);
   assert.match(report, /cookie-headers/);
-  assert.match(report, /PHẢN HỒI ĐẦU TIÊN/);
+  assert.match(report, /BẮT ĐẦU GỬI LẦN ĐẦU/);
+  assert.match(report, /P95 140\.0 ms/);
+  assert.match(report, /PHẢN HỒI ĐẦU TIÊN HOÀN TẤT/);
   assert.match(report, /P95 850\.0 ms/);
 });
 
