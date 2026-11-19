@@ -5,6 +5,7 @@ const logger = require("../utils/logger");
 const styledText = require("./styled");
 const fs = require("fs");
 const crypto = require("crypto");
+const { recallIntentionally } = require("./runtime/intentionalRecall");
 
 async function callTrackedZaloApi(method, call, onStart = null) {
   const startedAt = performance.now();
@@ -227,7 +228,13 @@ function scheduleRecall(api, response, threadId, type, delayMs = DEFAULT_AUTO_RE
     }
     const timer = setTimeout(async () => {
       try {
-        await api.undo({ msgId, cliMsgId }, threadId, type);
+        await recallIntentionally(
+          api,
+          { msgId, cliMsgId },
+          threadId,
+          type,
+          "automatic-message-ttl"
+        );
         logger.log("Đã thu hồi tin bot sau " + Math.round(delayMs / 1000) + " giây.", "info");
       } catch (error) {
         logger.log("Không thể thu hồi tin bot sau " + Math.round(delayMs / 1000) + " giây: " + (error?.message || error), "warn");
