@@ -597,14 +597,18 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   // ===== Cache tầng API Zalo: giảm gọi API, phản hồi nhanh hơn =====
   defineWrapped(wrapped, "getGroupInfo", async (tid) => {
     const key = String(tid);
-    return cache.caches.groupInfo.remember(key, () => api.getGroupInfo(tid));
+    return cache.caches.groupInfo.remember(key, () =>
+      callTrackedZaloApi("getGroupInfo", () => api.getGroupInfo(tid))
+    );
   });
 
   defineWrapped(wrapped, "getUserInfo", async (uid, avatarSize) => {
     const userId = String(uid);
     const size = Number(avatarSize) > 0 ? Math.floor(Number(avatarSize)) : 0;
     const key = size ? `${userId}:avatar:${size}` : userId;
-    return cache.caches.userInfo.remember(key, () => api.getUserInfo(uid, size || undefined));
+    return cache.caches.userInfo.remember(key, () =>
+      callTrackedZaloApi("getUserInfo", () => api.getUserInfo(uid, size || undefined))
+    );
   });
 
   defineWrapped(wrapped, "invalidateCache", async (kind, key) => {
