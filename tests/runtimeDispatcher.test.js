@@ -135,3 +135,48 @@ test("dispatcher cancels the working reaction when the first reply starts", asyn
   });
   assert.deepEqual(ctx.reactions, []);
 });
+
+
+test("ordinary commands do not schedule a competing default acknowledgement API call", async () => {
+  const ctx = createContext();
+  let scheduled = 0;
+  ctx.api.__reply.scheduleAcknowledgement = () => {
+    scheduled++;
+    return true;
+  };
+
+  await dispatchCommand({
+    command: { config: {}, run: async () => {} },
+    commandName: "ordinary",
+    args: [],
+    event: { data: { content: "/ordinary" }, mentions: [] },
+    api: ctx.api,
+    logger: ctx.logger,
+    metrics: ctx.metrics,
+    Reactions: ctx.Reactions
+  });
+
+  assert.equal(scheduled, 0);
+});
+
+test("background jobs keep a default working reaction while normal commands opt out", async () => {
+  const ctx = createContext();
+  let scheduledDelay = null;
+  ctx.api.__reply.scheduleAcknowledgement = (_callback, delayMs) => {
+    scheduledDelay = delayMs;
+    return true;
+  };
+
+  await dispatchCommand({
+    command: { config: { backgroundExecution: true }, run: async () => {} },
+    commandName: "background",
+    args: [],
+    event: { data: { content: "/background" }, mentions: [] },
+    api: ctx.api,
+    logger: ctx.logger,
+    metrics: ctx.metrics,
+    Reactions: ctx.Reactions
+  });
+
+  assert.equal(scheduledDelay, 600);
+});

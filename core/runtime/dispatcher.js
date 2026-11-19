@@ -47,11 +47,20 @@ async function dispatchCommand({
     // Do not spend a Zalo API call on a status reaction for fast commands.
     // Long-running commands still get a visible acknowledgement after a short
     // grace period; the first outgoing message cancels it in Reply.markResponseStarted().
-    const configuredAckDelay = Number(command?.config?.ackDelayMs);
+    // A working reaction costs another Zalo API request. Keep it opt-in so
+    // ordinary commands do not launch a second request that competes with
+    // the actual reply. Background jobs retain their progress indicator.
+    const hasAckConfig = command?.config &&
+      Object.prototype.hasOwnProperty.call(command.config, "ackDelayMs");
+    const configuredAckDelay = hasAckConfig
+      ? Number(command.config.ackDelayMs)
+      : command?.config?.backgroundExecution === true ? 600 : 0;
     const ackDelayMs = Number.isFinite(configuredAckDelay)
       ? Math.max(0, Math.min(5000, Math.floor(configuredAckDelay)))
-      : 600;
-    reply?.scheduleAcknowledgement?.(() => reactAuto(Reactions.PRAY), ackDelayMs);
+      : 0;
+    if (ackDelayMs > 0) {
+      reply?.scheduleAcknowledgement?.(() => reactAuto(Reactions.PRAY), ackDelayMs);
+    }
 
     try {
       await command.run({

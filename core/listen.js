@@ -445,22 +445,26 @@ function startListening(api) {
     markProcessed(cliMsgId);
     metrics.trackIncomingMessage?.(event, receivedAt);
 
-    // Count every group event for diagnostics. The counter still excludes
-    // bot-self messages from the actual member ranking.
-    if (isGroupMessage(event)) {
-      const topchatStartedAt = performance.now();
-      void topchatCounter.run({ event, Threads }).then(
-        () => metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt),
-        (err) => {
-          metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt);
-          logger.log(`Lỗi ghi thống kê Topchat: ${err.message}`, "warn");
-        }
-      );
-    }
-
+    // Start the command/listener hot path first. Top Chat is background
+    // accounting, so it should not claim the first microtask after a WebSocket
+    // event and compete with the command's cache/permission/send path.
     Promise.resolve(onMessage(event, { ...options, receivedAt })).catch((err) => {
       logger.log(`Lỗi listener message: ${err.message}`, "error");
     });
+
+    // Retain realtime accounting but defer its database/cache work one turn.
+    if (isGroupMessage(event)) {
+      setImmediate(() => {
+        const topchatStartedAt = performance.now();
+        void topchatCounter.run({ event, Threads }).then(
+          () => metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt),
+          (err) => {
+            metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt);
+            logger.log(`Lỗi ghi thống kê Topchat: ${err.message}`, "warn");
+          }
+        );
+      });
+    }
   };
 
   listener.on("message", handleIncoming);
