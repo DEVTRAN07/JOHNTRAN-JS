@@ -12,7 +12,6 @@
     "benchmark:hotpath": "node scripts/benchmark-hotpath.js",
     "monitor:memory": "node -e \"setInterval(() => { const mem = process.memoryUsage(); console.log(new Date().toISOString(), 'RSS:', (mem.rss / 1024 / 1024).toFixed(2), 'MB', 'Heap used:', (mem.heapUsed / 1024 / 1024).toFixed(2), 'MB', 'Heap total:', (mem.heapTotal / 1024 / 1024).toFixed(2), 'MB', 'External:', (mem.external / 1024 / 1024).toFixed(2), 'MB'); }, 30000);\"",
     "build:native": "node native/build.js",
-    "tui": "node tui.js",
     "verify:deployment": "node scripts/verify-deployment.js",
     "migrate:supabase": "node scripts/migrate-json-to-supabase.js",
     "check:stk-assets": "node scripts/check-stk-assets.js"
