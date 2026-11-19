@@ -381,7 +381,6 @@ class MediaCache {
         if (res.data && res.data.length > 0) {
           await this._writeLocal(t, key, buffer, metadata, ttl, contentType, expiresAt);
           this._stats.hits++;
-          void this._refreshLocalFileCount();
           return { url: this.getUrl(key), key: key, cached: true };
         }
       } catch (err) {
@@ -409,7 +408,6 @@ class MediaCache {
 
     this._stats.uploads++;
     this._stats.bytes += buffer.length;
-    void this._refreshLocalFileCount();
     return { url: this.getUrl(key), key: key, cached: false };
   }
 
@@ -486,7 +484,6 @@ class MediaCache {
             const meta = this._parseR2Metadata(res.headers);
             if (!this._isExpired(meta)) {
               await this._writeLocal(t, key, res.data, meta.metadata, this.ttls[t] || this.defaultTtl, meta.contentType, meta.expiresAt);
-              void this._refreshLocalFileCount();
               this._stats.hits++;
               return { buffer: res.data, metadata: meta.metadata || {} };
             }
@@ -565,7 +562,6 @@ class MediaCache {
       }
     }
     if (removed) this._stats.invalidations++;
-    void this._refreshLocalFileCount();
     return removed;
   }
 
