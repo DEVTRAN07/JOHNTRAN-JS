@@ -10,7 +10,7 @@ members = [
 exclude = ["text-style-rs", "canvas-rs", "ffmpeg-rs"]
 
 [workspace.dependencies]
-napi = { version = "2", features = ["derive"] }
+napi = { version = "2" }
 napi-derive = { version = "2" }
 
 [profile.release]
