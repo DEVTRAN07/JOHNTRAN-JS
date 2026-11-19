@@ -145,6 +145,24 @@ class JsonStore {
     }
   }
 
+  // Lightweight health check for request hot paths. The full getStatus()
+  // below also stats the JSON file and parses /proc/self/mountinfo for Panel
+  // diagnostics; those synchronous filesystem probes must not run while a
+  // Zalo message is being dispatched.
+  getOperationalStatus() {
+    return {
+      driver: "json",
+      ok: !this.loadError && !this.lastFlushError,
+      ready: this.loaded && !this.loadError,
+      loadError: this.loadError,
+      lastLoadError: this.lastLoadError || this.loadError,
+      lastFlushError: this.lastFlushError,
+      pendingFlush: this.pendingFlush,
+      lastWriteAt: this.lastWriteAt || null,
+      lastFlushAt: this.lastFlushAt || null
+    };
+  }
+
   getStatus() {
     let fileSizeBytes = null;
     try { fileSizeBytes = fs.statSync(this.file).size; } catch { /* file chưa được tạo */ }
