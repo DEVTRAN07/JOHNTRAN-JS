@@ -45,7 +45,9 @@ module.exports.config = {
   description: "Cảnh cáo link lạ / từ cấm; đủ 3 cảnh cáo, lần vi phạm thứ 4 sẽ kick",
   category: "Sự kiện",
   usage: "events guard on|off",
-  cooldowns: 0
+  cooldowns: 0,
+  // Guard must inspect prefixed commands too, to protect links/bad words in args.
+  allowCommandMessages: true
 };
 
 function isAllowedLink(url, allowed) {
