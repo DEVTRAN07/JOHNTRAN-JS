@@ -22,6 +22,16 @@ test("FFmpeg thread override is bounded and rejects invalid values", () => {
     "large positive values are clamped to the supported maximum");
 });
 
+test("global media queue ceiling leaves one CPU available for chat processing", () => {
+  const { resolveGlobalJobConcurrency } = require("../core/mediaResourceLimits");
+  assert.equal(resolveGlobalJobConcurrency(1), 1);
+  assert.equal(resolveGlobalJobConcurrency(2), 1);
+  assert.equal(resolveGlobalJobConcurrency(3), 2);
+  assert.equal(resolveGlobalJobConcurrency(4), 3);
+  assert.equal(resolveGlobalJobConcurrency(5), 4);
+  assert.equal(resolveGlobalJobConcurrency(16), 4);
+});
+
 test("heavy media concurrency leaves CPU capacity for the Zalo listener", () => {
   assert.equal(resolveHeavyMediaConcurrency(1), 1);
   assert.equal(resolveHeavyMediaConcurrency(2), 1);
