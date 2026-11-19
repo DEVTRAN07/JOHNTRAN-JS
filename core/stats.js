@@ -6,9 +6,9 @@ const cache = require("./cache");
 const logger = require("../utils/logger");
 const { pickAvatar, pickAvatarByUid } = require("./runtime/avatarUrl");
 
-const PROFILE_CACHE_TTL = 300000;
-const FRIENDS_CACHE_TTL = 300000;
-const GROUPS_CACHE_TTL = 300000;
+const PROFILE_CACHE_TTL = 30 * 60 * 1000;
+const FRIENDS_CACHE_TTL = 30 * 60 * 1000;
+const GROUPS_CACHE_TTL = 30 * 60 * 1000;
 const MAX_LIST = 50;
 const GROUP_INFO_CONCURRENCY = 4;
 
