@@ -40,6 +40,15 @@ function decodeUnit8Array(data) {
  * @param parsed Raw event `{ data, encrypt }`
  * @param cipherKey Base64 AES-GCM key (required for encrypt types 2 and 3)
  */
+/**
+ * Decompress Zalo WebSocket payloads in libuv's zlib worker pool.
+ * Synchronous pako.inflate() blocked the event loop while processing frames.
+ */
+async function inflateEventPayload(data) {
+    const output = await inflateAsync(Buffer.from(data));
+    return new Uint8Array(output.buffer, output.byteOffset, output.byteLength);
+}
+
 async function decodeEventData(parsed, cipherKey) {
     if (typeof parsed.data !== "string")
         throw new errors.ZaloApiError(`Invalid data, expected string but got ${typeof parsed.data}`);
