@@ -101,10 +101,6 @@ function randomize(messageContent, options = {}) {
     if (!Number.isInteger(start) || start < 0 || !Number.isInteger(len) || len <= 0) return false;
     const end = start + len;
     if (RANDOM_TEXT_COLOR_SET.has(style?.st)) return false;
-    // Keep custom non-color formatting, but never put a color span over a
-    // mention range managed separately by Zalo.
-    if (RANDOM_TEXT_COLOR_SET.has(style?.st) &&
-        excludedRanges.some(range => start < range.end && range.start < end)) return false;
     return !overlapsRange(start, end, generatedStyles);
   });
 
