@@ -7,6 +7,7 @@ const loaderCommand = require("./core/loader/loaderCommand");
 const loaderEvent = require("./core/loader/loaderEvent");
 const configSystem = require("./core/config");
 const { installAxiosGuard } = require("./core/http/axios");
+const { installZaloHttpTransport } = require("./core/http/transport");
 const musicSystem = require("./core/music");
 const hotReload = require("./core/hotReload");
 const { startHealthServer } = require("./core/health");
@@ -62,6 +63,8 @@ try {
       support: global.config.support_bot
     };
     installAxiosGuard();
+    const transport = installZaloHttpTransport();
+    logger.log(`HTTP transport: keep-alive ${transport.options.keepAliveTimeout}ms, ${transport.options.connections} connections/origin`, "info");
     logger.log(`Đã tải cấu hệ thống thành công${BOT_TAG} (privacy guard: bật)`, "info");
     // deploy cloud (Render/Koyeb...): khôi phục account/cookie/db từ env trước khi login
     bootstrapFiles();
