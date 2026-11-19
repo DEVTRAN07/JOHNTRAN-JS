@@ -10,14 +10,13 @@ function text(ctx, value, x, y, scale, options = {}) {
     (options.family || "Arial, sans-serif");
   const requestedColor = options.color || theme.PALETTE.ink;
   const content = String(value ?? "");
-  const words = content.match(/[\p{L}\p{M}\p{N}]+/gu) || [];
   theme.drawMulticolorText(ctx, content, x, y, {
     font: ctx.font,
     color: requestedColor,
     align: options.align || "left",
     baseline: options.baseline || "alphabetic",
     maxWidth: options.maxWidth,
-    multicolor: words.length > 1 || words.some(word => theme.splitGraphemes(word).length > 1)
+    multicolor: options.multicolor !== false
   });
   ctx.restore();
 }
@@ -373,5 +372,5 @@ function renderSam(data = {}) {
 
 module.exports = {
   renderSam,
-  _test: { drawSeat, seatLayout, comboLabel }
+  _test: { drawSeat, seatLayout, comboLabel, drawText: text }
 };

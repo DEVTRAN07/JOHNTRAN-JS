@@ -18,11 +18,14 @@ function drawLabel(ctx, value, x, y, scale, options = {}) {
   ctx.font = (options.weight || 900) + " " +
     Math.max(9, Math.round((options.size || 18) * scale)) + "px " +
     (options.family || "Arial, sans-serif");
-  ctx.fillStyle = options.color || "#17211e";
-  ctx.textAlign = options.align || "left";
-  ctx.textBaseline = options.baseline || "alphabetic";
-  if (options.maxWidth) ctx.fillText(String(value ?? ""), x, y, options.maxWidth);
-  else ctx.fillText(String(value ?? ""), x, y);
+  theme.drawMulticolorText(ctx, String(value ?? ""), x, y, {
+    font: ctx.font,
+    color: options.color || "#17211e",
+    align: options.align || "left",
+    baseline: options.baseline || "alphabetic",
+    maxWidth: options.maxWidth,
+    multicolor: options.multicolor !== false
+  });
   ctx.restore();
 }
 

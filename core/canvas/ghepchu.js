@@ -21,6 +21,21 @@ function getTemplate() {
   return templatePromise;
 }
 
+function drawWoodenSign(ctx) {
+  ctx.save();
+  ctx.translate(73,-120); ctx.rotate(.12);
+  roundedRect(ctx,-5,-5,92,67,9);
+  ctx.fillStyle="#8b4a24"; ctx.fill();
+  roundedRect(ctx,0,0,82,57,7);
+  const wood=ctx.createLinearGradient(0,0,0,57);
+  wood.addColorStop(0,"#f5c17c"); wood.addColorStop(1,"#c98242");
+  ctx.fillStyle=wood; ctx.fill();
+  ctx.strokeStyle="#77401f"; ctx.lineWidth=2; ctx.stroke();
+  drawText(ctx,"VUA",41,22,{size:13,color:"#5a2e18",weight:"800",align:"center"});
+  drawText(ctx,"GHÉP CHỮ",41,40,{size:12,color:"#5a2e18",weight:"800",align:"center"});
+  ctx.restore();
+}
+
 function drawChibiMascot(ctx, cx, cy) {
   ctx.save();
   ctx.translate(cx, cy);
@@ -68,19 +83,9 @@ function drawChibiMascot(ctx, cx, cy) {
   ctx.beginPath(); ctx.ellipse(-40,-35,10,6,0,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(42,-35,10,6,0,0,Math.PI*2); ctx.fill();
 
-  // Wooden "VUA GHÉP CHỮ" sign.
-  ctx.save();
-  ctx.translate(73,-120); ctx.rotate(.12);
-  roundedRect(ctx,-5,-5,92,67,9);
-  ctx.fillStyle="#8b4a24"; ctx.fill();
-  roundedRect(ctx,0,0,82,57,7);
-  const wood=ctx.createLinearGradient(0,0,0,57);
-  wood.addColorStop(0,"#f5c17c"); wood.addColorStop(1,"#c98242");
-  ctx.fillStyle=wood; ctx.fill();
-  ctx.strokeStyle="#77401f"; ctx.lineWidth=2; ctx.stroke();
-  drawText(ctx,"VUA",41,22,{size:13,color:"#5a2e18",weight:"800",align:"center"});
-  drawText(ctx,"GHÉP CHỮ",41,40,{size:12,color:"#5a2e18",weight:"800",align:"center"});
-  ctx.restore();
+  // Wooden "VUA GHÉP CHỮ" sign. Kept as a helper so the raster template's
+  // original fixed-color lettering can be covered and repainted in live colors.
+  drawWoodenSign(ctx);
 
   ctx.restore();
 }
@@ -143,23 +148,32 @@ function drawRobotMascot(ctx, cx, cy) {
   ctx.restore();
 }
 
-function drawFallbackTemplate(ctx) {
-  // Match the production template path: photo theme underneath,
-  // translucent artwork and transparent information surfaces above it.
-  theme.paintBackground(ctx, WIDTH, HEIGHT, {
-    veilAlpha: [0.12, 0.17, 0.25],
-    vignetteAlpha: 0.18,
-    auroraStrength: 0.16
-  });
+function drawFallbackTemplate(ctx, options = {}) {
+  const overlay = options.overlay === true;
+  if (!overlay) {
+    // Match the production template path: photo theme underneath,
+    // translucent artwork and transparent information surfaces above it.
+    theme.paintBackground(ctx, WIDTH, HEIGHT, {
+      veilAlpha: [0.12, 0.17, 0.25],
+      vignetteAlpha: 0.18,
+      auroraStrength: 0.16
+    });
 
-  // Same layout proportions as the reference screenshot.
-  drawChibiMascot(ctx,116,223);
-  drawRobotMascot(ctx,1143,421);
+    // Same layout proportions as the reference screenshot.
+    drawChibiMascot(ctx,116,223);
+    drawRobotMascot(ctx,1143,421);
+  } else {
+    // Repaint the small mascot sign too; it is baked into the supplied JPG.
+    ctx.save();
+    ctx.translate(116,223);
+    drawWoodenSign(ctx);
+    ctx.restore();
+  }
 
   roundedRect(ctx,245,25,790,672,23);
   const panel=ctx.createLinearGradient(245,25,245,697);
-  panel.addColorStop(0,"rgba(13,35,62,.34)");
-  panel.addColorStop(1,"rgba(8,28,51,.40)");
+  panel.addColorStop(0, overlay ? "rgba(13,35,62,.985)" : "rgba(13,35,62,.34)");
+  panel.addColorStop(1, overlay ? "rgba(8,28,51,.985)" : "rgba(8,28,51,.40)");
   ctx.fillStyle=panel;ctx.fill();
   ctx.strokeStyle="#62a8f2";ctx.lineWidth=2;ctx.stroke();
 
@@ -177,7 +191,7 @@ function drawFallbackTemplate(ctx) {
   ];
   for(const box of boxes){
     roundedRect(ctx,box.x,132,211,73,16);
-    ctx.fillStyle="rgba(4,20,41,.32)";ctx.fill();
+    ctx.fillStyle=overlay ? "rgba(4,20,41,.98)" : "rgba(4,20,41,.32)";ctx.fill();
     ctx.strokeStyle="#4f95d9";ctx.lineWidth=1.6;ctx.stroke();
     drawText(ctx,box.label,box.x+105.5,157,{
       size:16,color:"#aebed1",weight:"700",align:"center"
@@ -192,7 +206,7 @@ function drawFallbackTemplate(ctx) {
 
   // The tile board is repainted on every turn.
   roundedRect(ctx,273,468,735,90,19);
-  ctx.fillStyle="rgba(4,23,44,.40)";ctx.fill();
+  ctx.fillStyle=overlay ? "rgba(4,23,44,.98)" : "rgba(4,23,44,.40)";ctx.fill();
   ctx.strokeStyle="#5ba4e9";ctx.lineWidth=1.2;ctx.stroke();
   drawText(ctx,"MẸO CHƠI:",291,505,{
     size:25,color:"#ffbf32",weight:"800"
@@ -211,7 +225,7 @@ function drawFallbackTemplate(ctx) {
 
   // Brand/version pill at the bottom, replaced with live version data.
   roundedRect(ctx,498,722,286,42,21);
-  ctx.fillStyle="rgba(7,25,49,.38)";ctx.fill();
+  ctx.fillStyle=overlay ? "rgba(7,25,49,.98)" : "rgba(7,25,49,.38)";ctx.fill();
   ctx.strokeStyle="#60a8ef";ctx.lineWidth=1.5;ctx.stroke();
 
   // Small puzzle decorations around the outer canvas.
@@ -255,14 +269,13 @@ function drawText(ctx, value, x, y, options = {}) {
     ctx.shadowOffsetY = 2;
   }
   const text = String(value ?? "");
-  const words = text.match(/[\p{L}\p{M}\p{N}]+/gu) || [];
   theme.drawMulticolorText(ctx, text, x, y, {
     font: ctx.font,
     color,
     align,
     maxWidth,
     baseline,
-    multicolor: words.length > 1 || words.some(word => theme.splitGraphemes(word).length > 1)
+    multicolor: options.multicolor !== false
   });
   ctx.restore();
 }
@@ -431,6 +444,7 @@ async function renderGhepChu(data = {}) {
     ctx.globalAlpha = 0.58;
     ctx.drawImage(template, 0, 0, WIDTH, HEIGHT);
     ctx.restore();
+    drawFallbackTemplate(ctx, { overlay: true });
   } else drawFallbackTemplate(ctx);
 
   const remaining = Math.max(0, Number(data.remainingSeconds) || 0);
@@ -455,4 +469,4 @@ async function renderGhepChu(data = {}) {
   return outputPath;
 }
 
-module.exports = { renderGhepChu, TEMPLATE_PATH };
+module.exports = { renderGhepChu, TEMPLATE_PATH, _test: { drawText } };
