@@ -233,7 +233,7 @@ test("Canvas renderers do not add direct fixed-color text outside icon and avata
 
   for (const file of files) {
     const source = fs.readFileSync(path.join(root, file), "utf8");
-    if (/\\bctx\\.fillText\\s*\\(/.test(source) && !allowedDirectDraws.has(file)) {
+    if (/\bctx\.fillText\s*\(/.test(source) && !allowedDirectDraws.has(file)) {
       unreviewed.push(file);
     }
   }
