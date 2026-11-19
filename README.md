@@ -450,7 +450,7 @@ Compose ánh xạ dữ liệu vào `./data` và log vào `./logs` trên máy ch�
 
 ## 🔧 Yêu cầu
 
-- **Node.js** phiên bản **v20.18 trở lên** (khuyến nghị Node.js 22, đồng nhất Render/Docker/CI)
+- **Node.js** phiên bản **v20.18 trở lên** (khuyến nghị Node.js 22, đồng nhất Docker/CI)
 
 - **Khi sử dụng hệ điều hành Windowns bạn cần phải cài các font trong plugins/cache/... để có font chữ cho canvas**
 
@@ -540,7 +540,7 @@ npm run tui
 - **Live Logs:** theo dõi log gần nhất của bot được chọn.
 - **System Monitor:** CPU, RAM, disk, network, Node.js và uptime.
 
-Điều khiển bằng phím mũi tên hoặc `j/k`, `Enter`, `N` tạo bot, `Q` thoát. TUI cần Terminal tương tác; không chạy TUI trong tiến trình Render web service. Web Panel vẫn hoạt động độc lập như trước.
+Điều khiển bằng phím mũi tên hoặc `j/k`, `Enter`, `N` tạo bot, `Q` thoát. TUI cần Terminal tương tác; không chạy TUI trong tiến trình web service không có terminal. Web Panel vẫn hoạt động độc lập như trước.
 
 ## STK Discord Decorations API
 
