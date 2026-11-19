@@ -346,6 +346,28 @@ function startListening(api) {
       ? (data.content.title ?? data.content)
       : data?.content;
 
+    // TopChat deliberately excludes prefixed commands. Avoid scheduling a
+    // no-op Promise/DB-cache check for every command while preserving the
+    // same received/rejected diagnostics counters.
+    if (options.observeTopchat === true && isGroupMessage(event)) {
+      const topchatCounter = require("../plugins/events/topchatCounter");
+      const isPrefixedCommand = typeof content === "string" && Boolean(prefix) && content.startsWith(prefix);
+      if (isPrefixedCommand) {
+        topchatCounter.observeRejectedCommand(event);
+      } else {
+        setImmediate(() => {
+          const topchatStartedAt = performance.now();
+          void topchatCounter.run({ event, Threads }).then(
+            () => metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt),
+            (err) => {
+              metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt);
+              logger.log(`Lỗi ghi thống kê Topchat: ${err.message}`, "warn");
+            }
+          );
+        });
+      }
+    }
+
     // Lệnh từ tin self: chỉ chạy khi bật config allow_self_command
     // (selfListen: true → uidFrom bị rewrite thành uid bot = admin, cần flag rõ ràng)
     const allowSelfCommand = global.config.allow_self_command === true;
@@ -457,7 +479,8 @@ function startListening(api) {
     // Observe the raw SDK event before duplicate/self filters so /topchat can
     // distinguish "listener received nothing" from "self/duplicate was skipped".
     const topchatCounter = require("../plugins/events/topchatCounter");
-    topchatCounter.observeIncomingEvent(event);
+    // No caller consumes the returned diagnostic snapshot on the hot path.
+    topchatCounter.observeIncomingEvent(event, { snapshot: false });
 
     const cliMsgId = event?.data?.cliMsgId;
     if (cliMsgId && processedIds.has(cliMsgId)) return; // trùng lặp (server gửi lại / backfill)
@@ -467,23 +490,9 @@ function startListening(api) {
     // Start the command/listener hot path first. Top Chat is background
     // accounting, so it should not claim the first microtask after a WebSocket
     // event and compete with the command's cache/permission/send path.
-    Promise.resolve(onMessage(event, { ...options, receivedAt })).catch((err) => {
+    Promise.resolve(onMessage(event, { ...options, receivedAt, observeTopchat: true })).catch((err) => {
       logger.log(`Lỗi listener message: ${err.message}`, "error");
     });
-
-    // Retain realtime accounting but defer its database/cache work one turn.
-    if (isGroupMessage(event)) {
-      setImmediate(() => {
-        const topchatStartedAt = performance.now();
-        void topchatCounter.run({ event, Threads }).then(
-          () => metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt),
-          (err) => {
-            metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt);
-            logger.log(`Lỗi ghi thống kê Topchat: ${err.message}`, "warn");
-          }
-        );
-      });
-    }
   };
 
   listener.on("message", handleIncoming);
