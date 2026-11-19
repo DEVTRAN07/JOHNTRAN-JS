@@ -86,6 +86,15 @@ async function dispatchCommand({
     } catch (error) {
       const errorId = randomUUID().slice(0, 8).toUpperCase();
       const errorStack = error?.stack || error?.message || String(error);
+      // Keep the end-user response generic, but make the actual stack trace
+      // searchable by the short reference shown in chat. The logger redacts
+      // common credentials before the error journal persists the stack.
+      logger.log(`[${errorId}] Lỗi khi xử lý lệnh '${commandName}': ${errorStack}`, "error", {
+        source: "command",
+        commandName, isGroup: event?.type === ThreadType.Group,
+        groupId: event?.type === ThreadType.Group ? event?.threadId : "",
+        code: error?.code
+      });
       const context = {
         source: "command",
         commandName,
@@ -93,11 +102,6 @@ async function dispatchCommand({
         isGroup: event?.type === ThreadType.Group,
         groupId: event?.type === ThreadType.Group ? event?.threadId : ""
       };
-
-      // Keep the end-user response generic, but make the actual stack trace
-      // searchable by the short reference shown in chat. The logger redacts
-      // common credentials before the error journal persists the stack.
-      logger.log(`[${errorId}] Lỗi khi xử lý lệnh '${commandName}': ${errorStack}`, "error", context);
       try {
         metrics?.track?.("error", { command: commandName });
       } catch {
