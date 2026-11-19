@@ -378,7 +378,7 @@ test("CommonJS image captions preserve randomized text colors", async () => {
 
 
 
-test("menu card image is followed by a separately colored mention message in the real CommonJS SDK payload", async () => {
+test("menu tag and random colors stay in the same Canvas image request in the real CommonJS SDK", async () => {
   const secretKey = Buffer.alloc(16, 9).toString("base64");
   const requestParams = [];
   const ctx = {
@@ -435,29 +435,27 @@ test("menu card image is followed by a separately colored mention message in the
     wrapped, "/tmp/jt_menu_1_ab12.png", caption, [mention], "menu-thread", ThreadType.Group
   );
 
-  assert.equal(requestParams.length, 2, "the real SDK should send one image request and one text request");
-  assert.equal(requestParams[0].desc, "", "the Canvas image must have no photo-description caption");
-  assert.equal(requestParams[0].textProperties, undefined,
-    "the first request must not depend on photo-caption text styling");
+  assert.equal(requestParams.length, 1, "one Canvas image with a caption must be one SDK request");
+  const imageParams = requestParams[0];
+  assert.equal(imageParams.desc, caption, "Zalo image description must contain the tagged greeting");
+  const mentions = JSON.parse(imageParams.mentionInfo);
+  assert.deepEqual(mentions, [{
+    uid: "12345",
+    pos: 0,
+    len: "@Wuang".length,
+    type: 0
+  }], "the image caption must preserve a real group mention");
 
-  assert.equal(requestParams[1].message, caption, "the greeting must be sent as a normal text message");
-  const mentions = JSON.parse(requestParams[1].mentionInfo);
-  assert.equal(mentions.length, 1);
-  assert.equal(mentions[0].uid, "12345");
-  assert.equal(mentions[0].pos, 0);
-  assert.equal(mentions[0].len, "@Wuang".length);
-
-  const textProperties = JSON.parse(requestParams[1].textProperties);
+  const textProperties = JSON.parse(imageParams.textProperties);
   const colorStyles = textProperties.styles.filter(style => RANDOM_COLORS.has(style.st));
-  assert.ok(colorStyles.length >= 10, "the greeting and prompt must reach Zalo with random color styles");
+  assert.ok(colorStyles.length >= 10, "caption words after the mention must reach Zalo with random colors");
   assert.ok(colorStyles.every(style => style.start >= mention.len),
-    "no text color span may overlap the Zalo-managed @Wuang mention");
+    "no random color span may overlap the Zalo-managed @Wuang mention");
   assert.ok(colorStyles.some(style => style.start >= caption.indexOf("🤖")),
-    "the owner greeting line must carry color styles");
+    "the greeting line below the tag must be colored");
   assert.ok(colorStyles.some(style => style.start >= caption.indexOf("👉")),
-    "the prompt line must carry color styles");
+    "the prompt line below the tag must be colored");
 });
-
 test("tagged menu captions color the greeting and prompt without overlapping the @mention", () => {
   const { randomize } = require("../core/styled");
   const caption = "@Nguyễn Văn A\\n🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
