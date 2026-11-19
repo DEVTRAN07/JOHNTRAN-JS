@@ -37,6 +37,8 @@ test("protected /metrics exposes command latency, event-loop pressure and queue 
     const payload = JSON.parse(response.body);
     assert.ok(Array.isArray(payload.commandLatency));
     assert.ok(Array.isArray(payload.commandExecutionLatency));
+    assert.ok(payload.firstResponseStartLatency === null || typeof payload.firstResponseStartLatency.count === "number");
+    assert.ok(Array.isArray(payload.firstResponseStartByCommand));
     assert.ok(payload.firstResponseLatency === null || typeof payload.firstResponseLatency.count === "number");
     assert.ok(Array.isArray(payload.firstResponseByCommand));
     assert.ok(Array.isArray(payload.listenerStageLatency));
@@ -69,6 +71,8 @@ test("public /speed exposes only aggregate latency diagnostics without resetting
   const payload = JSON.parse(response.body);
   assert.equal(payload.status, "ok");
   assert.ok(payload.eventLoop && typeof payload.eventLoop.p95Ms === "number");
+  assert.ok(payload.firstResponseStartLatency === null || typeof payload.firstResponseStartLatency.count === "number");
+  assert.ok(Array.isArray(payload.firstResponseStartByCommand));
   assert.ok(payload.firstResponseLatency === null || typeof payload.firstResponseLatency.count === "number");
   assert.ok(Array.isArray(payload.firstResponseByCommand));
   assert.ok(Array.isArray(payload.listenerStageLatency));
