@@ -91,16 +91,19 @@ function drawMemberAvatar(ctx, member, x, y, size, palette) {
 }
 function drawWelcomeBanner(ctx, width, height, spec, member, palette) {
   const S = theme.S, margin = S(13);
-  // One full-bleed theme photo + one transparent foreground, based on the
-  // supplied one-person reference. No nested opaque cards.
+  // Exactly two structural layers: the full-bleed theme photo and one
+  // transparent foreground frame. Do not add a second inset frame.
   theme.paintBackground(ctx, width, height, {
     veilAlpha: [.17, .23, .31], vignetteAlpha: .17, auroraStrength: .13, sharpen: .34
   });
-  ctx.save(); roundRectPath(ctx, margin, margin, width - margin * 2, height - margin * 2, S(20));
-  ctx.strokeStyle = "rgba(245,252,255,.82)"; ctx.lineWidth = Math.max(1, S(.9));
-  ctx.shadowColor = "rgba(0,0,0,.28)"; ctx.shadowBlur = S(5); ctx.stroke();
-  roundRectPath(ctx, margin + S(2), margin + S(2), width - margin * 2 - S(4), height - margin * 2 - S(4), S(18));
-  ctx.strokeStyle = "rgba(105,221,255,.18)"; ctx.lineWidth = Math.max(1, S(.7)); ctx.shadowBlur = 0; ctx.stroke(); ctx.restore();
+  ctx.save();
+  roundRectPath(ctx, margin, margin, width - margin * 2, height - margin * 2, S(20));
+  ctx.strokeStyle = "rgba(245,252,255,.82)";
+  ctx.lineWidth = Math.max(1, S(.9));
+  ctx.shadowColor = "rgba(0,0,0,.28)";
+  ctx.shadowBlur = S(5);
+  ctx.stroke();
+  ctx.restore();
 
   const avatarSize = S(116), avatarX = S(47), avatarY = Math.round((height - avatarSize) / 2);
   drawMemberAvatar(ctx, member, avatarX, avatarY, avatarSize, palette);
