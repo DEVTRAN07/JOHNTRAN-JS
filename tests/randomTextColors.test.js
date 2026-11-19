@@ -37,7 +37,7 @@ test("bot text receives random Zalo colors per visible token without changing me
   }
 });
 
-test("mention text is colored while mention metadata stays intact", () => {
+test("mention metadata stays separate while text after the tag receives random colors", () => {
   const msg = "🤖 @Wuang chào chủ nhân, dùng help ngay.";
   const mention = { pos: 3, len: 6, uid: "member-id" };
   const helpStart = msg.indexOf("help");
@@ -51,9 +51,13 @@ test("mention text is colored while mention metadata stays intact", () => {
 
   assert.equal(output.msg, msg);
   assert.deepEqual(output.mentions, [mention]);
+  assert.ok(!output.styles.some(style =>
+    style.start < mention.pos + mention.len && mention.pos < style.start + style.len
+  ), "text color ranges must not overlap the Zalo-managed @mention tag");
+  const greetingStart = msg.indexOf("chào");
   assert.ok(output.styles.some(style =>
-    style.start === mention.pos && style.len === mention.len && COLOR_STYLES.has(style.st)
-  ), "the full @mention token should receive a color");
+    style.start === greetingStart && COLOR_STYLES.has(style.st)
+  ), "the greeting immediately after @mention should receive a random color");
   assert.ok(output.styles.some(style =>
     style.start === helpStart && style.len === 4 && COLOR_STYLES.has(style.st)
   ), "a previously bold word should get a random color");

@@ -36,19 +36,40 @@ function overlapsRange(start, end, ranges) {
   });
 }
 
+function normalizeExcludedRanges(ranges, textLength) {
+  if (!Array.isArray(ranges)) return [];
+  return ranges.map(range => {
+    const start = Number(range?.pos ?? range?.start);
+    const explicitEnd = Number(range?.end);
+    const length = Number(range?.len ?? range?.length);
+    if (!Number.isInteger(start) || start < 0 || start >= textLength) return null;
+    const end = Number.isInteger(explicitEnd) && explicitEnd > start
+      ? Math.min(textLength, explicitEnd)
+      : Number.isInteger(length) && length > 0
+        ? Math.min(textLength, start + length)
+        : start;
+    return end > start ? { start, end } : null;
+  }).filter(Boolean);
+}
+
 function randomColorStyles(message, options = {}) {
   const text = String(message ?? "");
   if (!text) return [];
 
   const random = typeof options.random === "function" ? options.random : Math.random;
+  const excludedRanges = normalizeExcludedRanges(options.excludeRanges, text.length);
   const styles = [];
   let previousColor = null;
 
-  // Every visible token, including @mentions, receives a color. Mention metadata
-  // is carried separately by Zalo and remains untouched. Offsets are UTF-16 units.
+  // Mentions are rendered by Zalo's mentionInfo metadata. Do not overlap
+  // textProperties with mention spans: some clients suppress adjacent caption
+  // styling when a style range collides with a tagged member. Offsets are UTF-16.
   for (const match of text.matchAll(/\S+/gu)) {
     const start = match.index ?? 0;
     const len = match[0].length;
+    if (excludedRanges.some(range => start < range.end && range.start < start + len)) {
+      continue;
+    }
     const available = RANDOM_TEXT_COLORS.filter(color => color !== previousColor);
     const sample = Number(random());
     const normalized = Number.isFinite(sample)
@@ -72,14 +93,19 @@ function randomize(messageContent, options = {}) {
     return messageContent;
   }
 
+  const excludedRanges = normalizeExcludedRanges(source.mentions, source.msg.length);
   const currentStyles = Array.isArray(source.styles) ? source.styles : [];
-  const generatedStyles = randomColorStyles(source.msg, { random: options.random });
+  const generatedStyles = randomColorStyles(source.msg, {
+    random: options.random,
+    excludeRanges: excludedRanges
+  });
   const preservedStyles = currentStyles.filter(style => {
     const start = Number(style?.start);
     const len = Number(style?.len);
     if (!Number.isInteger(start) || start < 0 || !Number.isInteger(len) || len <= 0) return false;
+    const end = start + len;
     if (RANDOM_TEXT_COLOR_SET.has(style?.st)) return false;
-    return !overlapsRange(start, start + len, generatedStyles);
+    return !overlapsRange(start, end, generatedStyles);
   });
 
   const styles = [...preservedStyles, ...generatedStyles]
