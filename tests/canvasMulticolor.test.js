@@ -7,6 +7,11 @@ const path = require("node:path");
 const { createCanvas } = require("canvas");
 const theme = require("../core/canvas/theme");
 const { renderCard } = require("../core/canvas");
+const caroCanvas = require("../core/canvas/caro");
+const ghepchuCanvas = require("../core/canvas/ghepchu");
+const samCanvas = require("../core/canvas/sam");
+const tlmnCanvas = require("../core/canvas/tlmn");
+const { drawPlayingCard } = require("../core/canvas/playingCards");
 
 function captureTextDraws(ctx) {
   const draws = [];
@@ -175,4 +180,39 @@ test("Canvas labels, menu cards, generic cards and music branding use the shared
   const png = card.toBuffer("image/png");
   assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
   assert.ok(png.length > 1000);
+});
+
+test("single-character letters in every custom Canvas game renderer receive random colors", () => {
+  const cases = [
+    ["Caro", (ctx) => caroCanvas._test.drawText(ctx, "X", 20, 38, 1, { size: 24, color: "#ffffff" })],
+    ["Ghép chữ", (ctx) => ghepchuCanvas._test.drawText(ctx, "A", 20, 38, { size: 24, color: "#ffffff" })],
+    ["Sâm", (ctx) => samCanvas._test.drawText(ctx, "A", 20, 38, 1, { size: 24, color: "#ffffff" })],
+    ["Tiến Lên", (ctx) => tlmnCanvas._test.drawText(ctx, "A", 20, 38, 1, { size: 24, color: "#ffffff" })]
+  ];
+
+  for (const [name, draw] of cases) {
+    const ctx = createCanvas(180, 70).getContext("2d");
+    const draws = captureTextDraws(ctx);
+    draw(ctx);
+    const letter = draws.find(item => item.value === (name === "Caro" ? "X" : "A"));
+    assert.ok(letter, name + " should draw the one-character label");
+    assert.ok(theme.RANDOM_TEXT_COLORS.includes(letter.color),
+      name + " should randomize one-character labels instead of leaving them in a fixed semantic color");
+  }
+});
+
+test("playing-card rank and index text are randomized while suit glyphs keep red/black meaning", () => {
+  const ctx = createCanvas(180, 220).getContext("2d");
+  const draws = captureTextDraws(ctx);
+  drawPlayingCard(ctx, { rank: 11, suit: "r" }, 5, 5, 100, 160, 1, { index: 1 });
+
+  const rank = draws.find(item => item.value === "J");
+  const index = draws.find(item => item.value === "1");
+  const suitGlyphs = draws.filter(item => item.value === "♦");
+  assert.ok(rank && theme.RANDOM_TEXT_COLORS.includes(rank.color),
+    "rank letters should receive random text colors");
+  assert.ok(index && theme.RANDOM_TEXT_COLORS.includes(index.color),
+    "card selection indices should receive random text colors");
+  assert.ok(suitGlyphs.length >= 2 && suitGlyphs.every(item => item.color === "#bd3442"),
+    "suit symbols should keep their semantic suit color");
 });
