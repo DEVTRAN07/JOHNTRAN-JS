@@ -66,7 +66,7 @@ try {
     const transport = installZaloHttpTransport();
     logger.log(`HTTP transport: keep-alive ${transport.options.keepAliveTimeout}ms, ${transport.options.connections} connections/origin`, "info");
     logger.log(`Đã tải cấu hệ thống thành công${BOT_TAG} (privacy guard: bật)`, "info");
-    // deploy cloud (Render/Koyeb...): khôi phục account/cookie/db từ env trước khi login
+    // Khôi phục account/cookie/database từ biến môi trường trước khi đăng nhập
     bootstrapFiles();
     // mở health server TRƯỚC login: cloud platform cần port mở ngay
     startHealthServer();
