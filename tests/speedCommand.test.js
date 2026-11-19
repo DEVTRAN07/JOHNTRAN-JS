@@ -22,7 +22,7 @@ test("/speed reports end-to-end, handler, listener, API and first-response timin
     getFirstResponseLatencyByCommandStats: () => [{ command: "stk", avgMs: 760, p95Ms: 850, count: 3 }]
   };
 
-  const report = command._test.buildSpeedReport(fakeMetrics, 125);
+  const report = command._test.buildSpeedReport(fakeMetrics, 125, { p95Ms: 13, p99Ms: 20, maxMs: 22 });
 
   assert.match(report, /TOÀN BỘ PIPELINE LỆNH/);
   assert.match(report, /P95 820\.0 ms/);
@@ -42,7 +42,7 @@ test("/speed handles an empty metrics store", () => {
     getZaloApiLatencyStats: () => [],
     getFirstResponseLatencyByCommandStats: () => []
   };
-  const report = command._test.buildSpeedReport(emptyMetrics, 0);
+  const report = command._test.buildSpeedReport(emptyMetrics, 0, null);
   assert.match(report, /Chưa có mẫu lệnh/);
-  assert.equal((report.match(/Chưa có dữ liệu/g) || []).length, 5);
+  assert.equal((report.match(/Chưa có dữ liệu/g) || []).length, 6);
 });
