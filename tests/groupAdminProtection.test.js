@@ -105,3 +105,14 @@ test("guard does not warn or kick when group-admin status is unknown", async () 
   assert.equal(reactions, 0);
   assert.equal(kicks, 0);
 });
+
+
+test("box_only group-admin lookup fails closed within a short bounded deadline", async () => {
+  const startedAt = Date.now();
+  const result = await getGroupAdminState({
+    getGroupInfo() { return new Promise(() => {}); }
+  }, "group-hung-admin-lookup", "ordinary-member", { timeoutMs: 25 });
+
+  assert.equal(result, null, "unknown metadata must never grant group-admin permission");
+  assert.ok(Date.now() - startedAt < 250, "a hung permission lookup must not hold a command for seconds");
+});

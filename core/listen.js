@@ -67,6 +67,25 @@ function schedulePanelIncomingRecord(event) {
   });
 }
 
+function cacheIncomingMessage(event) {
+  try {
+    if (shouldCacheIncomingMessage(event)) updateMessageCache(event);
+  } catch (err) {
+    logger.log(`Lỗi updateMessageCache (bỏ qua): ${err.message}`, "warn", {
+      source: "listener-cache",
+      isGroup: event?.type === ThreadType.Group,
+      groupId: event?.threadId
+    });
+  }
+}
+
+// Start the primary command synchronously before non-critical side effects.
+function startPrimaryBeforeSideEffect(primary, sideEffect) {
+  const result = primary();
+  try { sideEffect?.(); } catch { /* auxiliary bookkeeping never blocks command startup */ }
+  return result;
+}
+
 // Use the synchronous thread mirror on the message hot path. A cache miss
 // must not await Supabase/database readiness: unknown groups remain fail-closed
 // until the existing mirror or durable last-known cache can confirm their state.
@@ -335,15 +354,6 @@ function startListening(api) {
       return;
     }
 
-    // Normal member messages are cached for Anti recall restoration. In explicit
-    // self-test mode, cache bot-authored group messages too, except Anti replies.
-    // Every step is isolated so a cache failure cannot block command execution.
-    try {
-      if (shouldCacheIncomingMessage(event)) updateMessageCache(event);
-    } catch (err) {
-      logger.log(`Lỗi updateMessageCache (bỏ qua): ${err.message}`, "warn", { source: "listener-cache", isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
-    }
-
     // Panel history is secondary to command response; append it on the
     // next event-loop turn rather than before the command hot path.
     schedulePanelIncomingRecord(event);
@@ -352,7 +362,10 @@ function startListening(api) {
 
     // Backfill only records missed messages; historical commands/events must
     // never be executed again after reconnect.
-    if (!shouldExecuteMessageCommand(options)) return;
+    if (!shouldExecuteMessageCommand(options)) {
+      cacheIncomingMessage(event);
+      return;
+    }
 
     // Read group settings synchronously. A cold/degraded cache miss stays
     // fail-closed instead of waiting for a remote database ready/read promise
@@ -414,7 +427,10 @@ function startListening(api) {
     const isBotControlCommand = isAllowedBotControlMessage(content, prefix);
 
     // Every group starts OFF. Only /bot on and /bot status pass until enabled.
-    if (isGroupThread && !groupBotEnabled && !(canRunCommand && isBotControlCommand)) return;
+    if (isGroupThread && !groupBotEnabled && !(canRunCommand && isBotControlCommand)) {
+      cacheIncomingMessage(event);
+      return;
+    }
 
     const dispatchMessageEvents = (dispatchOptions = {}) => {
       if (isGroupThread && !groupBotEnabled) return;
@@ -449,7 +465,11 @@ function startListening(api) {
       metrics.trackListenerStageLatency?.("receive-to-command", performance.now() - receivedAt);
       // Start command parsing immediately. Passive event handlers run on the
       // next event-loop turn so they cannot delay the command hot path.
-      Promise.resolve(handleCommand(content, event, api, threadInfo, prefix, threadData)).catch((err) => {
+      const commandPromise = startPrimaryBeforeSideEffect(
+        () => handleCommand(content, event, api, threadInfo, prefix, threadData),
+        () => cacheIncomingMessage(event)
+      );
+      Promise.resolve(commandPromise).catch((err) => {
         logger.log(`Lỗi xử lý lệnh: ${err.message}`, "error", { source: "listener-command", commandName: String(content).slice(prefix.length).trim().split(/\s+/, 1)[0], isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
       });
       // A prefixed command should not also enter game/rank message consumers.
@@ -462,6 +482,9 @@ function startListening(api) {
       }
       return;
     }
+
+    // Non-command messages still enter the Anti-recall cache before moderation/game handling.
+    cacheIncomingMessage(event);
 
     // Run moderation before active games. A game move is still game input,
     // but it must not bypass Anti-Link, Anti-Word, Anti-Spam, media or AI rules.
@@ -908,6 +931,8 @@ module.exports.shouldProcessUndoEvent = shouldProcessUndoEvent;
 module.exports.shouldCacheIncomingMessage = shouldCacheIncomingMessage;
 module.exports.getThreadDataForMessage = getThreadDataForMessage;
 module.exports.schedulePanelIncomingRecord = schedulePanelIncomingRecord;
+module.exports.cacheIncomingMessage = cacheIncomingMessage;
+module.exports.startPrimaryBeforeSideEffect = startPrimaryBeforeSideEffect;
 
 module.exports.computeReconnectDelay = computeReconnectDelay;
 

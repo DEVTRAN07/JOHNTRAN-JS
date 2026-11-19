@@ -4,6 +4,27 @@
 const ADMIN_CACHE_TTL_MS = 5000;
 const UNKNOWN_CACHE_TTL_MS = 1000;
 const MAX_CACHED_GROUPS = 2000;
+const DEFAULT_GROUP_INFO_TIMEOUT_MS = 850;
+
+function resolveGroupInfoTimeout(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_GROUP_INFO_TIMEOUT_MS;
+  return Math.max(100, Math.min(5000, Math.floor(parsed)));
+}
+
+function withTimeout(operation, timeoutMs) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error("Zalo getGroupInfo timed out after " + timeoutMs + "ms");
+      error.code = "ETIMEDOUT";
+      reject(error);
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  return Promise.race([Promise.resolve().then(operation), timeout])
+    .finally(() => { if (timer) clearTimeout(timer); });
+}
 const apiStates = new WeakMap();
 
 function getApiOwner(api) {
@@ -64,7 +85,7 @@ function resolveState(entry, userId) {
  * false = confirmed ordinary member
  * null = insufficient metadata or Zalo API failure
  */
-async function getGroupAdminState(api, threadId, userId) {
+async function getGroupAdminState(api, threadId, userId, options = {}) {
   const groupId = String(threadId || "").trim();
   const uid = userId == null ? "" : String(userId);
   const state = getState(api);
@@ -78,10 +99,10 @@ async function getGroupAdminState(api, threadId, userId) {
     return resolveState(cached, uid);
   }
 
+  const timeoutMs = resolveGroupInfoTimeout(options.timeoutMs ?? process.env.JT_GROUP_ADMIN_LOOKUP_TIMEOUT_MS);
   let request = state.pending.get(groupId);
   if (!request) {
-    request = Promise.resolve()
-      .then(() => api.getGroupInfo(groupId))
+    request = withTimeout(() => api.getGroupInfo(groupId), timeoutMs)
       .then(response => {
         const group = response?.gridInfoMap?.[groupId] || null;
         return remember(state, groupId, group);
@@ -110,6 +131,9 @@ function clearGroupAdminCache(api, threadId) {
 module.exports = {
   ADMIN_CACHE_TTL_MS,
   UNKNOWN_CACHE_TTL_MS,
+  DEFAULT_GROUP_INFO_TIMEOUT_MS,
+  resolveGroupInfoTimeout,
+  withTimeout,
   getGroupAdminState,
   clearGroupAdminCache
 };

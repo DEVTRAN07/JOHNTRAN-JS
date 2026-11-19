@@ -13,6 +13,8 @@ import { logger } from "./logger.js";
 const ZALO_ORIGIN = "https://chat.zalo.me";
 const LOGIN_REFERER = "https://id.zalo.me/";
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+const MAX_RESPONSE_BODY_BYTES = 16 * 1024 * 1024;
+const MAX_REDIRECTS = 5;
 function recordRequestTiming(ctx, phase, elapsedMs) {
     try {
         if (typeof ctx?.options?.onRequestTiming === "function") {
@@ -36,6 +38,74 @@ function describeError(error) {
 }
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+/**
+ * Consume the response body while the original request deadline is active.
+ * Fetch resolves at headers; without this read response.json() could hang after
+ * the HTTP timeout had already been cleared.
+ */
+async function readResponseBody(response, signal) {
+    const body = response?.body;
+    if (!body) return null;
+
+    if (typeof body.getReader !== "function") {
+        if (typeof response.arrayBuffer !== "function") return null;
+        const buffer = await response.arrayBuffer();
+        if (buffer.byteLength > MAX_RESPONSE_BODY_BYTES) {
+            throw new ZaloApiError("Zalo API response exceeded the 16 MiB safety limit", "ERESPONSETOOLARGE");
+        }
+        return new Uint8Array(buffer);
+    }
+
+    const reader = body.getReader();
+    const chunks = [];
+    let totalBytes = 0;
+    const cancelOnAbort = () => {
+        try { void reader.cancel(signal?.reason).catch(() => {}); } catch {}
+    };
+    if (signal) {
+        if (signal.aborted) cancelOnAbort();
+        else signal.addEventListener("abort", cancelOnAbort, { once: true });
+    }
+
+    try {
+        while (true) {
+            const result = await reader.read();
+            if (result.done) break;
+            const chunk = result.value instanceof Uint8Array ? result.value : new Uint8Array(result.value);
+            totalBytes += chunk.byteLength;
+            if (totalBytes > MAX_RESPONSE_BODY_BYTES) {
+                try { await reader.cancel("response too large"); } catch {}
+                throw new ZaloApiError("Zalo API response exceeded the 16 MiB safety limit", "ERESPONSETOOLARGE");
+            }
+            chunks.push(chunk);
+        }
+    } finally {
+        if (signal) signal.removeEventListener("abort", cancelOnAbort);
+        try { reader.releaseLock(); } catch {}
+    }
+
+    const output = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+        output.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return output;
+}
+
+function rebuildBufferedResponse(response, bodyBytes) {
+    if (bodyBytes === null) return response;
+    if (typeof Response !== "function") {
+        throw new ZaloApiError("Fetch Response constructor is unavailable", "ERESPONSEBUFFER");
+    }
+    const status = Number(response?.status) || 200;
+    const noBodyStatus = status === 204 || status === 205 || status === 304;
+    return new Response(noBodyStatus ? null : bodyBytes, {
+        status,
+        statusText: response?.statusText || "",
+        headers: response?.headers
+    });
 }
 /**
  * Exponential backoff with full jitter, honouring a `Retry-After` header when
@@ -119,18 +189,26 @@ async function applySetCookies(ctx, response, origin) {
 /**
  * Performs a single request attempt (with redirect following).
  */
-async function dispatch(ctx, url, options, raw, timeoutMs) {
+async function dispatch(ctx, url, options, raw, timeoutMs, deadlineAt = null, redirectCount = 0) {
     var _a, _b, _c;
     const requestStartedAt = performance.now();
-    const controller = timeoutMs > 0 ? new AbortController() : null;
+    const deadline = deadlineAt ?? (timeoutMs > 0 ? requestStartedAt + timeoutMs : null);
+    const timeoutBudgetMs = deadline == null ? 0 : Math.max(0, deadline - requestStartedAt);
+    if (deadline != null && timeoutBudgetMs <= 0) {
+        const timeoutError = new ZaloApiError("Zalo request timed out after " + timeoutMs + "ms (per-request timeout)", "ETIMEDOUT");
+        timeoutError.name = "TimeoutError";
+        throw timeoutError;
+    }
+
+    const controller = timeoutBudgetMs > 0 ? new AbortController() : null;
     let timer = null;
     const timeoutPromise = controller ? new Promise((_resolve, reject) => {
         timer = setTimeout(() => {
-            const timeoutError = new ZaloApiError(`Zalo request timed out after ${timeoutMs}ms (per-request timeout)`, "ETIMEDOUT");
+            const timeoutError = new ZaloApiError("Zalo request timed out after " + timeoutMs + "ms (per-request timeout)", "ETIMEDOUT");
             timeoutError.name = "TimeoutError";
             controller.abort(timeoutError);
             reject(timeoutError);
-        }, timeoutMs);
+        }, timeoutBudgetMs);
     }) : null;
 
     const operation = (async () => {
@@ -152,7 +230,7 @@ async function dispatch(ctx, url, options, raw, timeoutMs) {
             }
         }
         if (controller?.signal.aborted) {
-            throw new ZaloApiError(`Zalo request timed out after ${timeoutMs}ms (per-request timeout)`, "ETIMEDOUT");
+            throw new ZaloApiError("Zalo request timed out after " + timeoutMs + "ms (per-request timeout)", "ETIMEDOUT");
         }
         const transportOptions = Object.assign(Object.assign(Object.assign({}, requestOptions), (controller ? { signal: controller.signal } : {})), (typeof Bun !== "undefined"
             ? { proxy: (_b = (_a = ctx.options.agent) === null || _a === void 0 ? void 0 : _a.proxy) === null || _b === void 0 ? void 0 : _b.href }
@@ -176,15 +254,26 @@ async function dispatch(ctx, url, options, raw, timeoutMs) {
         }
         const redirectURL = response.headers.get("location");
         if (redirectURL) {
+            if (redirectCount >= MAX_REDIRECTS) {
+                throw new ZaloApiError("Zalo API exceeded the redirect limit", "ETOOMANYREDIRECTS");
+            }
             const redirectOptions = Object.assign(Object.assign({}, requestOptions), { method: "GET" });
             if (!raw && redirectOptions.headers) {
                 const headers = new Headers(redirectOptions.headers);
                 headers.set("Referer", LOGIN_REFERER);
                 redirectOptions.headers = headers;
             }
-            return dispatch(ctx, redirectURL, redirectOptions, raw, timeoutMs);
+            // Redirects share the initial deadline; they cannot reset the timeout.
+            return dispatch(ctx, redirectURL, redirectOptions, raw, timeoutMs, deadline, redirectCount + 1);
         }
-        return response;
+
+        const bodyStartedAt = performance.now();
+        try {
+            const bodyBytes = await readResponseBody(response, controller?.signal);
+            return rebuildBufferedResponse(response, bodyBytes);
+        } finally {
+            recordRequestTiming(ctx, "response-body", performance.now() - bodyStartedAt);
+        }
     })();
 
     try {
