@@ -360,11 +360,62 @@ test("antirecall restores cached text using group Undo payload without type", as
     await run({ anti_undo: true }, api, undoEvent, "undo");
     assert.equal(calls.sent.length, 1);
     assert.match(calls.sent[0].payload.msg, /tin gốc/);
+    assert.equal(calls.sent[0].payload.recallAfterMs, 0,
+      "Anti-Recall restoration must not receive the global 60-second auto-recall timer");
     assert.equal(calls.sent[0].type, ThreadType.Group);
   } finally {
     delete getMessageCache()[cliMsgId];
   }
 });
+
+test("antirecall ignores its own restored message even when Zalo omits isSelf", async () => {
+  anti._test.clearAntiSelfEchoes();
+  const threadId = "anti-undo-echo-" + Date.now();
+  const cliMsgId = "anti-undo-output-cli-" + Date.now();
+  const cachedMessage = {
+    threadId,
+    type: ThreadType.Group,
+    data: {
+      uidFrom: "bot-id",
+      dName: "JOHNTRAN",
+      msgId: "anti-undo-output-msg",
+      cliMsgId,
+      msgType: "webchat",
+      content: "👤 Member đã thu hồi tin nhắn sau..."
+    }
+  };
+  updateMessageCache(cachedMessage);
+  // This is the outgoing ID pair registered by sendAntiAction after Zalo
+  // accepted the Anti-Recall restoration message.
+  anti._test.rememberAntiSelfEcho(threadId, {
+    msgId: cachedMessage.data.msgId,
+    cliMsgId: cachedMessage.data.cliMsgId
+  });
+
+  const { api, calls } = makeApi();
+  const undoEvent = {
+    threadId,
+    isGroup: true,
+    isSelf: false,
+    data: {
+      uidFrom: "bot-id",
+      content: { cliMsgId },
+      ts: Date.now()
+    }
+  };
+
+  try {
+    await run({ anti_undo: true }, api, undoEvent, "undo");
+    assert.equal(calls.sent.length, 0,
+      "an Anti-generated message must not generate another Anti-Recall response");
+    assert.equal(calls.lookups, 0,
+      "the echo must be rejected before group-role/network checks");
+  } finally {
+    delete getMessageCache()[cliMsgId];
+    anti._test.clearAntiSelfEchoes();
+  }
+});
+
 
 test("antirecall prepares temp folder before restoring a shared file", async () => {
   const cliMsgId = "anti-undo-file-" + Date.now();
@@ -397,6 +448,8 @@ test("antirecall prepares temp folder before restoring a shared file", async () 
     await run({ anti_undo: true }, api, undoEvent, "undo");
     assert.equal(calls.sent.length, 1);
     assert.match(calls.sent[0].payload.msg, /demo\.pdf/);
+    assert.equal(calls.sent[0].payload.recallAfterMs, 0,
+      "restored files must remain available and must not be recalled again");
   } finally {
     http.request = originalRequest;
     delete getMessageCache()[cliMsgId];
