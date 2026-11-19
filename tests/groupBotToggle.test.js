@@ -302,3 +302,22 @@ test("group event handlers are blocked unless bot_enabled is explicitly true", a
     else global.client = previousClient;
   }
 });
+
+
+test("/bot on/off reuses listener threadData without a second storage read", async () => {
+  const ctx = createContext(true);
+  let reads = 0;
+  ctx.Threads.getData = async () => {
+    reads++;
+    throw new Error("unexpected cold thread read");
+  };
+  await command.run({
+    event: { threadId: "group-cache-toggle", type: ThreadType.Group },
+    args: ["off"],
+    Threads: ctx.Threads,
+    threadData: { data: { bot_enabled: true } },
+    reply: ctx.reply
+  });
+  assert.equal(reads, 0);
+  assert.equal(ctx.data.bot_enabled, false);
+});

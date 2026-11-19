@@ -204,7 +204,7 @@ async function sendStatusCard({ api, event, Threads }) {
   }
 }
 
-module.exports.run = async function ({ api, event, args, Threads, reply }) {
+module.exports.run = async function ({ api, event, args, Threads, reply, threadData }) {
   if (event?.type === ThreadType.User) {
     return reply.error("Lệnh này chỉ dùng trong nhóm.");
   }
@@ -226,8 +226,12 @@ module.exports.run = async function ({ api, event, args, Threads, reply }) {
     }
   }
 
-  const record = await Threads.getData(threadId);
-  const data = record?.data || {};
+  const record = threadData && typeof threadData === "object"
+    ? threadData
+    : await Threads.getData(threadId);
+  const data = record?.data && typeof record.data === "object"
+    ? record.data
+    : record && typeof record === "object" ? record : {};
   const currentlyEnabled = isGroupBotEnabled(data);
   const enabled = action === "on";
 
