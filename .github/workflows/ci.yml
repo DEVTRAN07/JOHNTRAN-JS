@@ -15,6 +15,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # The remote photo host is not part of CI. Avoid unstable third-party
+      # JPEG decoding while testing local Canvas renderers with the gradient.
+      JT_CANVAS_DISABLE_REMOTE_BACKGROUNDS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

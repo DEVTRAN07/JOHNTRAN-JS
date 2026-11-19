@@ -57,3 +57,19 @@ test("random theme order starts from an independent random choice and includes a
   assert.notEqual(first[0].id, second[0].id);
   assert.notEqual(second[0].id, third[0].id);
 });
+
+
+test("Canvas can render deterministically without fetching remote theme photos in CI", async () => {
+  const key = "JT_CANVAS_DISABLE_REMOTE_BACKGROUNDS";
+  const previous = process.env[key];
+  process.env[key] = "1";
+  try {
+    const result = await themeBackgrounds.prepare({ preloadAll: true, waitMs: 2200 });
+    assert.equal(result.activeId, "");
+    assert.match(result.activeName, /CI offline mode/);
+    assert.equal(themeBackgrounds.getActiveImage(), null);
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+});

@@ -215,6 +215,22 @@ function settleWithin(promise, timeoutMs) {
 async function prepare(options = {}) {
   renderSeed = Math.floor(Math.random() * 0x7fffffff);
   const current = getCurrent();
+
+  // CI must not depend on a third-party photo CDN. Production does not set this
+  // flag, so real photo themes and their cache remain enabled for bot users.
+  if (process.env.JT_CANVAS_DISABLE_REMOTE_BACKGROUNDS === "1") {
+    activeImage = null;
+    activeBackgroundId = "";
+    return {
+      selected: current.selected,
+      activeId: "",
+      activeName: "Aurora gradient (CI offline mode)",
+      loaded: loaded.size,
+      pending: pending.size,
+      available: BACKGROUNDS.length
+    };
+  }
+
   const defaultWaitMs = current.random ? 1400 : 2200;
   const requestedWaitMs = options.waitMs === undefined
     ? defaultWaitMs
