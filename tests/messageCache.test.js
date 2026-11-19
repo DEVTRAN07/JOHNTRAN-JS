@@ -3,6 +3,42 @@ const { test } = require("node:test");
 const { ThreadType } = require("zalo-client");
 const { getMessageCache, updateMessageCache } = require("../utils");
 
+test("Rust message-cache IPC is deferred, coalesced and drained in bounded batches", async () => {
+  const { createNativeCacheMutationQueue } = require("../utils/messageCache");
+  const writes = [];
+  const writer = {
+    stats() { return { available: true }; },
+    upsert(key, value) {
+      writes.push(["upsert", key, value]);
+      return true;
+    },
+    delete(key) {
+      writes.push(["delete", key]);
+      return true;
+    }
+  };
+  const queue = createNativeCacheMutationQueue(writer, { batchSize: 1 });
+
+  queue.enqueue("upsert", "message-1", { value: "old" });
+  queue.enqueue("upsert", "message-1", { value: "latest" });
+  queue.enqueue("upsert", "message-2", { value: "second" });
+  queue.enqueue("delete", "message-3");
+
+  assert.equal(writes.length, 0,
+    "listener-side cache mutations must not synchronously serialize/write to the Rust worker");
+  assert.equal(queue.stats().pending, 3,
+    "multiple updates for the same message ID should coalesce into one pending mutation");
+
+  assert.equal(await queue.flush(), true);
+  assert.deepEqual(writes, [
+    ["upsert", "message-1", { value: "latest" }],
+    ["upsert", "message-2", { value: "second" }],
+    ["delete", "message-3"]
+  ]);
+  assert.equal(queue.stats().pending, 0);
+  assert.equal(queue.stats().sent, 3);
+});
+
 test("message cache stores deletable group message identifiers and falls back to receive time", () => {
   const cliMsgId = `message-cache-test-${Date.now()}`;
   const event = {

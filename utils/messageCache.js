@@ -142,17 +142,116 @@ function createNativeCacheWriter(binaryPath, filePath) {
 
 const nativeCacheWriter = createNativeCacheWriter(resolveNativeCacheBinary(), messageCachePath);
 
+// Message-cache persistence is auxiliary. Never stringify every incoming Zalo
+// event and write it to the Rust child's stdin inside the WebSocket callback.
+// Keep only the latest mutation per key and send a small bounded batch from
+// setImmediate; the JS Map remains the authoritative read path.
+function createNativeCacheMutationQueue(writer, options = {}) {
+    const batchSize = Math.max(1, Math.floor(Number(options.batchSize) || 64));
+    const pending = new Map();
+    const waiters = [];
+    let scheduled = false;
+    let sent = 0;
+    let failed = 0;
+
+    function available() {
+        try { return writer?.stats?.().available === true; }
+        catch { return false; }
+    }
+
+    function settleWaiters(ok) {
+        while (waiters.length) {
+            const resolve = waiters.shift();
+            try { resolve(ok); } catch {}
+        }
+    }
+
+    function drainBatch() {
+        scheduled = false;
+        if (!available()) {
+            pending.clear();
+            settleWaiters(false);
+            return;
+        }
+
+        let processed = 0;
+        for (const [key, mutation] of pending) {
+            if (processed >= batchSize) break;
+            pending.delete(key);
+
+            let accepted = false;
+            try {
+                accepted = mutation.op === "delete"
+                    ? writer.delete(key)
+                    : writer.upsert(key, mutation.value);
+            } catch {
+                accepted = false;
+            }
+
+            if (accepted === false) {
+                pending.set(key, mutation);
+                failed++;
+                break;
+            }
+            sent++;
+            processed++;
+        }
+
+        if (pending.size) {
+            if (available()) scheduleDrain();
+            else {
+                pending.clear();
+                settleWaiters(false);
+            }
+        } else {
+            settleWaiters(true);
+        }
+    }
+
+    function scheduleDrain() {
+        if (scheduled || !pending.size) return;
+        scheduled = true;
+        setImmediate(drainBatch);
+    }
+
+    function enqueue(op, key, value) {
+        if (!available()) return false;
+        const normalizedKey = String(key);
+        pending.set(normalizedKey, op === "delete"
+            ? { op: "delete" }
+            : { op: "upsert", value });
+        scheduleDrain();
+        return true;
+    }
+
+    function flush() {
+        if (!pending.size) return Promise.resolve(available());
+        return new Promise(resolve => {
+            waiters.push(resolve);
+            scheduleDrain();
+        });
+    }
+
+    function stats() {
+        return { pending: pending.size, sent, failed, batchSize, scheduled };
+    }
+
+    return { enqueue, flush, stats };
+}
+
+const nativeCacheMutations = createNativeCacheMutationQueue(nativeCacheWriter);
+
 function mirrorCacheMutations(cache) {
     return new Proxy(cache, {
         set(target, key, value) {
             const result = Reflect.set(target, key, value);
-            if (result && typeof key === "string") nativeCacheWriter?.upsert(key, value);
+            if (result && typeof key === "string") nativeCacheMutations.enqueue("upsert", key, value);
             return result;
         },
         deleteProperty(target, key) {
             const existed = Object.prototype.hasOwnProperty.call(target, key);
             const result = Reflect.deleteProperty(target, key);
-            if (result && existed && typeof key === "string") nativeCacheWriter?.delete(key);
+            if (result && existed && typeof key === "string") nativeCacheMutations.enqueue("delete", key);
             return result;
         }
     });
@@ -248,7 +347,15 @@ function flushMessageCache() {
     // Zalo listener's Node.js event loop.
     if (nativeCacheWriter?.stats().available) {
         const startedAt = Date.now();
-        return nativeCacheWriter.flush().then(result => {
+        // Ensure all deferred mutations reach the sidecar before asking it to
+        // atomically persist. The queue coalesces duplicate keys and yields
+        // between bounded batches so busy chats cannot monopolize the event loop.
+        return nativeCacheMutations.flush().then(drained => {
+            if (!drained || !nativeCacheWriter?.stats().available) {
+                throw new Error("Rust message-cache worker unavailable before flush");
+            }
+            return nativeCacheWriter.flush();
+        }).then(result => {
             if (result?.ok === true) {
                 asyncFlushCount++;
                 asyncFlushLastMs = Math.max(
@@ -322,6 +429,7 @@ function getMessageCacheStats() {
         asyncFlushCount,
         asyncFlushFailures,
         asyncFlushLastMs,
+        nativePendingMutations: nativeCacheMutations.stats(),
         nativePersistence: nativeCacheWriter?.stats() || {
             available: false,
             reason: "Rust message-cache binary not built for this environment"
@@ -385,6 +493,7 @@ module.exports = {
     enforceMessageCacheLimit,
     getMessageCacheStats,
     createNativeCacheWriter,
+    createNativeCacheMutationQueue,
     resolveNativeCacheBinary,
     MAX_MESSAGE_CACHE_ENTRIES
 };

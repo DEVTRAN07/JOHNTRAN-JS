@@ -228,6 +228,20 @@ const sendStats = async () => {
 sendStats();
 setInterval(sendStats, STATS_INTERVAL).unref();
 
+// Load the persisted Anti-recall cache before opening the WebSocket listener.
+// Its first read parses the bounded JSON file synchronously; doing this during
+// startup prevents the first command after a restart from paying that cost.
+try {
+  const messageCache = require("./utils/messageCache");
+  messageCache.getMessageCache();
+  logger.log(
+    `Đã nạp message cache (${messageCache.getMessageCacheStats().entries} tin) trước khi mở listener`,
+    "info"
+  );
+} catch (error) {
+  logger.log("Không thể nạp trước message cache: " + (error?.message || error), "warn");
+}
+
 listener(api);
 
 // Cầu nói panel (chat Zalo thu nhỏ) — server nội bộ localhost
