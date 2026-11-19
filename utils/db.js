@@ -24,15 +24,21 @@ function resolveDatabaseConfig(env = process.env) {
 
   const explicitlyJson = requestedDriver === "json";
   const explicitlySupabase = requestedDriver === "supabase";
+  const remoteDatabaseEnabled = String(env.JT_ENABLE_REMOTE_DATABASE || "").trim().toLowerCase() === "true";
 
-  // A copied .env may still contain old Supabase credentials. Never start
-  // network database sync just because those variables happen to exist:
-  // remote storage is opt-in and requires JT_DB_DRIVER=supabase explicitly.
-  if (!explicitlySupabase) {
-    return { driver: "json", url: "", serviceKey: "", forced: explicitlyJson || disabled };
+  // Old .env files may already contain JT_DB_DRIVER=supabase and credentials.
+  // Require a second, deliberate opt-in so a copied template cannot silently
+  // restore remote I/O or block startup on a database network round-trip.
+  if (!explicitlySupabase || !remoteDatabaseEnabled) {
+    return {
+      driver: "json",
+      url: "",
+      serviceKey: "",
+      forced: explicitlyJson || disabled || explicitlySupabase
+    };
   }
 
-  if (explicitlySupabase) {
+  if (explicitlySupabase && remoteDatabaseEnabled) {
     if (!url || !serviceKey) {
       throw new Error(
         "Thiếu cấu hình Supabase: cần SUPABASE_URL và SUPABASE_SECRET_KEY " +
