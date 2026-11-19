@@ -10,7 +10,6 @@ function text(ctx, value, x, y, scale, options = {}) {
     (options.family || "Arial, sans-serif");
   const requestedColor = options.color || theme.PALETTE.ink;
   const content = String(value ?? "");
-  const words = content.match(/[\p{L}\p{M}\p{N}]+/gu) || [];
   theme.drawMulticolorText(ctx, content, x, y, {
     font: ctx.font,
     color: requestedColor,
