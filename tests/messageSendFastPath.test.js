@@ -30,29 +30,33 @@ test("text-only replies bypass the Canvas caption module", async () => {
   );
 });
 
-test("only eligible single-image captions enter the Canvas path", () => {
-  assert.equal(_test.shouldPrepareImageCaption({
-    msg: "Caption của card",
-    attachments: ["/tmp/card.png"]
-  }), true);
+test("image caption stays text below the Canvas in one styled message", async () => {
+  const sent = [];
+  const api = {
+    async sendMessage(payload, threadId, type) {
+      sent.push({ payload, threadId, type });
+      return { message: null, attachment: [] };
+    }
+  };
+  const wrapped = wrapApi(api, "caption-fast-path-thread", 1, "caption-fast-path-test");
+  const caption = "@Wuang\\n🤖 Chào chủ nhân!\\n👉 Dòng chữ nằm dưới card, không nằm trong ảnh.";
+  const mention = { uid: "member-id", pos: 0, len: "@Wuang".length };
 
-  assert.equal(_test.shouldPrepareImageCaption({ msg: "Tin nhắn chữ" }), false);
-  assert.equal(_test.shouldPrepareImageCaption({
-    msg: "Ảnh kèm caption",
-    attachments: ["/tmp/one.png", "/tmp/two.png"]
-  }), false);
-  assert.equal(_test.shouldPrepareImageCaption({
-    msg: "Caption có quote",
-    attachments: ["/tmp/card.png"],
-    quote: { msgId: "quoted-message" }
-  }), false);
-  assert.equal(_test.shouldPrepareImageCaption({
-    msg: "   ",
-    attachments: ["/tmp/card.png"]
-  }), false);
-  assert.equal(_test.shouldPrepareImageCaption({
-    msg: "@. xin chào",
-    mentions: [{ uid: "member-id" }],
-    attachments: ["/tmp/card.png"]
-  }), false);
+  await wrapped.sendMessage({
+    msg: caption,
+    attachments: ["/tmp/menu-card.png"],
+    mentions: [mention],
+    recallAfterMs: 0
+  });
+
+  assert.equal(sent.length, 1, "card and caption must remain one Zalo message");
+  assert.equal(sent[0].payload.msg, caption, "caption remains text, not rasterized into the image");
+  assert.deepEqual(sent[0].payload.attachments, ["/tmp/menu-card.png"]);
+  assert.deepEqual(sent[0].payload.mentions, [mention]);
+  assert.ok(sent[0].payload.styles.some(style => style.start >= caption.indexOf("🤖")),
+    "caption text below the card receives style spans");
+  assert.ok(sent[0].payload.styles.every(style => style.start >= mention.len || style.start + style.len <= 0),
+    "color spans do not collide with Zalo's live mention range");
+  assert.equal(sent[0].threadId, "caption-fast-path-thread");
+  assert.equal(sent[0].type, 1);
 });
