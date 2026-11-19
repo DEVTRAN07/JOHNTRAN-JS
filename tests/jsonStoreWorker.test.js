@@ -21,13 +21,26 @@ test("JSON persistence serializes and writes in a dedicated worker", async () =>
   assert.ok(store.writerWorker, "the JSON store should start its dedicated writer");
   assert.notEqual(store.writerWorker.threadId, -1);
 
-  facade.saveData("Users", "userId", "worker-user", {
-    name: "Worker persistence",
-    balance: 123
-  });
+  const originalStringify = JSON.stringify;
+  let mainThreadStringifyCalls = 0;
+  JSON.stringify = function (...args) {
+    mainThreadStringifyCalls++;
+    return originalStringify.apply(this, args);
+  };
 
-  assert.equal(store.getOperationalStatus().pendingFlush, true);
-  assert.equal(await store.flushAndWait(), true);
+  try {
+    facade.saveData("Users", "userId", "worker-user", {
+      name: "Worker persistence",
+      balance: 123
+    });
+
+    assert.equal(store.getOperationalStatus().pendingFlush, true);
+    assert.equal(await store.flushAndWait(), true);
+    assert.equal(mainThreadStringifyCalls, 0,
+      "database serialization must happen in the writer thread, not the Zalo event loop");
+  } finally {
+    JSON.stringify = originalStringify;
+  }
 
   const persisted = JSON.parse(await fs.readFile(file, "utf8"));
   assert.equal(persisted.Users["worker-user"].data.name, "Worker persistence");
