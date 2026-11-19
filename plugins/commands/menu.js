@@ -6,6 +6,7 @@ const folders = require("../../core/runtime/folderMenu");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const { getRequesterGreeting, getRequesterPrompt } = require("../../core/runtime/requesterGreeting");
+const { sendFastAcknowledgement } = require("../../core/runtime/fastAck");
 
 module.exports.config = {
   name: "menu",
@@ -31,6 +32,8 @@ async function sendMenuCardAndGreeting(api, imagePath, caption, mentions, thread
 }
 
 module.exports.run = async function ({ api, event }) {
+  // Start the first visible response before requester lookup and Canvas render.
+  sendFastAcknowledgement(api, event?.threadId, event?.type, "⏳ Đang mở danh mục lệnh...");
   const senderId = event?.data?.uidFrom;
   const commands = global.client?.commands;
   if (!(commands instanceof Map)) {

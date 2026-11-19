@@ -26,6 +26,7 @@ const { checkCommandRole, checkGroupPermissions } = require("../runtime/middlewa
 const { consumeCooldown } = require("../runtime/middleware/cooldown");
 const { dispatchCommand } = require("../runtime/dispatcher");
 const { canRunCommandInGroup } = require("../runtime/groupBotState");
+const { sendFastAcknowledgement } = require("../runtime/fastAck");
 
 // These built-in plugins were checked and none consume the legacy userData
 // preload. Unknown/custom plugins keep the old preload contract by default.
@@ -84,8 +85,9 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
       const folderMenu = folderMenuRuntime;
       const folder = menuGroupShortcut;
       if (folder) {
-        // Category shortcuts bypass dispatchCommand(), so use a reaction that
-        // matches the folder instead of leaving the original command unreacted.
+        // Start a visible text response before profile lookup and Canvas rendering.
+        sendFastAcknowledgement(wrappedApi, threadId, type, "⏳ Đang mở thư mục " + folder.name + "...");
+        // Category shortcuts bypass dispatchCommand(); keep their folder reaction.
         void wrappedApi.__reply?.react(getFolderReaction(folder.slug));
         const items = folderMenu.collectMenuGroupCommands(global.client.commands, UIDUsage, folder);
         // Các thư mục luôn có thẻ riêng; nhóm rỗng vẫn hiển thị đúng bố cục và báo chưa có lệnh trong caption.
