@@ -1,5 +1,7 @@
 "use strict";
 
+const { recallIntentionally } = require("../../core/runtime/intentionalRecall");
+
 const fs = require("node:fs");
 const crypto = require("node:crypto");
 const { ThreadType } = require("zalo-client");
@@ -241,7 +243,13 @@ async function recallMessages(api, threadId, type, targets) {
   for (const target of pending) {
     try {
       if (typeof rawApi?.undo !== "function") throw new Error("API undo không khả dụng");
-      const result = await rawApi.undo({ msgId: target.msgId, cliMsgId: target.cliMsgId }, String(threadId), type);
+      const result = await recallIntentionally(
+        rawApi,
+        { msgId: target.msgId, cliMsgId: target.cliMsgId },
+        String(threadId),
+        type,
+        "tlmn-card-replacement"
+      );
       if (result === false || result?.success === false) {
         throw new Error("Zalo từ chối thu hồi tin nhắn");
       }
