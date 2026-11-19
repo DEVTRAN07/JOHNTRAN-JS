@@ -68,7 +68,11 @@ function eventKind(event, eventType, eventData) {
   const values = [event?.type, event?.act, eventType, eventData?.act, eventData?.type]
     .map(value => String(value || "").toLowerCase());
   if (values.includes(GroupEventType.JOIN)) return "welcome";
-  if (values.includes(GroupEventType.LEAVE) || values.includes(GroupEventType.REMOVE_MEMBER)) return "goodbye";
+  if (
+    values.includes(GroupEventType.LEAVE) ||
+    values.includes(GroupEventType.REMOVE_MEMBER) ||
+    values.includes(GroupEventType.BLOCK_MEMBER)
+  ) return "goodbye";
   return "";
 }
 
@@ -105,45 +109,63 @@ async function hydrateMemberProfiles(api, members, options = {}) {
     Math.max(250, Number(options.timeoutMs) || PROFILE_LOOKUP_TIMEOUT_MS)
   );
   const ids = missing.map(member => String(member.uid));
-  let groupProfiles = null;
-  let userProfiles = null;
-  let avatarProfiles = null;
-  const requests = [];
 
+  // JOIN users are still current group members, so prefer the light group
+  // profile endpoint. It usually contains both displayName and avatar.
   if (options.includeGroupMembers !== false && typeof api?.getGroupMembersInfo === "function") {
-    requests.push(settleWithin(
+    const response = await settleWithin(
       Promise.resolve().then(() => api.getGroupMembersInfo(ids)),
       timeoutMs
-    ).then(result => { groupProfiles = result; }));
+    );
+    for (const member of missing) {
+      const profile = pickUser(response, member.uid);
+      if (!profile) continue;
+      member.name = profileName(profile, member.name);
+      const avatarUrl = normalizeAvatar(
+        profile.avatar, profile.avatarUrl, profile.avatar_25, profile.photoUrl
+      );
+      if (avatarUrl) member.avatarUrl = avatarUrl;
+    }
   }
-  // Resolve departed users from user profiles because they are no longer in the group.
-  if (typeof api?.getUserInfo === "function") {
-    requests.push(settleWithin(
-      Promise.resolve().then(() => api.getUserInfo(ids, 240)),
-      timeoutMs
-    ).then(result => { userProfiles = result; }));
-  }
-  // Fallback for a group-member response whose profile record omits its photo.
-  if (typeof api?.getAvatarUrlProfile === "function") {
-    requests.push(settleWithin(
-      Promise.resolve().then(() => api.getAvatarUrlProfile(ids, 240)),
-      timeoutMs
-    ).then(result => { avatarProfiles = result; }));
-  }
-  if (requests.length) await Promise.all(requests);
 
-  for (const member of missing) {
-    const profile = pickUser(userProfiles, member.uid) || pickUser(groupProfiles, member.uid);
-    const avatarUrl = normalizeAvatar(
-      profile?.avatar,
-      profile?.avatarUrl,
-      profile?.avatar_25,
-      profile?.photoUrl
-    ) || pickAvatarByUid(avatarProfiles, member.uid);
-
-    if (avatarUrl) member.avatarUrl = avatarUrl;
-    if (profile) member.name = profileName(profile, member.name);
+  // Only ask the general user-profile endpoint for members whose first profile
+  // lookup did not provide an avatar, or whose display name is still missing.
+  const needUserProfile = missing.filter(member =>
+    !member.avatarUrl || !member.name || member.name === "Thành viên mới"
+  );
+  if (needUserProfile.length && typeof api?.getUserInfo === "function") {
+    const userIds = needUserProfile.map(member => String(member.uid));
+    const response = await settleWithin(
+      Promise.resolve().then(() => api.getUserInfo(userIds, 240)),
+      timeoutMs
+    );
+    for (const member of needUserProfile) {
+      const profile = pickUser(response, member.uid);
+      if (!profile) continue;
+      member.name = profileName(profile, member.name);
+      const avatarUrl = normalizeAvatar(
+        profile.avatar, profile.avatarUrl, profile.avatar_25, profile.photoUrl
+      );
+      if (avatarUrl) member.avatarUrl = avatarUrl;
+    }
   }
+
+  // Last resort only: call the avatar-only endpoint for people whose profile
+  // response still has no usable image. This avoids three redundant requests
+  // on every JOIN/OUT while retaining support for Zalo's partial profiles.
+  const needAvatar = missing.filter(member => !member.avatarUrl);
+  if (needAvatar.length && typeof api?.getAvatarUrlProfile === "function") {
+    const avatarIds = needAvatar.map(member => String(member.uid));
+    const response = await settleWithin(
+      Promise.resolve().then(() => api.getAvatarUrlProfile(avatarIds, 240)),
+      timeoutMs
+    );
+    for (const member of needAvatar) {
+      const avatarUrl = pickAvatarByUid(response, member.uid);
+      if (avatarUrl) member.avatarUrl = avatarUrl;
+    }
+  }
+
   return list;
 }
 
