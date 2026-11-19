@@ -511,18 +511,6 @@ test("recovery monitor is authenticated, aggregates child bridge health and expo
 });
 
 
-test("Render production configuration places bot registry and child data on the declared Persistent Disk", () => {
-  const render = fs.readFileSync(path.join(root, "render.yaml"), "utf8");
-  const docs = fs.readFileSync(path.join(root, "docs/RENDER_STORAGE.md"), "utf8");
-  assert.match(render, /mountPath: \/opt\/render\/project\/data/);
-  assert.match(render, /key: JT_PERSISTENT_DIR\s+value: \/opt\/render\/project\/data/);
-  assert.match(render, /key: JT_DB_FILE\s+value: \/opt\/render\/project\/data\/store\.json/);
-  assert.match(render, /key: JT_ACCOUNT_FILE\s+value: \/opt\/render\/project\/data\/account\.json/);
-  assert.match(render, /key: JT_QRCODE_PATH\s+value: \/opt\/render\/project\/data\/qr\.png/);
-  assert.match(docs, /registry BotManager, dữ liệu từng bot con/);
-  assert.match(docs, /npm run verify:deployment/);
-});
-
 test("production deployment verifier never sends messages or mutates bot configuration", () => {
   const verifier = fs.readFileSync(path.join(root, "scripts/verify-deployment.js"), "utf8");
   const packageData = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -563,21 +551,12 @@ test("Panel awaits and deduplicates Supabase mirror sync before bot and child br
   assert.ok(server.indexOf("await maybeSyncStore();", statsRoute) > statsRoute);
 });
 
-test("Render CI waits for live deployment state and verifies the deployed service health", () => {
+test("CI runs verification only and contains no Render deployment integration", () => {
   const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
-  assert.match(workflow, /timeout-minutes: 20/);
-  assert.match(workflow, /services\/\$\{service_id\}\/deploys\/\$\{deploy_id\}/);
-  assert.match(workflow, /deploys\?limit=20/);
-  assert.match(workflow, /select\(\.commit\.id\? == \$sha\)/);
-  assert.match(workflow, /\[\[ "\$deploy_status" == "live" \]\]/);
-  assert.match(workflow, /serviceDetails\.url/);
-  assert.match(workflow, /\$service_url\/health/);
-  assert.match(workflow, /services\/\$\{service_id\}\/env-vars\?limit=100/);
-  assert.match(workflow, /JT_PERSISTENT_DIR/);
-  assert.match(workflow, /linked Environment Group variables/);
-  assert.match(workflow, /loggedIn=false/);
-  assert.match(workflow, /database: driver=supabase, sync=healthy/);
-  assert.match(workflow, /Production is still using JSON, not Supabase/);
-  assert.match(workflow, /consecutiveFailures/);
-  assert.match(workflow, /build_failed\|pre_deploy_failed\|update_failed\|canceled/);
+  assert.match(workflow, /^  test:/m);
+  assert.doesNotMatch(workflow, /^  deploy:/m);
+  assert.doesNotMatch(workflow, /RENDER_API_KEY|api\\.render\\.com|render\\.com\\/v1\\/services/i);
+  assert.equal(fs.existsSync(path.join(root, "render.yaml")), false);
+  assert.equal(fs.existsSync(path.join(root, "deploy/edge/render.yaml")), false);
+  assert.equal(fs.existsSync(path.join(root, "docs/RENDER_STORAGE.md")), false);
 });
