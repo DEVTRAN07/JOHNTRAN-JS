@@ -4,6 +4,7 @@ const path = require("path");
 const { execFile } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 const { resolveFfmpegPath } = require("../music/ffmpegPath");
+const { FFMPEG_THREADS } = require("../mediaResourceLimits");
 const ffmpegPath = resolveFfmpegPath({ staticPath: ffmpegStatic });
 
 const IDLE_EXIT_MS = 20000;
@@ -36,7 +37,7 @@ parentPort.on("message", async (payload) => {
     await new Promise((resolve, reject) => {
       execFile(
         ffmpegPath,
-        ["-y", "-i", videoPath, "-vn", "-acodec", "libmp3lame", "-b:a", "128k", mp3Path],
+        ["-y", "-i", videoPath, "-vn", "-acodec", "libmp3lame", "-b:a", "128k", "-threads", String(FFMPEG_THREADS), mp3Path],
         { timeout: 150000, maxBuffer: 64 * 1024 * 1024 },
         (error) => {
           if (error) {
