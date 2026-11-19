@@ -358,7 +358,7 @@ test("Caro, Sâm and Tiến Lên route deliberate raw sends through shared text 
     const source = fs.readFileSync(require.resolve("../plugins/commands/" + file), "utf8");
     assert.match(source, /sendStyledRawMessage/,
       file + " must use the shared styler for raw SDK sends");
-    assert.doesNotMatch(source, /\\b(?:rawApi|sender|rawApiInstance)\\.sendMessage\\s*\\(/,
+    assert.doesNotMatch(source, /\b(?:rawApi|sender|rawApiInstance)\.sendMessage\s*\(/,
       file + " must not bypass random text styling");
     assert.doesNotMatch(source, /getRawApi\\(api\\)\\.sendMessage\\s*\\(/,
       file + " must not send directly from getRawApi()");
