@@ -105,9 +105,10 @@ function filterDispatchSources(sources = {}, options = {}) {
     const key = String(name || eventModule?.config?.name || "").toLowerCase();
     if (skipTopchatCounter && key === "topchatcounter") return false;
     if (skipGameConsumers && (key === "noitu" || key === "tlmn")) return false;
+    const commandAware = key === "guard" || eventModule?.config?.allowCommandMessages === true;
     if (isCommandMessage && (
       eventModule?.config?.ignoreCommandMessages === true ||
-      eventModule?.config?.allowCommandMessages !== true
+      !commandAware
     )) return false;
     return true;
   }));
@@ -116,9 +117,10 @@ function filterDispatchSources(sources = {}, options = {}) {
     const key = String(name || command?.config?.name || "").toLowerCase();
     if (skipAntiHandler && key === "anti") return false;
     if (skipGameConsumers && (key === "noitu" || key === "tlmn")) return false;
+    const commandAware = key === "anti" || command?.config?.allowCommandMessages === true;
     if (isCommandMessage && (
       command?.config?.ignoreCommandMessages === true ||
-      command?.config?.allowCommandMessages !== true
+      !commandAware
     )) return false;
     return true;
   }));
