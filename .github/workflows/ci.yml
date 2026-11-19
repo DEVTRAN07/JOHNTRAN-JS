@@ -30,10 +30,7 @@ jobs:
       - name: Compile and test Rust message-cache sidecar
         run: |
           cargo test --manifest-path rust/message-cache/Cargo.toml
-          cargo build --manifest-path rust/message-cache/Cargo.toml --release
-          mkdir -p native/bin
-          cp rust/message-cache/target/release/jt-message-cache native/bin/jt-message-cache
-          chmod +x native/bin/jt-message-cache
+          npm run build:message-cache
       - name: Build Rust text colorizer used by live message path
         run: |
           cargo test --manifest-path native/text-style-rs/Cargo.toml

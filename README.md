@@ -435,6 +435,7 @@ JOHNTRAN-JS/
 
 - VPS Ubuntu 22.04/24.04 hoặc máy chủ riêng có kết nối Internet ổn định.
 - Node.js **22** (tối thiểu 20.18) và npm.
+- Rust toolchain là tùy chọn; chỉ cần khi muốn build Rust message-cache sidecar thay cho Node Worker fallback.
 - Giữ thư mục `data/`, `logs/`, tài khoản/cookie và cấu hình ở nơi có lưu trữ bền vững.
 
 ### Cài đặt và chạy trên VPS
@@ -445,6 +446,8 @@ cd JOHNTRAN-JS
 npm ci
 cp .env.example .env
 ```
+
+**Message-cache:** khi chạy trực tiếp trên VPS, bot tự dùng Node Worker nếu không có Rust sidecar; không cần cài Rust để chạy. Muốn bật Rust sidecar tùy chọn, cài Rust/Cargo rồi chạy `npm run build:message-cache` một lần sau `npm ci`. Dockerfile chính tự build sidecar trong image.
 
 Điền thông tin Zalo, admin, Supabase (nếu dùng) và Panel token vào `.env`; không commit file này. Cấu hình `config.yml`, sau đó chạy:
 

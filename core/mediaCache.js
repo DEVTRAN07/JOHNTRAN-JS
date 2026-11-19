@@ -239,11 +239,10 @@ class MediaCache {
       r2Configured: !!this.r2,
     };
 
-    fs.mkdirSync(this.cacheDir, { recursive: true });
-    for (var j = 0; j < VALID_TYPES.length; j++) {
-      fs.mkdirSync(path.join(this.cacheDir, VALID_TYPES[j]), { recursive: true });
-    }
-    this._refreshLocalFileCount();
+    // Media cache initialization is asynchronous. Never create directories or
+    // scan thousands of cache entries synchronously during bot startup.
+    this._knownTypes = new Map();
+    this._ready = this._initializeLocalCache();
   }
 
   _typeDir(type) {
@@ -263,21 +262,33 @@ class MediaCache {
     return sha256Hex(Buffer.concat([Buffer.from(buffer), Buffer.from("|metadata|"), Buffer.from(metaStr)]));
   }
 
-  _readMeta(type, key) {
+  async _initializeLocalCache() {
     try {
-      const raw = fs.readFileSync(this._metaPath(type, key), "utf8");
+      await fs.promises.mkdir(this.cacheDir, { recursive: true });
+      await Promise.all(VALID_TYPES.map(type =>
+        fs.promises.mkdir(path.join(this.cacheDir, type), { recursive: true })
+      ));
+      await this._refreshLocalFileCount();
+    } catch (error) {
+      logger.log("MediaCache: không thể khởi tạo cache local: " + (error?.message || error), "warn");
+    }
+  }
+
+  async _readMeta(type, key) {
+    try {
+      const raw = await fs.promises.readFile(this._metaPath(type, key), "utf8");
       return JSON.parse(raw);
     } catch (e) {
       return null;
     }
   }
 
-  _writeMeta(type, key, meta) {
-    fs.writeFileSync(this._metaPath(type, key), JSON.stringify(meta), "utf8");
+  async _writeMeta(type, key, meta) {
+    await fs.promises.writeFile(this._metaPath(type, key), JSON.stringify(meta), "utf8");
   }
 
-  _removeMeta(type, key) {
-    try { fs.unlinkSync(this._metaPath(type, key)); } catch (e) { /* ignore */ }
+  async _removeMeta(type, key) {
+    try { await fs.promises.unlink(this._metaPath(type, key)); } catch (e) { /* ignore */ }
   }
 
   _isExpired(meta) {
@@ -286,54 +297,70 @@ class MediaCache {
     return expiresAt > 0 && Date.now() > expiresAt;
   }
 
-  _removeLocal(type, key) {
-    for (const file of [this._blobPath(type, key), this._metaPath(type, key)]) {
-      try { fs.unlinkSync(file); } catch (e) { /* already removed */ }
-    }
+  async _removeLocal(type, key) {
+    const blobPath = this._blobPath(type, key);
+    let removedBlob = false;
+    try {
+      await fs.promises.unlink(blobPath);
+      removedBlob = true;
+    } catch (e) { /* already absent */ }
+    await this._removeMeta(type, key);
+    this._knownTypes.delete(key);
+    if (removedBlob) this._stats.localFiles = Math.max(0, this._stats.localFiles - 1);
   }
 
-  _readLocal(type, key) {
+  async _readLocal(type, key) {
     const blobPath = this._blobPath(type, key);
-    const meta = this._readMeta(type, key);
+    const meta = await this._readMeta(type, key);
     if (!meta || this._isExpired(meta)) {
-      this._removeLocal(type, key);
+      await this._removeLocal(type, key);
       return null;
     }
     try {
-      const stat = fs.statSync(blobPath);
+      const stat = await fs.promises.stat(blobPath);
       if (!stat.isFile() || stat.size <= 0 || Number(meta.size) !== stat.size) {
-        this._removeLocal(type, key);
+        await this._removeLocal(type, key);
         return null;
       }
-      const buffer = fs.readFileSync(blobPath);
+      const buffer = await fs.promises.readFile(blobPath);
       if (!buffer.length || (meta.sha256 && meta.sha256 !== sha256Hex(buffer)) || this._makeKey(buffer, meta.metadata || {}) !== key) {
-        this._removeLocal(type, key);
+        await this._removeLocal(type, key);
         return null;
       }
+      this._knownTypes.set(key, type);
       return { buffer, meta };
     } catch (e) {
-      this._removeLocal(type, key);
+      await this._removeLocal(type, key);
       return null;
     }
   }
 
-  _refreshLocalFileCount() {
+  async _refreshLocalFileCount() {
     let count = 0;
-    try {
-      for (var k = 0; k < VALID_TYPES.length; k++) {
-        const type = VALID_TYPES[k];
-        const dir = path.join(this.cacheDir, type);
-        if (!fs.existsSync(dir)) continue;
-        const names = fs.readdirSync(dir);
-        for (var m = 0; m < names.length; m++) {
-          if (!names[m].endsWith(".meta.json")) count++;
+    // Merge the on-disk scan with in-flight writes already indexed in memory;
+    // a background refresh must not erase a key written while readdir was pending.
+    const knownTypes = new Map(this._knownTypes);
+    for (const type of VALID_TYPES) {
+      try {
+        const names = await fs.promises.readdir(path.join(this.cacheDir, type));
+        for (const name of names) {
+          if (name.endsWith(".meta.json")) continue;
+          count++;
+          knownTypes.set(name, type);
+        }
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          logger.log("MediaCache: không thể quét thư mục " + type + ": " + (error?.message || error), "warn");
         }
       }
-    } catch (e) { /* ignore */ }
+    }
+    this._knownTypes = knownTypes;
     this._stats.localFiles = count;
+    return count;
   }
 
   async upload(buffer, type, metadata) {
+    await this._ready;
     metadata = metadata || {};
     if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
     const t = normalizeType(type);
@@ -342,10 +369,9 @@ class MediaCache {
     const expiresAt = Date.now() + ttl;
     const contentType = (metadata.contentType) || this._contentTypeFor(t);
 
-    const localEntry = this._readLocal(t, key);
+    const localEntry = await this._readLocal(t, key);
     if (localEntry) {
       this._stats.hits++;
-      this._refreshLocalFileCount();
       return { url: this.getUrl(key), key: key, cached: true };
     }
 
@@ -355,7 +381,6 @@ class MediaCache {
         if (res.data && res.data.length > 0) {
           await this._writeLocal(t, key, buffer, metadata, ttl, contentType, expiresAt);
           this._stats.hits++;
-          this._refreshLocalFileCount();
           return { url: this.getUrl(key), key: key, cached: true };
         }
       } catch (err) {
@@ -383,17 +408,17 @@ class MediaCache {
 
     this._stats.uploads++;
     this._stats.bytes += buffer.length;
-    this._refreshLocalFileCount();
     return { url: this.getUrl(key), key: key, cached: false };
   }
 
   async _writeLocal(type, key, buffer, metadata, ttl, contentType, expiresAt) {
     const dir = this._typeDir(type);
-    fs.mkdirSync(dir, { recursive: true });
+    await fs.promises.mkdir(dir, { recursive: true });
     const blobPath = this._blobPath(type, key);
     const metaPath = this._metaPath(type, key);
     const suffix = `${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
     const blobTemp = `${blobPath}.tmp-${suffix}`;
+    const wasKnownLocally = this._knownTypes.has(key);
     const metaTemp = `${metaPath}.tmp-${suffix}`;
     const meta = {
       metadata: metadata,
@@ -405,14 +430,16 @@ class MediaCache {
       expiresAt: expiresAt,
     };
     try {
-      fs.writeFileSync(blobTemp, buffer, { flag: "wx" });
-      fs.writeFileSync(metaTemp, JSON.stringify(meta), { flag: "wx" });
+      await fs.promises.writeFile(blobTemp, buffer, { flag: "wx" });
+      await fs.promises.writeFile(metaTemp, JSON.stringify(meta), { flag: "wx" });
       // Publish metadata first; an interrupted write is treated as a cache miss.
-      fs.renameSync(metaTemp, metaPath);
-      fs.renameSync(blobTemp, blobPath);
+      await fs.promises.rename(metaTemp, metaPath);
+      await fs.promises.rename(blobTemp, blobPath);
+      this._knownTypes.set(key, type);
+      if (!wasKnownLocally) this._stats.localFiles++;
     } finally {
-      try { fs.unlinkSync(blobTemp); } catch (e) { /* renamed or absent */ }
-      try { fs.unlinkSync(metaTemp); } catch (e) { /* renamed or absent */ }
+      try { await fs.promises.unlink(blobTemp); } catch (e) { /* renamed or absent */ }
+      try { await fs.promises.unlink(metaTemp); } catch (e) { /* renamed or absent */ }
     }
   }
 
@@ -427,16 +454,21 @@ class MediaCache {
   }
 
   async get(key) {
-    let foundType = null;
-    for (var i = 0; i < VALID_TYPES.length; i++) {
-      if (fs.existsSync(this._blobPath(VALID_TYPES[i], key))) {
-        foundType = VALID_TYPES[i];
-        break;
+    await this._ready;
+    let foundType = this._knownTypes.get(String(key)) || null;
+    if (!foundType) {
+      for (const type of VALID_TYPES) {
+        try {
+          await fs.promises.access(this._blobPath(type, key));
+          foundType = type;
+          this._knownTypes.set(String(key), type);
+          break;
+        } catch { /* try the next media type */ }
       }
     }
 
     if (foundType) {
-      const local = this._readLocal(foundType, key);
+      const local = await this._readLocal(foundType, key);
       if (local) {
         this._stats.hits++;
         return { buffer: local.buffer, metadata: local.meta.metadata || {} };
@@ -488,13 +520,9 @@ class MediaCache {
   }
 
   getUrl(key) {
-    let foundType = null;
-    for (var i = 0; i < VALID_TYPES.length; i++) {
-      if (fs.existsSync(this._blobPath(VALID_TYPES[i], key))) {
-        foundType = VALID_TYPES[i];
-        break;
-      }
-    }
+    // File type is kept in the in-memory index populated by async cache
+    // initialization/read/write; URL generation must not probe the filesystem.
+    const foundType = this._knownTypes.get(String(key)) || null;
 
     if (this.r2) {
       const ttl = foundType ? (this.ttls[foundType] || this.defaultTtl) : this.defaultTtl;
@@ -508,15 +536,18 @@ class MediaCache {
   }
 
   async invalidate(key) {
+    await this._ready;
     let removed = false;
-    for (var i = 0; i < VALID_TYPES.length; i++) {
-      const t = VALID_TYPES[i];
-      const blob = this._blobPath(t, key);
-      if (fs.existsSync(blob)) {
-        try { fs.unlinkSync(blob); removed = true; } catch (e) {}
-      }
-      this._removeMeta(t, key);
+    for (const type of VALID_TYPES) {
+      const blob = this._blobPath(type, key);
+      try {
+        await fs.promises.unlink(blob);
+        removed = true;
+        this._stats.localFiles = Math.max(0, this._stats.localFiles - 1);
+      } catch (e) { /* local blob already absent */ }
+      await this._removeMeta(type, key);
     }
+    this._knownTypes.delete(String(key));
     if (this.r2) {
       for (var i = 0; i < VALID_TYPES.length; i++) {
         const t = VALID_TYPES[i];
@@ -531,12 +562,12 @@ class MediaCache {
       }
     }
     if (removed) this._stats.invalidations++;
-    this._refreshLocalFileCount();
     return removed;
   }
 
   stats() {
-    this._refreshLocalFileCount();
+    // Return the last asynchronously refreshed count; stats endpoints must
+    // never scan the media directory on the command/event loop.
     const total = this._stats.hits + this._stats.misses;
     return {
       uploads: this._stats.uploads,
