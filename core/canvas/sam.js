@@ -17,7 +17,7 @@ function text(ctx, value, x, y, scale, options = {}) {
     align: options.align || "left",
     baseline: options.baseline || "alphabetic",
     maxWidth: options.maxWidth,
-    multicolor: words.length > 1 || words.some(word => theme.splitGraphemes(word).length > 1)
+    multicolor: options.multicolor !== false
   });
   ctx.restore();
 }
@@ -373,5 +373,5 @@ function renderSam(data = {}) {
 
 module.exports = {
   renderSam,
-  _test: { drawSeat, seatLayout, comboLabel }
+  _test: { drawSeat, seatLayout, comboLabel, drawText: text }
 };
