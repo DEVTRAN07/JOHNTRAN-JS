@@ -32,6 +32,10 @@ export function decodeUnit8Array(data) {
         return null;
     }
 }
+export async function inflateEventPayload(data) {
+    const input = Buffer.isBuffer(data) ? data : Buffer.from(data);
+    return await inflateAsync(input);
+}
 /**
  * Decodes a websocket event payload, decrypting/ decompressing it when needed.
  *
