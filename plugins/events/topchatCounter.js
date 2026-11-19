@@ -62,7 +62,7 @@ function getOrCreateRuntimeDiagnostics(threadId) {
   return value;
 }
 
-function observeIncomingEvent(event) {
+function observeIncomingEvent(event, options = {}) {
   const threadId = String(event?.threadId || event?.data?.idTo || "");
   if (!threadId) return null;
 
@@ -77,6 +77,22 @@ function observeIncomingEvent(event) {
   else value.other++;
   value.lastType = String(event?.type ?? "missing").slice(0, 20);
   value.lastMessageType = String(event?.data?.msgType || "").slice(0, 40);
+  value.lastSeenAt = Date.now();
+  // The WebSocket listener only needs to update counters. Preserve the
+  // historical snapshot return value for callers/tests that explicitly use it.
+  return options.snapshot === false ? undefined : { ...value };
+}
+
+// Prefixed messages are intentionally excluded from the ranking. Record their
+// diagnostic outcome synchronously instead of scheduling a full TopChat job,
+// which would re-read group settings and enqueue a no-op for every command.
+function observeRejectedCommand(event) {
+  if (!isGroupMessage(event)) return null;
+  const threadId = String(event?.threadId || event?.data?.idTo || "");
+  if (!threadId) return null;
+  const value = getOrCreateRuntimeDiagnostics(threadId);
+  value.received++;
+  value.rejected++;
   value.lastSeenAt = Date.now();
   return { ...value };
 }
@@ -436,6 +452,7 @@ module.exports.run = async function ({ event, Threads }) {
   await recordMessage({ event, Threads });
 };
 module.exports.observeIncomingEvent = observeIncomingEvent;
+module.exports.observeRejectedCommand = observeRejectedCommand;
 module.exports.getRuntimeDiagnostics = getRuntimeDiagnostics;
 module.exports.getStats = getStats;
 module.exports.recordHistoryMessages = recordHistoryMessages;
@@ -446,5 +463,5 @@ module.exports._test = {
   rememberMessage, recordMessage, recordHistoryMessages, markHistoryCoverage, isGroupMessage,
   applyMessagesToGroup, flushGroup, flushAll, enqueueGroupWrite, isCountableMessage,
   writeQueues, seenMessages, pendingGroups, runtimeDiagnostics,
-  observeIncomingEvent, getRuntimeDiagnostics, getStats, MAX_STORED_IDS, MAX_SEEN_GROUPS, FLUSH_DELAY_MS
+  observeIncomingEvent, observeRejectedCommand, getRuntimeDiagnostics, getStats, MAX_STORED_IDS, MAX_SEEN_GROUPS, FLUSH_DELAY_MS
 };
