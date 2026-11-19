@@ -28,9 +28,15 @@ const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const MAX_RETRIES = 1;
 const RETRY_DELAY_BASE = HTTP_REQUEST_POLICY.delayMs;
 
-// Enforce a finite timeout even when a caller explicitly passes timeout: 0
-// (Axios otherwise waits for the operating system's network timeout).
-pooledAxios.interceptors.request.use(config => {
+// Clamp timeout/retry options at the Axios instance boundary. Doing this
+// in request() instead of another interceptor preserves the privacy guard's
+// position and behavior for callers/tests that inspect its first handler.
+const originalRequest = pooledAxios.request.bind(pooledAxios);
+pooledAxios.request = function boundedRequest(configOrUrl, maybeConfig) {
+  const config = typeof configOrUrl === "string"
+    ? { ...(maybeConfig || {}), url: configOrUrl }
+    : { ...(configOrUrl || {}) };
+
   const requestedTimeout = Number(config.timeout);
   config.timeout = Number.isFinite(requestedTimeout) && requestedTimeout > 0
     ? Math.min(Math.floor(requestedTimeout), HTTP_REQUEST_POLICY.timeoutMs)
@@ -43,8 +49,8 @@ pooledAxios.interceptors.request.use(config => {
     0,
     Math.min(HTTP_REQUEST_POLICY.retries, requestedRetryLimit, MAX_RETRIES)
   );
-  return config;
-});
+  return originalRequest(config);
+};
 
 function isNetworkError(error) {
   return (
