@@ -1,10 +1,12 @@
 # Build the high-volume message-cache persistence worker in Rust.
-FROM rust:1.86-bookworm AS rust-build
+FROM rust:1-bookworm AS rust-build
 WORKDIR /build
 COPY rust/message-cache ./rust/message-cache
 COPY native/text-style-rs ./native/text-style-rs
-RUN cargo build --manifest-path rust/message-cache/Cargo.toml --release \
-    && cargo build --manifest-path native/text-style-rs/Cargo.toml --release
+RUN rustc --version && cargo --version \
+    && cargo build --manifest-path rust/message-cache/Cargo.toml --release \
+    && cargo build --manifest-path native/text-style-rs/Cargo.toml --release \
+    && test -s native/text-style-rs/target/release/libtext_style_rs.so
 
 # Install Node production dependencies with the native build libraries required
 # by the existing Canvas package.
