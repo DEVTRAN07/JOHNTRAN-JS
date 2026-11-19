@@ -62,6 +62,56 @@ test("listener reuses active Anti group snapshot instead of reading it again", a
   assert.equal(cacheReads, 0, "Anti should use the listener's snapshot instead of another cache lookup");
 });
 
+
+test("command moderation skips disabled Guard and Anti but preserves enabled protections", () => {
+  const resolveSkips = listener.resolveMessageModerationSkips;
+  const noProtections = {
+    threadId: "moderation-off",
+    data: { anti_link: false, anti_word: false, anti_spam: false, event_guard: false }
+  };
+  assert.deepEqual(resolveSkips({
+    isGroupThread: true,
+    threadData: noProtections,
+    threadInfo: noProtections.data,
+    antiCommand: anti
+  }), { skipAnti: true, skipGuard: true });
+
+  const antiOnly = {
+    threadId: "moderation-anti-on",
+    data: { anti_link: true, event_guard: false }
+  };
+  assert.deepEqual(resolveSkips({
+    isGroupThread: true,
+    threadData: antiOnly,
+    threadInfo: antiOnly.data,
+    antiCommand: anti
+  }), { skipAnti: false, skipGuard: true });
+
+  const guardOnly = {
+    threadId: "moderation-guard-on",
+    data: { anti_link: false, event_guard: true }
+  };
+  assert.deepEqual(resolveSkips({
+    isGroupThread: true,
+    threadData: guardOnly,
+    threadInfo: guardOnly.data,
+    antiCommand: anti
+  }), { skipAnti: true, skipGuard: false });
+});
+
+test("command moderation fails open for groups without a trusted settings snapshot", () => {
+  assert.deepEqual(listener.resolveMessageModerationSkips({
+    isGroupThread: true,
+    threadData: null,
+    antiCommand: anti
+  }), { skipAnti: false, skipGuard: false });
+  assert.deepEqual(listener.resolveMessageModerationSkips({
+    isGroupThread: false,
+    threadData: null,
+    antiCommand: anti
+  }), { skipAnti: true, skipGuard: true });
+});
+
 test.after(() => {
   global.client = previousClient;
 });
