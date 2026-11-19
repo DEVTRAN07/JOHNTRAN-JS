@@ -405,97 +405,48 @@ JOHNTRAN-JS/
 
 ---
 
-## 🖥️ Chạy 24/7 miễn phí — KHÔNG CẦN THẺ (Render) + Database Supabase
+## 🖥️ Tự triển khai bot 24/7 (VPS / Docker)
 
-### Kiến trúc
+### Chuẩn bị
 
-| Thành phần | Chạy ở đâu | Vai trò |
-|---|---|---|
-| Bot + Panel API | **Render** (Docker, free — KHÔNG cần thẻ) | WebSocket Zalo, lệnh, nhạc, quản lý bot con |
-| Giữ thức | **UptimeRobot** (free) | Ping /health mỗi 5 phút → Render không ngủ |
-| Database | **Supabase** (Postgres free) | Lưu settings nhóm, user, metrics — container restart KHÔNG mất |
-| Panel UI | **GitHub Pages** | Giao diện điều khiển từ xa, gọi API trên Render |
+- VPS Ubuntu 22.04/24.04 hoặc máy chủ riêng có kết nối Internet ổn định.
+- Node.js **22** (tối thiểu 20.18) và npm.
+- Giữ thư mục `data/`, `logs/`, tài khoản/cookie và cấu hình ở nơi có lưu trữ bền vững.
 
-> **So sánh nền tảng free cho bot Zalo (2026)**
->
-> | Nền tảng | Thẻ? | WebSocket? | Ngủ? | Kết luận |
-> |---|---|---|---|---|
-> | **Render** | ❌ Không | ✅ | Có (15 phút) → UptimeRobot giữ thức | ✅ **Dùng được — không cần thẻ** |
-> | Northflank | ⚠️ Verify thẻ | ✅ | Không (always-on) | ✅ Tốt hơn nhưng cần thẻ |
-> | SnapDeploy | ❌ Không | ❌ Chỉ ở gói trả phí | Có | ❌ Không chạy được bot |
-> | Koyeb | 💳 $29/tháng | ✅ | — | ❌ Đã đóng free tier (Mistral mua) |
-> | Vercel | — | ❌ | Serverless | ❌ Không giữ được WebSocket |
+### Cài đặt và chạy trên VPS
 
-### Bước 1 — Supabase (5 phút)
+```bash
+git clone https://github.com/DEVTRAN07/JOHNTRAN-JS.git
+cd JOHNTRAN-JS
+npm ci
+cp .env.example .env
+```
 
-1. Tạo project miễn phí tại [supabase.com](https://supabase.com) (region Singapore)
-2. Vào **SQL Editor** → dán nội dung file `supabase/schema.sql` → Run
-3. Vào **Project Settings → API** → copy:
-   - **Project URL** → biến môi trường `SUPABASE_URL`
-   - **service_role key** → biến môi trường `SUPABASE_SERVICE_KEY` (giữ bí mật, không commit)
+Điền thông tin Zalo, admin, Supabase (nếu dùng) và Panel token vào `.env`; không commit file này. Cấu hình `config.yml`, sau đó chạy:
 
-> Không có key Supabase? Bot vẫn chạy bình thường bằng JSON store local (`data/store.json`) — Supabase chỉ để dữ liệu nhóm/người dùng **không mất** khi Render khởi động lại.
+```bash
+npm start
+```
 
-### Bước 2 — Deploy Render (không cần thẻ)
+Dùng PM2 hoặc systemd để tự khởi động lại tiến trình sau reboot. Không xóa `data/` và `logs/` khi cập nhật bot. Nếu bật Panel công khai, đặt token mạnh và giới hạn origin truy cập.
 
-1. Đăng ký [render.com](https://render.com) (bằng GitHub, **không cần thẻ**)
-2. **New +** → **Web Service** → chọn repo `DEVTRAN07/JOHNTRAN-JS` (repo phải **Public**)
-3. Cấu hình:
+### Chạy bằng Docker Compose
 
-| Ô | Chọn gì |
-|---|---|
-| Name | `johntran-bot` |
-| Region | **Singapore** (gần Việt Nam nhất) |
-| Runtime | **Docker** (repo đã có sẵn Dockerfile) |
-| Instance Type | **Free** (512 MB) |
-| Health Check Path | `/health` |
+Tạo file `.env.production` với các biến môi trường cần thiết, sau đó chạy riêng bot:
 
-4. **Environment Variables** → thêm:
+```bash
+docker compose -f docker-compose.prod.yml up -d --build johntran-bot
+docker compose -f docker-compose.prod.yml logs -f johntran-bot
+```
 
-| Biến | Giá trị |
-|---|---|
-| `SUPABASE_URL` | URL project Supabase |
-| `SUPABASE_SERVICE_KEY` | service_role key |
-| `JT_PANEL__ENABLED` | `1` (bật panel API) |
-| `JT_PANEL__TOKEN` | tạo bằng `openssl rand -hex 32` (bắt buộc khi public; tên chuẩn) |
-| `JT_PANEL_TOKEN` | alias tương thích cho cấu hình cũ; ưu tiên dùng `JT_PANEL__TOKEN` |
-| `JT_PANEL__ALLOWED_ORIGINS` | origin của GitHub Pages, ví dụ `https://<user>.github.io` |
-| `JT_ACCOUNT_JSON` | nội dung file `account.json` |
-| `JT_COOKIE_JSON` | nội dung file `cookie.json` |
-| `JT_AI__GEMINI_KEYS` | key Gemini (tuỳ chọn) |
+Compose ánh xạ dữ liệu vào `./data` và log vào `./logs` trên máy chủ. Sao lưu hai thư mục này định kỳ. Muốn bật thêm Prometheus/Grafana thì bỏ tên service ở cuối lệnh để khởi chạy toàn bộ stack.
 
-5. **Create Web Service** → đợi build 5-10 phút → URL dạng `https://johntran-bot.onrender.com`
+### Database và Panel từ xa
 
-> Login 1 lần ở máy: chạy `node JohnTran.js`, quét QR, thấy "Đã đăng nhập thành công" rồi lấy nội dung `account.json` + `cookie.json` điền vào env. Cookie hết hạn (vài tuần) thì làm lại.
-
-### Bước 3 — UptimeRobot giữ bot thức (QUAN TRỌNG)
-
-Render free **ngủ sau 15 phút** không có request → bot mất kết nối Zalo. Giữ thức bằng ping miễn phí:
-
-1. Đăng ký [uptimerobot.com](https://uptimerobot.com) (free, không cần thẻ)
-2. **+ New Monitor** → Type: **HTTP(s)**
-3. URL: `https://johntran-bot.onrender.com/health`
-4. Monitoring Interval: **5 minutes**
-5. **Create Monitor**
-
-Từ đó Render luôn có request mỗi 5 phút → bot không bao giờ ngủ → WebSocket Zalo giữ liên tục.
-
-> Lưu ý: mỗi lần Render build lại hoặc restart, bot cần ~1 phút để kết nối lại Zalo (listener tự reconnect).
-
-### Bước 4 — Panel trên GitHub Pages
-
-1. Repo → **Settings → Pages** → Source: `main` branch, thư mục `/docs` → Save
-2. Mở `https://<user>.github.io/JOHNTRAN-JS/panel.html`
-3. Nhập **REMOTE PANEL URL** = URL Render + **TOKEN** = `JT_PANEL__TOKEN` → Bấm **Kết nối**
-
-Panel có: danh sách bot con (pid, uptime, restart, crash-loop) • chạy/dừng/khởi động lại/xoá • xem log realtime • xem QR đăng nhập • bật/tắt auto-restart • metrics • top lệnh • audit log admin.
-
-### Phương án nâng cấp (nếu cần ổn định tuyệt đối)
-
-- **Northflank** free (cần verify thẻ): always-on, không ngủ — không cần UptimeRobot
-- **Oracle Cloud Always Free**: VPS ARM thật, không ai cắt được (cần thẻ, tự cài Node + chạy)
-
----
+- Supabase là tùy chọn để đồng bộ dữ liệu giữa các tiến trình/máy; chạy JSON store local vẫn được.
+- Có thể publish giao diện Panel tĩnh từ thư mục `docs/` bằng GitHub Pages.
+- REMOTE PANEL URL phải trỏ đến domain/IP của máy chủ bạn tự quản lý; token là `JT_PANEL__TOKEN`.
+- Mở cổng cần thiết trên firewall và cấu hình HTTPS/reverse proxy trước khi public Panel.
 
 ## 🔧 Yêu cầu
 
