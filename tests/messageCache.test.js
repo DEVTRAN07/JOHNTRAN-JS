@@ -215,3 +215,38 @@ test("Rust message-cache sidecar persists updates outside the Node process", asy
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test("Node Worker message-cache fallback applies batched mutations and writes JSON off-thread", async () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const cacheModule = require("../utils/messageCache");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-node-cache-worker-"));
+  const file = path.join(dir, "message_cache.json");
+  fs.writeFileSync(file, JSON.stringify({
+    existing: { msgId: "old", cliMsgId: "existing" },
+    removed: { msgId: "remove", cliMsgId: "removed" }
+  }));
+
+  const writer = cacheModule.createNodeCacheWriter(file);
+  assert.ok(writer, "Node worker fallback should start without the Rust sidecar");
+  try {
+    assert.equal(writer.mutateBatch([
+      { key: "existing", op: "upsert", value: { msgId: "new", cliMsgId: "existing" } },
+      { key: "inserted", op: "upsert", value: { msgId: "new-2", cliMsgId: "inserted" } },
+      { key: "removed", op: "delete" }
+    ]), true);
+
+    const result = await writer.flush();
+    assert.equal(result.ok, true, result.error);
+    const saved = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.equal(saved.existing.msgId, "new");
+    assert.equal(saved.inserted.msgId, "new-2");
+    assert.equal(Object.hasOwn(saved, "removed"), false);
+    assert.equal(result.entries, 2);
+  } finally {
+    await writer.terminate();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("node:readline");
 const { spawn } = require("node:child_process");
+const { Worker } = require("node:worker_threads");
 const logger = require("./logger");
 
 const messageCachePath = path.join(__dirname, "..", "data", "message_cache.json");
@@ -12,6 +13,8 @@ if (!fs.existsSync(messageCachePath)) {
 }
 
 let messageCacheMem = null;
+let messageCacheRaw = null;
+let nodeCacheWriter = null;
 let messageCacheEntryCount = 0;
 let messageCacheFullScanCount = 0;
 let cacheFlushTimer = null;
@@ -153,6 +156,172 @@ function createNativeCacheWriter(binaryPath, filePath) {
 
 const nativeCacheWriter = createNativeCacheWriter(resolveNativeCacheBinary(), messageCachePath);
 
+/**
+ * Node-worker fallback for platforms where the optional Rust sidecar is not
+ * installed. It applies small mutations in its own isolate and performs the
+ * 50k-entry JSON serialization there, never in the Zalo listener thread.
+ */
+function createNodeCacheWriter(filePath) {
+    let worker;
+    try {
+        worker = new Worker(path.join(__dirname, "messageCacheWriterWorker.js"), {
+            workerData: { file: filePath }
+        });
+    } catch (error) {
+        logger.log("Không thể khởi chạy message-cache worker: " + (error?.message || error), "warn");
+        return null;
+    }
+
+    let active = true;
+    let nextId = 0;
+    const pending = new Map();
+
+    const failPending = reason => {
+        for (const [id, entry] of pending) {
+            clearTimeout(entry.timer);
+            entry.resolve({ ok: false, error: reason || "message-cache worker stopped" });
+            pending.delete(id);
+        }
+    };
+
+    worker.on("message", message => {
+        if (message?.type === "ready") {
+            if (message.ok !== true) {
+                active = false;
+                logger.log("Message-cache worker không nạp được dữ liệu: " + String(message.error || "unknown"), "warn");
+            }
+            return;
+        }
+        if (message?.type === "worker-error") {
+            logger.log("Message-cache worker: " + String(message.error || "unknown"), "warn");
+            return;
+        }
+        if (message?.type !== "flush-result") return;
+        const id = Number(message.id);
+        const entry = pending.get(id);
+        if (!entry) return;
+        pending.delete(id);
+        clearTimeout(entry.timer);
+        entry.resolve(message);
+    });
+
+    worker.on("error", error => {
+        active = false;
+        failPending(error?.message || "message-cache worker error");
+        logger.log("Message-cache worker lỗi: " + (error?.message || error), "warn");
+    });
+    worker.on("exit", code => {
+        active = false;
+        failPending("message-cache worker exited: code=" + code);
+    });
+
+    function send(payload) {
+        if (!active) return false;
+        try {
+            worker.postMessage(payload);
+            return true;
+        } catch (error) {
+            logger.log("Không gửi được mutation tới message-cache worker: " + (error?.message || error), "warn");
+            return false;
+        }
+    }
+
+    return {
+        upsert(key, value) {
+            return send({ op: "upsert", key: String(key), value });
+        },
+        delete(key) {
+            return send({ op: "delete", key: String(key) });
+        },
+        mutateBatch(mutations) {
+            if (!Array.isArray(mutations) || mutations.length === 0) return true;
+            return send({
+                op: "batch",
+                mutations: mutations.map(item => item.op === "delete"
+                    ? { op: "delete", key: String(item.key) }
+                    : { op: "upsert", key: String(item.key), value: item.value })
+            });
+        },
+        replaceSnapshot(snapshot) {
+            if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return false;
+            return send({ op: "replace", value: snapshot });
+        },
+        flush(timeoutMs = 30000) {
+            if (!active) return Promise.resolve({ ok: false, error: "message-cache worker unavailable" });
+            const id = ++nextId;
+            return new Promise(resolve => {
+                const timer = setTimeout(() => {
+                    pending.delete(id);
+                    resolve({ ok: false, error: "message-cache worker flush timed out" });
+                }, Math.max(1000, Number(timeoutMs) || 30000));
+                timer.unref?.();
+                pending.set(id, { resolve, timer });
+                if (!send({ op: "flush", id })) {
+                    pending.delete(id);
+                    clearTimeout(timer);
+                    resolve({ ok: false, error: "could not send flush request to message-cache worker" });
+                }
+            });
+        },
+        terminate() {
+            active = false;
+            failPending("message-cache worker terminated during shutdown");
+            return worker.terminate().catch(() => 0);
+        },
+        stats() {
+            return {
+                available: active,
+                backend: "node-worker",
+                threadId: worker.threadId,
+                pendingFlushes: pending.size
+            };
+        }
+    };
+}
+
+function getNodeCacheWriter(syncSnapshot = false) {
+    if (!nodeCacheWriter) {
+        nodeCacheWriter = createNodeCacheWriter(messageCachePath);
+        // If Rust failed after accepting live mutations, seed the fallback from
+        // the authoritative in-memory mirror before sending any later deltas.
+        if (nodeCacheWriter && syncSnapshot && messageCacheRaw) {
+            nodeCacheWriter.replaceSnapshot(messageCacheRaw);
+        }
+    }
+    return nodeCacheWriter;
+}
+
+function getCurrentCacheWriter() {
+    if (nativeCacheWriter?.stats?.().available) return nativeCacheWriter;
+    return getNodeCacheWriter(Boolean(nativeCacheWriter));
+}
+
+const cachePersistenceWriter = {
+    stats() {
+        const writer = getCurrentCacheWriter();
+        return writer ? { ...writer.stats(), backend: writer === nativeCacheWriter ? "rust" : "node-worker" } : { available: false, backend: "unavailable" };
+    },
+    upsert(key, value) {
+        return getCurrentCacheWriter()?.upsert(key, value) ?? false;
+    },
+    delete(key) {
+        return getCurrentCacheWriter()?.delete(key) ?? false;
+    },
+    mutateBatch(batch) {
+        return getCurrentCacheWriter()?.mutateBatch(batch) ?? false;
+    },
+    replaceSnapshot(snapshot) {
+        return getNodeCacheWriter(true)?.replaceSnapshot(snapshot) ?? false;
+    },
+    flush(timeoutMs) {
+        return getCurrentCacheWriter()?.flush(timeoutMs) ?? Promise.resolve({ ok: false, error: "message-cache writer unavailable" });
+    },
+    terminate() {
+        nativeCacheWriter?.terminate?.();
+        return nodeCacheWriter?.terminate?.() || Promise.resolve(0);
+    }
+};
+
 // Message-cache persistence is auxiliary. Never stringify every incoming Zalo
 // event and write it to the Rust child's stdin inside the WebSocket callback.
 // Keep only the latest mutation per key and send a small bounded batch from
@@ -267,7 +436,7 @@ function createNativeCacheMutationQueue(writer, options = {}) {
     return { enqueue, flush, stats };
 }
 
-const nativeCacheMutations = createNativeCacheMutationQueue(nativeCacheWriter);
+const nativeCacheMutations = createNativeCacheMutationQueue(cachePersistenceWriter);
 
 function mirrorCacheMutations(cache) {
     return new Proxy(cache, {
@@ -313,11 +482,14 @@ function loadMessageCacheFromDisk() {
 
 function readMessageJson() {
     if (messageCacheMem === null) {
-        messageCacheMem = mirrorCacheMutations(loadMessageCacheFromDisk());
+        messageCacheRaw = loadMessageCacheFromDisk();
+        messageCacheMem = mirrorCacheMutations(messageCacheRaw);
         // Old deployments may already have persisted an oversized cache.
         // Enforce the cap immediately on startup/first read, not only when a
         // new message arrives, then persist the trimmed auxiliary cache.
         if (enforceMessageCacheLimit(messageCacheMem) > 0) scheduleCacheFlush();
+        // Start the fallback worker before the WebSocket listener becomes live.
+        if (!nativeCacheWriter?.stats?.().available) getNodeCacheWriter();
     }
     return messageCacheMem;
 }
@@ -334,79 +506,66 @@ function writeMessageJson(data) {
 
 function writeMessageJsonAsync(data) {
     if (!data) return Promise.resolve(false);
-
-    // Snapshot before entering the serialized write queue. The file write and
-    // atomic rename are asynchronous so disk latency cannot block Zalo events.
-    let serialized;
-    try {
-        serialized = JSON.stringify(data);
-    } catch (error) {
+    const writer = getNodeCacheWriter(true);
+    if (!writer?.stats?.().available) {
         asyncFlushFailures++;
-        logger.log("Lỗi serialize message cache: " + error.message, "error");
+        logger.log("Không có worker để lưu message cache; bỏ qua snapshot để không chặn event loop.", "warn");
         return Promise.resolve(false);
     }
 
+    // Structured-clone the plain mirror once; JSON serialization and atomic
+    // disk I/O both run in messageCacheWriterWorker.js.
+    const snapshot = data === messageCacheMem ? messageCacheRaw : data;
+    if (!writer.replaceSnapshot(snapshot)) {
+        asyncFlushFailures++;
+        return Promise.resolve(false);
+    }
     const startedAt = Date.now();
-    const tempPath = messageCachePath + "." + process.pid + ".tmp";
-    cacheWriteQueue = cacheWriteQueue
-        .catch(() => {})
-        .then(async () => {
-            await fs.promises.writeFile(tempPath, serialized, "utf-8");
-            await fs.promises.rename(tempPath, messageCachePath);
-            asyncFlushCount++;
-            asyncFlushLastMs = Math.max(0, Date.now() - startedAt);
-            return true;
-        })
-        .catch(async error => {
+    return writer.flush().then(result => {
+        if (result?.ok !== true) {
             asyncFlushFailures++;
-            try { await fs.promises.unlink(tempPath); } catch {}
-            logger.log("Lỗi ghi message cache bất đồng bộ: " + error.message, "error");
             return false;
-        });
-    return cacheWriteQueue;
+        }
+        asyncFlushCount++;
+        asyncFlushLastMs = Math.max(0, Number(result.durationMs) || (Date.now() - startedAt));
+        return true;
+    });
 }
 
 function flushMessageCache() {
     cacheFlushTimer = null;
     if (!messageCacheMem) return Promise.resolve(false);
 
-    // Production uses a Rust sidecar. The full 50k-entry JSON snapshot is
-    // serialized and atomically persisted in a separate process, never on the
-    // Zalo listener's Node.js event loop.
-    if (nativeCacheWriter?.stats().available) {
-        const startedAt = Date.now();
-        // Ensure all deferred mutations reach the sidecar before asking it to
-        // atomically persist. The queue coalesces duplicate keys and yields
-        // between bounded batches so busy chats cannot monopolize the event loop.
-        return nativeCacheMutations.flush().then(drained => {
-            if (!drained || !nativeCacheWriter?.stats().available) {
-                throw new Error("Rust message-cache worker unavailable before flush");
+    const startedAt = Date.now();
+    return nativeCacheMutations.flush().then(drained => {
+        if (!drained) {
+            // The router may have switched from a failed Rust process to the
+            // Node worker. It syncs the latest in-memory snapshot on failover.
+            const writer = getCurrentCacheWriter();
+            if (!writer?.stats?.().available) throw new Error("message-cache persistence worker unavailable");
+            if (writer === nodeCacheWriter && nativeCacheWriter) {
+                if (!writer.replaceSnapshot(messageCacheRaw)) throw new Error("could not seed Node cache worker after Rust failure");
             }
-            return nativeCacheWriter.flush();
-        }).then(result => {
-            if (result?.ok === true) {
-                asyncFlushCount++;
-                asyncFlushLastMs = Math.max(
-                    0,
-                    Number(result.durationMs) || (Date.now() - startedAt)
-                );
-                return true;
-            }
-
-            asyncFlushFailures++;
-            logger.log("Rust message-cache flush thất bại: " + String(result?.error || "unknown"), "warn");
-            return writeMessageJsonAsync(messageCacheMem);
-        }).catch(error => {
-            asyncFlushFailures++;
-            logger.log("Rust message-cache flush lỗi: " + (error?.message || error), "warn");
-            return writeMessageJsonAsync(messageCacheMem);
-        });
-    }
-
-    // Local development / unsupported platforms keep the legacy compatible writer.
-    return writeMessageJsonAsync(messageCacheMem);
+        }
+        const writer = getCurrentCacheWriter();
+        if (!writer?.stats?.().available) throw new Error("message-cache persistence worker unavailable before flush");
+        return writer.flush();
+    }).then(result => {
+        if (result?.ok === true) {
+            asyncFlushCount++;
+            asyncFlushLastMs = Math.max(0, Number(result.durationMs) || (Date.now() - startedAt));
+            return true;
+        }
+        asyncFlushFailures++;
+        logger.log("Message-cache flush thất bại: " + String(result?.error || "unknown"), "warn");
+        return false;
+    }).catch(error => {
+        asyncFlushFailures++;
+        logger.log("Message-cache flush lỗi: " + (error?.message || error), "warn");
+        // Last-resort snapshot still serializes in a Worker, not on the listener.
+        return writeMessageJsonAsync(messageCacheMem);
+    });
 }
-
 function scheduleCacheFlush() {
     if (cacheFlushTimer) return;
     cacheFlushTimer = setTimeout(flushMessageCache, CACHE_FLUSH_DELAY);
@@ -420,8 +579,8 @@ process.on("exit", () => {
     }
     // Stop the sidecar before writing the authoritative current JS snapshot.
     // This prevents an in-flight older Rust snapshot from winning a shutdown race.
-    nativeCacheWriter?.terminate();
-    if (messageCacheMem) writeMessageJson(messageCacheMem);
+    void cachePersistenceWriter.terminate();
+    if (messageCacheRaw) writeMessageJson(messageCacheRaw);
 });
 
 function cleanOldMessages() {
@@ -461,7 +620,8 @@ function getMessageCacheStats() {
         nativePersistence: nativeCacheWriter?.stats() || {
             available: false,
             reason: "Rust message-cache binary not built for this environment"
-        }
+        },
+        activePersistence: cachePersistenceWriter.stats()
     };
 }
 
@@ -521,6 +681,7 @@ module.exports = {
     enforceMessageCacheLimit,
     getMessageCacheStats,
     createNativeCacheWriter,
+    createNodeCacheWriter,
     createNativeCacheMutationQueue,
     resolveNativeCacheBinary,
     MAX_MESSAGE_CACHE_ENTRIES
