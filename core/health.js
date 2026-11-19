@@ -59,6 +59,7 @@ function getEventLoopMetrics(options = {}) {
 function speedPayload() {
   const metrics = safe(() => require("./metrics"), null);
   const jobQueue = safe(() => require("./jobQueue"), null);
+  const workerPool = safe(() => require("./workerPool"), null);
   const mediaLimits = safe(() => require("./mediaResourceLimits"), null);
   return {
     status: "ok",
@@ -77,6 +78,7 @@ function speedPayload() {
     mediaResources: safe(() => ({
       availableCpus: mediaLimits?.getAvailableCpuCount?.() || null,
       ffmpegThreads: mediaLimits?.FFMPEG_THREADS || null,
+      workerPoolMaxSize: workerPool?.DEFAULT_POOL_SIZE || null,
       globalJobConcurrency: jobQueue?.GLOBAL_CONCURRENCY || null,
       defaultGlobalJobConcurrency: jobQueue?.DEFAULT_GLOBAL_CONCURRENCY || null,
       stickerConcurrency: jobQueue?.STICKER_CONCURRENCY || null,
