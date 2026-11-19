@@ -10,6 +10,7 @@ const { getBotGroupRole, getBotId } = require("../../core/runtime/botGroupKey");
 const { ANTI_PROTECTION_KEYS } = require("../../core/runtime/antiProtection");
 const { runThreadQueue } = require("../../core/runtime/threadQueue");
 const { sendAntiToggleNotice } = require("../../core/runtime/antiToggle");
+const { recallIntentionally, isIntentionalRecall } = require("../../core/runtime/intentionalRecall");
 
 // Echo IDs must outlive the normal 60-second auto-recall window and tolerate
 // delayed WebSocket undo events. ID-based checks prevent Anti's own replies
@@ -612,14 +613,10 @@ async function deleteGroupMessage(api, event, options = {}) {
     if (typeof api?.undo !== "function") {
       throw new Error("Zalo API undo không khả dụng để thu hồi tin nhắn do bot gửi");
     }
-    return api.undo(
-      {
-        msgId: destination.data.msgId,
-        cliMsgId: destination.data.cliMsgId
-      },
-      destination.threadId,
-      ThreadType.Group
-    );
+    return recallIntentionally(api, {
+      msgId: destination.data.msgId,
+      cliMsgId: destination.data.cliMsgId
+    }, destination.threadId, ThreadType.Group, "anti-self-moderation");
   }
 
   if (typeof api?.deleteMessage !== "function") {
@@ -802,6 +799,14 @@ async function handleAntiEvent(context = {}) {
     : getMessageCache()[String(undoCliMsgId)];
   const userId = String(data.uidFrom || (eventType === "undo" ? cachedUndoMessage?.uidFrom : "") || "");
   const name = data.dName || (eventType === "undo" ? cachedUndoMessage?.dName : "") || "Bạn";
+
+  // Game/card managers and Anti moderation can intentionally recall their own
+  // bot messages. Do not let Anti-Recall resurrect those IDs as fresh content.
+  if (eventType === "undo" && isIntentionalRecall(event)) {
+    logAntiSkip(threadId, "bỏ qua thao tác thu hồi chủ động do lệnh khác thực hiện");
+    return;
+  }
+
   const isGroup = event.type === ThreadType.Group || event.isGroup === true || eventType === "group_event";
 
   // Zalo may omit isSelf on undo callbacks. Identify Anti's own prior output
