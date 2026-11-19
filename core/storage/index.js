@@ -108,8 +108,11 @@ class JsonStore {
       throw new Error(`JSON database bị lỗi khi đọc; từ chối ghi đè dữ liệu: ${this.loadError}`);
     }
     if (this.lastFlushError && this.pendingFlush) {
-      // Retry a previously failed flush before accepting another write. This
-      // lets the store recover automatically after a transient disk problem.
+      // When the background writer is alive it owns retries. Never fall back
+      // to whole-database JSON.stringify() on the Zalo listener thread.
+      if (this.writerWorker && !this.writerFailed) {
+        throw new Error(`JSON database chưa ghi được xuống đĩa: ${this.lastFlushError}`);
+      }
       if (!this.flushSync()) {
         throw new Error(`JSON database chưa ghi được xuống đĩa: ${this.lastFlushError}`);
       }
@@ -305,6 +308,7 @@ class JsonStore {
       fs.writeFileSync(tmpFile, JSON.stringify(this.data, null, 2), "utf8");
       fs.renameSync(tmpFile, this.file);
       this.pendingFlush = false;
+      this.persistedSequence = this.writerSequence;
       this.lastFlushAt = Date.now();
       this.lastFlushError = null;
       return true;
