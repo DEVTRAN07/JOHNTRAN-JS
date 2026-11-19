@@ -39,6 +39,34 @@ test("Rust message-cache IPC is deferred, coalesced and drained in bounded batch
   assert.equal(queue.stats().sent, 3);
 });
 
+test("Rust message-cache IPC sends a bounded batch in one pipe write", async () => {
+  const { createNativeCacheMutationQueue } = require("../utils/messageCache");
+  const writes = [];
+  const writer = {
+    stats() { return { available: true }; },
+    mutateBatch(batch) {
+      writes.push(batch.map(item => ({ ...item })));
+      return true;
+    }
+  };
+  const queue = createNativeCacheMutationQueue(writer, { batchSize: 64 });
+
+  queue.enqueue("upsert", "message-a", { text: "A" });
+  queue.enqueue("upsert", "message-b", { text: "B" });
+  queue.enqueue("delete", "message-c");
+
+  assert.equal(writes.length, 0, "listener-side mutations must stay deferred");
+  assert.equal(queue.stats().pending, 3);
+  assert.equal(await queue.flush(), true);
+  assert.equal(writes.length, 1, "one batch must use one writer IPC call");
+  assert.deepEqual(writes[0], [
+    { key: "message-a", op: "upsert", value: { text: "A" } },
+    { key: "message-b", op: "upsert", value: { text: "B" } },
+    { key: "message-c", op: "delete" }
+  ]);
+  assert.equal(queue.stats().sent, 3);
+});
+
 test("message cache stores deletable group message identifiers and falls back to receive time", () => {
   const cliMsgId = `message-cache-test-${Date.now()}`;
   const event = {
