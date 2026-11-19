@@ -429,7 +429,7 @@ JOHNTRAN-JS/
 
 ---
 
-## 🖥️ Tự triển khai bot 24/7 (VPS / Docker)
+## 🖥️ Tự triển khai bot 24/7 (VPS, không cần Docker)
 
 ### Chuẩn bị
 
@@ -447,9 +447,9 @@ npm ci
 cp .env.example .env
 ```
 
-**Message-cache:** khi chạy trực tiếp trên VPS, bot tự dùng Node Worker nếu không có Rust sidecar; không cần cài Rust để chạy. Muốn bật Rust sidecar tùy chọn, cài Rust/Cargo rồi chạy `npm run build:message-cache` một lần sau `npm ci`. Dockerfile chính tự build sidecar trong image.
+**Message-cache:** khi chạy trực tiếp trên VPS, bot tự dùng Node Worker nếu không có Rust sidecar; không cần cài Rust để chạy. Muốn bật Rust sidecar tùy chọn, cài Rust/Cargo rồi chạy `npm run build:message-cache` một lần sau `npm ci`.
 
-Điền thông tin Zalo, admin, Supabase (nếu dùng) và Panel token vào `.env`; không commit file này. Cấu hình `config.yml`, sau đó chạy:
+Điền thông tin Zalo, admin và Panel token vào `.env`; mặc định không cần Supabase. Cấu hình `config.yml`, sau đó chạy:
 
 ```bash
 npm start
@@ -457,20 +457,12 @@ npm start
 
 Dùng PM2 hoặc systemd để tự khởi động lại tiến trình sau reboot. Không xóa `data/` và `logs/` khi cập nhật bot. Nếu bật Panel công khai, đặt token mạnh và giới hạn origin truy cập.
 
-### Chạy bằng Docker Compose
+### Lưu dữ liệu
 
-Tạo file `.env.production` với các biến môi trường cần thiết, sau đó chạy riêng bot:
-
-```bash
-docker compose -f docker-compose.prod.yml up -d --build johntran-bot
-docker compose -f docker-compose.prod.yml logs -f johntran-bot
-```
-
-Compose ánh xạ dữ liệu vào `./data` và log vào `./logs` trên máy chủ. Sao lưu hai thư mục này định kỳ. Muốn bật thêm Prometheus/Grafana thì bỏ tên service ở cuối lệnh để khởi chạy toàn bộ stack.
-
-### Database và Panel từ xa
-
-- Supabase là tùy chọn để đồng bộ dữ liệu giữa các tiến trình/máy; chạy JSON store local vẫn được.
+- Mặc định bot dùng **JSON local** tại `data/store.json`; không gọi database từ xa trong luồng xử lý tin nhắn.
+- File này giữ cấu hình nhóm, người dùng, thống kê và dữ liệu tính năng. Sao lưu thư mục `data/` định kỳ.
+- Với máy chủ dùng ổ đĩa tạm, đặt `JT_PERSISTENT_DIR` tới thư mục volume bền vững.
+- Supabase chỉ được sử dụng khi chủ động đặt `JT_DB_DRIVER=supabase` cùng credentials hợp lệ. Chỉ thêm cấu hình này khi thực sự cần đồng bộ nhiều tiến trình/máy.
 - Có thể publish giao diện Panel tĩnh từ thư mục `docs/` bằng GitHub Pages.
 - REMOTE PANEL URL phải trỏ đến domain/IP của máy chủ bạn tự quản lý; token là `JT_PANEL__TOKEN`.
 - Mở cổng cần thiết trên firewall và cấu hình HTTPS/reverse proxy trước khi public Panel.
