@@ -137,6 +137,7 @@ music:
   max_results: 5 # số kết quả hiển thị mỗi lần tìm
   cache_ttl: 300000 # thời gian nhớ danh sách chọn bài (ms)
   soundcloud_client_id: "" # để trống = bot tự lấy client_id từ asset chính chủ SoundCloud
+  soundcloud_client_secret: "" # API chính thức: set JT_MUSIC__SOUNDCLOUD_CLIENT_SECRET, không commit secret
 
 # ===== TẢI MEDIA (autodown — pure JS, không cần Python/yt-dlp) =====
 media:
