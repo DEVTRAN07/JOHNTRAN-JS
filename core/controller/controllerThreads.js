@@ -154,7 +154,7 @@ module.exports = {
       }
       return null;
     }
-  }
+  },
 
   getData: async (threadId) => {
     const key = String(threadId);
