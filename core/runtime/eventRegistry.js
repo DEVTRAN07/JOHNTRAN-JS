@@ -73,12 +73,14 @@ function dispatchEvent({
   const skipTopchatCounter = dispatchOptions.skipTopchatCounter === true;
   const skipGameConsumers = dispatchOptions.skipGameConsumers === true;
   const skipAntiHandler = dispatchOptions.skipAnti === true;
+  const skipGuardHandler = dispatchOptions.skipGuard === true;
 
   let eventModules = 0;
   for (const entry of eventEntries) {
     const key = entry.key;
     if (skipTopchatCounter && key === "topchatcounter") continue;
     if (skipGameConsumers && (key === "noitu" || key === "tlmn")) continue;
+    if (skipGuardHandler && key === "guard") continue;
     if (isCommandMessage && (
       entry.module?.config?.ignoreCommandMessages === true ||
       (key !== "guard" && entry.module?.config?.allowCommandMessages !== true)
