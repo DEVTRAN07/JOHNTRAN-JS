@@ -28,7 +28,16 @@ function fixture({ enabled = true, goodbyeEnabled = true, type = "join", members
   return { sent, api, Threads, event };
 }
 
-test("join event sends each Canvas first and its personalized mention directly below", async () => {
+test("join event sends one Canvas card with a colored personal tag per member", async () => {
+  rendered = [];
+  const f = fixture();
+  await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
+  assert.equal(f.sent.length, 2);
+  assert.equal(f.sent[0].threadType, 1);
+  for (const [index, name] of ["Member One", "Member Two"].entries()) {
+    const payload = f.sent[index].payload;
+    assert.deepEqual(payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
+    assert.match(payload.msg, new RegExp("@"+name.replace(/[.*+?^${}()|[\]\\]/g, "\\test("join event sends each Canvas first and its personalized mention directly below", async () => {
   rendered = [];
   const f = fixture();
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
@@ -48,6 +57,15 @@ test("join event sends each Canvas first and its personalized mention directly b
     assert.equal(tag.msg.slice(mention.pos, mention.pos + mention.len), "@.");
   }
   assert.deepEqual([f.sent[1], f.sent[3]].map(s => s.payload.mentions[0].uid), ["user-1", "user-2"]);
+  assert.deepEqual(rendered.map(x => x.member.name), ["Member One", "Member Two"]);
+  assert.equal(rendered[0].member.avatarUrl, "https://example.com/member-1.jpg");
+  assert.equal(rendered[1].member.avatarUrl, "https://example.com/member-2.jpg");
+  assert.equal(rendered[0].groupName, "JOHNTRAN Community");
+});")));
+    assert.match(payload.msg, /Chào mừng/);
+    assert.equal(payload.mentions, undefined,
+      "the @name is painted into the Canvas footer rather than sent as a separate mention");
+  }
   assert.deepEqual(rendered.map(x => x.member.name), ["Member One", "Member Two"]);
   assert.equal(rendered[0].member.avatarUrl, "https://example.com/member-1.jpg");
   assert.equal(rendered[1].member.avatarUrl, "https://example.com/member-2.jpg");
@@ -96,11 +114,10 @@ test("missing group-member avatar falls back to Zalo avatar URL endpoint", async
   assert.equal(members[0].avatarUrl, "https://example.com/fallback.jpg");
 });
 
-test("welcome event mention points only to the member represented by its card", () => {
-  const message = eventPlugin._test.makePersonalMessage({ uid: "user-9" });
-  assert.equal(message.mentions.length, 1);
-  assert.equal(message.mentions[0].uid, "user-9");
-  assert.equal(message.msg.slice(message.mentions[0].pos, message.mentions[0].pos + 2), "@.");
+test("welcome event tag text includes the actual member name in the card caption", () => {
+  const message = eventPlugin._test.makePersonalMessage({ uid: "user-9", name: "Member Nine" });
+  assert.match(message.msg, /@Member Nine/);
+  assert.equal(message.mentions, undefined);
 });
 
 test("welcome event does nothing when disabled or when event is not JOIN", async () => {
@@ -115,11 +132,9 @@ test("welcome event does nothing when disabled or when event is not JOIN", async
 
   const legacyJoinEnabled = fixture({ type: "leave", enabled: true, goodbyeEnabled: false });
   await eventPlugin.run({ ...legacyJoinEnabled, isSelf: false, threadType: 1, eventType: "group_event" });
-  assert.equal(legacyJoinEnabled.sent.length, 4, "legacy JOIN-on groups must automatically get OUT too, with one card and tag per member");
-  assert.deepEqual(
-    legacyJoinEnabled.sent.map(item => Boolean(item.payload.attachments?.length)),
-    [true, false, true, false]
-  );
+  assert.equal(legacyJoinEnabled.sent.length, 2, "legacy JOIN-on groups must automatically get OUT too");
+  assert.ok(legacyJoinEnabled.sent.every(item => item.payload.attachments?.length === 1));
+  assert.ok(legacyJoinEnabled.sent.every(item => /Tạm biệt @/.test(item.payload.msg)));
 
   const allDisabled = fixture({ type: "leave", enabled: false, goodbyeEnabled: true });
   await eventPlugin.run({ ...allDisabled, isSelf: false, threadType: 1, eventType: "group_event" });
@@ -148,13 +163,13 @@ test("leave event sends one personalized Goodbye Canvas per departed member", as
     ]
   });
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
-  assert.equal(f.sent.length, 4);
+  assert.equal(f.sent.length, 2);
   assert.deepEqual(rendered.map(card => card.mode), ["goodbye", "goodbye"]);
   assert.deepEqual(rendered.map(card => card.member.name), ["Former One", "Former Two"]);
-  assert.deepEqual([f.sent[0], f.sent[2]].map(item => item.payload.attachments?.length), [1, 1]);
-  assert.match(f.sent[1].payload.msg, /Tạm biệt @\. đã rời nhóm/);
-  assert.match(f.sent[3].payload.msg, /Tạm biệt @\. đã rời nhóm/);
-  assert.deepEqual([f.sent[1], f.sent[3]].map(item => item.payload.mentions[0].uid), ["former-1", "former-2"]);
+  assert.ok(f.sent.every(item => item.payload.attachments?.length === 1));
+  assert.match(f.sent[0].payload.msg, /Tạm biệt @Former One đã rời nhóm/);
+  assert.match(f.sent[1].payload.msg, /Tạm biệt @Former Two đã rời nhóm/);
+  assert.ok(f.sent.every(item => item.payload.mentions === undefined));
 });
 
 test("remove-member event is treated as OUT and resolves departed user avatars through user profiles", async () => {
@@ -178,10 +193,10 @@ test("remove-member event is treated as OUT and resolves departed user avatars t
     throw new Error("Departed users should not be looked up in current group members");
   };
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
-  assert.equal(f.sent.length, 2);
+  assert.equal(f.sent.length, 1);
   assert.deepEqual(f.sent[0].payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
-  assert.equal(f.sent[0].payload.msg, "");
-  assert.equal(f.sent[1].payload.mentions[0].uid, "removed-user");
+  assert.match(f.sent[0].payload.msg, /Chào mừng @Resolved Former Member/);
+  assert.equal(f.sent[0].payload.mentions, undefined);
   assert.deepEqual(lookups, [["getUserInfo", ["removed-user"], 240]]);
   assert.equal(rendered[0].mode, "goodbye");
   assert.equal(rendered[0].member.name, "Resolved Former Member");
@@ -203,14 +218,13 @@ test("BLOCK_MEMBER event is treated as OUT and sends a Goodbye Canvas", async ()
     members: [{ id: "blocked-user", dName: "Blocked Member", avatar: "https://example.com/blocked.jpg" }]
   });
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
-  assert.equal(f.sent.length, 2);
+  assert.equal(f.sent.length, 1);
   assert.equal(rendered.length, 1);
-  assert.equal(f.sent[0].payload.msg, "");
+  assert.match(f.sent[0].payload.msg, /Tạm biệt @Blocked Member đã rời nhóm/);
   assert.deepEqual(f.sent[0].payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
-  assert.equal(f.sent[1].payload.mentions[0].uid, "blocked-user");
+  assert.equal(f.sent[0].payload.mentions, undefined);
   assert.equal(rendered[0].mode, "goodbye");
   assert.equal(rendered[0].member.name, "Blocked Member");
-  assert.match(f.sent[1].payload.msg, /Tạm biệt @\. đã rời nhóm/);
 });
 
 test("JOIN hydration stops after group-member profile already provides the avatar", async () => {
@@ -325,7 +339,7 @@ test("replayed WebSocket JOIN event is sent only once", async () => {
   f.event.data.time = "1795059000000";
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
-  assert.equal(f.sent.length, 2);
+  assert.equal(f.sent.length, 1);
   assert.equal(rendered.length, 1);
   eventPlugin._test.clearWelcomeEventCaches();
 });
