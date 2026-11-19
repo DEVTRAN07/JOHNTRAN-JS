@@ -96,3 +96,48 @@ test("command event handlers run only for their declared event types", async () 
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(called, ["anti", "autodown", "autokick", "legacy"]);
 });
+
+test("dispatch can skip Guard only when the listener confirmed its switch is OFF", async () => {
+  const calls = [];
+  const events = new Map([
+    ["guard", {
+      config: { name: "guard", event_type: ["message"], allowCommandMessages: true },
+      run() {}
+    }],
+    ["custom", {
+      config: { name: "custom", event_type: ["message"], allowCommandMessages: true },
+      run() {}
+    }]
+  ]);
+  const commands = new Map([
+    ["anti", {
+      config: { name: "anti", event_type: ["message"], allowCommandMessages: true },
+      handleEvent() {}
+    }]
+  ]);
+
+  const skipped = dispatchEvent({
+    events,
+    commands,
+    eventType: "message",
+    dispatchOptions: { isCommandMessage: true, skipGuard: true, skipAnti: true },
+    onEventModule: async (_module, name) => calls.push(name),
+    onCommandModule: async (_module, name) => calls.push(name)
+  });
+  assert.deepEqual(skipped, { eventModules: 1, commandModules: 0 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ["custom"]);
+
+  calls.length = 0;
+  const active = dispatchEvent({
+    events,
+    commands,
+    eventType: "message",
+    dispatchOptions: { isCommandMessage: true },
+    onEventModule: async (_module, name) => calls.push(name),
+    onCommandModule: async (_module, name) => calls.push(name)
+  });
+  assert.deepEqual(active, { eventModules: 2, commandModules: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ["guard", "custom", "anti"]);
+});
