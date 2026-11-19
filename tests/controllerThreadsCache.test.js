@@ -20,7 +20,7 @@ after(() => clearInterval(keepAlive));
 
 test("hot cached group reads skip synchronous storage health and filesystem probes", async () => {
   const backend = db.db;
-  const originalGetStatus = backend.getStatus;
+  const originalGetOperationalStatus = backend.getOperationalStatus;
   const threadId = "thread-cache-zero-health-probe-" + process.pid;
 
   await Threads.setBotEnabled(threadId, true);
@@ -29,7 +29,7 @@ test("hot cached group reads skip synchronous storage health and filesystem prob
   assert.strictEqual(cachedRecord, loaded);
 
   let healthReads = 0;
-  backend.getStatus = () => {
+  backend.getOperationalStatus = () => {
     healthReads++;
     throw new Error("hot cache hit must not inspect storage health");
   };
@@ -41,7 +41,7 @@ test("hot cached group reads skip synchronous storage health and filesystem prob
     assert.equal(healthReads, 0,
       "hot cache hits must not call JsonStore.getStatus()/filesystem probes");
   } finally {
-    backend.getStatus = originalGetStatus;
+    backend.getOperationalStatus = originalGetOperationalStatus;
     threadCache.invalidate(threadId);
     durableThreadCache.invalidate(threadId);
   }
@@ -126,11 +126,11 @@ test("createData initializes the same record shape as persisted rows", async () 
 test("a cold Supabase mirror never creates default-OFF rows before the initial sync is ready", async () => {
   const backend = db.db;
   const originalReady = backend.ready;
-  const originalGetStatus = backend.getStatus;
+  const originalGetOperationalStatus = backend.getOperationalStatus;
   const threadId = "thread-cache-db-not-ready-" + process.pid;
 
-  backend.getStatus = () => ({ ok:false, syncError:"initial snapshot pending" });
-  backend.ready = async () => backend.getStatus();
+  backend.getOperationalStatus = () => ({ ok:false, syncError:"initial snapshot pending" });
+  backend.ready = async () => backend.getOperationalStatus();
 
   try {
     assert.equal(Threads.getCachedData(threadId), null,
@@ -142,14 +142,14 @@ test("a cold Supabase mirror never creates default-OFF rows before the initial s
   } finally {
     if (originalReady === undefined) delete backend.ready;
     else backend.ready = originalReady;
-    if (originalGetStatus === undefined) delete backend.getStatus;
-    else backend.getStatus = originalGetStatus;
+    if (originalGetOperationalStatus === undefined) delete backend.getOperationalStatus;
+    else backend.getOperationalStatus = originalGetOperationalStatus;
   }
 });
 
 test("cold getData reads also warm the long-lived group-state cache", async () => {
   const backend = db.db;
-  const originalGetStatus = backend.getStatus;
+  const originalGetOperationalStatus = backend.getOperationalStatus;
   const threadId = "thread-cache-cold-read-warm-" + process.pid;
 
   await Threads.setBotEnabled(threadId, true);
@@ -163,11 +163,11 @@ test("cold getData reads also warm the long-lived group-state cache", async () =
     // A later transient database outage must not lose a record that was
     // loaded through getData before the listener's synchronous hot path.
     threadCache.set(threadId, cold, -1);
-    backend.getStatus = () => ({ ok:false, syncError:"temporary read outage" });
+    backend.getOperationalStatus = () => ({ ok:false, syncError:"temporary read outage" });
     const restored = Threads.getCachedData(threadId);
     assert.equal(restored?.data?.bot_enabled, true);
   } finally {
-    backend.getStatus = originalGetStatus;
+    backend.getOperationalStatus = originalGetOperationalStatus;
     threadCache.invalidate(threadId);
     durableThreadCache.invalidate(threadId);
   }
@@ -175,7 +175,7 @@ test("cold getData reads also warm the long-lived group-state cache", async () =
 
 test("startup getAll rehydrates enabled groups after both caches are empty", async () => {
   const backend = db.db;
-  const originalGetStatus = backend.getStatus;
+  const originalGetOperationalStatus = backend.getOperationalStatus;
   const threadId = "thread-cache-startup-rehydrate-" + process.pid;
 
   await Threads.setBotEnabled(threadId, true);
@@ -188,12 +188,12 @@ test("startup getAll rehydrates enabled groups after both caches are empty", asy
     assert.equal(loaded?.data?.bot_enabled, true, "startup must read the persisted ON row");
 
     threadCache.set(threadId, loaded, -1);
-    backend.getStatus = () => ({ ok:false, syncError:"temporary post-start outage" });
+    backend.getOperationalStatus = () => ({ ok:false, syncError:"temporary post-start outage" });
     const restored = Threads.getCachedData(threadId);
     assert.equal(restored?.data?.bot_enabled, true,
       "the startup snapshot must survive hot-cache expiry");
   } finally {
-    backend.getStatus = originalGetStatus;
+    backend.getOperationalStatus = originalGetOperationalStatus;
     threadCache.invalidate(threadId);
     durableThreadCache.invalidate(threadId);
   }
@@ -212,7 +212,7 @@ test("new thread records persist bot_enabled=false by default", async () => {
 
 test("an enabled group remains ON from the last-known mirror when a later DB sync is degraded", async () => {
   const backend = db.db;
-  const originalGetStatus = backend.getStatus;
+  const originalGetOperationalStatus = backend.getOperationalStatus;
   const threadId = "thread-cache-retain-on-" + process.pid;
   const unknownThreadId = "thread-cache-no-default-while-degraded-" + process.pid;
 
@@ -224,7 +224,7 @@ test("an enabled group remains ON from the last-known mirror when a later DB syn
     data: { bot_enabled: true, prefix: "/" }
   }, -1);
 
-  backend.getStatus = () => ({
+  backend.getOperationalStatus = () => ({
     ok: false,
     lastSyncAt: Date.now() - 60000,
     syncError: "temporary Supabase network timeout"
@@ -248,7 +248,7 @@ test("an enabled group remains ON from the last-known mirror when a later DB syn
     assert.equal(db.getData("Threads", "threadId", threadId).data.bot_enabled, true,
       "a rejected OFF write must not change the last-known enabled state");
   } finally {
-    backend.getStatus = originalGetStatus;
+    backend.getOperationalStatus = originalGetOperationalStatus;
     threadCache.invalidate(threadId);
     threadCache.invalidate(unknownThreadId);
   }
