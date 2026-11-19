@@ -2,6 +2,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const { loadImage } = require("canvas");
 const { test } = require("node:test");
+const { TextStyle } = require("zalo-client");
+const { wrapApi } = require("../core/message");
+const menuCommand = require("../plugins/commands/menu");
 const theme = require("../core/canvas/theme");
 const { renderMenuGrid, _test: menuCanvasTestHelpers } = require("../core/canvas/menu");
 
@@ -92,4 +95,38 @@ test("menu no longer sends a progress placeholder before its Canvas card", () =>
   const source = fs.readFileSync(require.resolve("../plugins/commands/menu"), "utf8");
   assert.doesNotMatch(source, /Đang chuẩn bị menu chức năng/);
   assert.doesNotMatch(source, /MENU_ACK/);
+});
+
+
+test("menu sends the Canvas image first and the greeting below it as a styled text message", async () => {
+  const sent = [];
+  const rawApi = {
+    async sendMessage(payload, threadId, type) {
+      sent.push({ payload, threadId, type });
+      return { message: null, attachment: [] };
+    }
+  };
+  const api = wrapApi(rawApi, "menu-thread", 1, "menu");
+  const caption = "@Wuang\\n🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
+  const mention = { uid: "12345", pos: 0, len: "@Wuang".length };
+
+  await menuCommand._sendMenuCardAndGreeting(
+    api, "/tmp/jt_menu_1_ab12.png", caption, [mention], "menu-thread", 1
+  );
+
+  assert.equal(sent.length, 2, "the image and greeting should be sent as two ordered messages");
+  assert.equal(sent[0].payload.msg, "", "the image must not carry a photo-description caption");
+  assert.deepEqual(sent[0].payload.attachments, ["/tmp/jt_menu_1_ab12.png"]);
+  assert.equal(sent[1].payload.msg, caption, "the greeting text must appear unchanged below the image");
+  assert.deepEqual(sent[1].payload.mentions, [mention], "the @Wuang mention must remain a real Zalo mention");
+  const colors = sent[1].payload.styles.filter(style =>
+    [TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green].includes(style.st)
+  );
+  assert.ok(colors.length >= 12, "all greeting and prompt words should receive randomized colors");
+  assert.ok(colors.every(style => style.start >= mention.len),
+    "the color styles must begin after the native @Wuang mention");
+  assert.ok(colors.some(style => style.start >= caption.indexOf("🤖")),
+    "the owner greeting under the image should be colored");
+  assert.ok(colors.some(style => style.start >= caption.indexOf("👉")),
+    "the prompt under the image should be colored");
 });
