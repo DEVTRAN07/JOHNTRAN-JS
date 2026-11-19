@@ -79,10 +79,26 @@ function cacheIncomingMessage(event) {
   }
 }
 
-// Start the primary command synchronously before non-critical side effects.
+// Non-critical cache work can parse/serialize a large legacy JSON file on its
+// first touch. Keep it out of the command's microtask chain: setImmediate lets
+// handleCommand run through its first reply.sendMessage invocation first.
+function scheduleSideEffect(sideEffect) {
+  if (typeof sideEffect !== "function") return false;
+  setImmediate(() => {
+    try { sideEffect(); } catch { /* auxiliary bookkeeping never blocks replies */ }
+  });
+  return true;
+}
+
+function scheduleCacheIncomingMessage(event) {
+  return scheduleSideEffect(() => cacheIncomingMessage(event));
+}
+
+// Start the primary command synchronously, then defer non-critical side effects
+// until its promise continuations have had a chance to start the first reply.
 function startPrimaryBeforeSideEffect(primary, sideEffect) {
   const result = primary();
-  try { sideEffect?.(); } catch { /* auxiliary bookkeeping never blocks command startup */ }
+  scheduleSideEffect(sideEffect);
   return result;
 }
 
@@ -363,7 +379,7 @@ function startListening(api) {
     // Backfill only records missed messages; historical commands/events must
     // never be executed again after reconnect.
     if (!shouldExecuteMessageCommand(options)) {
-      cacheIncomingMessage(event);
+      scheduleCacheIncomingMessage(event);
       return;
     }
 
@@ -428,7 +444,7 @@ function startListening(api) {
 
     // Every group starts OFF. Only /bot on and /bot status pass until enabled.
     if (isGroupThread && !groupBotEnabled && !(canRunCommand && isBotControlCommand)) {
-      cacheIncomingMessage(event);
+      scheduleCacheIncomingMessage(event);
       return;
     }
 
@@ -483,8 +499,8 @@ function startListening(api) {
       return;
     }
 
-    // Non-command messages still enter the Anti-recall cache before moderation/game handling.
-    cacheIncomingMessage(event);
+    // Cache writes are auxiliary; schedule them without holding the listener callback.
+    scheduleCacheIncomingMessage(event);
 
     // Run moderation before active games. A game move is still game input,
     // but it must not bypass Anti-Link, Anti-Word, Anti-Spam, media or AI rules.
@@ -932,6 +948,8 @@ module.exports.shouldCacheIncomingMessage = shouldCacheIncomingMessage;
 module.exports.getThreadDataForMessage = getThreadDataForMessage;
 module.exports.schedulePanelIncomingRecord = schedulePanelIncomingRecord;
 module.exports.cacheIncomingMessage = cacheIncomingMessage;
+module.exports.scheduleCacheIncomingMessage = scheduleCacheIncomingMessage;
+module.exports.scheduleSideEffect = scheduleSideEffect;
 module.exports.startPrimaryBeforeSideEffect = startPrimaryBeforeSideEffect;
 
 module.exports.computeReconnectDelay = computeReconnectDelay;

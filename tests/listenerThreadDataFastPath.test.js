@@ -155,3 +155,29 @@ test("panel transcript recording is deferred until after the listener hot path",
     panelBridge.recordIncoming = original;
   }
 });
+
+
+test("command dispatch starts before auxiliary cache work is scheduled", async () => {
+  const calls = [];
+  const result = listener.startPrimaryBeforeSideEffect(
+    () => {
+      calls.push("command-start");
+      return Promise.resolve("started");
+    },
+    () => calls.push("cache-write")
+  );
+
+  assert.deepEqual(calls, ["command-start"],
+    "the cache mutation must not run synchronously before command microtasks");
+  assert.equal(await result, "started");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ["command-start", "cache-write"]);
+});
+
+test("cache side effects are deferred to a later event-loop turn", async () => {
+  const calls = [];
+  assert.equal(listener.scheduleSideEffect(() => calls.push("cache")), true);
+  assert.deepEqual(calls, []);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ["cache"]);
+});

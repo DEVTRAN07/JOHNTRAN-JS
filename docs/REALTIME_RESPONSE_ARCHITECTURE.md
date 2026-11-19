@@ -69,4 +69,4 @@ Mạng Zalo, TLS khi phải tạo kết nối mới, thời gian máy chủ Zalo
 - Zalo SDK buffer response body trong deadline, thay vì kết thúc timeout ngay khi nhận headers.
 - Redirect chain bị giới hạn và chia sẻ deadline gốc.
 - box_only live group-info lookup có deadline ngắn, vẫn fail-closed.
-- Command được khởi chạy trước cập nhật message-cache phụ để serialization/IPC không đứng trước lệnh.
+- Message-cache được đẩy sang `setImmediate`; command có cơ hội chạy qua các microtask đầu tiên và gọi API gửi tin trước serialization/IPC của cache phụ.
