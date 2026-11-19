@@ -319,7 +319,7 @@ test("image captions become multicolor pixels in one composed Canvas attachment"
   originalCtx.fillRect(0, 0, 720, 420);
   fs.writeFileSync(originalPath, originalImage.toBuffer("image/png"));
 
-  const caption = "@Wuang\\n🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
+  const caption = "@Wuang\n🤖 Chào chủ nhân!\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
   const drawnLines = [];
   const originalDraw = theme.drawMulticolorText;
   theme.drawMulticolorText = function(ctx, value, x, y, options) {
@@ -378,7 +378,7 @@ test("shared send wrapper uploads one composed image instead of a separate capti
     }
   };
   const wrapped = wrapApi(rawApi, "caption-thread", ThreadType.Group, "caption-test");
-  const caption = "@Member\\n✨ Nội dung này phải có nhiều màu\\nKhông được tách thành tin nhắn thứ hai.";
+  const caption = "@Member\n✨ Nội dung này phải có nhiều màu\nKhông được tách thành tin nhắn thứ hai.";
 
   try {
     await wrapped.sendMessage({ msg: caption, attachments: [sourcePath] });
