@@ -23,7 +23,7 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
     }
 
     const panelExplicitlyDisabled = process.env.JT_PANEL__ENABLED === "false" || process.env.JT_PANEL_ENABLED === "false";
-    const cloudWantsPanel = !!(process.env.PORT || process.env.RENDER || process.env.RENDER_SERVICE_ID);
+    const cloudWantsPanel = Boolean(process.env.PORT);
     const panelEnabled = !panelExplicitlyDisabled && (config.panel?.enabled || cloudWantsPanel);
 
     if (panelEnabled) {
@@ -41,7 +41,7 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
         logger.log("Panel mode: dùng web panel để tạo và quản lý bot con", "info");
         console.log(`Bot con đã lưu: ${manager.list().map((b) => b.name).join(", ") || "(chưa có)"}`);
 
-        // Registry là danh sách bot cần duy trì. Sau mỗi lần Render restart,
+        // Registry là danh sách bot cần duy trì. Sau mỗi lần master restart,
         // ChildProcess cũ không còn nên phải khởi chạy lại tất cả bot đã lưu.
         if (manager.list().length === 0) {
             try {
