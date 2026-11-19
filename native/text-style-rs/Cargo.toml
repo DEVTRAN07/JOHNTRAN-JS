@@ -9,8 +9,11 @@ name = "text_style_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2", features = ["derive"] }
+napi = "2"
 napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"
 
 [workspace]
 resolver = "2"

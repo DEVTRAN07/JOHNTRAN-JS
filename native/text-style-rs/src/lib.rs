@@ -1,4 +1,5 @@
 use napi::{Error, Result, Status};
+use napi_derive::napi;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[napi(object)]
