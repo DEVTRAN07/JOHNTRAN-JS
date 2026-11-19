@@ -163,6 +163,23 @@ function getStorageDiagnostics() {
   }
 }
 
+function formatRequestPolicy(policy = null) {
+  if (!policy || typeof policy !== "object") {
+    return ["  • Chưa đọc được chính sách timeout/retry"];
+  }
+  const formatOne = (label, value) => {
+    if (!value || typeof value !== "object") return "  • " + label + ": không rõ";
+    return "  • " + label + ": timeout " +
+      Math.max(0, Number(value.timeoutMs) || 0) + " ms · retry " +
+      Math.max(0, Number(value.retries) || 0);
+  };
+  return [
+    formatOne("Zalo API", policy.zalo),
+    formatOne("HTTP ngoài", policy.external),
+    "  • Retry chỉ áp dụng GET/HEAD; POST không tự gửi lại"
+  ];
+}
+
 function formatMessageCacheDiagnostics(stats = null) {
   if (!stats || typeof stats !== "object") {
     return ["  • Chưa đọc được message-cache"];
@@ -187,7 +204,7 @@ function getMessageCacheDiagnostics() {
   catch { return null; }
 }
 
-function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null, mediaResources = null, storage = null, messageCache = null) {
+function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null, mediaResources = null, storage = null, messageCache = null, requestPolicy = null) {
   const latency = source.getLatencyStats?.() || {};
   const commands = source.getCommandLatencyStats?.(6) || [];
   const handlers = source.getCommandExecutionLatencyStats?.(6) || [];
@@ -235,6 +252,9 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
           (item.failed ? " · lỗi " + item.failed : "")
         )
       : ["  • Chưa có mẫu fetch trong phiên này"]),
+    "",
+    "⚡ REQUEST TIMEOUT / RETRY",
+    ...formatRequestPolicy(requestPolicy),
     "",
     "🗄️ DATABASE / PERSISTENCE",
     ...formatStorageDiagnostics(storage),
@@ -290,9 +310,17 @@ module.exports.run = async function ({ api, event, reply }) {
   } catch {}
   const storage = getStorageDiagnostics();
   const messageCache = getMessageCacheDiagnostics();
-  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers, mediaResources, storage, messageCache);
+  let requestPolicy = null;
+  try {
+    const resolvePolicy = require("../../core/http/requestPolicy").resolveRequestPolicy;
+    requestPolicy = {
+      zalo: resolvePolicy(process.env, global.config?.zalo_client_config?.retry || {}, "JT_ZALO_API"),
+      external: resolvePolicy(process.env, {}, "JT_HTTP")
+    };
+  } catch {}
+  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers, mediaResources, storage, messageCache, requestPolicy);
   if (typeof reply?.text === "function") return reply.text(report);
   return api.sendMessage({ msg: report }, event.threadId, event.type);
 };
 
-module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, buildSpeedReport };
+module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, formatRequestPolicy, buildSpeedReport };

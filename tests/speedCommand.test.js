@@ -163,6 +163,16 @@ test("/speed shows Rust message-cache IPC pressure without local file paths", ()
   assert.doesNotMatch(rows, /private|jt-message-cache/);
 });
 
+test("/speed shows the active bounded Zalo and external HTTP timeout policy", () => {
+  const lines = command._test.formatRequestPolicy({
+    zalo: { timeoutMs: 8000, retries: 0 },
+    external: { timeoutMs: 8000, retries: 1 }
+  }).join("|");
+  assert.match(lines, /Zalo API: timeout 8000 ms · retry 0/);
+  assert.match(lines, /HTTP ngoài: timeout 8000 ms · retry 1/);
+  assert.match(lines, /POST không tự gửi lại/);
+});
+
 test("/speed handles an empty metrics store", () => {
   const emptyMetrics = {
     getLatencyStats: () => ({ count: 0 }),
