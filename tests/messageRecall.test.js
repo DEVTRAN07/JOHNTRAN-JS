@@ -303,7 +303,7 @@ test("CommonJS image captions preserve randomized text colors", async () => {
   };
   api.sendMessage = sendMessageFactory(ctx, api);
   const wrapped = wrapApi(api, "thread-id", 1, "menu");
-  const caption = "@Nguyễn Văn A\\n🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành";
+  const caption = "@Nguyễn Văn A\n🤖 Chào chủ nhân!\n👉 Rất vui được đồng hành";
 
   await wrapped.sendMessage({
     msg: caption,
