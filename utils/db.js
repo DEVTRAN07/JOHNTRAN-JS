@@ -222,9 +222,13 @@ function createDatabaseFacade(backend, options = {}) {
         return backend.setAndWait(table, idField, id, data);
       }
       const result = await backend.set(table, idField, id, data);
-      // JSON storage is local and synchronous; flush now so a successful
-      // group toggle is already on disk before the bridge acknowledges it.
-      if (typeof backend.flushSync === "function" && backend.flushSync() === false) {
+      // Critical writes (money, balances, group switches) wait for the
+      // background writer's durable acknowledgement without blocking the
+      // Zalo listener's event loop with a full JSON serialization.
+      if (typeof backend.flushAndWait === "function") {
+        const flushed = await backend.flushAndWait();
+        if (flushed !== true) throw new Error("Không thể ghi cấu hình xuống file database");
+      } else if (typeof backend.flushSync === "function" && backend.flushSync() === false) {
         throw new Error("Không thể ghi cấu hình nhóm xuống file database");
       }
       return result;
@@ -239,6 +243,7 @@ function createDatabaseFacade(backend, options = {}) {
       return backend.all(table);
     },
     flush() {
+      if (typeof backend.flushAndWait === "function") return backend.flushAndWait();
       if (typeof backend.flushSync === "function") return backend.flushSync();
       if (typeof backend.flush === "function") return backend.flush();
       return undefined;
