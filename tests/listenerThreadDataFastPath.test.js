@@ -136,3 +136,22 @@ test("cached group records remain synchronous", () => {
   assert.equal(result, record);
   assert.equal(typeof result?.then, "undefined");
 });
+
+
+test("panel transcript recording is deferred until after the listener hot path", async () => {
+  const panelBridge = require("../core/panelBridge");
+  const original = panelBridge.recordIncoming;
+  const event = { threadId: "panel-deferred-listener", data: { content: "hello" } };
+  const recorded = [];
+
+  panelBridge.recordIncoming = value => { recorded.push(value); };
+  try {
+    listener.schedulePanelIncomingRecord(event);
+    assert.equal(recorded.length, 0,
+      "panel transcript work must not run synchronously before command dispatch");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(recorded, [event]);
+  } finally {
+    panelBridge.recordIncoming = original;
+  }
+});
