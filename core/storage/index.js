@@ -247,12 +247,16 @@ class JsonStore {
     this.writerFailed = true;
     this.writerReady = false;
     const reason = error?.message || String(error);
+    const failedWorker = this.writerWorker;
+    this.writerWorker = null;
     if (this.pendingFlush) this.lastFlushError = reason;
     for (const [id, request] of this.flushRequests) {
       clearTimeout(request.timer);
       request.reject(new Error(reason));
       this.flushRequests.delete(id);
     }
+    try { failedWorker?.unref(); } catch {}
+    try { void failedWorker?.terminate?.(); } catch {}
     logger.log("JSON writer worker không khả dụng: " + reason, "warn");
     if (this.pendingFlush) this.scheduleFlush();
   }
