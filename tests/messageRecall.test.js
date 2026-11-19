@@ -360,6 +360,11 @@ test("CommonJS image captions preserve randomized text colors", async () => {
 
   assert.equal(requestParams.length, 1, "a single PNG with caption should use one image request");
   assert.equal(requestParams[0].desc, caption);
+  const imageMentions = JSON.parse(requestParams[0].mentionInfo);
+  assert.equal(imageMentions.length, 1, "the image caption must preserve its real Zalo mention");
+  assert.equal(imageMentions[0].uid, "12345");
+  assert.equal(imageMentions[0].pos, 0);
+  assert.equal(imageMentions[0].len, "@Nguyễn Văn A".length);
   const textProperties = JSON.parse(requestParams[0].textProperties);
   const appliedColors = textProperties.styles.map(style => style.st).filter(color => RANDOM_COLORS.has(color));
   assert.ok(appliedColors.length >= 5, "all caption words should receive randomized color styles");
@@ -374,6 +379,79 @@ test("CommonJS image captions preserve randomized text colors", async () => {
     "the greeting line beneath the tagged name must carry colors");
   assert.ok(textProperties.styles.some(style => style.start >= caption.indexOf("👉")),
     "the prompt line beneath the tagged name must carry colors");
+});
+
+
+test("PNG, JPG, JPEG and WEBP card captions all preserve randomized text colors and mentions", async () => {
+  for (const extension of ["png", "jpg", "jpeg", "webp"]) {
+    const secretKey = Buffer.alloc(16, 11).toString("base64");
+    const requestParams = [];
+    const ctx = {
+      secretKey,
+      API_VERSION: 1,
+      API_TYPE: 30,
+      imei: "test-device",
+      settings: { features: { sharefile: { max_file: 10, max_size_share_file_v3: 50 } } },
+      options: {
+        polyfill: async (url, options) => {
+          const encrypted = new URL(url).searchParams.get("params") ||
+            new URLSearchParams(options?.body || "").get("params");
+          requestParams.push(JSON.parse(decodeAES(secretKey, encrypted)));
+          const data = encodeAES(secretKey, JSON.stringify({ error_code: 0, data: { msgId: "multi-format-card" } }));
+          return new Response(JSON.stringify({ error_code: 0, data }), {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          });
+        }
+      },
+      cookie: new CookieJar(),
+      userAgent: "test-agent"
+    };
+    const rawApi = {
+      zpwServiceMap: {
+        chat: ["https://chat.example"],
+        group: ["https://group.example"],
+        file: ["https://file.example"]
+      },
+      async uploadAttachment() {
+        return [{
+          fileType: "image",
+          photoId: "card-photo-id",
+          width: 750,
+          height: 520,
+          normalUrl: "https://cdn.example/card.png",
+          hdUrl: "https://cdn.example/card-hd.png",
+          totalSize: 12000
+        }];
+      }
+    };
+    rawApi.sendMessage = sendMessageFactory(ctx, rawApi);
+    const wrapped = wrapApi(rawApi, "format-card-thread", ThreadType.Group, "card-format");
+    const caption = `@Wuang
+🤖 Chào chủ nhân!
+👉 Card ${extension.toUpperCase()} này cũng phải có màu chữ ngẫu nhiên.`;
+    const mention = { uid: "12345", pos: 0, len: "@Wuang".length };
+
+    await wrapped.sendMessage({
+      msg: caption,
+      attachments: [`/tmp/jt_menu_1_ab12.${extension}`],
+      mentions: [mention]
+    }, "format-card-thread", ThreadType.Group);
+
+    assert.equal(requestParams.length, 1, extension + " caption must share one request with its image");
+    assert.equal(requestParams[0].desc, caption, extension + " caption must remain attached to the image");
+    const mentionInfo = JSON.parse(requestParams[0].mentionInfo);
+    assert.equal(mentionInfo[0].uid, "12345", extension + " caption must preserve its real tag");
+    const textProperties = JSON.parse(requestParams[0].textProperties);
+    const colors = textProperties.styles.filter(style => RANDOM_COLORS.has(style.st));
+    assert.ok(colors.length >= 10, extension + " caption words must receive random colors");
+    assert.ok(colors.every(style => style.start >= mention.len),
+      extension + " color spans must not overlap the mention");
+    assert.ok(colors.some(style => style.start >= caption.indexOf("🤖")),
+      extension + " greeting line must be colored");
+    assert.ok(colors.some(style => style.start >= caption.indexOf("👉")),
+      extension + " prompt line must be colored");
+  }
 });
 
 
