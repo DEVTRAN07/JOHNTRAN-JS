@@ -41,6 +41,14 @@ const BUILTINS_WITHOUT_USER_DATA = new Set([
   "theme", "tiktok", "tlmn", "topchat", "vdgirl", "welcome"
 ]);
 
+function trackPipelineStage(stage, startedAt) {
+  try {
+    metrics.trackListenerStageLatency?.(`pipeline:${stage}`, performance.now() - startedAt);
+  } catch {
+    // Timing must never affect command execution.
+  }
+}
+
 async function runCommandPipeline(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
   const config = global.config;
 
@@ -50,6 +58,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   const threadId = event?.threadId;
   const type = event?.type;
   const UIDUsage = event?.data?.uidFrom;
+  let stageStartedAt = performance.now();
 
   if (type == ThreadType.User && config.allow_private_command === false) {
     return;
@@ -63,6 +72,9 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   const command = resolveCommand(global.client.commands, commandName);
   const folderMenuRuntime = require("../runtime/folderMenu");
   const menuGroupShortcut = folderMenuRuntime.resolveMenuGroup(global.client.commands, UIDUsage, commandName);
+  trackPipelineStage("resolve", stageStartedAt);
+
+  stageStartedAt = performance.now();
   // Groups stay silent by default; only /bot on and /bot status pass while OFF.
   if (type === ThreadType.Group && !canRunCommandInGroup(threadInfo, commandName, args)) return;
   // A bare category shortcut opens its folder unless the command explicitly
@@ -134,18 +146,24 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   // Lệnh bị tắt trong nhóm này (quản lý từ panel)
   const disabledCommands = threadInfo?.disabled_commands;
   if (commandName !== "bot" && Array.isArray(disabledCommands) && disabledCommands.includes(commandName)) {
+    trackPipelineStage("group-gate", stageStartedAt);
     if (wrappedApi && threadId && type) {
       await wrappedApi.sendMessage({ msg: `🚫 Lệnh '${commandName}' đã bị tắt trong nhóm này.` }, threadId, type);
     }
     return;
   }
+  trackPipelineStage("group-gate", stageStartedAt);
 
+  stageStartedAt = performance.now();
   if (!commandLimiter.allow(UIDUsage)) {
+    trackPipelineStage("rate-limit", stageStartedAt);
     return wrappedApi.sendMessage({
       msg: "🚫 Bạn đang gửi lệnh quá nhanh. Vui lòng chậm lại!"
     }, threadId, type);
   }
+  trackPipelineStage("rate-limit", stageStartedAt);
 
+  stageStartedAt = performance.now();
   const role = command.config.role || 0;
   const isBotAdmin = isBotAdminUser(UIDUsage);
   const isSupport = isSupportUser(UIDUsage);
@@ -165,9 +183,12 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
 
   const roleCheck = checkCommandRole({ role, isBotAdmin, isSupport });
   if (roleCheck.denied) {
+    trackPipelineStage("authorization", stageStartedAt);
     return wrappedApi.sendMessage({ msg: roleCheck.denied }, threadId, type);
   }
+  trackPipelineStage("authorization", stageStartedAt);
 
+  stageStartedAt = performance.now();
   const groupCheckResult = checkGroupPermissions({
     api: wrappedApi,
     threadId,
@@ -182,10 +203,12 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
   const groupCheck = groupCheckResult && typeof groupCheckResult.then === "function"
     ? await groupCheckResult
     : groupCheckResult;
+  trackPipelineStage("group-permission", stageStartedAt);
   if (groupCheck.denied) {
     return wrappedApi.sendMessage({ msg: groupCheck.denied }, threadId, type);
   }
 
+  stageStartedAt = performance.now();
   const cdTime = (command.config.cooldowns || 0) * 1000;
   // Điều hướng (/menu next, /scl next, /menu out...) không bị cooldown chặn
   const { isNavigation, isCommandNav } = require("./handleCommandNav");
@@ -199,13 +222,16 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
       cooldownMs: cdTime
     });
     if (remainingMs > 0) {
+      trackPipelineStage("cooldown", stageStartedAt);
       const timeLeft = (remainingMs / 1000).toFixed(1);
       return wrappedApi.sendMessage({
         msg: `⏳ Vui lòng chờ ${timeLeft}s để dùng lại lệnh '${commandName}'`
       }, threadId, type);
     }
   }
+  trackPipelineStage("cooldown", stageStartedAt);
 
+  stageStartedAt = performance.now();
   // Built-in commands that do not use userData skip the cold DB lookup.
   // Preserve the legacy preload for custom/unknown plugins unless they opt out.
   const commandId = String(command.config.name || commandName).toLowerCase();
@@ -217,6 +243,7 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
     const cachedUserData = Users.getCachedData?.(UIDUsage) ?? null;
     userData = cachedUserData || await Users.getData(UIDUsage).catch(() => null);
   }
+  trackPipelineStage("user-data", stageStartedAt);
 
   await dispatchCommand({
     command,

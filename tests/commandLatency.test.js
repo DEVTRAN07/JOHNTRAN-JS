@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const handleCommand = require("../core/handle/handleCommand");
 const metrics = require("../core/metrics");
+const { ThreadType } = require("zalo-client");
 
 test("command latency includes an unknown-command response before dispatch", async () => {
   const previousConfig = global.config;
@@ -36,5 +37,65 @@ test("command latency includes an unknown-command response before dispatch", asy
     else global.config = previousConfig;
     if (previousClient === undefined) delete global.client;
     else global.client = previousClient;
+  }
+});
+
+
+test("known commands expose bounded per-stage pipeline timings", async () => {
+  const previousConfig = global.config;
+  const previousClient = global.client;
+  const previousUsers = global.users;
+  const originalTrackStage = metrics.trackListenerStageLatency;
+  const observed = [];
+  const command = {
+    config: { name: "pipelineprobe", role: 0, cooldowns: 0, preloadUserData: false },
+    async run({ api: wrappedApi }) {
+      await wrappedApi.sendMessage({ msg: "OK" }, "pipeline-stage-group", ThreadType.User);
+    }
+  };
+  const api = {
+    async sendMessage() {
+      return { message: { msgId: 78, cliMsgId: "pipeline-stage-response" } };
+    }
+  };
+  const event = {
+    threadId: "pipeline-stage-group",
+    type: ThreadType.User,
+    data: { uidFrom: "pipeline-stage-user", content: "/pipelineprobe" }
+  };
+
+  global.config = { prefix: "/", allow_private_command: true, admin: {} };
+  global.users = { admin: [], support: [] };
+  global.client = {
+    commands: new Map([["pipelineprobe", command]]),
+    cooldowns: new Map()
+  };
+  metrics.trackListenerStageLatency = (stage, durationMs) => {
+    observed.push({ stage, durationMs });
+  };
+
+  try {
+    await handleCommand("/pipelineprobe", event, api, {}, "/", { data: {} });
+    const stages = new Set(observed.map(item => item.stage));
+    for (const expected of [
+      "pipeline:resolve",
+      "pipeline:group-gate",
+      "pipeline:rate-limit",
+      "pipeline:authorization",
+      "pipeline:group-permission",
+      "pipeline:cooldown",
+      "pipeline:user-data"
+    ]) {
+      assert.ok(stages.has(expected), "missing timing for " + expected);
+    }
+    assert.ok(observed.every(item => Number.isFinite(item.durationMs) && item.durationMs >= 0));
+  } finally {
+    metrics.trackListenerStageLatency = originalTrackStage;
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+    if (previousClient === undefined) delete global.client;
+    else global.client = previousClient;
+    if (previousUsers === undefined) delete global.users;
+    else global.users = previousUsers;
   }
 });
