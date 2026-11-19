@@ -38,6 +38,7 @@ test("protected /metrics exposes command latency, event-loop pressure and queue 
     assert.ok(Array.isArray(payload.commandLatency));
     assert.ok(Array.isArray(payload.commandExecutionLatency));
     assert.ok(payload.firstResponseLatency === null || typeof payload.firstResponseLatency.count === "number");
+    assert.ok(Array.isArray(payload.firstResponseByCommand));
     assert.ok(Array.isArray(payload.listenerStageLatency));
     assert.ok(Array.isArray(payload.zaloApiLatency));
     assert.ok(payload.eventLoop && typeof payload.eventLoop.p95Ms === "number");
@@ -69,6 +70,7 @@ test("public /speed exposes only aggregate latency diagnostics without resetting
   assert.equal(payload.status, "ok");
   assert.ok(payload.eventLoop && typeof payload.eventLoop.p95Ms === "number");
   assert.ok(payload.firstResponseLatency === null || typeof payload.firstResponseLatency.count === "number");
+  assert.ok(Array.isArray(payload.firstResponseByCommand));
   assert.ok(Array.isArray(payload.listenerStageLatency));
   assert.ok(Array.isArray(payload.zaloApiLatency));
   assert.ok(payload.topchat && typeof payload.topchat.activeWriteQueues === "number");

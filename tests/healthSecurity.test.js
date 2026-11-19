@@ -41,6 +41,7 @@ test("health stays public while operational metrics require the Panel token", ()
     const speed = request("/speed");
     assert.equal(speed.status, 200, "aggregate latency diagnostics must be inspectable without a Panel token");
     assert.ok(Array.isArray(JSON.parse(speed.body).listenerStageLatency));
+    assert.ok(Array.isArray(JSON.parse(speed.body).firstResponseByCommand));
 
     const deniedWithoutToken = request("/metrics");
     assert.equal(deniedWithoutToken.status, 401);

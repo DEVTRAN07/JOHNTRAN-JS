@@ -119,6 +119,26 @@ test("metrics keep end-to-end and handler-only command latency separate", () => 
   metrics.dispose();
 });
 
+test("first response latency is recorded both in aggregate and per command", () => {
+  const backend = createFakeDb();
+  const metrics = createMetricsStore(backend, { flushDelayMs: 60000 });
+  const menuEvent = { threadId: "g-1", data: { cliMsgId: "menu-1" } };
+  const stkEvent = { threadId: "g-1", data: { cliMsgId: "stk-1" } };
+
+  metrics.trackIncomingMessage(menuEvent, 100);
+  metrics.trackFirstResponseLatency(menuEvent, 260, "menu");
+  metrics.trackIncomingMessage(stkEvent, 500);
+  metrics.trackFirstResponseLatency(stkEvent, 1800, "stk");
+
+  assert.equal(metrics.getFirstResponseLatencyStats().p95Ms, 1300);
+  assert.deepEqual(
+    metrics.getFirstResponseLatencyByCommandStats(5).map(item => [item.command, item.p95Ms]),
+    [["stk", 1300], ["menu", 160]]
+  );
+  assert.equal(backend.writes.length, 0);
+  metrics.dispose();
+});
+
 test("metrics use Asia/Ho_Chi_Minh day boundary rather than UTC midnight", () => {
   const metricsModule = require("../core/metrics");
   assert.equal(metricsModule.todayKey(Date.parse("2026-11-12T16:59:59.999Z")), "2026-11-12");

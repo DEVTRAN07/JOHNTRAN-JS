@@ -238,7 +238,7 @@ function createMetricsStore(backend, options = {}) {
     return true;
   }
 
-  function trackFirstResponseLatency(event, at = performance.now()) {
+  function trackFirstResponseLatency(event, at = performance.now(), commandName = null) {
     const key = getMessageLatencyKey(event);
     if (!key || !incomingMessageAt.has(key)) return false;
     const startedAt = incomingMessageAt.get(key);
@@ -246,6 +246,10 @@ function createMetricsStore(backend, options = {}) {
     const timestamp = Number(at);
     const elapsed = Math.max(0, (Number.isFinite(timestamp) ? timestamp : performance.now()) - startedAt);
     recordCommandSamples(firstResponseLatencies, "first_response", elapsed);
+    const command = String(commandName || "").trim().toLowerCase();
+    if (command) {
+      recordCommandSamples(firstResponseLatencies, `first_response:${command}`, elapsed);
+    }
     return true;
   }
 
@@ -267,6 +271,14 @@ function createMetricsStore(backend, options = {}) {
 
   function getFirstResponseLatencyStats() {
     return summarizeCommandSamples(firstResponseLatencies, 1)[0] || null;
+  }
+
+  function getFirstResponseLatencyByCommandStats(limit = 10) {
+    const prefix = "first_response:";
+    return summarizeCommandSamples(firstResponseLatencies, MAX_COMMAND_LATENCY_KEYS)
+      .filter(item => item.command.startsWith(prefix))
+      .slice(0, Math.max(0, Number(limit) || 0))
+      .map(item => ({ ...item, command: item.command.slice(prefix.length) }));
   }
 
   function getCommandLatencyStats(limit = 5) {
@@ -292,7 +304,7 @@ function createMetricsStore(backend, options = {}) {
     return flush();
   }
 
-  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats, trackIncomingMessage, trackFirstResponseLatency, getFirstResponseLatencyStats, trackListenerStageLatency, getListenerStageLatencyStats, trackZaloApiLatency, getZaloApiLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
+  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats, trackIncomingMessage, trackFirstResponseLatency, getFirstResponseLatencyStats, getFirstResponseLatencyByCommandStats, trackListenerStageLatency, getListenerStageLatencyStats, trackZaloApiLatency, getZaloApiLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
 }
 
 const metricsStore = createMetricsStore(db, {

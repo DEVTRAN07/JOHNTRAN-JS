@@ -515,7 +515,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     try {
       // Record the first response after Zalo resolves the send request, not
       // when the request is merely invoked.
-      require("./metrics").trackFirstResponseLatency?.(event, performance.now());
+      require("./metrics").trackFirstResponseLatency?.(event, performance.now(), commandName);
     } catch {
       // Missing telemetry must not affect message delivery.
     }
