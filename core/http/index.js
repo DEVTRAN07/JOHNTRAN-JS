@@ -1,7 +1,12 @@
 const http = require("http");
 const https = require("https");
 const zlib = require("zlib");
+const { promisify } = require("node:util");
 const { URL } = require("url");
+
+const gunzipAsync = promisify(zlib.gunzip);
+const inflateAsync = promisify(zlib.inflate);
+const brotliDecompressAsync = promisify(zlib.brotliDecompress);
 const logger = require("../../utils/logger");
 const { resolveWithDoH } = require("./dns");
 const { resolveRequestPolicy } = require("./requestPolicy");
@@ -52,13 +57,17 @@ function sleep(ms) {
 
 // Giải nén body khi server trả gzip/deflate/brotli (vd stickers.zaloapp.com
 // luôn gzip dù client không gửi Accept-Encoding)
-function decodeBody(raw, contentEncoding) {
+async function decodeBody(raw, contentEncoding) {
   const encoding = String(contentEncoding || "").toLowerCase();
   if (!encoding || encoding === "identity") return raw;
   try {
-    if (encoding.includes("gzip")) return zlib.gunzipSync(raw);
-    if (encoding.includes("deflate")) return zlib.inflateSync(raw);
-    if (encoding.includes("br")) return zlib.brotliDecompressSync(raw);
+    // These responses may contain large media payloads. Synchronous zlib
+    // decompression blocks the same event loop that receives Zalo messages,
+    // even though the download itself is already isolated in an HTTP queue.
+    // Use Node's async zlib APIs so decompression runs in libuv's worker pool.
+    if (encoding.includes("gzip")) return await gunzipAsync(raw);
+    if (encoding.includes("deflate")) return await inflateAsync(raw);
+    if (encoding.includes("br")) return await brotliDecompressAsync(raw);
   } catch (error) {
     logger.log(`Giải nén phản hồi (${encoding}) thất bại: ${error.message}`, "warn");
   }
@@ -108,22 +117,23 @@ function rawRequestOnce(rawUrl, options = {}, redirectsLeft = MAX_REDIRECTS, for
         res.on("data", (chunk) => chunks.push(chunk));
         res.on("end", () => {
           const raw = Buffer.concat(chunks);
-          const body = decodeBody(raw, res.headers["content-encoding"]);
-          resolve({
-            status: res.statusCode,
-            headers: res.headers,
-            body,
-            json() {
-              try {
-                return JSON.parse(body.toString("utf8"));
-              } catch {
-                return null;
+          void decodeBody(raw, res.headers["content-encoding"])
+            .then(body => resolve({
+              status: res.statusCode,
+              headers: res.headers,
+              body,
+              json() {
+                try {
+                  return JSON.parse(body.toString("utf8"));
+                } catch {
+                  return null;
+                }
+              },
+              text() {
+                return body.toString("utf8");
               }
-            },
-            text() {
-              return body.toString("utf8");
-            }
-          });
+            }))
+            .catch(reject);
         });
       }
     );
@@ -221,4 +231,8 @@ async function getBuffer(rawUrl, options = {}) {
   return { status: response.status, buffer: response.body, contentType: response.headers["content-type"] || "" };
 }
 
-module.exports = { request, getJson, getBuffer, redactUrl, hostAllowed, normalizeRequestOptions, HTTP_REQUEST_POLICY, isDnsError };
+module.exports = {
+  request, getJson, getBuffer, redactUrl, hostAllowed, normalizeRequestOptions,
+  HTTP_REQUEST_POLICY, isDnsError,
+  _test: { decodeBody }
+};
