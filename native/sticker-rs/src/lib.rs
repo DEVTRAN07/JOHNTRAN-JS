@@ -134,14 +134,14 @@ fn compose_static_result(
     let size = size.clamp(64, 512);
     let image = render_static_composition(&source, &overlay, size, avatar_size, offset);
     let encoded = encode_webp_bytes(&image, quality, false);
-    let encoded_size = encoded.len() as u64;
+    let encoded_size = encoded.len() as u32;
 
     Ok(EncodeResult {
         buffer: Buffer::from(encoded),
         format: "webp".to_string(),
         width: size,
         height: size,
-        size: encoded_size as u32,
+        size: encoded_size,
     })
 }
 
@@ -163,7 +163,7 @@ pub fn encode_webp(options: EncodeOptions) -> Result<EncodeResult> {
         options.quality.unwrap_or(75),
         options.lossless.unwrap_or(false),
     );
-    let size = encoded.len() as u64;
+    let size = encoded.len() as u32;
 
     Ok(EncodeResult {
         buffer: Buffer::from(encoded),
