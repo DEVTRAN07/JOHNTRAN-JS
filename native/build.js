@@ -1,7 +1,7 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
-const { execFileSync, spawnSync } = require("child_process");
+const { spawnSync } = require("child_process");
 
 const NATIVE_DIR = path.resolve(__dirname);
 // Only ship the audited production addon. canvas-rs and ffmpeg-rs remain
@@ -9,15 +9,6 @@ const NATIVE_DIR = path.resolve(__dirname);
 const CRATES = [
   { name: "sticker-rs", addon: "sticker_rs.node" },
 ];
-
-function which(cmd) {
-  try {
-    execFileSync(cmd, ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, { stdio: "inherit", ...opts });
@@ -41,7 +32,8 @@ function main() {
     const crateDir = path.join(NATIVE_DIR, crate.name);
     const addonPath = path.join(crateDir, crate.addon);
     const targetDir = path.join(NATIVE_DIR, "target", "release");
-    const libName = "lib" + crate.name.replace(/-/g, "_") + "." + libExt();
+    const stem = crate.name.replace(/-/g, "_");
+    const libName = (process.platform === "win32" ? "" : "lib") + stem + "." + libExt();
     const libPath = path.join(targetDir, libName);
     if (!fs.existsSync(libPath)) {
       throw new Error("expected native library not found: " + libPath);
