@@ -360,6 +360,58 @@ function makeTempName(prefix, extension) {
     crypto.randomBytes(4).toString("hex") + extension);
 }
 
+let rustStickerAddonChecked = false;
+let rustStickerAddon = null;
+
+function getRustStickerAddon() {
+  if (rustStickerAddonChecked) return rustStickerAddon;
+  rustStickerAddonChecked = true;
+
+  const addonPath = path.join(__dirname, "..", "native", "sticker-rs", "sticker_rs.node");
+  try {
+    rustStickerAddon = require(addonPath);
+  } catch (error) {
+    // Development installs without Rust artifacts keep the existing Canvas /
+    // FFmpeg fallbacks. The production CI builds and verifies this addon.
+    console.warn("[stk] Rust native compositor unavailable; using fallback renderer: " +
+      String(error && error.message || error).slice(0, 180));
+    rustStickerAddon = null;
+  }
+  return rustStickerAddon;
+}
+
+async function createStaticRust(sourceBuffer, decorationBuffer) {
+  const addon = getRustStickerAddon();
+  if (typeof addon?.composeStaticSticker !== "function") return null;
+
+  const result = await addon.composeStaticSticker({
+    source: sourceBuffer,
+    overlay: decorationBuffer,
+    size: CANVAS_SIZE,
+    avatarSize: AVATAR_SIZE,
+    offset: OFFSET,
+    quality: 68
+  });
+  const buffer = Buffer.isBuffer(result?.buffer)
+    ? result.buffer
+    : Buffer.from(result?.buffer || []);
+  if (!buffer.length || buffer.length > MAX_OUTPUT_BYTES) return null;
+
+  fs.mkdirSync(TMP_DIR, { recursive: true });
+  const outputPath = makeTempName("stk_dis_rust", ".webp");
+  await fs.promises.writeFile(outputPath, buffer);
+  return {
+    path: outputPath,
+    buffer,
+    width: Number(result.width) || CANVAS_SIZE,
+    height: Number(result.height) || CANVAS_SIZE,
+    size: buffer.length,
+    animated: false,
+    format: "webp",
+    renderer: "rust-native"
+  };
+}
+
 function getReplyQuote(event) {
   return event?.data?.quote || event?.data?.dQuote || event?.quote || null;
 }
@@ -888,9 +940,20 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId, resul
       /\.png$/i.test(path.extname(decorationPath)) &&
       !isAnimatedBuffer(frameBuffer, path.extname(decorationPath));
 
-    currentStage = staticFastPath ? "canvas-static" : "ffmpeg";
+    currentStage = staticFastPath ? "rust-static" : "ffmpeg";
     const output = await measureStage("render", async () => {
       if (staticFastPath) {
+        try {
+          const rustOutput = await createStaticRust(source.buffer, frameBuffer);
+          if (rustOutput) {
+            console.info("[stk] renderer=rust-native-static");
+            return rustOutput;
+          }
+        } catch (error) {
+          console.warn("[stk] Rust static compositor failed; trying Canvas fallback: " +
+            String(error && error.message || error).slice(0, 240));
+        }
+
         try {
           const fastOutput = await createStaticPng(source.buffer, frameBuffer);
           if (fastOutput) {
