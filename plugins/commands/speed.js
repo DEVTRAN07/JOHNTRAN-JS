@@ -8,7 +8,7 @@ module.exports.config = {
   version: "1.0.0",
   role: 2,
   author: "JOHNTRAN",
-  description: "Đo độ trễ pipeline, listener và API Zalo",
+  description: "Đo pipeline, HTTP fetch, kết nối và API Zalo",
   category: "Hệ thống",
   usage: "speed",
   cooldowns: 3,
