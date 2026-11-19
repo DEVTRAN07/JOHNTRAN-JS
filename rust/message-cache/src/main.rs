@@ -163,6 +163,22 @@ fn main() {
         };
 
         match request.get("op").and_then(Value::as_str).unwrap_or("") {
+            "batch" => {
+                if let Some(mutations) = request.get("mutations").and_then(Value::as_array) {
+                    for mutation in mutations {
+                        let key = mutation.get("key").and_then(Value::as_str);
+                        match (mutation.get("op").and_then(Value::as_str).unwrap_or(""), key) {
+                            ("upsert", Some(key)) => {
+                                if let Some(value) = mutation.get("value") {
+                                    cache.upsert(key.to_string(), value.clone());
+                                }
+                            }
+                            ("delete", Some(key)) => cache.delete(key),
+                            _ => {}
+                        }
+                    }
+                }
+            }
             "upsert" => {
                 let key = request.get("key").and_then(Value::as_str);
                 let value = request.get("value");
