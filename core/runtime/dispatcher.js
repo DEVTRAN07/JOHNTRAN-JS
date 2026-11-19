@@ -105,7 +105,7 @@ async function dispatchCommand({
       }
 
       try {
-        await reply?.error?.(`Đã xảy ra lỗi khi xử lý lệnh!\\nMã lỗi: ${errorId}`);
+        await reply?.error?.(`Đã xảy ra lỗi khi xử lý lệnh!\nMã lỗi: ${errorId}`);
       } catch (replyError) {
         logger.log(
           `[${errorId}] Không gửi được thông báo lỗi về Zalo: ${replyError?.stack || replyError?.message || String(replyError)}`,
