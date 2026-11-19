@@ -78,13 +78,13 @@ test("welcome test resolves caller avatar and real profile name", async () => {
   try {
     f.context.args = ["test"];
     await command.run(f.context);
-    assert.equal(f.sent.length, 4, "/welcome test sends each Canvas followed by its mention text");
+    assert.equal(f.sent.length, 2, "/welcome test sends one composed Canvas card for each flow");
     assert.deepEqual(rendered.slice(-2).map(card => card.mode), ["welcome", "goodbye"]);
-    assert.deepEqual(f.sent.map(item => Boolean(item.payload.attachments?.length)), [true, false, true, false]);
-    assert.equal(f.sent[1].payload.mentions[0].uid, "test-requester-uid");
-    assert.match(f.sent[1].payload.msg, /Chào mừng @\./);
-    assert.equal(f.sent[3].payload.mentions[0].uid, "test-requester-uid");
-    assert.match(f.sent[3].payload.msg, /Tạm biệt @\./);
+    assert.deepEqual(f.sent.map(item => Boolean(item.payload.attachments?.length)), [true, true]);
+    assert.match(f.sent[0].payload.msg, /Chào mừng @Quang Profile/);
+    assert.match(f.sent[1].payload.msg, /Tạm biệt @Quang Profile/);
+    assert.ok(f.sent.every(item => item.payload.mentions === undefined),
+      "the name is part of the colored image footer, not a separate live mention");
     assert.deepEqual(rendered.at(-1).member, {
       uid: "test-requester-uid",
       name: "Quang Profile",
