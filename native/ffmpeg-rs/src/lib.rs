@@ -1,4 +1,5 @@
 use napi::{bindgen_prelude::Buffer, Error, Result, Status};
+use napi_derive::napi;
 use ffmpeg_next as ffmpeg;
 
 #[napi(object)]
