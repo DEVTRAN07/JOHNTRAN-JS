@@ -128,3 +128,19 @@ test("autokick does not call Zalo group-admin API for ordinary non-matching mess
     else global.users = previousUsers;
   }
 });
+
+
+test("/autokick list reuses listener threadData without a second storage read", async () => {
+  const fixture = makeFixture();
+  const sent = [];
+  let reads = 0;
+  await autokick.run({
+    api: { async sendMessage(payload, gid, type) { sent.push({ payload, gid, type }); } },
+    event: { threadId: fixture.threadId, type: ThreadType.Group },
+    args: ["list"],
+    Threads: { async getData() { reads++; throw new Error("unexpected cold read"); } },
+    threadData: { data: fixture.groupData }
+  });
+  assert.equal(reads, 0);
+  assert.match(sent[0].payload.msg, /spamword/);
+});

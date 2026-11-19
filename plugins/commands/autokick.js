@@ -18,15 +18,36 @@ module.exports.config = {
   event_type: ["message"]
 };
 
-async function getConfig(threadId) {
-  const Threads = require("../../core/controller/controllerThreads");
-  const thread = await Threads.getData(threadId);
-  return (thread && thread.data) || {};
+async function getConfig(threadId, Threads, threadData) {
+  if (threadData && typeof threadData === "object") {
+    return threadData?.data && typeof threadData.data === "object"
+      ? threadData.data
+      : threadData;
+  }
+
+  let record = null;
+  try { record = Threads?.getCachedData?.(String(threadId)) || null; } catch {}
+  if (!record && typeof Threads?.getData === "function") {
+    record = await Threads.getData(threadId);
+  }
+  if (!record) {
+    const legacyThreads = require("../../core/controller/controllerThreads");
+    record = await legacyThreads.getData(threadId);
+  }
+  return record?.data || record || {};
 }
 
-async function setConfig(threadId, data) {
-  const Threads = require("../../core/controller/controllerThreads");
-  await Threads.setData(threadId, data);
+async function setConfig(threadId, data, Threads) {
+  if (typeof Threads?.setDataAndWait === "function") {
+    await Threads.setDataAndWait(threadId, data);
+    return;
+  }
+  if (typeof Threads?.setData === "function") {
+    await Threads.setData(threadId, data);
+    return;
+  }
+  const legacyThreads = require("../../core/controller/controllerThreads");
+  await legacyThreads.setData(threadId, data);
 }
 
 function escapeRegExp(value) {
@@ -45,15 +66,15 @@ function getAutoKick(data) {
   return data.auto_kick;
 }
 
-module.exports.run = async function ({ api, event, args }) {
+module.exports.run = async function ({ api, event, args, Threads, threadData }) {
   const { threadId, type } = event;
-  const data = await getConfig(threadId);
+  const data = await getConfig(threadId, Threads, threadData);
   const autoKick = getAutoKick(data);
   const action = (args[0] || "").toLowerCase();
 
   if (action === "on" || action === "off") {
     autoKick.enabled = action === "on";
-    await setConfig(threadId, data);
+    await setConfig(threadId, data, Threads);
     return api.sendMessage({ msg: `✅ Autokick đã được ${action === "on" ? "bật" : "tắt"}.` }, threadId, type);
   }
 
@@ -65,7 +86,7 @@ module.exports.run = async function ({ api, event, args }) {
     const added = words.filter((w) => !autoKick.words.includes(w));
     autoKick.words.push(...added);
     autoKick.violations = {};
-    await setConfig(threadId, data);
+    await setConfig(threadId, data, Threads);
     return api.sendMessage({ msg: `✅ Đã thêm ${added.length} từ vào danh sách cấm.` }, threadId, type);
   }
 
@@ -74,7 +95,7 @@ module.exports.run = async function ({ api, event, args }) {
     const removed = words.filter((w) => autoKick.words.includes(w));
     autoKick.words = autoKick.words.filter((w) => !words.includes(w));
     autoKick.violations = {};
-    await setConfig(threadId, data);
+    await setConfig(threadId, data, Threads);
     return api.sendMessage({ msg: `✅ Đã xoá ${removed.length} từ khỏi danh sách.` }, threadId, type);
   }
 
