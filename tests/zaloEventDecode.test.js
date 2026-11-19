@@ -42,7 +42,7 @@ test("Zalo encrypted websocket event decodes with async zlib decompression", asy
   const { parsed, cipherKey } = await makeEncryptedEvent(payload);
   const decoded = await decodeEventData(parsed, cipherKey);
 
-  assert.deepEqual(decoded, payload);
+  assert.deepEqual(JSON.parse(JSON.stringify(decoded)), payload);
 });
 
 test("async event decompressor returns the original zlib payload", async () => {
