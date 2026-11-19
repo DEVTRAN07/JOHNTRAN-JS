@@ -1,5 +1,7 @@
 "use strict";
 
+const { recallIntentionally } = require("../../core/runtime/intentionalRecall");
+
 const fs = require("node:fs");
 const { withRequesterMention } = require("../../core/mentions");
 const game = require("../../core/runtime/services/games/caroService");
@@ -61,10 +63,12 @@ async function recallBoardMessages(api, threadId, type, messages) {
   const failed = [];
   for (const target of pending) {
     try {
-      const response = await api.undo(
+      const response = await recallIntentionally(
+        api,
         { msgId: target.msgId, cliMsgId: target.cliMsgId },
         String(threadId),
-        type
+        type,
+        "caro-board-replacement"
       );
       if (response === false || response?.success === false) {
         throw new Error("Zalo từ chối thu hồi card cũ");
