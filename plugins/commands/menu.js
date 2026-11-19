@@ -21,15 +21,12 @@ module.exports.config = {
 };
 
 async function sendMenuCardAndGreeting(api, imagePath, caption, mentions, threadId, type) {
-  // Zalo's photo-description UI does not consistently render textProperties.
-  // Send the card first, then use the normal styled text path for its greeting.
-  await api.sendMessage({
-    msg: "",
-    attachments: [imagePath]
-  }, threadId, type);
-
+  // Keep the tag and greeting in the image's own description so Zalo renders
+  // one Canvas card with its caption directly beneath it. wrapApi() applies
+  // randomized textProperties, and the vendored SDK preserves them on images.
   return api.sendMessage({
     msg: caption,
+    attachments: [imagePath],
     mentions
   }, threadId, type);
 }
