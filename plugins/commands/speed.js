@@ -223,7 +223,7 @@ function limitSpeedReport(report, maxChars = MAX_SPEED_REPORT_CHARS) {
   const value = String(report ?? "");
   const limit = Math.max(128, Number(maxChars) || MAX_SPEED_REPORT_CHARS);
   if (value.length <= limit) return value;
-  const suffix = "\\n… Đã rút gọn báo cáo để bảo đảm gửi được qua Zalo.";
+  const suffix = "\n… Đã rút gọn báo cáo để bảo đảm gửi được qua Zalo.";
   let end = Math.max(0, limit - suffix.length);
   const code = value.charCodeAt(end - 1);
   if (code >= 0xD800 && code <= 0xDBFF) end--;
@@ -347,7 +347,7 @@ function formatCommandError(event, code) {
       "⚠️ Không tìm thấy mã lỗi " + normalizeErrorCode(code) + ".",
       "Có thể bot chưa chạy bản có Error Journal, hoặc log đã bị xoay/xóa.",
       "Hãy kiểm tra log server tại thời điểm xảy ra lỗi."
-    ].join("\\n");
+    ].join("\n");
   }
   return [
     "🔎 JOHΝTRAN · ERROR TRACE",
@@ -358,7 +358,7 @@ function formatCommandError(event, code) {
     "",
     "Stack / nguyên nhân:",
     String(event.message || "Không có nội dung log").slice(0, 1200)
-  ].join("\\n");
+  ].join("\n");
 }
 
 module.exports.run = async function ({ api, event, reply, args = [] } = {}) {
