@@ -22,7 +22,7 @@ test("welcome Canvas renders a dedicated Zalo card with group and member names",
   }
 });
 
-test("welcome Canvas renders both enabled and disabled settings cards", () => {
+test("welcome Canvas follows the menu two-layer photo plus foreground design", () => {\n  const source = require("node:fs").readFileSync(require.resolve("../core/canvas/welcome"), "utf8");\n  assert.match(source, /theme\\.paintBackground/);\n  assert.match(source, /Strict two-layer Canvas/);\n  assert.doesNotMatch(source, /theme\\.panel/);\n});\n\ntest("welcome Canvas renders both enabled and disabled settings cards", () => {
   const onPath = welcome.renderWelcomeCard({ mode: "status", enabled: true });
   const offPath = welcome.renderWelcomeCard({ mode: "status", enabled: false });
   try {
