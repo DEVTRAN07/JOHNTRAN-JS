@@ -146,6 +146,23 @@ test("/speed reports Supabase retry pressure without credentials", () => {
   assert.doesNotMatch(rows, /must-not-leak|serviceKey|SUPABASE_SECRET_KEY/);
 });
 
+test("/speed shows Rust message-cache IPC pressure without local file paths", () => {
+  const rows = command._test.formatMessageCacheDiagnostics({
+    entries: 1200,
+    asyncFlushCount: 8,
+    asyncFlushFailures: 1,
+    asyncFlushLastMs: 17,
+    nativePersistence: { available: true, binary: "/private/path/jt-message-cache" },
+    nativePendingMutations: { pending: 9, sent: 1200, failed: 1, batchSize: 64 }
+  }).join("|");
+
+  assert.match(rows, /Bản ghi đang giữ: 1200/);
+  assert.match(rows, /Rust sidecar: đang hoạt động/);
+  assert.match(rows, /IPC queue: chờ 9 · đã gửi 1200 · lỗi 1 · batch 64/);
+  assert.match(rows, /Flush: 8 · lỗi 1 · lần gần nhất 17\.0 ms/);
+  assert.doesNotMatch(rows, /private|jt-message-cache/);
+});
+
 test("/speed handles an empty metrics store", () => {
   const emptyMetrics = {
     getLatencyStats: () => ({ count: 0 }),
