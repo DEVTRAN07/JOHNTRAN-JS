@@ -95,6 +95,7 @@ function formatMediaResources(resources = null) {
   return [
     "  • CPU khả dụng: " + Math.max(1, Number(resources.availableCpus) || 1) + " lõi",
     "  • FFmpeg: " + Math.max(1, Number(resources.ffmpegThreads) || 1) + " thread/lượt",
+    "  • Global media queue: " + Math.max(1, Number(resources.globalJobConcurrency) || 1) + " job (mặc định CPU: " + Math.max(1, Number(resources.defaultGlobalJobConcurrency) || 1) + ")",
     "  • STK: " + Math.max(1, Number(resources.stickerConcurrency) || 1) + " job đồng thời",
     "  • Tải media: " + Math.max(1, Number(resources.downloadConcurrency) || 1) + " job đồng thời"
   ];
@@ -187,6 +188,8 @@ module.exports.run = async function ({ api, event, reply }) {
     mediaResources = {
       availableCpus: limits.getAvailableCpuCount(),
       ffmpegThreads: limits.FFMPEG_THREADS,
+      globalJobConcurrency: queue.GLOBAL_CONCURRENCY,
+      defaultGlobalJobConcurrency: queue.DEFAULT_GLOBAL_CONCURRENCY,
       stickerConcurrency: queue.STICKER_CONCURRENCY,
       downloadConcurrency: queue.DOWNLOAD_CONCURRENCY
     };
