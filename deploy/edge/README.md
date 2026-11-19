@@ -28,19 +28,15 @@ Multi-region edge deployment configuration for JohnTran.js with geo-routing.
 
 ## Quick Start
 
-### 1. Docker Compose (Local/VM)
+### 1. Koyeb
 
+Deploy the Node.js process directly with the platform's Node runtime. Keep `data/` on persistent storage if the platform uses an ephemeral filesystem.
 
+### 2. Render
 
-### 2. Koyeb
+Use a native Node.js service (not a container image) and attach a persistent disk for `data/store.json`.
 
-
-
-### 3. Render
-
-
-
-### 4. Cloudflare Workers (Geo-Routing)
+### 3. Cloudflare Workers (Geo-Routing)
 
 
 # Health Check Endpoint
