@@ -6,6 +6,7 @@ const { sendMessageFactory } = require("../vendor/zalo-client/dist/cjs/api/sendM
 const { encodeAES, decodeAES } = require("../vendor/zalo-client/dist/cjs/core/crypto.cjs");
 const { CookieJar } = require("tough-cookie");
 const { TextStyle, ThreadType } = require("zalo-client");
+const { isIntentionalRecall, _test: intentionalRecallTest } = require("../core/runtime/intentionalRecall");
 const RANDOM_COLORS = new Set([TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green]);
 
 test("CommonJS sendMessage returns the same cliMsgId it sent to Zalo", async () => {
@@ -97,6 +98,16 @@ test("bot messages are scheduled for recall after one minute", async () => {
     assert.equal(scheduled.length, 7);
     assert.ok(scheduled.every(({ delay }) => delay === 60_000));
     for (const { callback } of scheduled) await callback();
+    for (const cliMsgId of [
+      "text-client-id", "file-client-id", "voice-client-id",
+      "video-client-id", "sticker-client-id", "card-client-id",
+      "custom-sticker-client-id"
+    ]) {
+      assert.equal(isIntentionalRecall({
+        threadId: "thread-id",
+        data: { content: { cliMsgId } }
+      }), true, "automatic TTL recall must be ignored by Anti-Recall");
+    }
     assert.deepEqual(undone, [
       { payload: { msgId: 1, cliMsgId: "text-client-id" }, threadId: "thread-id", type: 1 },
       { payload: { msgId: 2, cliMsgId: "file-client-id" }, threadId: "thread-id", type: 1 },
