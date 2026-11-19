@@ -471,6 +471,22 @@ test("topchat does not trust legacy history completion markers without a version
   assert.match(message, /trạng thái quét lịch sử cũ/i);
 });
 
+test("topchat command rejection diagnostics do not require a background ranking job", () => {
+  const threadId = "topchat-command-fast-reject";
+  const event = makeGroupMessage(threadId, "member-1", "command-fast-1", "/menu");
+
+  const snapshot = counter.observeIncomingEvent(event, { snapshot: false });
+  assert.equal(snapshot, undefined);
+  counter.observeRejectedCommand(event);
+
+  const diagnostics = counter.getRuntimeDiagnostics(threadId);
+  assert.equal(diagnostics.events, 1);
+  assert.equal(diagnostics.groups, 1);
+  assert.equal(diagnostics.received, 1);
+  assert.equal(diagnostics.counted, 0);
+  assert.equal(diagnostics.rejected, 1);
+});
+
 test("topchat observes and counts the authenticated account as a group member", async () => {
   global.config = { prefix: "/" };
   const Threads = fakeThreads();
