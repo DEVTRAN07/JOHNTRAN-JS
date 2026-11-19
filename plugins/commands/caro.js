@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const { withRequesterMention } = require("../../core/mentions");
 const game = require("../../core/runtime/services/games/caroService");
 const workerRender = require("../../core/canvas/workerRender");
+const { sendStyledRawMessage } = require("../../core/message");
 
 // One live Caro canvas card per group. A replacement is sent first; only
 // after Zalo returns its message IDs do we recall the previous board image.
@@ -346,7 +347,7 @@ async function sendBoard(api, event, session, heading, extraLines = []) {
       // send through raw Zalo API, confirm IDs, then recall the previous card.
       const rawApi = getRawApi(api);
       const response = await sendBoardReplacement(rawApi, threadId, event.type, () =>
-        rawApi.sendMessage(withRequesterMention(event, {
+        sendStyledRawMessage(rawApi, withRequesterMention(event, {
           msg: caption,
           attachments: [imagePath],
           recallAfterMs: 0,
