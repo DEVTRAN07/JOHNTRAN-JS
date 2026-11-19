@@ -102,7 +102,68 @@ function formatMediaResources(resources = null) {
   ];
 }
 
-function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null, mediaResources = null) {
+function formatStorageDiagnostics(storage = null, now = Date.now()) {
+  if (!storage || typeof storage !== "object") {
+    return ["  • Chưa đọc được trạng thái database"];
+  }
+
+  const driver = String(storage.driver || "unknown").toLowerCase();
+  const lines = ["  • Driver: " + driver.toUpperCase()];
+
+  if (driver === "json") {
+    const writer = storage.writer || {};
+    lines.push(
+      "  • JSON writer: " + (
+        writer.enabled === true
+          ? (writer.ready === true ? "background worker hoạt động" : "đang khởi tạo")
+          : "không hoạt động (đang dùng fallback)"
+      ),
+      "  • Pending flush: " + (storage.pendingFlush === true ? "có" : "không"),
+      "  • Snapshot: " + Math.max(0, Number(writer.persistedSequence) || 0) +
+        "/" + Math.max(0, Number(writer.sequence) || 0) + " đã ghi"
+    );
+    if (storage.lastFlushAt) {
+      lines.push("  • Lần ghi gần nhất: " +
+        formatMs(Math.max(0, now - Number(storage.lastFlushAt))) + " trước");
+    }
+    if (storage.lastFlushError) lines.push("  • Flush lỗi: có (xem log server)");
+  } else if (driver === "supabase") {
+    lines.push(
+      "  • Sync: " + (storage.syncEnabled === false ? "tắt" : "bật") +
+        " · lỗi liên tiếp " + Math.max(0, Number(storage.consecutiveFailures) || 0),
+      "  • Pending writes: " + Math.max(0, Number(storage.pendingWrites) || 0) +
+        " · retry queue: " + Math.max(0, Number(storage.retryQueueSize) || 0)
+    );
+    if (storage.lastSyncAgeMs != null) {
+      lines.push("  • Lần sync gần nhất: " + formatMs(storage.lastSyncAgeMs) + " trước");
+    }
+    if (storage.syncError) lines.push("  • Sync lỗi: có (xem log server)");
+  } else {
+    lines.push("  • Trạng thái: " + (storage.ok === true ? "OK" : "không xác định"));
+  }
+
+  return lines;
+}
+
+function getStorageDiagnostics() {
+  try {
+    const database = require("../../utils/db");
+    const backend = database?.db;
+    // Supabase exposes queue/retry counters in its in-memory getStatus().
+    if (typeof backend?.healthCheck === "function" &&
+        typeof backend?.getStatus === "function") {
+      return backend.getStatus();
+    }
+    // JSON getOperationalStatus() is memory-only and never probes the disk.
+    return database?.getOperationalStatus?.() ||
+      backend?.getOperationalStatus?.() ||
+      null;
+  } catch {
+    return null;
+  }
+}
+
+function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null, mediaResources = null, storage = null) {
   const latency = source.getLatencyStats?.() || {};
   const commands = source.getCommandLatencyStats?.(6) || [];
   const handlers = source.getCommandExecutionLatencyStats?.(6) || [];
@@ -151,6 +212,9 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
         )
       : ["  • Chưa có mẫu fetch trong phiên này"]),
     "",
+    "🗄️ DATABASE / PERSISTENCE",
+    ...formatStorageDiagnostics(storage),
+    "",
     "🚦 HÀNG ĐỢI / WORKER",
     ...formatQueueAndWorkerPressure(jobQueues, workers),
     "",
@@ -197,9 +261,10 @@ module.exports.run = async function ({ api, event, reply }) {
       downloadConcurrency: queue.DOWNLOAD_CONCURRENCY
     };
   } catch {}
-  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers, mediaResources);
+  const storage = getStorageDiagnostics();
+  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers, mediaResources, storage);
   if (typeof reply?.text === "function") return reply.text(report);
   return api.sendMessage({ msg: report }, event.threadId, event.type);
 };
 
-module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, buildSpeedReport };
+module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, buildSpeedReport };
