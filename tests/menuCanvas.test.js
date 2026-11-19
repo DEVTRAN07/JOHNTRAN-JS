@@ -87,3 +87,9 @@ test("folder icons resolve canonical slugs instead of display labels", () => {
   assert.equal(resolve("", "Special"), "hidden");
   assert.equal(resolve("game", "Game"), "game");
 });
+
+test("menu no longer sends a progress placeholder before its Canvas card", () => {
+  const source = fs.readFileSync(require.resolve("../plugins/commands/menu"), "utf8");
+  assert.doesNotMatch(source, /Đang chuẩn bị menu chức năng/);
+  assert.doesNotMatch(source, /MENU_ACK/);
+});
