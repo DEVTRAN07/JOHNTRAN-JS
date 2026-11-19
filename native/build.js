@@ -43,22 +43,14 @@ function main() {
     const targetDir = path.join(NATIVE_DIR, "target", "release");
     const libName = "lib" + crate.name.replace(/-/g, "_") + "." + libExt();
     const libPath = path.join(targetDir, libName);
-    let built = false;
-    if (which("napi")) {
-      try {
-        run("napi", ["build", "--release"], { cwd: crateDir });
-        built = true;
-      } catch (err) {
-        console.warn("napi build failed for " + crate.name + ": " + err.message + "; falling back to cargo artifact copy");
-      }
+    if (!fs.existsSync(libPath)) {
+      throw new Error("expected native library not found: " + libPath);
     }
-    if (!built) {
-      if (!fs.existsSync(libPath)) {
-        throw new Error("expected native library not found: " + libPath);
-      }
-      fs.copyFileSync(libPath, addonPath);
-      console.log("copied " + libPath + " -> " + addonPath);
-    }
+    // A napi-rs cdylib exports the Node-API registration symbol directly.
+    // Copying the platform library to .node avoids requiring a second
+    // platform-detection/build step from the napi CLI.
+    fs.copyFileSync(libPath, addonPath);
+    console.log("copied " + libPath + " -> " + addonPath);
   }
   // The text-style N-API module is a standalone workspace. Building it alone
   // avoids resolving optional image/audio crates in the legacy native workspace.
