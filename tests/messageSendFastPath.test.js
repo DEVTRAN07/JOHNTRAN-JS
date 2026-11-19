@@ -39,7 +39,7 @@ test("image caption stays text below the Canvas in one styled message", async ()
     }
   };
   const wrapped = wrapApi(api, "caption-fast-path-thread", 1, "caption-fast-path-test");
-  const caption = "@Wuang\\n🤖 Chào chủ nhân!\\n👉 Dòng chữ nằm dưới card, không nằm trong ảnh.";
+  const caption = "@Wuang\n🤖 Chào chủ nhân!\n👉 Dòng chữ nằm dưới card, không nằm trong ảnh.";
   const mention = { uid: "member-id", pos: 0, len: "@Wuang".length };
 
   await wrapped.sendMessage({
