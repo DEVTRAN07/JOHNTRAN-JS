@@ -327,10 +327,10 @@ function makePersonalMessage(member, kind = "welcome") {
   const suffix = isGoodbye
     ? " Chúc bạn mọi điều tốt đẹp!"
     : " đến với nhóm!\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!";
-  return {
-    msg: prefix + "@." + suffix,
-    mentions: [{ pos: prefix.length, uid: member.uid, len: 2 }]
-  };
+  const name = cleanText(member?.name, "bạn");
+  // The tag is painted into the card footer to keep it visibly multicolored.
+  // It is a visual @name, not an interactive Zalo notification mention.
+  return { msg: prefix + "@" + name + suffix };
 }
 
 module.exports.run = async function ({
