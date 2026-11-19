@@ -184,6 +184,29 @@ async function dispatch(ctx, url, options, raw, timeoutMs) {
             }
             return dispatch(ctx, redirectURL, redirectOptions, raw, timeoutMs);
         }
+        // fetch() resolves when response headers arrive, but response.json()
+        // consumes the body later. Buffer the body inside this timed operation so
+        // a stalled response stream cannot bypass the per-request deadline.
+        if (typeof response?.arrayBuffer === "function") {
+            const bodyStartedAt = performance.now();
+            let body;
+            try {
+                body = await response.arrayBuffer();
+            }
+            finally {
+                recordRequestTiming(ctx, "response-body", performance.now() - bodyStartedAt);
+            }
+            const responseHeaders = new Headers(response.headers);
+            // Fetch has already decoded the body; do not retain wire-size headers
+            // on the reconstructed in-memory response.
+            responseHeaders.delete("content-encoding");
+            responseHeaders.delete("content-length");
+            return new Response(body.byteLength > 0 ? body : null, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: responseHeaders
+            });
+        }
         return response;
     })();
 
