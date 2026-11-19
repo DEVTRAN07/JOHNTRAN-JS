@@ -13,11 +13,7 @@ function makeContext({ cookieGetter, polyfill, onRequestTiming, timeoutMs = 40 }
     userAgent: "JOHNTRAN test",
     options: {
       retry: { timeoutMs, limit: 0, methods: ["GET", "HEAD"], delayMs: 1, maxDelayMs: 1 },
-      polyfill: polyfill || (async () => ({
-        ok: true,
-        status: 200,
-        headers: { get: () => null }
-      })),
+      polyfill: polyfill || (async () => new Response("{}", { status: 200 })),
       onRequestTiming
     }
   };
@@ -48,10 +44,33 @@ test("Zalo SDK reports cookie, fetch, response-cookie and total request phases",
 
   await request(ctx, "https://chat.zalo.me/api/test", { method: "POST" });
 
-  for (const phase of ["cookie-headers", "fetch", "response-cookies", "total"]) {
+  for (const phase of ["cookie-headers", "fetch", "response-cookies", "response-body", "total"]) {
     assert.ok(phases.has(phase), `missing timing phase: ${phase}`);
     assert.ok(phases.get(phase) >= 0);
   }
+});
+
+
+test("Zalo SDK timeout also covers a stalled response body", async () => {
+  const ctx = makeContext({
+    timeoutMs: 35,
+    polyfill: async (_url, init) => new Response(new ReadableStream({
+      start(controller) {
+        init.signal.addEventListener("abort", () => {
+          try { controller.error(init.signal.reason); } catch { /* already closed */ }
+        }, { once: true });
+      }
+    }), { status: 200 })
+  });
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    request(ctx, "https://chat.zalo.me/api/test", { method: "POST" }),
+    error => error?.code === "ETIMEDOUT" && error?.name === "TimeoutError"
+  );
+
+  const elapsed = Date.now() - startedAt;
+  assert.ok(elapsed < 500, `response-body stall escaped the SDK deadline: ${elapsed}ms`);
 });
 
 test("Zalo SDK timing callback failures never break a request", async () => {
