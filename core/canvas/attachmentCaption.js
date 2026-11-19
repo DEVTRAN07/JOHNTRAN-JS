@@ -101,7 +101,7 @@ async function composeImageCaption(message, options = {}) {
     const paddingX = Math.round(28 * designScale);
     const paddingTop = Math.round(23 * designScale);
     const paddingBottom = Math.round(24 * designScale);
-    const fontSize = Math.max(16, Math.min(25, 19.5 * designScale));
+    const fontSize = Math.max(22, Math.min(48, 31 * designScale));
     const lineHeight = Math.round(fontSize * 1.48);
     const maxTextWidth = width - paddingX * 2;
 
