@@ -207,7 +207,7 @@ test("/speed handles an empty metrics store", () => {
   };
   const report = command._test.buildSpeedReport(emptyMetrics, 0, null);
   assert.match(report, /Chưa có mẫu lệnh/);
-  assert.equal((report.match(/Chưa có dữ liệu/g) || []).length, 6);
+  assert.equal((report.match(/Chưa có dữ liệu/g) || []).length, 7);
 });
 
 
