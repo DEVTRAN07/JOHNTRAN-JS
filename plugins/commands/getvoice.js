@@ -11,6 +11,7 @@ const { enqueue } = require("../../core/jobQueue");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegStatic = require("ffmpeg-static");
 const { resolveFfmpegPath } = require("../../core/music/ffmpegPath");
+const { FFMPEG_THREADS } = require("../../core/mediaResourceLimits");
 
 function resolveAudioFfmpegPath(options = {}) {
   return resolveFfmpegPath({
@@ -52,6 +53,7 @@ function convertMp3ToAac(inputPath, outputPath) {
       .output(outputPath)
       .audioCodec("aac")
       .audioBitrate("128k")
+      .outputOptions(["-threads " + FFMPEG_THREADS])
       .on("end", () => resolve(outputPath))
       .on("error", reject)
       .run();
