@@ -1,4 +1,5 @@
 use napi::{bindgen_prelude::Buffer, Error, Result, Status};
+use napi_derive::napi;
 use skia_safe::{
     AlphaType, Canvas, Color, ColorType, EncodedImageFormat, Font, FontMgr, FontStyle,
     ImageInfo, Paint, Point, Rect, Shader, Surface, TileMode,
