@@ -130,7 +130,7 @@ async function dispatch(ctx, url, options, raw, timeoutMs) {
     let timer = null;
     const timeoutPromise = controller ? new Promise((_resolve, reject) => {
         timer = setTimeout(() => {
-            const timeoutError = new errors.ZaloApiError(`Zalo request timed out after ${timeoutMs}ms`, "ETIMEDOUT");
+            const timeoutError = new errors.ZaloApiError(`Zalo request timed out after ${timeoutMs}ms (per-request timeout)`, "ETIMEDOUT");
             timeoutError.name = "TimeoutError";
             controller.abort(timeoutError);
             reject(timeoutError);
@@ -156,7 +156,7 @@ async function dispatch(ctx, url, options, raw, timeoutMs) {
             }
         }
         if (controller?.signal.aborted) {
-            throw new errors.ZaloApiError(`Zalo request timed out after ${timeoutMs}ms`, "ETIMEDOUT");
+            throw new errors.ZaloApiError(`Zalo request timed out after ${timeoutMs}ms (per-request timeout)`, "ETIMEDOUT");
         }
         const transportOptions = Object.assign(Object.assign(Object.assign({}, requestOptions), (controller ? { signal: controller.signal } : {})), (typeof Bun !== "undefined"
             ? { proxy: (_b = (_a = ctx.options.agent) === null || _a === void 0 ? void 0 : _a.proxy) === null || _b === void 0 ? void 0 : _b.href }
