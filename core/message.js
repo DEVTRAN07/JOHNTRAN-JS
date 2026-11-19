@@ -490,29 +490,18 @@ function defineWrapped(wrapped, name, fn) {
   });
 }
 
-async function sendStyledRawMessage(api, message, threadId, type) {
+function sendStyledRawMessage(api, message, threadId, type) {
   if (typeof api?.sendMessage !== "function") {
     throw new TypeError("Zalo API sendMessage() is required");
   }
 
-  const captionRenderer = require("./canvas/attachmentCaption");
-  const prepared = await captionRenderer.composeImageCaption(message);
-  if (prepared.error) {
-    logger.log("Không thể ghép caption vào Canvas ảnh: " + (prepared.error?.message || prepared.error), "warn");
-  }
-
-  let outgoing = prepared.payload;
+  let outgoing = message;
   try {
-    outgoing = styledText.randomize(prepared.payload);
+    outgoing = styledText.randomize(message);
   } catch (error) {
     logger.log("Không thể tô màu tin nhắn gửi qua raw API: " + (error?.message || error), "warn");
   }
-
-  try {
-    return await api.sendMessage(outgoing, threadId, type);
-  } finally {
-    await captionRenderer.cleanupComposedCaption(prepared.tempFile);
-  }
+  return api.sendMessage(outgoing, threadId, type);
 }
 
 function wrapApi(api, threadId, type, commandName, event = null) {
@@ -544,30 +533,19 @@ function wrapApi(api, threadId, type, commandName, event = null) {
       : rawContent;
     if (content && typeof content === "object" && content.plain) delete content.plain;
 
-    // Zalo drops textProperties from photo descriptions in its chat UI.
-    // Rasterize single-image captions into the Canvas itself so the complete
-    // card + caption remains one message and every word has visible color.
-    const captionRenderer = require("./canvas/attachmentCaption");
-    const prepared = await captionRenderer.composeImageCaption(content);
-    if (prepared.error) {
-      logger.log("Không thể ghép caption vào Canvas ảnh: " + (prepared.error?.message || prepared.error), "warn");
-    }
-
-    let outgoing = prepared.payload;
+    // Màu ngẫu nhiên được áp dụng ở một điểm chung cho mọi tin nhắn text.
+    // Nội dung, emoji, mentions và các định dạng không phải màu vẫn được giữ.
+    let outgoing = content;
     try {
-      outgoing = styledText.randomize(prepared.payload);
+      outgoing = styledText.randomize(content);
     } catch (error) {
       logger.log("Không thể tô màu ngẫu nhiên cho tin nhắn: " + (error?.message || error), "warn");
     }
 
-    try {
-      const response = await callTrackedZaloApi("sendMessage", () => api.sendMessage(outgoing, targetThreadId, targetType), markResponseStarted);
-      markResponseDelivered();
-      scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
-      return response;
-    } finally {
-      await captionRenderer.cleanupComposedCaption(prepared.tempFile);
-    }
+    const response = await callTrackedZaloApi("sendMessage", () => api.sendMessage(outgoing, targetThreadId, targetType), markResponseStarted);
+    markResponseDelivered();
+    scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
+    return response;
   });
 
   defineWrapped(wrapped, "sendVoice", async (payload, tid, ty) => {
