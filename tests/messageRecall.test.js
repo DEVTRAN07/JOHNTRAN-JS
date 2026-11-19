@@ -360,7 +360,7 @@ test("Caro, Sâm and Tiến Lên route deliberate raw sends through shared text 
       file + " must use the shared styler for raw SDK sends");
     assert.doesNotMatch(source, /\b(?:rawApi|sender|rawApiInstance)\.sendMessage\s*\(/,
       file + " must not bypass random text styling");
-    assert.doesNotMatch(source, /getRawApi\\(api\\)\\.sendMessage\\s*\\(/,
+    assert.doesNotMatch(source, /getRawApi\(api\)\.sendMessage\s*\(/,
       file + " must not send directly from getRawApi()");
   }
 });
