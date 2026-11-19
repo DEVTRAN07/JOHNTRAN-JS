@@ -91,6 +91,16 @@ jobs:
             exit 1
           fi
 
+          # Fetch the owner once so a failed Docker build can print its exact
+          # Render build logs from the authenticated Logs API.
+          service_details="$(curl --fail --silent --show-error --max-time 20 \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            "https://api.render.com/v1/services/${service_id}")"
+          service_owner_id="$(jq -r '.ownerId // empty' <<< "$service_details")"
+          if [[ -z "$service_owner_id" ]]; then
+            echo "::warning::Render service ownerId was not returned; deploy logs cannot be queried automatically."
+          fi
+
           deploy_response="$(curl --fail --silent --show-error --max-time 30 \
             -X POST \
             -H "Authorization: Bearer ${RENDER_API_KEY}" \
@@ -132,6 +142,32 @@ jobs:
             case "$deploy_status" in
               build_failed|pre_deploy_failed|update_failed|canceled|deactivated)
                 echo "::error::Render deployment ended with status: $deploy_status"
+                if [[ "$deploy_status" == "build_failed" && -n "$service_owner_id" ]]; then
+                  log_start="$(jq -r '.startedAt // .createdAt // empty' <<< "$deploy")"
+                  log_end="$(jq -r '.finishedAt // .updatedAt // empty' <<< "$deploy")"
+                  if [[ -n "$log_start" && -n "$log_end" ]]; then
+                    echo "::group::Render build logs for deploy $deploy_id"
+                    render_build_logs="$(curl --fail --silent --show-error --max-time 30 --get \
+                      -H "Authorization: Bearer ${RENDER_API_KEY}" \
+                      --data-urlencode "ownerId=${service_owner_id}" \
+                      --data-urlencode "resource=${service_id}" \
+                      --data-urlencode "startTime=${log_start}" \
+                      --data-urlencode "endTime=${log_end}" \
+                      --data-urlencode "direction=forward" \
+                      --data-urlencode "type=build" \
+                      --data-urlencode "limit=100" \
+                      "https://api.render.com/v1/logs" 2>&1 || true)"
+                    if jq -e '.logs | type == "array"' >/dev/null 2>&1 <<< "$render_build_logs"; then
+                      jq -r '.logs[]? | [(.timestamp // ""), (.message // "")] | @tsv' <<< "$render_build_logs"
+                    else
+                      echo "Could not retrieve Render build logs automatically:"
+                      printf '%s\\n' "$render_build_logs"
+                    fi
+                    echo "::endgroup::"
+                  else
+                    echo "::warning::Deploy timestamps are unavailable; skipped Render build log query."
+                  fi
+                fi
                 echo "$deploy"
                 exit 1
                 ;;
@@ -144,9 +180,6 @@ jobs:
             exit 1
           fi
 
-          service_details="$(curl --fail --silent --show-error --max-time 20 \
-            -H "Authorization: Bearer ${RENDER_API_KEY}" \
-            "https://api.render.com/v1/services/${service_id}")"
           service_url="$(jq -r '.serviceDetails.url // empty' <<< "$service_details")"
           if [[ -z "$service_url" ]]; then
             echo "::error::Render service did not return a public serviceDetails.url."
