@@ -57,6 +57,71 @@ function benchmarkMenuLookup() {
   };
 }
 
+async function benchmarkTopchatCommandFilter() {
+  const counter = require("../plugins/events/topchatCounter");
+  const { ThreadType } = require("zalo-client");
+  const threadId = "hotpath-command-filter-benchmark";
+  global.config = { ...(global.config || {}), prefix: "/" };
+  const threadRecord = {
+    threadId,
+    data: { prefix: "/", bot_enabled: true }
+  };
+  const Threads = {
+    getCachedData() { return threadRecord; },
+    async getData() { return threadRecord; }
+  };
+  const event = {
+    type: ThreadType.Group,
+    threadId,
+    isSelf: false,
+    data: {
+      uidFrom: "benchmark-user",
+      dName: "Benchmark",
+      cliMsgId: "benchmark-command",
+      content: "/menu",
+      msgType: "text",
+      ts: String(Date.now())
+    }
+  };
+  const iterations = 500;
+
+  // Baseline reproduces the old listener path: diagnostic snapshot allocation,
+  // setImmediate, then a TopChat async handler that reads the same cache and
+  // rejects the prefixed command before queueing a write.
+  const legacyStartedAt = performance.now();
+  for (let i = 0; i < iterations; i++) {
+    counter.observeIncomingEvent(event);
+    await new Promise((resolve, reject) => {
+      setImmediate(() => {
+        counter.run({ event, Threads }).then(resolve, reject);
+      });
+    });
+  }
+  const legacyMs = performance.now() - legacyStartedAt;
+
+  // Fast path keeps the same event/rejected counters but does not schedule the
+  // no-op TopChat Promise or repeat the group-cache lookup.
+  const fastStartedAt = performance.now();
+  for (let i = 0; i < iterations; i++) {
+    counter.observeIncomingEvent(event, { snapshot: false });
+    counter.observeRejectedCommand(event);
+  }
+  const fastMs = performance.now() - fastStartedAt;
+
+  return {
+    iterations,
+    legacyDeferredNoop: {
+      totalMs: Number(legacyMs.toFixed(2)),
+      avgUs: Number((legacyMs * 1000 / iterations).toFixed(3))
+    },
+    directDiagnosticFastPath: {
+      totalMs: Number(fastMs.toFixed(2)),
+      avgUs: Number((fastMs * 1000 / iterations).toFixed(3))
+    },
+    speedup: Number((legacyMs / Math.max(fastMs, 0.001)).toFixed(1))
+  };
+}
+
 function benchmarkAdminGroupRead() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-hotpath-bench-"));
   const filePath = path.join(dir, "bot_admin_groups.json");
@@ -83,12 +148,19 @@ function benchmarkAdminGroupRead() {
   }
 }
 
-const report = {
-  benchmark: "JOHNTRAN-JS hot-path microbenchmark",
-  node: process.version,
-  note: "Synthetic in-process measurements only; Zalo network/API latency is not included.",
-  menu: benchmarkMenuLookup(),
-  adminGroups: benchmarkAdminGroupRead()
-};
+async function main() {
+  const report = {
+    benchmark: "JOHNTRAN-JS hot-path microbenchmark",
+    node: process.version,
+    note: "Synthetic in-process measurements only; Zalo network/API latency is not included.",
+    menu: benchmarkMenuLookup(),
+    adminGroups: benchmarkAdminGroupRead(),
+    topchatCommandFilter: await benchmarkTopchatCommandFilter()
+  };
+  console.log(JSON.stringify(report, null, 2));
+}
 
-console.log(JSON.stringify(report, null, 2));
+main().catch(error => {
+  console.error("[benchmark:hotpath] failed:", error?.stack || error);
+  process.exitCode = 1;
+});
