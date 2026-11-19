@@ -31,7 +31,7 @@ function drawText(ctx, value, x, y, scale, options = {}) {
     align: options.align || "left",
     baseline: options.baseline || "alphabetic",
     maxWidth: options.maxWidth,
-    multicolor: words.length > 1 || words.some(word => theme.splitGraphemes(word).length > 1)
+    multicolor: options.multicolor !== false
   });
   ctx.restore();
 }
@@ -218,5 +218,5 @@ module.exports = {
   BOARD_SIZE,
   CELL_COUNT,
   renderCaro,
-  _test: { normalizeBoard, cellLabel }
+  _test: { normalizeBoard, cellLabel, drawText }
 };
