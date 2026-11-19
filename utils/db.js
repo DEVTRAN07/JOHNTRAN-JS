@@ -251,7 +251,9 @@ function createDatabaseFacade(backend, options = {}) {
     },
     flushAndWait() {
       if (typeof backend.flushAndWait === "function") return backend.flushAndWait();
-      return Promise.resolve(this.flush());
+      if (typeof backend.flushSync === "function") return Promise.resolve(backend.flushSync());
+      if (typeof backend.flush === "function") return Promise.resolve(backend.flush());
+      return Promise.resolve(undefined);
     },
     // Operational status is a memory-only snapshot for realtime listener
     // paths. The full getStatus() below performs file/mount diagnostics and is
