@@ -209,7 +209,11 @@ if (global.config.hot_reload) {
 }
 
 // Gửi thống kê (hồ sơ, bạn bè, nhóm) lên store để panel hiển thị
-const STATS_INTERVAL = 30000;
+// Panel statistics are secondary to real-time chat. Keep the cached snapshot
+// for 30 minutes and refresh it in the background no more than every 10 minutes.
+// The initial bulk Zalo reads start only after the WebSocket listener is live.
+const STATS_INTERVAL = 10 * 60 * 1000;
+const STATS_INITIAL_DELAY = 60 * 1000;
 let statsInFlight = false;
 const sendStats = async () => {
   if (!global.api || statsInFlight) return;
@@ -228,9 +232,6 @@ const sendStats = async () => {
     statsInFlight = false;
   }
 };
-sendStats();
-setInterval(sendStats, STATS_INTERVAL).unref();
-
 // Load the persisted Anti-recall cache before opening the WebSocket listener.
 // Its first read parses the bounded JSON file synchronously; doing this during
 // startup prevents the first command after a restart from paying that cost.
@@ -246,6 +247,14 @@ try {
 }
 
 listener(api);
+
+// Warm/refresh Panel statistics only after the bot can already receive messages.
+// This bulk task reads up to 50 group details and must never race initial command
+// responses immediately after login.
+const statsInitialTimer = setTimeout(sendStats, STATS_INITIAL_DELAY);
+statsInitialTimer.unref?.();
+const statsRefreshTimer = setInterval(sendStats, STATS_INTERVAL);
+statsRefreshTimer.unref?.();
 
 // Cầu nói panel (chat Zalo thu nhỏ) — server nội bộ localhost
 require("./core/panelBridge").start({
