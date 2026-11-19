@@ -15,7 +15,7 @@ const { bootstrapFiles } = require("./core/bootstrap");
 const db = require("./utils/db");
 const stats = require("./core/stats");
 const schedule = require("node-schedule");
-const { cleanOldMessages } = require("./utils/index");
+const { cleanOldMessages, getMessageCache } = require("./utils/index");
 
 const loginMod = login;
 
@@ -68,6 +68,13 @@ try {
     logger.log(`Đã tải cấu hệ thống thành công${BOT_TAG} (privacy guard: bật)`, "info");
     // Khôi phục account/cookie/database từ biến môi trường trước khi đăng nhập
     bootstrapFiles();
+    // Load the potentially large anti-recall message cache during startup,
+    // before the Zalo listener receives user traffic. The old lazy first-read
+    // happened inside updateMessageCache() on the first incoming message and
+    // could synchronously parse tens of thousands of JSON records.
+    const cacheWarmStartedAt = Date.now();
+    getMessageCache();
+    logger.log(`Đã nạp message cache trước listener trong ${Date.now() - cacheWarmStartedAt}ms`, "info");
     // mở health server TRƯỚC login: cloud platform cần port mở ngay
     startHealthServer();
 } catch (error) {
