@@ -9,7 +9,7 @@ name = "canvas_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { workspace = true, features = ["derive"] }
+napi = { workspace = true }
 skia-safe = "0.9"
 
 [features]
