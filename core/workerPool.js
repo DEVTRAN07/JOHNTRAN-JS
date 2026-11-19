@@ -1,8 +1,13 @@
 const { Worker } = require("worker_threads");
 const path = require("path");
+const {
+  getAvailableCpuCount,
+  resolveWorkerPoolSize
+} = require("./mediaResourceLimits");
 
 const WORKERS_DIR = path.join(__dirname, "workers");
-const DEFAULT_POOL_SIZE = 4;
+const AVAILABLE_CPUS = getAvailableCpuCount();
+const DEFAULT_POOL_SIZE = resolveWorkerPoolSize(4, AVAILABLE_CPUS);
 const DEFAULT_MAX_PENDING = Math.max(1, Number(process.env.JT_WORKER_MAX_PENDING) || 32);
 const DEFAULT_RESTART_WINDOW_MS = Math.max(1000, Number(process.env.JT_WORKER_RESTART_WINDOW_MS) || 60 * 1000);
 const DEFAULT_MAX_RESTARTS = Math.max(1, Number(process.env.JT_WORKER_MAX_RESTARTS) || 5);
@@ -223,7 +228,9 @@ function pump(pool) {
 
 function runInWorker(scriptName, data, options = {}) {
   if (shuttingDown) return Promise.reject(new Error("workerPool: shutting down"));
-  const size = Math.max(1, Number(options.size) || DEFAULT_POOL_SIZE);
+  // Explicit poolSize values from older commands are also capped. A two-core
+  // host must not start two Canvas workers plus FFmpeg while the listener runs.
+  const size = resolveWorkerPoolSize(options.size || DEFAULT_POOL_SIZE, AVAILABLE_CPUS);
   const pool = getOrCreatePool(scriptName, size);
   if (Number.isFinite(Number(options.maxRestartsInWindow))) pool.maxRestartsInWindow = Math.max(1, Number(options.maxRestartsInWindow));
   if (Number.isFinite(Number(options.restartWindowMs))) pool.restartWindowMs = Math.max(100, Number(options.restartWindowMs));
