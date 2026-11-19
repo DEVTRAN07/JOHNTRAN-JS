@@ -30,7 +30,67 @@ function formatRows(rows, labelPrefix = "") {
   );
 }
 
-function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null) {
+function formatQueueAndWorkerPressure(jobQueues = null, workers = null) {
+  const lines = [];
+  const globalQueue = jobQueues?.global;
+  if (globalQueue) {
+    lines.push(
+      "  • Global: " +
+      Math.max(0, Number(globalQueue.active) || 0) + "/" +
+      Math.max(0, Number(globalQueue.concurrency) || 0) + " slot · chờ " +
+      Math.max(0, Number(globalQueue.pending) || 0)
+    );
+  } else {
+    lines.push("  • Global queue: chưa có mẫu");
+  }
+
+  const lanes = Object.entries(jobQueues || {})
+    .filter(([name, lane]) => name !== "global" && lane && (
+      Number(lane.active) > 0 || Number(lane.pending) > 0 || Number(lane.waitCount) > 0
+    ))
+    .sort((a, b) => (Number(b[1].pending) || 0) - (Number(a[1].pending) || 0) ||
+      (Number(b[1].active) || 0) - (Number(a[1].active) || 0))
+    .slice(0, 5);
+
+  if (lanes.length) {
+    for (const [name, lane] of lanes) {
+      lines.push(
+        "  • " + name + ": active " + Math.max(0, Number(lane.active) || 0) +
+        " · pending " + Math.max(0, Number(lane.pending) || 0) +
+        " · wait TB " + formatMs(lane.avgWaitMs) +
+        " · max " + formatMs(lane.maxWaitMs)
+      );
+    }
+  } else if (!jobQueues || !Object.keys(jobQueues).length) {
+    lines.push("  • Các lane: chưa có mẫu");
+  } else {
+    lines.push("  • Các lane: không có tác vụ đang chờ");
+  }
+
+  const pools = Object.entries(workers || {})
+    .filter(([, pool]) => pool && (Number(pool.workers) > 0 || Number(pool.pending) > 0 || Number(pool.rejected) > 0))
+    .sort((a, b) => (Number(b[1].pending) || 0) - (Number(a[1].pending) || 0))
+    .slice(0, 4);
+
+  if (pools.length) {
+    for (const [name, pool] of pools) {
+      lines.push(
+        "  • Worker " + name + ": busy " + Math.max(0, Number(pool.busy) || 0) +
+        "/" + Math.max(0, Number(pool.workers) || 0) +
+        " · pending " + Math.max(0, Number(pool.pending) || 0) +
+        " · reject " + Math.max(0, Number(pool.rejected) || 0)
+      );
+    }
+  } else if (!workers || !Object.keys(workers).length) {
+    lines.push("  • Worker pools: chưa có mẫu");
+  } else {
+    lines.push("  • Worker pools: chưa khởi tạo");
+  }
+
+  return lines;
+}
+
+function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null) {
   const latency = source.getLatencyStats?.() || {};
   const commands = source.getCommandLatencyStats?.(6) || [];
   const handlers = source.getCommandExecutionLatencyStats?.(6) || [];
@@ -79,6 +139,9 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
         )
       : ["  • Chưa có mẫu fetch trong phiên này"]),
     "",
+    "🚦 HÀNG ĐỢI / WORKER",
+    ...formatQueueAndWorkerPressure(jobQueues, workers),
+    "",
     "🚀 NHẬN TIN → PHẢN HỒI ĐẦU TIÊN",
     ...formatRows(firstResponse, "/"),
     "",
@@ -100,9 +163,13 @@ module.exports.run = async function ({ api, event, reply }) {
   let transport = null;
   try { transport = require("../../core/http/transport").getZaloHttpTransportStats(); }
   catch { /* HTTP diagnostics are optional */ }
-  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport);
+  let jobQueues = null;
+  let workers = null;
+  try { jobQueues = require("../../core/jobQueue").stats(); } catch {}
+  try { workers = require("../../core/workerPool").stats(); } catch {}
+  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers);
   if (typeof reply?.text === "function") return reply.text(report);
   return api.sendMessage({ msg: report }, event.threadId, event.type);
 };
 
-module.exports._test = { formatMs, formatRows, buildSpeedReport };
+module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, buildSpeedReport };
