@@ -234,6 +234,21 @@ test("retry timer keeps the job counted while it waits in the runnable queue", a
 });
 
 
+test("legacy queue concurrency overrides cannot exceed the CPU-aware ceiling", () => {
+  const {
+    GLOBAL_CONCURRENCY,
+    DEFAULT_GLOBAL_CONCURRENCY,
+    AVAILABLE_CPUS,
+    STICKER_CONCURRENCY,
+    DOWNLOAD_CONCURRENCY,
+    DEFAULT_HEAVY_MEDIA_CONCURRENCY
+  } = require("../core/jobQueue");
+  assert.ok(GLOBAL_CONCURRENCY <= DEFAULT_GLOBAL_CONCURRENCY);
+  assert.ok(STICKER_CONCURRENCY <= DEFAULT_HEAVY_MEDIA_CONCURRENCY);
+  assert.ok(DOWNLOAD_CONCURRENCY <= DEFAULT_HEAVY_MEDIA_CONCURRENCY);
+  assert.ok(DEFAULT_GLOBAL_CONCURRENCY <= Math.max(1, AVAILABLE_CPUS - 1));
+});
+
 test("heavy media lanes use CPU-aware concurrency and preserve a slot for chat", () => {
   const { DEFAULT_LANES, STICKER_CONCURRENCY, DOWNLOAD_CONCURRENCY } = require("../core/jobQueue");
   const {
