@@ -18,7 +18,8 @@ test("FFmpeg thread override is bounded and rejects invalid values", () => {
   assert.equal(resolveFfmpegThreads({ JT_FFMPEG_THREADS: "0" }), 1);
   assert.equal(resolveFfmpegThreads({ JT_FFMPEG_THREADS: "-1" }), 1);
   assert.equal(resolveFfmpegThreads({ JT_FFMPEG_THREADS: "many" }), 1);
-  assert.equal(resolveFfmpegThreads({ JT_FFMPEG_THREADS: "99" }), 1);
+  assert.equal(resolveFfmpegThreads({ JT_FFMPEG_THREADS: "99" }), 4,
+    "large positive values are clamped to the supported maximum");
 });
 
 test("heavy media concurrency leaves CPU capacity for the Zalo listener", () => {
