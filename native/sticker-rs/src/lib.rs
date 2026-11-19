@@ -2,7 +2,7 @@ use napi::{bindgen_prelude::Buffer, Error, Result, Status};
 use image::io::Reader as ImageReader;
 use image::{DynamicImage, GenericImageView, FilterType};
 use std::io::Cursor;
-use webp::encoder::{WebPEncoder, WebPConfig};
+use webp::Encoder;
 
 #[napi(object)]
 pub struct EncodeOptions {
@@ -54,21 +54,18 @@ pub fn encode_webp(options: EncodeOptions) -> Result<EncodeResult> {
   };
   let (w, h) = img.dimensions();
   let rgba = img.to_rgba8();
-  let mut config = WebPConfig::new();
-  config.set_quality(options.quality.unwrap_or(75) as f32);
-  if options.lossless.unwrap_or(false) {
-    config.set_lossless(true);
-  }
-  let encoder = WebPEncoder::from_config(&config);
+  let encoder = Encoder::from_rgba(rgba.as_raw(), w, h);
   let encoded = encoder
-    .encode(&rgba)
+    .encode_simple(options.lossless.unwrap_or(false), options.quality.unwrap_or(75) as f32)
     .map_err(|e| Error::new(Status::GenericFailure, format!("webp encode failed: {}", e)))?;
+  let encoded = encoded.to_vec();
+  let size = encoded.len() as u64;
   Ok(EncodeResult {
     buffer: Buffer::from(encoded),
     format: "webp".to_string(),
     width: w,
     height: h,
-    size: encoded.len() as u64,
+    size,
   })
 }
 
