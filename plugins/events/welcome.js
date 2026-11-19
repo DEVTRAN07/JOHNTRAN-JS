@@ -8,7 +8,7 @@ const welcomeCanvas = require("../../core/canvas/welcome");
 module.exports.config = {
   name: "welcome",
   event_type: ["group_event"],
-  version: "2.3.0",
+  version: "2.4.0",
   author: "JOHNTRAN",
   description: "Tự động chào/tạm biệt từng thành viên bằng Canvas riêng có ảnh đại diện",
   category: "Sự kiện",
