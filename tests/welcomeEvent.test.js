@@ -189,7 +189,7 @@ test("BLOCK_MEMBER event is treated as OUT and sends a Goodbye Canvas", async ()
   assert.equal(rendered.length, 1);
   assert.equal(rendered[0].mode, "goodbye");
   assert.equal(rendered[0].member.name, "Blocked Member");
-  assert.match(f.sent[0].payload.msg, /Tạm biệt @\\. đã rời nhóm/);
+  assert.match(f.sent[0].payload.msg, /Tạm biệt @. đã rời nhóm/);
 });
 
 test("JOIN hydration stops after group-member profile already provides the avatar", async () => {
@@ -199,7 +199,7 @@ test("JOIN hydration stops after group-member profile already provides the avata
     async getGroupMembersInfo(ids) {
       calls.push(["group", ids]);
       return { profiles: {
-        fast_user_0: { id: "fast-user", displayName: "Resolved Fast User", avatar: "https://example.com/fast.jpg" }
+        fast-user_0: { id: "fast-user", displayName: "Resolved Fast User", avatar: "https://example.com/fast.jpg" }
       }};
     },
     async getUserInfo() { calls.push(["user"]); throw new Error("Must not perform redundant user lookup"); },
@@ -221,12 +221,12 @@ test("OUT hydration uses avatar-only endpoint only when user profile has no avat
     async getUserInfo(ids, size) {
       calls.push(["user", ids, size]);
       return { changed_profiles: {
-        former_user_0: { userId: "former-user", displayName: "Former User", avatar: "" }
+        former-user_0: { userId: "former-user", displayName: "Former User", avatar: "" }
       }};
     },
     async getAvatarUrlProfile(ids, size) {
       calls.push(["avatar", ids, size]);
-      return { former_user_0: { avatar: "https://example.com/former-fallback.jpg" } };
+      return { former-user_0: { avatar: "https://example.com/former-fallback.jpg" } };
     }
   }, members, { includeGroupMembers: false });
   assert.deepEqual(calls, [
