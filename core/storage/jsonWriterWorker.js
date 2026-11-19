@@ -2,7 +2,7 @@
 
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { parentPort, workerData } = require("node:worker_threads");
+const { parentPort, workerData, threadId } = require("node:worker_threads");
 
 const file = path.resolve(String(workerData?.file || ""));
 const tables = Array.isArray(workerData?.tables) ? workerData.tables : [];
@@ -95,7 +95,7 @@ function flushSnapshot() {
     return Promise.reject(error);
   }
 
-  const tempFile = file + "." + process.pid + ".tmp";
+  const tempFile = file + "." + process.pid + "." + threadId + ".tmp";
   flushPromise = (async () => {
     try {
       await fs.mkdir(path.dirname(file), { recursive: true });
