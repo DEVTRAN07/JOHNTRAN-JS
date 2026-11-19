@@ -197,6 +197,7 @@ test("Rust N-API colorizer preserves UTF-16 offsets and skips tagged mention ran
   const spans = nativeRuntime.randomColorStyles(msg, [
     TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green
   ]);
+  assert.ok(Array.isArray(spans), JSON.stringify(nativeRuntime.getTextStyleDiagnostics()));
   const expected = [...msg.matchAll(/\S+/gu)].map(match => ({
     start: match.index,
     len: match[0].length
@@ -208,6 +209,7 @@ test("Rust N-API colorizer preserves UTF-16 offsets and skips tagged mention ran
     [TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green],
     [{ start: 0, end: 6 }]
   );
+  assert.ok(Array.isArray(mentionSpans), JSON.stringify(nativeRuntime.getTextStyleDiagnostics()));
   assert.deepEqual(
     mentionSpans.map(({ start, len }) => ({ start, len })),
     [{ start: 7, len: 4 }, { start: 12, len: 3 }]

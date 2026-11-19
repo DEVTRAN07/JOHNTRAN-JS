@@ -106,7 +106,7 @@ function randomColorStyles(message, options = {}) {
   }
 
   if (!Array.isArray(styles)) {
-    styles = randomColorStylesJs(text, { ...options, excludeRanges });
+    styles = randomColorStylesJs(text, { ...options, excludeRanges: excludedRanges });
   }
 
   try {

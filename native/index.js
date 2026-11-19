@@ -20,17 +20,37 @@ const canvasNative = tryLoad("canvas-rs", "canvas_rs.node");
 const ffmpegNative = tryLoad("ffmpeg-rs", "ffmpeg_rs.node");
 const textStyleNative = tryLoad("text-style-rs", "text_style_rs.node");
 
+let textStyleLastError = null;
+
 function randomColorStyles(text, colors, excludedRanges = []) {
-  if (!textStyleNative.ok || typeof textStyleNative.mod.random_color_styles !== "function") return null;
+  if (!textStyleNative.ok) return null;
+  const colorizer = textStyleNative.mod.random_color_styles ||
+    textStyleNative.mod.randomColorStyles;
+  if (typeof colorizer !== "function") {
+    textStyleLastError = "Rust addon missing random_color_styles export; exports=" +
+      Object.keys(textStyleNative.mod || {}).join(",");
+    return null;
+  }
   try {
-    return textStyleNative.mod.random_color_styles(
+    textStyleLastError = null;
+    return colorizer(
       String(text ?? ""),
       Array.isArray(colors) ? colors.map(String) : [],
       Array.isArray(excludedRanges) ? excludedRanges : []
     );
-  } catch {
+  } catch (error) {
+    textStyleLastError = String(error?.stack || error?.message || error);
     return null;
   }
+}
+
+function getTextStyleDiagnostics() {
+  return {
+    loaded: textStyleNative.ok,
+    exports: textStyleNative.ok ? Object.keys(textStyleNative.mod || {}) : [],
+    loadError: textStyleNative.ok ? null : String(textStyleNative.err?.message || textStyleNative.err),
+    lastError: textStyleLastError
+  };
 }
 
 function wrap(fn) {
@@ -137,6 +157,7 @@ const nativeApi = {
   decodeFrame: wrap({ name: "decode_frame", native: ffmpegNative, fallback: (o) => jsDecodeFrame(o.input, o.timeSeconds) }),
   encode: wrap({ name: "encode", native: ffmpegNative, fallback: (o) => jsEncode(o.input, o.output) }),
   randomColorStyles,
+  getTextStyleDiagnostics,
   nativeAvailable: {
     sticker: stickerNative.ok,
     canvas: canvasNative.ok,
