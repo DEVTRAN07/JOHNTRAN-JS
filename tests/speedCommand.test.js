@@ -96,6 +96,7 @@ test("/speed reports effective CPU, FFmpeg and media concurrency limits", () => 
     {
       availableCpus: 2,
       ffmpegThreads: 1,
+      workerPoolMaxSize: 1,
       globalJobConcurrency: 1,
       defaultGlobalJobConcurrency: 1,
       stickerConcurrency: 1,
@@ -106,6 +107,7 @@ test("/speed reports effective CPU, FFmpeg and media concurrency limits", () => 
   assert.match(report, /GIỚI HẠN TÀI NGUYÊN MEDIA/);
   assert.match(report, /CPU khả dụng: 2 lõi/);
   assert.match(report, /FFmpeg: 1 thread\/lượt/);
+  assert.match(report, /Worker pool: tối đa 1 worker\/pool/);
   assert.match(report, /Global media queue: 1 job \(mặc định CPU: 1\)/);
   assert.match(report, /STK: 1 job đồng thời/);
   assert.match(report, /Tải media: 1 job đồng thời/);
