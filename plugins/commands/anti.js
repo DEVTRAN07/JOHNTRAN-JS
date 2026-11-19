@@ -11,7 +11,10 @@ const { ANTI_PROTECTION_KEYS } = require("../../core/runtime/antiProtection");
 const { runThreadQueue } = require("../../core/runtime/threadQueue");
 const { sendAntiToggleNotice } = require("../../core/runtime/antiToggle");
 
-const ANTI_SELF_ECHO_TTL_MS = 60_000;
+// Echo IDs must outlive the normal 60-second auto-recall window and tolerate
+// delayed WebSocket undo events. ID-based checks prevent Anti's own replies
+// from being fed back into Anti-Recall.
+const ANTI_SELF_ECHO_TTL_MS = 5 * 60_000;
 const ANTI_SELF_ECHO_LIMIT = 3000;
 const antiSelfEchoes = new Map();
 const antiSkipLogAt = new Map();
@@ -161,6 +164,24 @@ function isAntiGeneratedSelfEcho(event, consume = true) {
   return matched;
 }
 
+// Undo callbacks may contain only the recalled cliMsgId, while the message
+// cache contains the original outgoing IDs. Match IDs only (not message text)
+// so a human repeating an Anti notice can never be mistaken for an Anti echo.
+function isAntiGeneratedCachedMessage(threadId, message, consume = true) {
+  const groupId = String(threadId || "");
+  if (!groupId || !message || typeof message !== "object") return false;
+  pruneAntiSelfEchoes();
+  let matched = false;
+  for (const field of ["msgId", "cliMsgId"]) {
+    if (message[field] == null) continue;
+    const key = groupId + ":" + field + ":" + normalizeEchoText(message[field]);
+    if (!antiSelfEchoes.has(key)) continue;
+    if (consume) antiSelfEchoes.delete(key);
+    matched = true;
+  }
+  return matched;
+}
+
 function shouldSkipSelfEvent(context = {}) {
   const event = context.event || {};
   const userId = String(event?.data?.uidFrom || "");
@@ -201,6 +222,18 @@ function sendAntiMessage(api, payload, threadId, type) {
   return sendAntiAction(api, "sendMessage", body, threadId, type);
 }
 
+// Restored content must remain visible. In particular, never apply the global
+// 60-second auto-recall timer to Anti-Recall output or its restored media.
+function sendAntiUndoAction(api, method, payload, threadId, type) {
+  const body = typeof payload === "string" ? { msg: payload } : { ...(payload || {}) };
+  body.recallAfterMs = 0;
+  return sendAntiAction(api, method, body, threadId, type);
+}
+
+function sendAntiUndoMessage(api, payload, threadId, type) {
+  return sendAntiUndoAction(api, "sendMessage", payload, threadId, type);
+}
+
 module.exports.config = {
   name: "anti",
   version: "1.1.7",
@@ -229,7 +262,7 @@ function formatUndoMessage(name, timeSend, timeUndo, content) {
     .replace('{content}', content || "");
 }
 
-async function handlePhoto(messageCache, tempPath, name, timeSend, timeUndo, threadId, api, type) {
+async function handlePhoto(messageCache, tempPath, name, timeSend, timeUndo, threadId, api, type, sendMessage = sendAntiMessage) {
   const tempFilePath = path.join(tempPath, `anti_undo_${Date.now()}.jpg`);
   const { buffer } = await http.getBuffer(messageCache.content.href);
 
@@ -239,7 +272,7 @@ async function handlePhoto(messageCache, tempPath, name, timeSend, timeUndo, thr
   const message = messageCache.content.title || "";
   const msgBody = formatUndoMessage(name, timeSend, timeUndo, message);
 
-  await sendAntiMessage(api, { msg: msgBody, attachments: [tempFilePath] }, threadId, type);
+  await sendMessage(api, { msg: msgBody, attachments: [tempFilePath] }, threadId, type);
   return tempFilePath;
 }
 
@@ -771,6 +804,15 @@ async function handleAntiEvent(context = {}) {
   const name = data.dName || (eventType === "undo" ? cachedUndoMessage?.dName : "") || "Bạn";
   const isGroup = event.type === ThreadType.Group || event.isGroup === true || eventType === "group_event";
 
+  // Zalo may omit isSelf on undo callbacks. Identify Anti's own prior output
+  // from the cached original IDs before considering Anti-Recall, regardless
+  // of that flag, so a restored message can never recall itself in a loop.
+  if (eventType === "undo" && cachedUndoMessage &&
+      isAntiGeneratedCachedMessage(threadId, cachedUndoMessage)) {
+    logAntiSkip(threadId, "bỏ qua thu hồi tin do Anti gửi để tránh vòng lặp Anti-Recall");
+    return;
+  }
+
   if (!isGroup || !threadId || (!userId && eventType !== "undo" && eventType !== "group_event")) return;
   if (eventType === "undo" && !userId) {
     logAntiSkip(threadId, "sự kiện thu hồi không có uid người gửi và không tìm thấy bản tin trong cache");
@@ -995,14 +1037,17 @@ async function handleAntiEvent(context = {}) {
 
       const timeSend = cached.timestamp || cached.ts || Date.now();
       const timeUndo = data.ts || Date.now();
-      const sendUndoMessage = (msg, extra) => sendAntiMessage(
+      const sendUndoMessage = (msg, extra) => sendAntiUndoMessage(
         api, { msg, ...(extra || {}) }, threadId, ThreadType.Group
+      );
+      const sendUndoAction = (method, payload) => sendAntiUndoAction(
+        api, method, payload, threadId, ThreadType.Group
       );
 
       switch (cached.msgType) {
         case "chat.photo": {
           const tempFilePath = await handlePhoto(
-            cached, tempPath, name, timeSend, timeUndo, threadId, api, ThreadType.Group
+            cached, tempPath, name, timeSend, timeUndo, threadId, api, ThreadType.Group, sendAntiUndoMessage
           );
           tempFiles.push(tempFilePath);
           break;
@@ -1012,7 +1057,7 @@ async function handleAntiEvent(context = {}) {
           const params = parseVideoParams(content.params);
           await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
           if (content.href && typeof api.sendVideo === "function") {
-            await sendAntiAction(api, "sendVideo", {
+            await sendUndoAction("sendVideo", {
               videoUrl: content.href,
               thumbnailUrl: content.thumb,
               duration: Number(params.duration) || 0,
@@ -1026,7 +1071,7 @@ async function handleAntiEvent(context = {}) {
           const content = cached.content || {};
           await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
           if (typeof api.sendSticker === "function") {
-            await sendAntiAction(api, "sendSticker", {
+            await sendUndoAction("sendSticker", {
               id: content.id,
               cateId: content.catId ?? content.cateId,
               type: content.type
@@ -1038,7 +1083,7 @@ async function handleAntiEvent(context = {}) {
           const voiceUrl = cached.content?.href;
           await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
           if (voiceUrl && typeof api.sendVoice === "function") {
-            await sendAntiAction(api, "sendVoice", { voiceUrl }, threadId, ThreadType.Group);
+            await sendUndoAction("sendVoice", { voiceUrl }, threadId, ThreadType.Group);
           }
           break;
         }
@@ -1047,13 +1092,13 @@ async function handleAntiEvent(context = {}) {
           const href = content.href || "";
           if (content.action === "recommended.link" && typeof api.sendLink === "function") {
             const title = String(content.title || "").replace(href, "").trim();
-            await sendAntiAction(api, "sendLink", {
+            await sendUndoAction("sendLink", {
               msg: formatUndoMessage(name, timeSend, timeUndo, title),
               link: href
             }, threadId, ThreadType.Group);
           } else if (content.action === "recommended.user" && typeof api.sendCard === "function") {
             await sendUndoMessage(formatUndoMessage(name, timeSend, timeUndo));
-            await sendAntiAction(api, "sendCard", { userId: content.params }, threadId, ThreadType.Group);
+            await sendUndoAction("sendCard", { userId: content.params }, threadId, ThreadType.Group);
           }
           break;
         }
@@ -1071,7 +1116,7 @@ async function handleAntiEvent(context = {}) {
           }
           const tempFilePath = path.join(tempPath, fileName);
           await fs.writeFile(tempFilePath, response.body);
-          await sendAntiMessage(api, {
+          await sendAntiUndoMessage(api, {
             msg: formatUndoMessage(name, timeSend, timeUndo, cached.content.title || ""),
             attachments: [tempFilePath]
           }, threadId, ThreadType.Group);
@@ -1339,6 +1384,8 @@ module.exports._test = {
   isStickerMessage,
   shouldSkipSelfEvent,
   isAntiGeneratedSelfEcho,
+  isAntiGeneratedCachedMessage,
+  sendAntiUndoAction,
   rememberAntiSelfEcho,
   clearAntiSelfEchoes: () => antiSelfEchoes.clear(),
   buildDeleteDestination,
