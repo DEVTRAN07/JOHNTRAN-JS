@@ -40,10 +40,14 @@ function normalizeExcludedRanges(ranges, textLength) {
   if (!Array.isArray(ranges)) return [];
   return ranges.map(range => {
     const start = Number(range?.pos ?? range?.start);
+    const explicitEnd = Number(range?.end);
     const length = Number(range?.len ?? range?.length);
-    if (!Number.isInteger(start) || start < 0 ||
-        !Number.isInteger(length) || length <= 0 || start >= textLength) return null;
-    const end = Math.min(textLength, start + length);
+    if (!Number.isInteger(start) || start < 0 || start >= textLength) return null;
+    const end = Number.isInteger(explicitEnd) && explicitEnd > start
+      ? Math.min(textLength, explicitEnd)
+      : Number.isInteger(length) && length > 0
+        ? Math.min(textLength, start + length)
+        : start;
     return end > start ? { start, end } : null;
   }).filter(Boolean);
 }
