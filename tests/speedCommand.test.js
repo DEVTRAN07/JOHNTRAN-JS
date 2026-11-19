@@ -33,6 +33,27 @@ test("/speed reports end-to-end, handler, listener, API and first-response timin
   assert.match(report, /P95 850\.0 ms/);
 });
 
+test("/speed reports HTTP fetch timing separately from complete Zalo API timing", () => {
+  const emptyMetrics = {
+    getLatencyStats: () => ({ count: 0 }),
+    getCommandLatencyStats: () => [],
+    getCommandExecutionLatencyStats: () => [],
+    getListenerStageLatencyStats: () => [],
+    getZaloApiLatencyStats: () => [],
+    getFirstResponseLatencyByCommandStats: () => []
+  };
+  const transport = {
+    count: 12,
+    failed: 1,
+    byHost: [{ host: "chat.zalo.me", count: 12, failed: 1, avgMs: 95, p95Ms: 160 }]
+  };
+  const report = command._test.buildSpeedReport(emptyMetrics, 0, null, transport);
+  assert.match(report, /HTTP FETCH \/ KẾT NỐI/);
+  assert.match(report, /chat\.zalo\.me/);
+  assert.match(report, /P95 160\.0 ms/);
+  assert.match(report, /lỗi 1/);
+});
+
 test("/speed handles an empty metrics store", () => {
   const emptyMetrics = {
     getLatencyStats: () => ({ count: 0 }),
