@@ -1,5 +1,7 @@
 'use strict';
 
+const { performance } = require('node:perf_hooks');
+
 var toughCookie = require('tough-cookie');
 var context = require('./context.cjs');
 var errors = require('./errors.cjs');
@@ -15,6 +17,16 @@ var logger = require('./logger.cjs');
 const ZALO_ORIGIN = "https://chat.zalo.me";
 const LOGIN_REFERER = "https://id.zalo.me/";
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+function recordRequestTiming(ctx, phase, elapsedMs) {
+    try {
+        if (typeof ctx?.options?.onRequestTiming === "function") {
+            ctx.options.onRequestTiming(phase, Math.max(0, Number(elapsedMs) || 0));
+        }
+    }
+    catch {
+        // Timing hooks are optional and must never change API delivery.
+    }
+}
 function resolvePolicy(options) {
     return Object.assign(Object.assign({}, context.DEFAULT_RETRY_OPTIONS), options);
 }
@@ -113,26 +125,59 @@ async function applySetCookies(ctx, response, origin) {
  */
 async function dispatch(ctx, url, options, raw, timeoutMs) {
     var _a, _b, _c;
-    if (!ctx.cookie)
-        ctx.cookie = new toughCookie.CookieJar();
-    const origin = new URL(url).origin;
-    const requestOptions = options ? Object.assign({}, options) : {};
-    if (!raw) {
-        const headers = new Headers(await getDefaultHeaders(ctx, origin));
-        if (options === null || options === void 0 ? void 0 : options.headers) {
-            new Headers(options.headers).forEach((value, key) => headers.set(key, value));
-        }
-        requestOptions.headers = headers;
-    }
+    const requestStartedAt = performance.now();
     const controller = timeoutMs > 0 ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-    const transportOptions = Object.assign(Object.assign(Object.assign({}, requestOptions), (controller ? { signal: controller.signal } : {})), (typeof Bun !== "undefined"
-        ? { proxy: (_b = (_a = ctx.options.agent) === null || _a === void 0 ? void 0 : _a.proxy) === null || _b === void 0 ? void 0 : _b.href }
-        : { agent: ctx.options.agent }));
-    try {
-        const response = await ((_c = ctx.options.polyfill) !== null && _c !== void 0 ? _c : fetch)(url, transportOptions);
-        if (!raw)
-            await applySetCookies(ctx, response, origin);
+    let timer = null;
+    const timeoutPromise = controller ? new Promise((_resolve, reject) => {
+        timer = setTimeout(() => {
+            const timeoutError = new errors.ZaloApiError(`Zalo request timed out after ${timeoutMs}ms`, "ETIMEDOUT");
+            timeoutError.name = "TimeoutError";
+            controller.abort(timeoutError);
+            reject(timeoutError);
+        }, timeoutMs);
+    }) : null;
+
+    const operation = (async () => {
+        if (!ctx.cookie)
+            ctx.cookie = new toughCookie.CookieJar();
+        const origin = new URL(url).origin;
+        const requestOptions = options ? Object.assign({}, options) : {};
+        if (!raw) {
+            const headersStartedAt = performance.now();
+            try {
+                const headers = new Headers(await getDefaultHeaders(ctx, origin));
+                if (options === null || options === void 0 ? void 0 : options.headers) {
+                    new Headers(options.headers).forEach((value, key) => headers.set(key, value));
+                }
+                requestOptions.headers = headers;
+            }
+            finally {
+                recordRequestTiming(ctx, "cookie-headers", performance.now() - headersStartedAt);
+            }
+        }
+        if (controller?.signal.aborted) {
+            throw new errors.ZaloApiError(`Zalo request timed out after ${timeoutMs}ms`, "ETIMEDOUT");
+        }
+        const transportOptions = Object.assign(Object.assign(Object.assign({}, requestOptions), (controller ? { signal: controller.signal } : {})), (typeof Bun !== "undefined"
+            ? { proxy: (_b = (_a = ctx.options.agent) === null || _a === void 0 ? void 0 : _a.proxy) === null || _b === void 0 ? void 0 : _b.href }
+            : { agent: ctx.options.agent }));
+        const fetchStartedAt = performance.now();
+        let response;
+        try {
+            response = await ((_c = ctx.options.polyfill) !== null && _c !== void 0 ? _c : fetch)(url, transportOptions);
+        }
+        finally {
+            recordRequestTiming(ctx, "fetch", performance.now() - fetchStartedAt);
+        }
+        if (!raw) {
+            const cookieStartedAt = performance.now();
+            try {
+                await applySetCookies(ctx, response, origin);
+            }
+            finally {
+                recordRequestTiming(ctx, "response-cookies", performance.now() - cookieStartedAt);
+            }
+        }
         const redirectURL = response.headers.get("location");
         if (redirectURL) {
             const redirectOptions = Object.assign(Object.assign({}, requestOptions), { method: "GET" });
@@ -144,10 +189,14 @@ async function dispatch(ctx, url, options, raw, timeoutMs) {
             return dispatch(ctx, redirectURL, redirectOptions, raw, timeoutMs);
         }
         return response;
+    })();
+
+    try {
+        return await (timeoutPromise ? Promise.race([operation, timeoutPromise]) : operation);
     }
     finally {
-        if (timer)
-            clearTimeout(timer);
+        if (timer) clearTimeout(timer);
+        recordRequestTiming(ctx, "total", performance.now() - requestStartedAt);
     }
 }
 /**

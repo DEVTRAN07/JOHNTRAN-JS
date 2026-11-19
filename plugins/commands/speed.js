@@ -220,6 +220,7 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
   const handlers = source.getCommandExecutionLatencyStats?.(6) || [];
   const listener = source.getListenerStageLatencyStats?.(10) || [];
   const apiCalls = source.getZaloApiLatencyStats?.(6) || [];
+  const sdkPhases = source.getZaloSdkPhaseLatencyStats?.(6) || [];
   const firstResponse = source.getFirstResponseLatencyByCommandStats?.(6) || [];
   const messageDeliveryAge = source.getMessageDeliveryAgeStats?.() || null;
   const loop = eventLoop;
@@ -255,6 +256,9 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
     "",
     "📡 API ZALO",
     ...formatRows(apiCalls),
+    "",
+    "🧰 CÁC PHA BÊN TRONG ZALO-CLIENT",
+    ...formatRows(sdkPhases),
     "",
     "🔌 HTTP FETCH / KẾT NỐI",
     ...(transport?.byHost?.length

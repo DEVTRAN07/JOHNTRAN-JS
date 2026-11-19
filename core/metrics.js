@@ -59,6 +59,7 @@ function createMetricsStore(backend, options = {}) {
   const commandExecutionLatencies = new Map();
   const listenerStageLatencies = new Map();
   const zaloApiLatencies = new Map();
+  const zaloSdkPhaseLatencies = new Map();
   const firstResponseLatencies = new Map();
   const messageDeliveryAgeLatencies = new Map();
   const incomingMessageAt = new Map();
@@ -294,6 +295,14 @@ function createMetricsStore(backend, options = {}) {
     return summarizeCommandSamples(zaloApiLatencies, limit);
   }
 
+  function trackZaloSdkPhaseLatency(phase, durationMs) {
+    recordCommandSamples(zaloSdkPhaseLatencies, phase, durationMs);
+  }
+
+  function getZaloSdkPhaseLatencyStats(limit = 6) {
+    return summarizeCommandSamples(zaloSdkPhaseLatencies, limit);
+  }
+
   function getFirstResponseLatencyStats() {
     return summarizeCommandSamples(firstResponseLatencies, 1)[0] || null;
   }
@@ -333,7 +342,7 @@ function createMetricsStore(backend, options = {}) {
     return flush();
   }
 
-  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats, trackIncomingMessage, trackFirstResponseLatency, getFirstResponseLatencyStats, getFirstResponseLatencyByCommandStats, getMessageDeliveryAgeStats, trackListenerStageLatency, getListenerStageLatencyStats, trackZaloApiLatency, getZaloApiLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
+  return { track, trackLatency, trackCommandLatency, trackCommandExecutionLatency, getCommandLatencyStats, getCommandExecutionLatencyStats, getLatencyStats, trackIncomingMessage, trackFirstResponseLatency, getFirstResponseLatencyStats, getFirstResponseLatencyByCommandStats, getMessageDeliveryAgeStats, trackListenerStageLatency, getListenerStageLatencyStats, trackZaloApiLatency, getZaloApiLatencyStats, trackZaloSdkPhaseLatency, getZaloSdkPhaseLatencyStats, getDayStats, topCommands, allDays, flush, dispose };
 }
 
 const metricsStore = createMetricsStore(db, {

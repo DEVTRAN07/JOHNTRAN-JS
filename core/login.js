@@ -127,6 +127,13 @@ function createZaloClient() {
   return new ZaloClient({
     ...clientOptions,
     retry,
+    onRequestTiming: (phase, elapsedMs) => {
+      try {
+        require("./metrics").trackZaloSdkPhaseLatency?.(phase, elapsedMs);
+      } catch {
+        // SDK diagnostics must never interfere with a Zalo request.
+      }
+    },
     imageMetadataGetter: async (filePath) => {
       const fileHandle = await fs.promises.open(filePath, "r");
       try {
