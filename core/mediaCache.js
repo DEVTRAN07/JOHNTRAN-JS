@@ -420,6 +420,7 @@ class MediaCache {
     const metaPath = this._metaPath(type, key);
     const suffix = `${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
     const blobTemp = `${blobPath}.tmp-${suffix}`;
+    const wasKnownLocally = this._knownTypes.has(key);
     const metaTemp = `${metaPath}.tmp-${suffix}`;
     const meta = {
       metadata: metadata,
@@ -437,6 +438,7 @@ class MediaCache {
       await fs.promises.rename(metaTemp, metaPath);
       await fs.promises.rename(blobTemp, blobPath);
       this._knownTypes.set(key, type);
+      if (!wasKnownLocally) this._stats.localFiles++;
     } finally {
       try { await fs.promises.unlink(blobTemp); } catch (e) { /* renamed or absent */ }
       try { await fs.promises.unlink(metaTemp); } catch (e) { /* renamed or absent */ }
