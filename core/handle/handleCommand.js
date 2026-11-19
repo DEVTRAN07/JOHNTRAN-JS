@@ -197,6 +197,10 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
     threadInfo,
     isBotAdmin,
     isSupport,
+    // Guard consumes the same positive Zalo event markers. Passing the
+    // confirmed flag avoids an extra network permission lookup for group admins.
+    isGroupAdmin: event?.data?.isGroupAdmin === true ||
+      event?.data?.isAdmin === true || event?.data?.isGroupAdmin === 1,
     logger
   });
   // Avoid an async/microtask boundary unless live group-admin verification is needed.
