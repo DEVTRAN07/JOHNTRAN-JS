@@ -26,3 +26,52 @@ test("welcome Canvas renders both enabled and disabled settings cards", async ()
   try { assert.ok(fs.statSync(on).size > 1000); assert.ok(fs.statSync(off).size > 1000); }
   finally { for (const file of [on, off]) try { fs.rmSync(file, { force: true }); } catch {} }
 });
+
+
+test("welcome renderer prepares the selected shared photo theme before drawing a card", async () => {
+  const themeBackgrounds = require("../core/canvas/themeBackgrounds");
+  const originalPrepare = themeBackgrounds.prepare;
+  const calls = [];
+  themeBackgrounds.prepare = async options => {
+    calls.push(options);
+    return { activeName: "Test wallpaper", activeId: "test" };
+  };
+  let file;
+  try {
+    file = await welcome.renderWelcomeCard({
+      mode: "welcome",
+      member: { name: "Theme Test" },
+      groupName: "JOHNTRAN"
+    });
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], undefined);
+    assert.ok(fs.statSync(file).size > 1000);
+  } finally {
+    themeBackgrounds.prepare = originalPrepare;
+    if (file) try { fs.rmSync(file, { force: true }); } catch {}
+  }
+});
+
+test("concurrent welcome cards share one in-flight theme preparation", async () => {
+  const themeBackgrounds = require("../core/canvas/themeBackgrounds");
+  const originalPrepare = themeBackgrounds.prepare;
+  let calls = 0;
+  let release;
+  themeBackgrounds.prepare = async () => {
+    calls++;
+    await new Promise(resolve => { release = resolve; });
+    return { activeName: "Test wallpaper", activeId: "test" };
+  };
+  const files = [];
+  try {
+    const first = welcome.renderWelcomeCard({ mode: "welcome", member: { name: "One" } });
+    const second = welcome.renderWelcomeCard({ mode: "welcome", member: { name: "Two" } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls, 1);
+    release();
+    files.push(await first, await second);
+  } finally {
+    themeBackgrounds.prepare = originalPrepare;
+    for (const file of files) try { fs.rmSync(file, { force: true }); } catch {}
+  }
+});

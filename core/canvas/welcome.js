@@ -1,6 +1,21 @@
 "use strict";
 const avatarCache = require("./avatarCache");
 const theme = require("./theme");
+const themeBackgrounds = require("./themeBackgrounds");
+
+// Direct Welcome renders bypass canvasWorker, which normally prepares the
+// selected wallpaper before every Canvas render. Share one preparation across
+// concurrent member cards so a join burst downloads/decodes the theme once.
+let themePrepareFlight = null;
+async function prepareWelcomeTheme() {
+  if (themePrepareFlight) return themePrepareFlight;
+  themePrepareFlight = themeBackgrounds.prepare();
+  try {
+    return await themePrepareFlight;
+  } finally {
+    themePrepareFlight = null;
+  }
+}
 function cleanText(value, fallback = "") {
   return String(value ?? fallback).replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -126,6 +141,7 @@ function drawStatusCard(ctx, width, height, spec, palette) {
   drawText(ctx, botName, width - margin, height - S(20), 9, palette.accent, true, "right");
 }
 async function renderWelcomeCard(spec = {}) {
+  await prepareWelcomeTheme();
   theme.initFonts(); theme.ensureTheme();
   const S = theme.S, width = theme.WIDTH, palette = theme.getCardPalette();
   const mode = spec.mode === "status" ? "status" : "welcome";
