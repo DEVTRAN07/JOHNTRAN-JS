@@ -8,7 +8,7 @@ const welcomeCanvas = require("../../core/canvas/welcome");
 module.exports.config = {
   name: "welcome",
   aliases: ["wel"],
-  version: "1.0.2",
+  version: "1.1.0",
   role: 2,
   author: "JOHNTRAN",
   description: "Quản lý lời chào thành viên mới bằng Canvas",
