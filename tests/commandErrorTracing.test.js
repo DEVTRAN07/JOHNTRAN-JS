@@ -74,7 +74,7 @@ test("command errors keep a private response and log a searchable stack referenc
   assert.equal(logs[0].level, "error");
   assert.match(logs[0].message, /synthetic command failure/);
   assert.match(logs[0].message, /TypeError/);
-  assert.match(logs[0].message, /\\[([A-F0-9]{8})\\]/);
+  assert.match(logs[0].message, /\[([A-F0-9]{8})\]/);
   assert.equal(logs[0].context.source, "command");
   assert.equal(logs[0].context.commandName, "sample");
   assert.equal(logs[0].context.code, "ERR_SYNTHETIC_TEST");
