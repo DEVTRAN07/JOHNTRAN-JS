@@ -19,8 +19,18 @@ function getAvailableCpuCount() {
   }
 }
 
-function resolveFfmpegThreads(env = process.env) {
-  return boundedInteger(env.JT_FFMPEG_THREADS, 1, 1, 4);
+function resolveFfmpegThreads(env = process.env, cpuCount = getAvailableCpuCount()) {
+  const requested = boundedInteger(env.JT_FFMPEG_THREADS, 1, 1, 4);
+  const cpus = Math.max(1, Math.floor(Number(cpuCount) || 1));
+  // Never let an environment override consume every CPU on a small host.
+  const safeMaximum = Math.max(1, Math.min(4, cpus - 1));
+  return Math.min(requested, safeMaximum);
+}
+
+function resolveWorkerPoolSize(requestedSize = 4, cpuCount = getAvailableCpuCount()) {
+  const cpus = Math.max(1, Math.floor(Number(cpuCount) || 1));
+  const requested = boundedInteger(requestedSize, 1, 1, 16);
+  return Math.max(1, Math.min(requested, resolveGlobalJobConcurrency(cpus)));
 }
 
 function resolveGlobalJobConcurrency(cpuCount = getAvailableCpuCount()) {
@@ -44,5 +54,6 @@ module.exports = {
   getAvailableCpuCount,
   resolveFfmpegThreads,
   resolveHeavyMediaConcurrency,
-  resolveGlobalJobConcurrency
+  resolveGlobalJobConcurrency,
+  resolveWorkerPoolSize
 };
