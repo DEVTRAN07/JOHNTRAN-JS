@@ -5,6 +5,7 @@ const sam = require("../commands/sam");
 module.exports.config = {
   name: "sam",
   event_type: ["message"],
+  ignoreCommandMessages: true,
   version: "1.0.0",
   author: "JOHNTRAN",
   description: "Nhận lượt đánh trực tiếp trong game Sâm Lốc",

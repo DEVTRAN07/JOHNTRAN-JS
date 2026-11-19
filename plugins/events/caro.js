@@ -5,6 +5,7 @@ const caro = require("../commands/caro");
 module.exports.config = {
   name: "caro",
   event_type: ["message"],
+  ignoreCommandMessages: true,
   version: "1.0.0",
   author: "Wuang",
   description: "Nhận nước đi trực tiếp và lệnh nhanh trong game Caro",

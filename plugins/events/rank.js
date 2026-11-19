@@ -12,6 +12,7 @@ const BASE_LEVEL_EXP = 100;     // level 1 → 2 cần 100 EXP, mỗi level +50%
 module.exports.config = {
   name: "rank",
   event_type: ["message"],
+  ignoreCommandMessages: true,
   version: "1.0.0",
   author: "ᴶᴼᴴᴺ ᵀᴿᴬᴺ",
   description: "Tự cộng EXP và thông báo lên level khi chat",

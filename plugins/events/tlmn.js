@@ -5,6 +5,7 @@ const tlmn = require("../commands/tlmn");
 module.exports.config = {
   name: "tlmn",
   event_type: ["message"],
+  ignoreCommandMessages: true,
   version: "1.1.0",
   author: "JOHNTRAN",
   description: "Nhận lệnh bàn, lượt bỏ và mã bài Tiến Lên Miền Nam",

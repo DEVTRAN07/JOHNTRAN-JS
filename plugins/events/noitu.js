@@ -5,6 +5,7 @@ const game = require("../../core/runtime/services/games/noituService");
 module.exports.config = {
   name: "noitu",
   event_type: ["message"],
+  ignoreCommandMessages: true,
   version: "1.0.0",
   author: "Wuang",
   description: "Xử lý lượt trả lời cho game Nối Từ",

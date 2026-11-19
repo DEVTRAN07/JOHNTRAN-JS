@@ -92,24 +92,28 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
   );
   const skipTopchatCounter = dispatchOptions.skipTopchatCounter === true;
   const skipGameEventModules = dispatchOptions.skipGameConsumers === true;
-  const eventSources = skipTopchatCounter || skipGameEventModules
+  const isCommandMessage = dispatchOptions.isCommandMessage === true;
+  const eventSources = skipTopchatCounter || skipGameEventModules || isCommandMessage
     ? new Map([...sources.events].filter(([name, eventModule]) => {
         const key = String(name || eventModule?.config?.name || "").toLowerCase();
         if (skipTopchatCounter && key === "topchatcounter") return false;
+        // Command text is not a game move. Keep moderation handlers (Guard)
+        // but skip game/rank subscribers that only need ordinary chat messages.
+        if (isCommandMessage && eventModule?.config?.ignoreCommandMessages === true) return false;
         // The listener already ran both game consumers before passive events.
-        // Keep Caro/Sâm event modules because they are not part of that fast path.
         if (skipGameEventModules && (key === "noitu" || key === "tlmn")) return false;
         return true;
       }))
     : sources.events;
   const skipAntiHandler = dispatchOptions.skipAnti === true;
   const skipNoituHandler = dispatchOptions.skipGameConsumers === true;
-  const commandSources = skipAntiHandler || skipNoituHandler
+  const commandSources = skipAntiHandler || skipNoituHandler || isCommandMessage
     ? new Map([...sources.commands].filter(([name, command]) => {
         const key = String(name || command?.config?.name || "").toLowerCase();
         if (skipAntiHandler && (key === "anti" || String(command?.config?.name || "").toLowerCase() === "anti")) {
           return false;
         }
+        if (isCommandMessage && command?.config?.ignoreCommandMessages === true) return false;
         // The listener already ran the active-game consumer before dispatching
         // passive message plugins. Do not invoke the same Nối Từ consumer twice.
         if (skipNoituHandler && (key === "noitu" || String(command?.config?.name || "").toLowerCase() === "noitu")) {

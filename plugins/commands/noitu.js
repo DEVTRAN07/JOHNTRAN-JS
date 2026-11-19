@@ -22,6 +22,7 @@ const SOLO_MAX_WRONG = 3;
 
 module.exports.config = {
   name: "noitu",
+  ignoreCommandMessages: true,
   aliases: ["nt"],
   version: "1.0.0",
   role: 0,

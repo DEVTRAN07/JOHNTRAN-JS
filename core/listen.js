@@ -368,7 +368,14 @@ function startListening(api) {
       Promise.resolve(handleCommand(content, event, api, threadInfo, prefix, threadData)).catch((err) => {
         logger.log(`Lỗi xử lý lệnh: ${err.message}`, "error", { source: "listener-command", commandName: String(content).slice(prefix.length).trim().split(/\s+/, 1)[0], isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
       });
-      if (!isGroupThread || groupBotEnabled) setImmediate(dispatchMessageEvents);
+      // A prefixed command should not also enter game/rank message consumers.
+      // Guard and Anti remain enabled to moderate links/forbidden text in args.
+      if (!isGroupThread || groupBotEnabled) {
+        setImmediate(() => dispatchMessageEvents({
+          isCommandMessage: true,
+          skipGameConsumers: true
+        }));
+      }
       return;
     }
 
