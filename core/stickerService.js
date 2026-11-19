@@ -5,6 +5,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const http = require("./http");
+const { FFMPEG_THREADS } = require("./mediaResourceLimits");
 const STICKER_SIZE = 512;
 const decorations = require("./stickerDecorations");
 
@@ -249,12 +250,14 @@ async function convertMedia(inputPath, overlayPath, outputBasePath, options = {}
       "-hide_banner", "-loglevel", "error", "-y",
       ...baseInput,
       ...overlayInput,
+      "-filter_complex_threads", String(FFMPEG_THREADS),
       "-filter_complex", filter,
       "-map", "[sticker]",
       "-an"
     ];
     if (outputAnimated) args.push("-t", String(MAX_ANIMATION_SECONDS));
     else args.push("-frames:v", "1");
+    args.push("-threads", String(FFMPEG_THREADS));
     if (webp) {
       args.push("-c:v", "libwebp", "-lossless", "0", "-q:v", String(profile.quality),
         "-compression_level", "4", "-preset", "picture", "-loop", "0");
