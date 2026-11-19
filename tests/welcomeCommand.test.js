@@ -140,7 +140,7 @@ test("welcome out status shows both switches without changing either one", async
 
 test("welcome reuses listener threadData instead of issuing a duplicate storage read", async () => {
   rendered.length = 0;
-  const f = fixture({ initial: { event_welcome: true, event_goodbye: false } });
+  const f = fixture({ initial: { event_welcome: true, event_goodbye: false }, groupName: "" });
   let getDataCalls = 0;
   f.context.Threads.getData = async () => {
     getDataCalls++;
