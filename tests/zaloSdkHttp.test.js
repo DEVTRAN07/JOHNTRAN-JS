@@ -42,7 +42,8 @@ test("Zalo SDK reports cookie, fetch, response-cookie and total request phases",
     onRequestTiming: (phase, elapsedMs) => phases.set(phase, elapsedMs)
   });
 
-  await request(ctx, "https://chat.zalo.me/api/test", { method: "POST" });
+  const response = await request(ctx, "https://chat.zalo.me/api/test", { method: "POST" });
+  assert.deepEqual(await response.json(), {});
 
   for (const phase of ["cookie-headers", "fetch", "response-cookies", "response-body", "total"]) {
     assert.ok(phases.has(phase), `missing timing phase: ${phase}`);
