@@ -37,31 +37,7 @@ test("join event sends one Canvas card with a colored personal tag per member", 
   for (const [index, name] of ["Member One", "Member Two"].entries()) {
     const payload = f.sent[index].payload;
     assert.deepEqual(payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
-    assert.match(payload.msg, new RegExp("@"+name.replace(/[.*+?^${}()|[\]\\]/g, "\\test("join event sends each Canvas first and its personalized mention directly below", async () => {
-  rendered = [];
-  const f = fixture();
-  await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
-  assert.equal(f.sent.length, 4);
-  assert.equal(f.sent[0].threadType, 1);
-  for (const index of [0, 2]) {
-    assert.deepEqual(f.sent[index].payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
-    assert.equal(f.sent[index].payload.msg, "");
-    assert.equal(f.sent[index].payload.mentions, undefined);
-  }
-  for (const index of [1, 3]) {
-    const tag = f.sent[index].payload;
-    assert.equal(tag.attachments, undefined);
-    assert.match(tag.msg, /@\. đến với nhóm/);
-    assert.equal(tag.mentions.length, 1);
-    const mention = tag.mentions[0];
-    assert.equal(tag.msg.slice(mention.pos, mention.pos + mention.len), "@.");
-  }
-  assert.deepEqual([f.sent[1], f.sent[3]].map(s => s.payload.mentions[0].uid), ["user-1", "user-2"]);
-  assert.deepEqual(rendered.map(x => x.member.name), ["Member One", "Member Two"]);
-  assert.equal(rendered[0].member.avatarUrl, "https://example.com/member-1.jpg");
-  assert.equal(rendered[1].member.avatarUrl, "https://example.com/member-2.jpg");
-  assert.equal(rendered[0].groupName, "JOHNTRAN Community");
-});")));
+    assert.ok(payload.msg.includes("@" + name));
     assert.match(payload.msg, /Chào mừng/);
     assert.equal(payload.mentions, undefined,
       "the @name is painted into the Canvas footer rather than sent as a separate mention");
