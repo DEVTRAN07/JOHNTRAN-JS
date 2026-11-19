@@ -60,7 +60,7 @@ function randomColorStyles(message, options = {}) {
   // Mentions are rendered by Zalo's mentionInfo metadata. Do not overlap
   // textProperties with mention spans: some clients suppress adjacent caption
   // styling when a style range collides with a tagged member. Offsets are UTF-16.
-  for (const match of text.matchAll(/\\S+/gu)) {
+  for (const match of text.matchAll(/\S+/gu)) {
     const start = match.index ?? 0;
     const len = match[0].length;
     if (excludedRanges.some(range => start < range.end && range.start < start + len)) {
