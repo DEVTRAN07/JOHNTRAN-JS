@@ -142,7 +142,10 @@ function rawRequestOnce(rawUrl, options = {}, redirectsLeft = MAX_REDIRECTS, for
 function isDnsError(err) {
   const code = err && err.code;
   const msg = String((err && err.message) || err);
-  return code === "ENOTFOUND" || code === "ECONNREFUSED" || code === "ENAMETOOLONG" || /GETADDRINFO/i.test(msg);
+  // ECONNREFUSED/ENAMETOOLONG are not name-resolution failures; retrying DoH
+  // for them added up to 40 seconds without changing the failed destination.
+  return ["ENOTFOUND", "EAI_AGAIN", "EAI_FAIL", "EAI_NONAME", "EAI_NODATA"].includes(code) ||
+    /GETADDRINFO|DNS lookup failed/i.test(msg);
 }
 
 async function rawRequest(rawUrl, options = {}, redirectsLeft = MAX_REDIRECTS) {
@@ -218,4 +221,4 @@ async function getBuffer(rawUrl, options = {}) {
   return { status: response.status, buffer: response.body, contentType: response.headers["content-type"] || "" };
 }
 
-module.exports = { request, getJson, getBuffer, redactUrl, hostAllowed, normalizeRequestOptions, HTTP_REQUEST_POLICY };
+module.exports = { request, getJson, getBuffer, redactUrl, hostAllowed, normalizeRequestOptions, HTTP_REQUEST_POLICY, isDnsError };

@@ -9,11 +9,12 @@ const DOH_RESOLVERS = [
   { host: "dns.google", path: "/resolve", ips: ["8.8.8.8", "8.8.4.4"] }
 ];
 
-const TIMEOUT_MS = 10000;
+// A DNS fallback should be much faster than the request it is recovering.
+const TIMEOUT_MS = 3000;
 
 // Truy vấn một bộ giải DoH qua một IP cứng.
 // Trả về Promise chứa mảng các chuỗi IPv4, hoặc reject nếu IP này thất bại.
-function queryDoh(resolver, hostname) {
+function queryDoh(resolver, hostname, signal) {
   return new Promise((resolve, reject) => {
     const url =
       resolver.path +
@@ -31,7 +32,8 @@ function queryDoh(resolver, hostname) {
         Host: resolver.host
       },
       servername: resolver.host,
-      timeout: TIMEOUT_MS
+      timeout: TIMEOUT_MS,
+      signal
     };
 
     const req = https.get(options, (resp) => {
@@ -80,19 +82,22 @@ function queryDoh(resolver, hostname) {
 // Thử từng bộ giải, từng IP cứng. Chỉ reject toàn bộ khi TẤT CẢ IP của TẤT CẢ
 // bộ giải đều thất bại.
 async function resolveWithDoH(hostname) {
-  let lastError;
+  const controller = new AbortController();
+  const attempts = DOH_RESOLVERS.flatMap(resolver =>
+    resolver.ips.map(ip => queryDoh({ ...resolver, ips: [ip] }, hostname, controller.signal))
+  );
 
-  for (const resolver of DOH_RESOLVERS) {
-    for (const ip of resolver.ips) {
-      try {
-        return await queryDoh({ ...resolver, ips: [ip] }, hostname);
-      } catch (err) {
-        lastError = err;
-      }
-    }
+  try {
+    // Race all resolver IPs: one healthy DNS endpoint is enough. Serial
+    // fallback used to block for 10s x 4 addresses during a DNS outage.
+    return await Promise.any(attempts);
+  } catch (error) {
+    const reasons = Array.isArray(error?.errors) ? error.errors : [];
+    throw reasons[0] || error || new Error("resolveWithDoH: all resolvers failed");
+  } finally {
+    // Cancel slower DNS requests once the first valid answer is known.
+    controller.abort();
   }
-
-  throw lastError || new Error("resolveWithDoH: all resolvers failed");
 }
 
 module.exports = { resolveWithDoH };

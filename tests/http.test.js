@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { hostAllowed, redactUrl } = require("../core/http/index");
+const { hostAllowed, redactUrl, isDnsError } = require("../core/http/index");
 const { load: loadConfig } = require("../core/config");
 
 // ===== hostAllowed =====
@@ -63,3 +63,10 @@ assert.strictEqual(
 assert.ok(redactUrl("https://example.com/path").includes("/path"));
 
 console.log("✓ http tests passed");
+
+
+// ===== DNS fallback classification =====
+assert.strictEqual(isDnsError({ code: "ENOTFOUND", message: "getaddrinfo ENOTFOUND api.example.test" }), true);
+assert.strictEqual(isDnsError({ code: "EAI_AGAIN", message: "temporary name resolution failure" }), true);
+assert.strictEqual(isDnsError({ code: "ECONNREFUSED", message: "connection refused" }), false);
+assert.strictEqual(isDnsError({ code: "ENAMETOOLONG", message: "socket path too long" }), false);
