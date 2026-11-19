@@ -9,8 +9,16 @@ const {
 } = require("./mediaResourceLimits");
 const AVAILABLE_CPUS = getAvailableCpuCount();
 const DEFAULT_HEAVY_MEDIA_CONCURRENCY = resolveHeavyMediaConcurrency(AVAILABLE_CPUS);
-const DOWNLOAD_CONCURRENCY = positiveEnv("JT_DOWNLOAD_CONCURRENCY", DEFAULT_HEAVY_MEDIA_CONCURRENCY);
-const STICKER_CONCURRENCY = positiveEnv("JT_STICKER_CONCURRENCY", DEFAULT_HEAVY_MEDIA_CONCURRENCY);
+// Legacy .env values may have been copied from older defaults (e.g. 4).
+// Treat them as requested caps, never as permission to oversubscribe a small host.
+const DOWNLOAD_CONCURRENCY = Math.min(
+  positiveEnv("JT_DOWNLOAD_CONCURRENCY", DEFAULT_HEAVY_MEDIA_CONCURRENCY),
+  DEFAULT_HEAVY_MEDIA_CONCURRENCY
+);
+const STICKER_CONCURRENCY = Math.min(
+  positiveEnv("JT_STICKER_CONCURRENCY", DEFAULT_HEAVY_MEDIA_CONCURRENCY),
+  DEFAULT_HEAVY_MEDIA_CONCURRENCY
+);
 
 const DEFAULT_LANES = {
   sticker: { concurrency: STICKER_CONCURRENCY, maxPending: 30, maxInFlight: 31 },
@@ -32,7 +40,10 @@ const DEFAULT_LANES = {
 
 const lanes = new Map();
 const DEFAULT_GLOBAL_CONCURRENCY = resolveGlobalJobConcurrency(AVAILABLE_CPUS);
-const GLOBAL_CONCURRENCY = positiveEnv("JT_JOB_GLOBAL_CONCURRENCY", DEFAULT_GLOBAL_CONCURRENCY);
+const GLOBAL_CONCURRENCY = Math.min(
+  positiveEnv("JT_JOB_GLOBAL_CONCURRENCY", DEFAULT_GLOBAL_CONCURRENCY),
+  DEFAULT_GLOBAL_CONCURRENCY
+);
 const GLOBAL_MAX_PENDING = positiveEnv("JT_JOB_GLOBAL_MAX_PENDING", 80);
 const CONTROL_MAX_PENDING = positiveEnv("JT_JOB_CONTROL_MAX_PENDING", 48);
 let globalActive = 0;
