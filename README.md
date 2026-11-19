@@ -207,11 +207,11 @@ Khi bot phản hồi chậm, hãy chạy lệnh admin `/speed` sau khi bot đã 
 - **Handler / pipeline**: thời gian xử lý nội bộ của lệnh.
 - **API Zalo và HTTP fetch**: thời gian chờ mạng/API, tách biệt với thời gian handler.
 - **Hàng đợi / worker**: số job đang chạy, đang chờ và thời gian chờ trung bình/tối đa.
-- **Event loop và tài nguyên media**: độ trễ event loop, số CPU khả dụng, số thread FFmpeg và giới hạn job STK/tải media.
+- **Event loop và tài nguyên media**: độ trễ event loop, số CPU khả dụng, số thread FFmpeg, kích thước worker pool và giới hạn queue STK/tải media.
 
 ### Thiết lập cho VPS ít CPU
 
-Mặc định FFmpeg dùng một thread cho mỗi lượt chuyển mã. STK và tải media tự giới hạn ở 1 job khi Node.js chỉ nhìn thấy tối đa 2 CPU; máy nhiều CPU có thể chạy tối đa 2 job. Có thể giữ cấu hình an toàn trong `.env`:
+Mặc định FFmpeg dùng một thread cho mỗi lượt chuyển mã. Trên máy có tối đa 2 CPU, STK/tải media và mỗi worker pool chỉ chạy một tác vụ/worker; global queue cũng chỉ có một job nặng, dành CPU còn lại cho Node.js và listener. Giá trị cũ trong `.env` như `JT_JOB_GLOBAL_CONCURRENCY=4`, `JT_STICKER_CONCURRENCY=4` hay `poolSize: 2` sẽ bị chặn về mức an toàn tự động. Máy nhiều CPU có thể sử dụng thêm tài nguyên theo số lõi khả dụng. Có thể giữ cấu hình an toàn trong `.env`:
 
 ```env
 JT_FFMPEG_THREADS=1
