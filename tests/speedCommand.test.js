@@ -265,3 +265,25 @@ test("/speed run sends one report through the wrapped API without depending on R
   assert.equal(sent[2], 1);
   assert.ok(String(sent[0]?.msg || "").length <= command._test.MAX_SPEED_REPORT_CHARS);
 });
+
+
+test("/speed log finds the underlying dispatcher error by its user-facing code", () => {
+  const events = [
+    { id: "event-1", timestamp: "2026-11-19T12:00:00.000Z", source: "command", command: "speed",
+      message: "[D78F4136] Lỗi khi xử lý lệnh 'speed': TypeError: test failure at speed.js:42" },
+    { id: "event-2", timestamp: "2026-11-19T12:01:00.000Z", source: "command", command: "stk",
+      message: "[ABCD1234] Lỗi khi xử lý lệnh 'stk': failed" }
+  ];
+  const found = command._test.findCommandError(events, "d78f-4136");
+  assert.equal(found.id, "event-1");
+  assert.equal(command._test.findCommandError(events, "00000000"), null);
+  assert.equal(command._test.normalizeErrorCode("D78F-4136"), "D78F4136");
+  const report = command._test.formatCommandError(found, "D78F4136");
+  assert.match(report, /TypeError: test failure/);
+  assert.match(report, /Nguồn: command/);
+});
+
+test("/speed log rejects malformed error codes without reading logs", () => {
+  assert.equal(command._test.findCommandError([], "D78"), null);
+  assert.match(command._test.formatCommandError(null, "D78"), /Không tìm thấy mã lỗi D78/);
+});

@@ -329,7 +329,56 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
   return limitSpeedReport(report);
 }
 
-module.exports.run = async function ({ api, event, reply } = {}) {
+function normalizeErrorCode(value) {
+  return String(value ?? "").trim().replace(/[^a-f0-9]/gi, "").toUpperCase().slice(0, 8);
+}
+
+function findCommandError(events, code) {
+  const target = normalizeErrorCode(code);
+  if (target.length !== 8 || !Array.isArray(events)) return null;
+  return events.find(item =>
+    String(item?.message || "").toUpperCase().includes("[" + target + "]")
+  ) || null;
+}
+
+function formatCommandError(event, code) {
+  if (!event) {
+    return [
+      "⚠️ Không tìm thấy mã lỗi " + normalizeErrorCode(code) + ".",
+      "Có thể bot chưa chạy bản có Error Journal, hoặc log đã bị xoay/xóa.",
+      "Hãy kiểm tra log server tại thời điểm xảy ra lỗi."
+    ].join("\\n");
+  }
+  return [
+    "🔎 JOHΝTRAN · ERROR TRACE",
+    "Mã: " + normalizeErrorCode(code),
+    "Thời gian: " + String(event.timestamp || "không rõ"),
+    "Nguồn: " + String(event.source || "unknown"),
+    "Lệnh: " + String(event.command || "unknown"),
+    "",
+    "Stack / nguyên nhân:",
+    String(event.message || "Không có nội dung log").slice(0, 1200)
+  ].join("\\n");
+}
+
+module.exports.run = async function ({ api, event, reply, args = [] } = {}) {
+  const action = String(args?.[0] || "").trim().toLowerCase();
+  if (action === "log" || action === "error" || action === "trace") {
+    const code = normalizeErrorCode(args?.[1]);
+    if (code.length !== 8) {
+      const usage = "Cách dùng: /speed log D78F4136";
+      if (typeof reply?.text === "function") return reply.text(usage);
+      return api.sendMessage({ msg: usage }, event.threadId, event.type);
+    }
+    const events = safeRead(
+      () => require("../../core/runtime/errorJournal").snapshot(200).events,
+      []
+    );
+    const detail = formatCommandError(findCommandError(events, code), code);
+    if (typeof reply?.text === "function") return reply.text(detail);
+    return api.sendMessage({ msg: detail }, event.threadId, event.type);
+  }
+
   const eventLoop = safeRead(() => require("../../core/health").getEventLoopMetrics({ reset: false }), null);
   const transport = safeRead(() => require("../../core/http/transport").getZaloHttpTransportStats(), null);
   const jobQueues = safeRead(() => require("../../core/jobQueue").stats(), null);
@@ -388,4 +437,4 @@ module.exports.run = async function ({ api, event, reply } = {}) {
   if (typeof reply?.text === "function") return reply.text(report);
   throw new Error("/speed không có API hợp lệ để gửi báo cáo.");
 };
-module.exports._test = { MAX_SPEED_REPORT_CHARS, limitSpeedReport, safeRead, formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, formatRequestPolicy, formatMessageDeliveryAge, buildSpeedReport };
+module.exports._test = { MAX_SPEED_REPORT_CHARS, limitSpeedReport, safeRead, normalizeErrorCode, findCommandError, formatCommandError, formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, formatRequestPolicy, formatMessageDeliveryAge, buildSpeedReport };
