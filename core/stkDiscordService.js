@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const stickerService = require("./stickerService");
 const catalog = require("./data/stkDiscord200.json");
+const { FFMPEG_THREADS } = require("./mediaResourceLimits");
 
 const RAW_BASE_URL = String(process.env.STK_DISCORD_RAW_BASE_URL ||
   "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/745a7ad1d155d03bda4466a92e52c3c578f279ab").replace(/\/+$/, "");
@@ -420,6 +421,7 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
       ...inputArgs(decorationPath, path.extname(decorationPath), overlayAnimated, profile.fps),
       "-f", "lavfi", "-i",
       "color=c=black:s=" + profile.size + "x" + profile.size + ":r=" + profile.fps,
+      "-filter_complex_threads", String(FFMPEG_THREADS),
       "-filter_complex", filter,
       "-map", "[out]",
       "-an"
@@ -434,7 +436,7 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
       "-q:v", String(profile.quality),
       "-compression_level", "6",
       "-preset", "picture",
-      "-threads", "2",
+      "-threads", String(FFMPEG_THREADS),
       "-pix_fmt", "yuva420p",
       "-loop", "0",
       outputPath
