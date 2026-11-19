@@ -308,4 +308,13 @@ function stats() {
   }]));
 }
 
-module.exports = { runInWorker, shutdown, poolSize, stats, DEFAULT_MAX_PENDING };
+module.exports = {
+  runInWorker,
+  shutdown,
+  poolSize,
+  stats,
+  DEFAULT_MAX_PENDING,
+  DEFAULT_POOL_SIZE,
+  AVAILABLE_CPUS,
+  resolveWorkerPoolSize
+};
