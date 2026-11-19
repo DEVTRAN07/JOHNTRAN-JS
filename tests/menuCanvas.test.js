@@ -107,7 +107,7 @@ test("menu sends the Canvas image first and the greeting below it as a styled te
     }
   };
   const api = wrapApi(rawApi, "menu-thread", 1, "menu");
-  const caption = "@Wuang\\n🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
+  const caption = `@Wuang\n🤖 Chào chủ nhân!\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀`;
   const mention = { uid: "12345", pos: 0, len: "@Wuang".length };
 
   await menuCommand._sendMenuCardAndGreeting(
