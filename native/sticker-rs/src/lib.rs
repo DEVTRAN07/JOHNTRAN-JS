@@ -4,7 +4,7 @@ use napi_derive::napi;
 use image::imageops::{self, FilterType};
 use image::io::Reader as ImageReader;
 use image::{DynamicImage, GenericImageView, ImageFormat, RgbaImage};
-use std::io::{Cursor, Seek, Write};
+use std::io::Cursor;
 
 #[napi(object)]
 pub struct EncodeOptions {
@@ -297,10 +297,12 @@ mod tests {
 
         let result = compose_static_result(&png(&source), &png(&overlay), 64, 52, 6, 70)
             .expect("composition should encode");
+        let width = result.width;
+        let height = result.height;
         let bytes: Vec<u8> = result.buffer.into();
         assert_eq!(&bytes[0..4], b"RIFF");
         assert_eq!(&bytes[8..12], b"WEBP");
-        assert_eq!(result.width, 64);
-        assert_eq!(result.height, 64);
+        assert_eq!(width, 64);
+        assert_eq!(height, 64);
     }
 }
