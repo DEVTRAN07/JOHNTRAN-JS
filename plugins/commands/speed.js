@@ -90,7 +90,17 @@ function formatQueueAndWorkerPressure(jobQueues = null, workers = null) {
   return lines;
 }
 
-function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null) {
+function formatMediaResources(resources = null) {
+  if (!resources) return ["  • Chưa đọc được cấu hình tài nguyên media"];
+  return [
+    "  • CPU khả dụng: " + Math.max(1, Number(resources.availableCpus) || 1) + " lõi",
+    "  • FFmpeg: " + Math.max(1, Number(resources.ffmpegThreads) || 1) + " thread/lượt",
+    "  • STK: " + Math.max(1, Number(resources.stickerConcurrency) || 1) + " job đồng thời",
+    "  • Tải media: " + Math.max(1, Number(resources.downloadConcurrency) || 1) + " job đồng thời"
+  ];
+}
+
+function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null, mediaResources = null) {
   const latency = source.getLatencyStats?.() || {};
   const commands = source.getCommandLatencyStats?.(6) || [];
   const handlers = source.getCommandExecutionLatencyStats?.(6) || [];
@@ -142,6 +152,9 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
     "🚦 HÀNG ĐỢI / WORKER",
     ...formatQueueAndWorkerPressure(jobQueues, workers),
     "",
+    "🧮 GIỚI HẠN TÀI NGUYÊN MEDIA",
+    ...formatMediaResources(mediaResources),
+    "",
     "🚀 NHẬN TIN → PHẢN HỒI ĐẦU TIÊN",
     ...formatRows(firstResponse, "/"),
     "",
@@ -165,11 +178,22 @@ module.exports.run = async function ({ api, event, reply }) {
   catch { /* HTTP diagnostics are optional */ }
   let jobQueues = null;
   let workers = null;
+  let mediaResources = null;
   try { jobQueues = require("../../core/jobQueue").stats(); } catch {}
   try { workers = require("../../core/workerPool").stats(); } catch {}
-  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers);
+  try {
+    const limits = require("../../core/mediaResourceLimits");
+    const queue = require("../../core/jobQueue");
+    mediaResources = {
+      availableCpus: limits.getAvailableCpuCount(),
+      ffmpegThreads: limits.FFMPEG_THREADS,
+      stickerConcurrency: queue.STICKER_CONCURRENCY,
+      downloadConcurrency: queue.DOWNLOAD_CONCURRENCY
+    };
+  } catch {}
+  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers, mediaResources);
   if (typeof reply?.text === "function") return reply.text(report);
   return api.sendMessage({ msg: report }, event.threadId, event.type);
 };
 
-module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, buildSpeedReport };
+module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, buildSpeedReport };
