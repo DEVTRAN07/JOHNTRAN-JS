@@ -35,13 +35,13 @@ function createContext(initialEnabled = false, omitSetting = false) {
 test("an enabled group stays ON after the five-minute hot cache expires during a DB outage", () => {
   const gid = "group-idle-on-database-outage";
   const record = { id: gid, threadId: gid, data: { bot_enabled: true, prefix: "/" } };
-  const originalGetStatus = databaseBackend.getStatus;
+  const originalGetOperationalStatus = databaseBackend.getOperationalStatus;
 
   runtimeCache.threadCache.invalidate(gid);
   runtimeCache.durableThreadCache.set(gid, record);
   // Force the ordinary hot cache to be expired before the read.
   runtimeCache.threadCache.set(gid, record, -1);
-  databaseBackend.getStatus = () => ({ ok: false, syncError: "temporary test outage" });
+  databaseBackend.getOperationalStatus = () => ({ ok: false, syncError: "temporary test outage" });
 
   try {
     const restored = ThreadsController.getCachedData(gid);
@@ -55,7 +55,7 @@ test("an enabled group stays ON after the five-minute hot cache expires during a
     const disabled = ThreadsController.getCachedData(gid);
     assert.equal(disabled?.data?.bot_enabled, false);
   } finally {
-    databaseBackend.getStatus = originalGetStatus;
+    databaseBackend.getOperationalStatus = originalGetOperationalStatus;
     runtimeCache.threadCache.invalidate(gid);
     runtimeCache.durableThreadCache.invalidate(gid);
   }
