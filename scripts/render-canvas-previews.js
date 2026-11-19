@@ -315,6 +315,29 @@ async function main() {
     await saveWorker(name, type, data);
   }
 
+  // Welcome command and automatic JOIN event share this exact dedicated Canvas renderer.
+  const welcomeCanvas = require("../core/canvas/welcome");
+  await saveDirect(
+    "24-welcome-card",
+    Promise.resolve(welcomeCanvas.renderWelcomeCard({
+      mode: "welcome",
+      memberNames: ["Quang Nguyen", "Thanh Ha"],
+      groupName: "JOHNTRAN Community",
+      prefix: "/",
+      botName: "JOHNTRAN"
+    }))
+  );
+  await saveDirect(
+    "25-welcome-status",
+    Promise.resolve(welcomeCanvas.renderWelcomeCard({
+      mode: "status",
+      enabled: true,
+      groupName: "JOHNTRAN Community",
+      prefix: "/",
+      botName: "JOHNTRAN"
+    }))
+  );
+
   // /card directly invokes profileCard.render(), outside canvasWorker.
   const config = require("../core/config");
   global.config = typeof config.load === "function" ? config.load() : {};
