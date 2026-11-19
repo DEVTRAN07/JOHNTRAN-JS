@@ -20,6 +20,20 @@ module.exports.config = {
   dependencies: {}
 };
 
+async function sendMenuCardAndGreeting(api, imagePath, caption, mentions, threadId, type) {
+  // Zalo's photo-description UI does not consistently render textProperties.
+  // Send the card first, then use the normal styled text path for its greeting.
+  await api.sendMessage({
+    msg: "",
+    attachments: [imagePath]
+  }, threadId, type);
+
+  return api.sendMessage({
+    msg: caption,
+    mentions
+  }, threadId, type);
+}
+
 module.exports.run = async function ({ api, event }) {
   const senderId = event?.data?.uidFrom;
   const commands = global.client?.commands;
@@ -58,12 +72,9 @@ module.exports.run = async function ({ api, event }) {
     const mentionUid = event?.data?.uidFrom;
     const caption = `@${mentionName}\n${getRequesterGreeting(senderId)}\n${getRequesterPrompt(senderId)}`;
     const mentions = mentionUid ? [{ uid: String(mentionUid), pos: 0, len: mentionName.length + 1 }] : [];
-    return await api.sendMessage({
-      msg: caption,
-      mentions,
-      attachments: [imagePath],
-      ttlKind: "card"
-    }, event.threadId, event.type);
+    return await sendMenuCardAndGreeting(
+      api, imagePath, caption, mentions, event.threadId, event.type
+    );
   } catch (error) {
     console.error("[MENU_IMAGE]", error?.stack || error);
     return api.sendMessage({ msg: "⚠️ Không thể tạo menu dạng Card. Vui lòng thử lại." }, event.threadId, event.type);
@@ -76,3 +87,4 @@ module.exports.run = async function ({ api, event }) {
 };
 
 module.exports._test = folders;
+module.exports._sendMenuCardAndGreeting = sendMenuCardAndGreeting;
