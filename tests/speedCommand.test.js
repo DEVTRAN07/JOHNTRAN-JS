@@ -206,3 +206,62 @@ test("/speed handles an empty metrics store", () => {
   assert.match(report, /Chưa có mẫu lệnh/);
   assert.equal((report.match(/Chưa có dữ liệu/g) || []).length, 6);
 });
+
+
+test("/speed keeps the response within a conservative Zalo text budget", () => {
+  const manyRows = Array.from({ length: 30 }, (_, index) => ({
+    command: "command-" + index, avgMs: 1200 + index, p95Ms: 2500 + index, count: 40
+  }));
+  const report = command._test.buildSpeedReport({
+    getLatencyStats: () => ({ count: 40, avgMs: 1300, p50Ms: 1000, p95Ms: 2500, maxMs: 9000, lastMs: 120 }),
+    getCommandLatencyStats: () => manyRows,
+    getCommandExecutionLatencyStats: () => manyRows,
+    getListenerStageLatencyStats: () => manyRows,
+    getZaloApiLatencyStats: () => manyRows,
+    getZaloSdkPhaseLatencyStats: () => manyRows,
+    getFirstResponseLatencyByCommandStats: () => manyRows,
+    getMessageDeliveryAgeStats: () => ({ count: 40, avgMs: 1200, p95Ms: 2500, maxMs: 9000 })
+  }, 1000, { p95Ms: 500, p99Ms: 900, maxMs: 1200 }, {
+    enabled: true,
+    byHost: manyRows.map((row, index) => ({ ...row, host: "host-" + index + ".zalo.me", failed: 0 }))
+  }, {
+    global: { active: 4, pending: 20, concurrency: 4 },
+    canvas: { active: 1, pending: 20, avgWaitMs: 1200, maxWaitMs: 9000, waitCount: 40 },
+    http: { active: 3, pending: 20, avgWaitMs: 1000, maxWaitMs: 8000, waitCount: 40 }
+  }, {
+    canvas: { workers: 4, busy: 4, pending: 20, rejected: 3 }
+  }, {
+    availableCpus: 16, ffmpegThreads: 8, workerPoolMaxSize: 4,
+    globalJobConcurrency: 8, defaultGlobalJobConcurrency: 8,
+    stickerConcurrency: 6, downloadConcurrency: 6
+  }, {
+    driver: "supabase", syncEnabled: true, consecutiveFailures: 4,
+    pendingWrites: 99, retryQueueSize: 80, lastSyncAgeMs: 60000
+  }, {
+    entries: 50000, nativePersistence: { available: true },
+    nativePendingMutations: { pending: 1000, sent: 50000, failed: 10, batchSize: 64 },
+    asyncFlushCount: 50, asyncFlushFailures: 10, asyncFlushLastMs: 250
+  }, {
+    zalo: { timeoutMs: 8000, retries: 0, limit: 0 },
+    external: { timeoutMs: 8000, retries: 1 }
+  });
+
+  assert.ok(report.length <= command._test.MAX_SPEED_REPORT_CHARS);
+  assert.match(report, /EVENT LOOP/);
+  assert.match(report, /Đã rút gọn báo cáo/);
+});
+
+test("/speed run sends one report through the wrapped API without depending on Reply.text", async () => {
+  let sent = null;
+  let calls = 0;
+  const result = await command.run({
+    api: { sendMessage: async (...args) => { calls++; sent = args; return { ok: true }; } },
+    event: { threadId: "test-thread", type: 1 },
+    reply: { text: async () => { throw new Error("Reply.text should not be used"); } }
+  });
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls, 1);
+  assert.equal(sent[1], "test-thread");
+  assert.equal(sent[2], 1);
+  assert.ok(String(sent[0]?.msg || "").length <= command._test.MAX_SPEED_REPORT_CHARS);
+});

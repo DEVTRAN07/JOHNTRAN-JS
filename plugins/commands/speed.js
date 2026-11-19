@@ -20,14 +20,17 @@ function formatMs(value) {
   return Number.isFinite(number) ? number.toFixed(1) + " ms" : "—";
 }
 
-function formatRows(rows, labelPrefix = "") {
+function formatRows(rows, labelPrefix = "", maxRows = 3) {
   if (!Array.isArray(rows) || rows.length === 0) return ["  • Chưa có dữ liệu"];
-  return rows.map(row =>
+  const visibleRows = rows.slice(0, Math.max(1, maxRows));
+  const lines = visibleRows.map(row =>
     "  • " + labelPrefix + String(row.command || "unknown") +
     ": P95 " + formatMs(row.p95Ms) +
     " · TB " + formatMs(row.avgMs) +
     " · " + Math.max(0, Number(row.count) || 0) + " mẫu"
   );
+  if (rows.length > visibleRows.length) lines.push("  • … và " + (rows.length - visibleRows.length) + " mục khác");
+  return lines;
 }
 
 function formatQueueAndWorkerPressure(jobQueues = null, workers = null) {
@@ -50,7 +53,7 @@ function formatQueueAndWorkerPressure(jobQueues = null, workers = null) {
     ))
     .sort((a, b) => (Number(b[1].pending) || 0) - (Number(a[1].pending) || 0) ||
       (Number(b[1].active) || 0) - (Number(a[1].active) || 0))
-    .slice(0, 5);
+    .slice(0, 3);
 
   if (lanes.length) {
     for (const [name, lane] of lanes) {
@@ -70,7 +73,7 @@ function formatQueueAndWorkerPressure(jobQueues = null, workers = null) {
   const pools = Object.entries(workers || {})
     .filter(([, pool]) => pool && (Number(pool.workers) > 0 || Number(pool.pending) > 0 || Number(pool.rejected) > 0))
     .sort((a, b) => (Number(b[1].pending) || 0) - (Number(a[1].pending) || 0))
-    .slice(0, 4);
+    .slice(0, 2);
 
   if (pools.length) {
     for (const [name, pool] of pools) {
@@ -214,15 +217,41 @@ function getMessageCacheDiagnostics() {
   catch { return null; }
 }
 
+const MAX_SPEED_REPORT_CHARS = 1800;
+
+function limitSpeedReport(report, maxChars = MAX_SPEED_REPORT_CHARS) {
+  const value = String(report ?? "");
+  const limit = Math.max(128, Number(maxChars) || MAX_SPEED_REPORT_CHARS);
+  if (value.length <= limit) return value;
+  const suffix = "\\n… Đã rút gọn báo cáo để bảo đảm gửi được qua Zalo.";
+  let end = Math.max(0, limit - suffix.length);
+  const code = value.charCodeAt(end - 1);
+  if (code >= 0xD800 && code <= 0xDBFF) end--;
+  return value.slice(0, end).trimEnd() + suffix;
+}
+
+function safeRead(read, fallback = null) {
+  try {
+    const value = read();
+    return value === undefined ? fallback : value;
+  } catch {
+    return fallback;
+  }
+}
+
 function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null, jobQueues = null, workers = null, mediaResources = null, storage = null, messageCache = null, requestPolicy = null) {
-  const latency = source.getLatencyStats?.() || {};
-  const commands = source.getCommandLatencyStats?.(6) || [];
-  const handlers = source.getCommandExecutionLatencyStats?.(6) || [];
-  const listener = source.getListenerStageLatencyStats?.(10) || [];
-  const apiCalls = source.getZaloApiLatencyStats?.(6) || [];
-  const sdkPhases = source.getZaloSdkPhaseLatencyStats?.(6) || [];
-  const firstResponse = source.getFirstResponseLatencyByCommandStats?.(6) || [];
-  const messageDeliveryAge = source.getMessageDeliveryAgeStats?.() || null;
+  const readMetric = (name, ...args) => safeRead(
+    () => typeof source?.[name] === "function" ? source[name](...args) : undefined,
+    null
+  );
+  const latency = readMetric("getLatencyStats") || {};
+  const commands = readMetric("getCommandLatencyStats", 3) || [];
+  const handlers = readMetric("getCommandExecutionLatencyStats", 3) || [];
+  const listener = readMetric("getListenerStageLatencyStats", 4) || [];
+  const apiCalls = readMetric("getZaloApiLatencyStats", 3) || [];
+  const sdkPhases = readMetric("getZaloSdkPhaseLatencyStats", 3) || [];
+  const firstResponse = readMetric("getFirstResponseLatencyByCommandStats", 3) || [];
+  const messageDeliveryAge = readMetric("getMessageDeliveryAgeStats") || null;
   const loop = eventLoop;
 
   const totalSamples = Math.max(0, Number(latency.count) || 0);
@@ -235,12 +264,17 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
       " · Gần nhất " + formatMs(latency.lastMs)
     : "Chưa có mẫu lệnh trong phiên này.";
 
-  return [
+  const report = [
     "⚡ JOHNTRAN · SPEED DIAGNOSTICS",
     "⏱️ Uptime: " + Math.floor(Math.max(0, Number(uptimeSeconds) || 0) / 60) + " phút",
     "",
     "🎯 TOÀN BỘ PIPELINE LỆNH",
     latencyLine,
+    "",
+    "🧠 EVENT LOOP",
+    loop
+      ? "P95 " + formatMs(loop.p95Ms) + " · P99 " + formatMs(loop.p99Ms) + " · Max " + formatMs(loop.maxMs)
+      : "Chưa có mẫu event-loop.",
     "",
     "🌐 ĐỘ TRỄ TRƯỚC KHI BOT NHẬN TIN",
     formatMessageDeliveryAge(messageDeliveryAge),
@@ -262,7 +296,7 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
     "",
     "🔌 HTTP FETCH / KẾT NỐI",
     ...(transport?.byHost?.length
-      ? transport.byHost.slice(0, 5).map(item =>
+      ? transport.byHost.slice(0, 3).map(item =>
           "  • " + String(item.host || "unknown") +
           ": P95 " + formatMs(item.p95Ms) +
           " · TB " + formatMs(item.avgMs) +
@@ -289,58 +323,69 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
     "🚀 NHẬN TIN → PHẢN HỒI ĐẦU TIÊN",
     ...formatRows(firstResponse, "/"),
     "",
-    "🧠 EVENT LOOP",
-    loop
-      ? "P95 " + formatMs(loop.p95Ms) + " · P99 " + formatMs(loop.p99Ms) + " · Max " + formatMs(loop.maxMs)
-      : "Chưa có mẫu event-loop.",
-    "",
     "Ghi chú: P95 là thời gian 95% mẫu không vượt quá; API Zalo gồm cả thời gian chờ mạng.",
     "Dữ liệu chỉ là thống kê trong bộ nhớ kể từ lần bot khởi động gần nhất."
   ].join("\n");
+  return limitSpeedReport(report);
 }
 
-module.exports.run = async function ({ api, event, reply }) {
-  let eventLoop = null;
-  try {
-    eventLoop = require("../../core/health").getEventLoopMetrics({ reset: false });
-  } catch { /* event-loop sampling is optional diagnostic data */ }
-  let transport = null;
-  try { transport = require("../../core/http/transport").getZaloHttpTransportStats(); }
-  catch { /* HTTP diagnostics are optional */ }
-  let jobQueues = null;
-  let workers = null;
-  let mediaResources = null;
-  try { jobQueues = require("../../core/jobQueue").stats(); } catch {}
-  try { workers = require("../../core/workerPool").stats(); } catch {}
-  try {
+module.exports.run = async function ({ api, event, reply } = {}) {
+  const eventLoop = safeRead(() => require("../../core/health").getEventLoopMetrics({ reset: false }), null);
+  const transport = safeRead(() => require("../../core/http/transport").getZaloHttpTransportStats(), null);
+  const jobQueues = safeRead(() => require("../../core/jobQueue").stats(), null);
+  const workers = safeRead(() => require("../../core/workerPool").stats(), null);
+  const mediaResources = safeRead(() => {
     const limits = require("../../core/mediaResourceLimits");
     const queue = require("../../core/jobQueue");
     const workerPool = require("../../core/workerPool");
-    mediaResources = {
+    return {
       availableCpus: limits.getAvailableCpuCount(),
       ffmpegThreads: limits.FFMPEG_THREADS,
       workerPoolMaxSize: workerPool.DEFAULT_POOL_SIZE,
       globalJobConcurrency: queue.GLOBAL_CONCURRENCY,
-      defaultGlobalJobConcurrency: queue.DEFAULT_GLOBAL_CONCURRENCY,
+      defaultGlobalJobConcurrency: queue.DEFAULT_GLOBAL_JOB_CONCURRENCY,
       stickerConcurrency: queue.STICKER_CONCURRENCY,
       downloadConcurrency: queue.DOWNLOAD_CONCURRENCY
     };
-  } catch {}
-  const storage = getStorageDiagnostics();
-  const messageCache = getMessageCacheDiagnostics();
-  let requestPolicy = null;
-  try {
+  }, null);
+  const storage = safeRead(getStorageDiagnostics, null);
+  const messageCache = safeRead(getMessageCacheDiagnostics, null);
+  const requestPolicy = safeRead(() => {
     const resolvePolicy = require("../../core/http/requestPolicy").resolveRequestPolicy;
-    requestPolicy = {
-      // Read the exact policy adapter passed into ZaloClient, including the
-      // SDK-specific limit field, rather than reconstructing a lookalike.
+    return {
       zalo: require("../../core/login").resolveZaloRetryPolicy(),
       external: resolvePolicy(process.env, {}, "JT_HTTP")
     };
-  } catch {}
-  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport, jobQueues, workers, mediaResources, storage, messageCache, requestPolicy);
-  if (typeof reply?.text === "function") return reply.text(report);
-  return api.sendMessage({ msg: report }, event.threadId, event.type);
-};
+  }, null);
 
-module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, formatRequestPolicy, formatMessageDeliveryAge, buildSpeedReport };
+  let report;
+  try {
+    report = buildSpeedReport(
+      metrics, process.uptime(), eventLoop, transport, jobQueues,
+      workers, mediaResources, storage, messageCache, requestPolicy
+    );
+  } catch (error) {
+    try {
+      require("../../utils/logger").log(
+        "Không thể dựng báo cáo /speed: " + (error?.stack || error?.message || String(error)),
+        "error",
+        { source: "speed-command" }
+      );
+    } catch { /* Logging is non-critical. */ }
+    report = [
+      "⚡ JOHNTRAN · SPEED DIAGNOSTICS",
+      "Không thể đọc đầy đủ số liệu trong phiên này.",
+      "Event loop: " + (eventLoop ? formatMs(eventLoop.p95Ms) : "không có dữ liệu"),
+      "HTTP transport: " + (transport?.enabled ? "đang bật" : "không có dữ liệu"),
+      "Vui lòng kiểm tra log server với source speed-command."
+    ].join("\n");
+  }
+
+  report = limitSpeedReport(report);
+  if (typeof api?.sendMessage === "function" && event?.threadId && event?.type !== undefined) {
+    return api.sendMessage({ msg: report }, event.threadId, event.type);
+  }
+  if (typeof reply?.text === "function") return reply.text(report);
+  throw new Error("/speed không có API hợp lệ để gửi báo cáo.");
+};
+module.exports._test = { MAX_SPEED_REPORT_CHARS, limitSpeedReport, safeRead, formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, formatRequestPolicy, formatMessageDeliveryAge, buildSpeedReport };
