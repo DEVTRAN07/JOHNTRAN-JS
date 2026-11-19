@@ -163,6 +163,23 @@ test("/speed shows Rust message-cache IPC pressure without local file paths", ()
   assert.doesNotMatch(rows, /private|jt-message-cache/);
 });
 
+test("/speed distinguishes Zalo delivery delay from bot processing latency", () => {
+  const report = command._test.buildSpeedReport({
+    getLatencyStats: () => ({ count: 1, avgMs: 120, p50Ms: 120, p95Ms: 120, maxMs: 120, lastMs: 120 }),
+    getCommandLatencyStats: () => [],
+    getCommandExecutionLatencyStats: () => [],
+    getListenerStageLatencyStats: () => [],
+    getZaloApiLatencyStats: () => [],
+    getFirstResponseLatencyByCommandStats: () => [],
+    getMessageDeliveryAgeStats: () => ({
+      command: "zalo-server-to-bot", count: 4, avgMs: 18000, p95Ms: 45000, maxMs: 70000
+    })
+  });
+  assert.match(report, /ĐỘ TRỄ TRƯỚC KHI BOT NHẬN TIN/);
+  assert.match(report, /Zalo tạo tin → bot nhận: P95 45000\.0 ms/);
+  assert.match(report, /Max 70000\.0 ms/);
+});
+
 test("/speed shows the active bounded Zalo and external HTTP timeout policy", () => {
   const lines = command._test.formatRequestPolicy({
     zalo: { timeoutMs: 8000, retries: 0 },

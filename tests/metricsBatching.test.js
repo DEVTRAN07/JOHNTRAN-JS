@@ -177,3 +177,38 @@ test("metrics isolate listener stages, first response and Zalo API latency", () 
   assert.equal(backend.writes.length, 0);
   metrics.dispose();
 });
+
+
+test("metrics measure Zalo server-to-listener message age separately from bot first response", () => {
+  const backend = createFakeDb();
+  const fixedNow = Date.parse("2026-11-19T12:00:00.000Z");
+  const metrics = createMetricsStore(backend, {
+    flushDelayMs: 60000,
+    now: () => fixedNow
+  });
+  const event = {
+    threadId: "group-age",
+    data: { cliMsgId: "age-1", ts: String(fixedNow - 12500) }
+  };
+
+  assert.equal(metrics.trackIncomingMessage(event, 100), true);
+  metrics.trackFirstResponseLatency(event, 220, "menu");
+
+  const deliveryAge = metrics.getMessageDeliveryAgeStats();
+  assert.equal(deliveryAge.command, "zalo-server-to-bot");
+  assert.equal(deliveryAge.count, 1);
+  assert.equal(deliveryAge.p95Ms, 12500);
+  assert.equal(metrics.getFirstResponseLatencyStats().p95Ms, 120);
+  assert.equal(backend.writes.length, 0);
+  metrics.dispose();
+});
+
+test("metrics normalize Zalo seconds, milliseconds, microseconds and nanoseconds", () => {
+  const { normalizeZaloMessageTimestamp } = require("../core/metrics");
+  const milliseconds = Date.parse("2026-11-19T12:00:00.000Z");
+  assert.equal(normalizeZaloMessageTimestamp(milliseconds / 1000), milliseconds);
+  assert.equal(normalizeZaloMessageTimestamp(milliseconds), milliseconds);
+  assert.equal(normalizeZaloMessageTimestamp(milliseconds * 1000), milliseconds);
+  assert.equal(normalizeZaloMessageTimestamp(milliseconds * 1e6), milliseconds);
+  assert.equal(normalizeZaloMessageTimestamp("invalid"), null);
+});

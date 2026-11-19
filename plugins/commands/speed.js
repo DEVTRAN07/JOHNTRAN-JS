@@ -163,6 +163,16 @@ function getStorageDiagnostics() {
   }
 }
 
+function formatMessageDeliveryAge(stats = null) {
+  if (!stats || typeof stats !== "object" || !Number(stats.count)) {
+    return "  • Chưa có timestamp Zalo hợp lệ trong phiên này";
+  }
+  return "  • Zalo tạo tin → bot nhận: P95 " + formatMs(stats.p95Ms) +
+    " · TB " + formatMs(stats.avgMs) +
+    " · Max " + formatMs(stats.maxMs) +
+    " · " + Math.max(0, Number(stats.count) || 0) + " mẫu";
+}
+
 function formatRequestPolicy(policy = null) {
   if (!policy || typeof policy !== "object") {
     return ["  • Chưa đọc được chính sách timeout/retry"];
@@ -211,6 +221,7 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
   const listener = source.getListenerStageLatencyStats?.(10) || [];
   const apiCalls = source.getZaloApiLatencyStats?.(6) || [];
   const firstResponse = source.getFirstResponseLatencyByCommandStats?.(6) || [];
+  const messageDeliveryAge = source.getMessageDeliveryAgeStats?.() || null;
   const loop = eventLoop;
 
   const totalSamples = Math.max(0, Number(latency.count) || 0);
@@ -229,6 +240,9 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
     "",
     "🎯 TOÀN BỘ PIPELINE LỆNH",
     latencyLine,
+    "",
+    "🌐 ĐỘ TRỄ TRƯỚC KHI BOT NHẬN TIN",
+    formatMessageDeliveryAge(messageDeliveryAge),
     "",
     "🐢 LỆNH CÓ P95 CAO",
     ...formatRows(commands, "/"),
@@ -323,4 +337,4 @@ module.exports.run = async function ({ api, event, reply }) {
   return api.sendMessage({ msg: report }, event.threadId, event.type);
 };
 
-module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, formatRequestPolicy, buildSpeedReport };
+module.exports._test = { formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, formatRequestPolicy, formatMessageDeliveryAge, buildSpeedReport };
