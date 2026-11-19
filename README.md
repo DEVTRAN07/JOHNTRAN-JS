@@ -223,6 +223,25 @@ Chỉ nâng lên 2–4 thread hoặc tăng số job sau khi `/speed` cho thấy 
 
 **Lưu ý:** Các benchmark trong CI chỉ đo xử lý nội bộ, không đo mạng Zalo. Nếu P95 `sendMessage` hoặc HTTP Zalo cao, chuyển code sang Rust không thể loại bỏ thời gian máy chủ Zalo hoặc đường truyền; cần kiểm tra kết nối/mạng và số liệu từ chính máy bot.
 
+### Tăng tốc media bằng Rust (tuỳ chọn)
+
+Rust addon được dùng cho **ghép ảnh đại diện + khung PNG tĩnh của /stk**. Tác vụ chạy qua N-API AsyncTask trên worker pool, không chạy tính toán ảnh đồng bộ trên event loop. Máy chưa build addon vẫn dùng Canvas/FFmpeg fallback như trước.
+
+Sau npm ci, trên máy deploy có Rust stable và Cargo:
+
+```bash
+npm run build:native
+npm start
+```
+
+Build tạo native/sticker-rs/sticker_rs.node. CI cũng kiểm tra build và export của addon. Nếu không có file native, bot tự quay về renderer cũ; không cần cài Rust để chạy các lệnh thông thường.
+
+**SCL:** nguồn SoundCloud HLS AAC mặc định được stream-copy sang AAC/ADTS, tránh mã hoá AAC → MP3 → AAC. Khi người dùng chọn chất lượng 128/320, FFmpeg mã hoá AAC trực tiếp đúng một lần.
+
+**STK:** ảnh tĩnh dùng Rust khi addon có mặt; GIF/video vẫn dùng FFmpeg. Các mức thử lại encode được giới hạn còn tối đa 4 profile thay vì 7 profile animation / 5 profile ảnh tĩnh trước đây.
+
+canvas-rs và ffmpeg-rs vẫn được giữ trong repository nhưng chưa được bật trong production build; chỉ mở rộng khi từng addon có kiểm thử tương thích và benchmark riêng. FFmpeg vẫn cần thiết cho video/GIF/audio, và việc dùng Rust không làm giảm thời gian mạng hoặc upload của Zalo.
+
 ## 🏗️ Kiến trúc bot — JOHNTRAN V5
 
 > Sơ đồ dưới đây mô tả **kiến trúc xử lý logic V5** và các ranh giới module. Các thư mục cũ vẫn được giữ để tương thích; việc di chuyển toàn bộ mã nguồn sang cấu trúc đích được thực hiện từng bước, không giả định rằng mọi thư mục đích đã tồn tại.
