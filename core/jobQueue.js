@@ -2,7 +2,11 @@
 
 // Bounded in-process queues. Retry backoff is delayed outside active worker
 // slots, so a temporarily failing provider cannot block unrelated work.
-const { getAvailableCpuCount, resolveHeavyMediaConcurrency } = require("./mediaResourceLimits");
+const {
+  getAvailableCpuCount,
+  resolveHeavyMediaConcurrency,
+  resolveGlobalJobConcurrency
+} = require("./mediaResourceLimits");
 const AVAILABLE_CPUS = getAvailableCpuCount();
 const DEFAULT_HEAVY_MEDIA_CONCURRENCY = resolveHeavyMediaConcurrency(AVAILABLE_CPUS);
 const DOWNLOAD_CONCURRENCY = positiveEnv("JT_DOWNLOAD_CONCURRENCY", DEFAULT_HEAVY_MEDIA_CONCURRENCY);
@@ -27,7 +31,8 @@ const DEFAULT_LANES = {
 };
 
 const lanes = new Map();
-const GLOBAL_CONCURRENCY = positiveEnv("JT_JOB_GLOBAL_CONCURRENCY", 4);
+const DEFAULT_GLOBAL_CONCURRENCY = resolveGlobalJobConcurrency(AVAILABLE_CPUS);
+const GLOBAL_CONCURRENCY = positiveEnv("JT_JOB_GLOBAL_CONCURRENCY", DEFAULT_GLOBAL_CONCURRENCY);
 const GLOBAL_MAX_PENDING = positiveEnv("JT_JOB_GLOBAL_MAX_PENDING", 80);
 const CONTROL_MAX_PENDING = positiveEnv("JT_JOB_CONTROL_MAX_PENDING", 48);
 let globalActive = 0;
@@ -320,6 +325,8 @@ module.exports = {
   stats,
   DEFAULT_LANES,
   GLOBAL_CONCURRENCY,
+  DEFAULT_GLOBAL_CONCURRENCY,
+  AVAILABLE_CPUS,
   GLOBAL_MAX_PENDING,
   CONTROL_MAX_PENDING,
   DOWNLOAD_CONCURRENCY,
