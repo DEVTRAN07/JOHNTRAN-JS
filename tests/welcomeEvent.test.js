@@ -171,7 +171,7 @@ test("remove-member event is treated as OUT and resolves departed user avatars t
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
   assert.equal(f.sent.length, 1);
   assert.deepEqual(f.sent[0].payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
-  assert.match(f.sent[0].payload.msg, /Chào mừng @Resolved Former Member/);
+  assert.match(f.sent[0].payload.msg, /Tạm biệt @Resolved Former Member/);
   assert.equal(f.sent[0].payload.mentions, undefined);
   assert.deepEqual(lookups, [["getUserInfo", ["removed-user"], 240]]);
   assert.equal(rendered[0].mode, "goodbye");
