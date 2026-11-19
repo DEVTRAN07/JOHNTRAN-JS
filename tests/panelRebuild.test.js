@@ -555,7 +555,7 @@ test("CI runs verification only and contains no Render deployment integration", 
   const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
   assert.match(workflow, /^  test:/m);
   assert.doesNotMatch(workflow, /^  deploy:/m);
-  assert.doesNotMatch(workflow, /RENDER_API_KEY|api\\.render\\.com|render\\.com\\/v1\\/services/i);
+  assert.equal(/RENDER_API_KEY/i.test(workflow) || workflow.toLowerCase().includes("api.render.com") || workflow.toLowerCase().includes("render.com/v1/services"), false);
   assert.equal(fs.existsSync(path.join(root, "render.yaml")), false);
   assert.equal(fs.existsSync(path.join(root, "deploy/edge/render.yaml")), false);
   assert.equal(fs.existsSync(path.join(root, "docs/RENDER_STORAGE.md")), false);
