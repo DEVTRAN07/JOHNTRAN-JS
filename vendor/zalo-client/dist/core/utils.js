@@ -4,7 +4,9 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import pako from "pako";
+import { unzip } from "node:zlib";
+import { promisify } from "node:util";
+const inflateAsync = promisify(unzip);
 import JSONBig from "json-bigint";
 import { ZaloApiError, ZaloApiMissingImageMetadataGetter } from "./errors.js";
 import { FriendEventType } from "../models/FriendEvent.js";
@@ -67,7 +69,9 @@ export async function decodeEventData(parsed, cipherKey) {
             throw new ZaloApiError("Invalid data length or missing cipher key");
         }
     }
-    const decompressedBuffer = encryptType === 3 ? new Uint8Array(decryptedBuffer) : pako.inflate(decryptedBuffer);
+    const decompressedBuffer = encryptType === 3
+        ? new Uint8Array(decryptedBuffer)
+        : await inflateEventPayload(decryptedBuffer);
     const decodedData = decodeUnit8Array(decompressedBuffer);
     if (!decodedData)
         return;

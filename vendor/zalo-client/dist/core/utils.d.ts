@@ -16,6 +16,7 @@ export declare function decodeUnit8Array(data: Uint8Array): string | null;
  * @param parsed Raw event `{ data, encrypt }`
  * @param cipherKey Base64 AES-GCM key (required for encrypt types 2 and 3)
  */
+export declare function inflateEventPayload(data: Uint8Array): Promise<Uint8Array>;
 export declare function decodeEventData(parsed: Record<string, unknown>, cipherKey?: string): Promise<any>;
 /**
  * MD5 of a (possibly large) file, computed by streaming the source in 2MB

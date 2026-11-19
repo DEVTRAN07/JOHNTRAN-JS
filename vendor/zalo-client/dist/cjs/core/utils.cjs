@@ -3,7 +3,9 @@
 var node_crypto = require('node:crypto');
 var fs = require('node:fs');
 var path = require('node:path');
-var pako = require('pako');
+var node_zlib = require('node:zlib');
+var node_util = require('node:util');
+var inflateAsync = node_util.promisify(node_zlib.unzip);
 var JSONBig = require('json-bigint');
 var errors = require('./errors.cjs');
 var FriendEvent = require('../models/FriendEvent.cjs');
@@ -69,7 +71,9 @@ async function decodeEventData(parsed, cipherKey) {
             throw new errors.ZaloApiError("Invalid data length or missing cipher key");
         }
     }
-    const decompressedBuffer = encryptType === 3 ? new Uint8Array(decryptedBuffer) : pako.inflate(decryptedBuffer);
+    const decompressedBuffer = encryptType === 3
+        ? new Uint8Array(decryptedBuffer)
+        : await inflateEventPayload(decryptedBuffer);
     const decodedData = decodeUnit8Array(decompressedBuffer);
     if (!decodedData)
         return;
@@ -313,6 +317,7 @@ function normalizeHolderName(input) {
 
 exports.decodeBase64ToBuffer = decodeBase64ToBuffer;
 exports.decodeEventData = decodeEventData;
+exports.inflateEventPayload = inflateEventPayload;
 exports.decodeUnit8Array = decodeUnit8Array;
 exports.formatTime = formatTime;
 exports.getClientMessageType = getClientMessageType;

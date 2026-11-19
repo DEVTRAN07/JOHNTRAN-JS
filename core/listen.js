@@ -419,7 +419,7 @@ function startListening(api) {
       const topchatCounter = require("../plugins/events/topchatCounter");
       const isPrefixedCommand = typeof content === "string" && Boolean(prefix) && content.startsWith(prefix);
       if (isPrefixedCommand) {
-        topchatCounter.observeRejectedCommand(event);
+        scheduleSideEffect(() => topchatCounter.observeRejectedCommand(event));
       } else {
         setImmediate(() => {
           const topchatStartedAt = performance.now();
@@ -565,11 +565,11 @@ function startListening(api) {
 
   const handleIncoming = (event, options = {}) => {
     const receivedAt = performance.now();
-    // Observe the raw SDK event before duplicate/self filters so /topchat can
-    // distinguish "listener received nothing" from "self/duplicate was skipped".
-    const topchatCounter = require("../plugins/events/topchatCounter");
-    // No caller consumes the returned diagnostic snapshot on the hot path.
-    topchatCounter.observeIncomingEvent(event, { snapshot: false });
+    // TopChat diagnostics are auxiliary bookkeeping. Schedule them rather
+    // than executing Luxon/date-key and map work before the command hot path.
+    scheduleSideEffect(() => {
+      require("../plugins/events/topchatCounter").observeIncomingEvent(event, { snapshot: false });
+    });
 
     const cliMsgId = event?.data?.cliMsgId;
     if (cliMsgId && processedIds.has(cliMsgId)) return; // trùng lặp (server gửi lại / backfill)

@@ -67,6 +67,8 @@ Mạng Zalo, TLS khi phải tạo kết nối mới, thời gian máy chủ Zalo
 ## Thay đổi hiện thực
 
 - Zalo SDK buffer response body trong deadline, thay vì kết thúc timeout ngay khi nhận headers.
+- WebSocket payload dạng nén được giải nén bằng `node:zlib` bất đồng bộ qua libuv worker pool, tránh `pako.inflate()` đồng bộ chặn event loop.
+- TopChat diagnostic counters được đẩy sang `setImmediate`, không chạy trước đường dispatch lệnh.
 - Redirect chain bị giới hạn và chia sẻ deadline gốc.
 - box_only live group-info lookup có deadline ngắn, vẫn fail-closed.
 - Message-cache được đẩy sang `setImmediate`; command có cơ hội chạy qua các microtask đầu tiên và gọi API gửi tin trước serialization/IPC của cache phụ.
