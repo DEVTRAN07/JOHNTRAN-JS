@@ -398,6 +398,84 @@ test("shared send wrapper uploads one composed image instead of a separate capti
   }
 });
 
+test("real CommonJS SDK receives the composed colored card, not an unstyled description", async () => {
+  const os = require("node:os");
+  const path = require("node:path");
+  const { createCanvas, loadImage } = require("canvas");
+  const sourcePath = path.join(os.tmpdir(), "jt-sdk-caption-" + process.pid + ".png");
+  fs.writeFileSync(sourcePath, createCanvas(720, 400).toBuffer("image/png"));
+
+  const secretKey = Buffer.alloc(16, 13).toString("base64");
+  const requestParams = [];
+  const uploaded = [];
+  const ctx = {
+    secretKey,
+    API_VERSION: 1,
+    API_TYPE: 30,
+    imei: "test-device",
+    settings: { features: { sharefile: { max_file: 10, max_size_share_file_v3: 50 } } },
+    options: {
+      polyfill: async (url, options) => {
+        const encrypted = new URL(url).searchParams.get("params") ||
+          new URLSearchParams(options?.body || "").get("params");
+        requestParams.push(JSON.parse(decodeAES(secretKey, encrypted)));
+        const data = encodeAES(secretKey, JSON.stringify({ error_code: 0, data: { msgId: "composed-caption-id" } }));
+        return new Response(JSON.stringify({ error_code: 0, data }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+    },
+    cookie: new CookieJar(),
+    userAgent: "test-agent"
+  };
+  const rawApi = {
+    zpwServiceMap: {
+      chat: ["https://chat.example"],
+      group: ["https://group.example"],
+      file: ["https://file.example"]
+    },
+    async uploadAttachment(attachments) {
+      const image = await loadImage(attachments[0]);
+      uploaded.push({ path: attachments[0], width: image.width, height: image.height });
+      return [{
+        fileType: "image",
+        photoId: "composed-photo-id",
+        width: image.width,
+        height: image.height,
+        normalUrl: "https://cdn.example/composed.png",
+        hdUrl: "https://cdn.example/composed-hd.png",
+        totalSize: fs.statSync(attachments[0]).size
+      }];
+    },
+    async undo() {}
+  };
+  rawApi.sendMessage = sendMessageFactory(ctx, rawApi);
+  const wrapped = wrapApi(rawApi, "sdk-caption-thread", ThreadType.Group, "sdk-caption-test");
+
+  try {
+    await wrapped.sendMessage({
+      msg: "@Wuang\\n🤖 Chào chủ nhân!\\n👉 Dòng này phải có màu trong chính ảnh.",
+      attachments: [sourcePath],
+      mentions: [{ uid: "12345", pos: 0, len: "@Wuang".length }],
+      recallAfterMs: 0
+    });
+
+    assert.equal(uploaded.length, 1, "only the composed card is uploaded");
+    assert.equal(uploaded[0].width, 720);
+    assert.ok(uploaded[0].height > 400, "uploaded image contains the appended footer");
+    assert.equal(fs.existsSync(uploaded[0].path), false, "temporary file is cleaned after upload");
+    assert.equal(requestParams.length, 1, "the image and footer are still one SDK message");
+    assert.equal(requestParams[0].desc, "", "Zalo receives no unstyled photo description");
+    assert.equal(requestParams[0].mentionInfo, undefined,
+      "a decorative @name inside image pixels is not sent as an interactive mention");
+    assert.equal(requestParams[0].textProperties, undefined,
+      "caption colors are rendered into the uploaded PNG, not delegated to ignored image styles");
+  } finally {
+    fs.rmSync(sourcePath, { force: true });
+  }
+});
+
 test("normal text messages continue to receive randomized styles without Canvas composition", async () => {
   const sent = [];
   const rawApi = {
