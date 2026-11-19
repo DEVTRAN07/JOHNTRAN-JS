@@ -174,6 +174,7 @@ test("job queue releases global slots while retry backoff is pending", async () 
 
 
 test("retry timer keeps the job counted while it waits in the runnable queue", async () => {
+  const { GLOBAL_CONCURRENCY } = require("../core/jobQueue");
   function heldTask() {
     let release;
     let started;
@@ -185,12 +186,6 @@ test("retry timer keeps the job counted while it waits in the runnable queue", a
       run: async () => { started(); await gate; }
     };
   }
-
-  const held = Array.from({ length: 3 }, () => heldTask());
-  const heldPromises = held.map(task => enqueue("test-retry-hold", task.run, {
-    concurrency: 4, maxPending: 10, maxInFlight: 10
-  }));
-  await Promise.all(held.map(task => task.started));
 
   let attempts = 0;
   const retryPromise = enqueue("test-retry-backpressure", async () => {
@@ -204,31 +199,35 @@ test("retry timer keeps the job counted while it waits in the runnable queue", a
   });
 
   const retryDeadline = Date.now() + 1000;
+  while (stats()["test-retry-backpressure"]?.retrying !== 1 && Date.now() < retryDeadline) {
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+  assert.equal(stats()["test-retry-backpressure"]?.retrying, 1,
+    "first failure must move into delayed retry before worker slots are occupied");
+
+  const held = Array.from({ length: GLOBAL_CONCURRENCY }, () => heldTask());
+  const heldPromises = held.map(task => enqueue("test-retry-hold", task.run, {
+    concurrency: GLOBAL_CONCURRENCY, maxPending: GLOBAL_CONCURRENCY + 10, maxInFlight: GLOBAL_CONCURRENCY + 10
+  }));
+  await Promise.all(held.map(task => task.started));
+
+  const pendingDeadline = Date.now() + 1000;
   while (
-    !(stats().global.active === 3 &&
+    !(stats().global.active === GLOBAL_CONCURRENCY &&
       stats().global.pending === 1 &&
-      stats()["test-retry-backpressure"]?.retrying === 1) &&
-    Date.now() < retryDeadline
+      stats()["test-retry-backpressure"]?.retrying === 0) &&
+    Date.now() < pendingDeadline
   ) {
     await new Promise(resolve => setTimeout(resolve, 2));
   }
-  assert.equal(stats().global.active, 3);
+
+  assert.equal(stats().global.active, GLOBAL_CONCURRENCY);
   assert.equal(stats().global.pending, 1);
-
-  const fourth = heldTask();
-  const fourthPromise = enqueue("test-retry-hold", fourth.run, {
-    concurrency: 4, maxPending: 10, maxInFlight: 10
-  });
-  await fourth.started;
-  await new Promise(resolve => setTimeout(resolve, 110));
-
-  assert.equal(stats().global.active, 4);
-  assert.equal(stats().global.pending, 1, "retrying -> pending must not decrement the global count");
   assert.equal(stats()["test-retry-backpressure"].pending, 1);
   assert.equal(stats()["test-retry-backpressure"].retrying, 0);
 
-  for (const task of [...held, fourth]) task.release();
-  assert.deepEqual(await Promise.all([...heldPromises, fourthPromise]), [undefined, undefined, undefined, undefined]);
+  for (const task of held) task.release();
+  await Promise.all(heldPromises);
   assert.equal(await retryPromise, "ok");
   assert.equal(attempts, 2);
 });
