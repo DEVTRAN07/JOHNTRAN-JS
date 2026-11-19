@@ -82,9 +82,9 @@ test("welcome test resolves caller avatar and real profile name", async () => {
     assert.deepEqual(rendered.slice(-2).map(card => card.mode), ["welcome", "goodbye"]);
     assert.deepEqual(f.sent.map(item => Boolean(item.payload.attachments?.length)), [true, false, true, false]);
     assert.equal(f.sent[1].payload.mentions[0].uid, "test-requester-uid");
-    assert.match(f.sent[1].payload.msg, /Chào mừng @\\./);
+    assert.match(f.sent[1].payload.msg, /Chào mừng @\./);
     assert.equal(f.sent[3].payload.mentions[0].uid, "test-requester-uid");
-    assert.match(f.sent[3].payload.msg, /Tạm biệt @\\./);
+    assert.match(f.sent[3].payload.msg, /Tạm biệt @\./);
     assert.deepEqual(rendered.at(-1).member, {
       name: "Quang Profile",
       avatarUrl: "https://example.com/quang-profile.jpg"
