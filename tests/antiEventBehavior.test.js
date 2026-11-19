@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { ThreadType } = require("zalo-client");
+const { recallIntentionally } = require("../core/runtime/intentionalRecall");
 const anti = require("../plugins/commands/anti");
 const http = require("../core/http");
 const { updateMessageCache, getMessageCache } = require("../utils/messageCache");
