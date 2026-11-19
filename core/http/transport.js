@@ -91,7 +91,7 @@ function createFetchMetrics(options = {}) {
     const code = Number(status) || 0;
     const statusKey = error ? "network_error" : String(code || "no_status");
     entry.statuses[statusKey] = (entry.statuses[statusKey] || 0) + 1;
-    if (error || code >= 500) {
+    if (error || code >= 400) {
       entry.failed++;
       failed++;
     }
