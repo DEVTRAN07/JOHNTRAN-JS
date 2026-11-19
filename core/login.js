@@ -114,7 +114,11 @@ function readImageHeaderSize(buf) {
 }
 
 function resolveZaloRetryPolicy(env = process.env, configured = global.config?.zalo_client_config?.retry || {}) {
-  return resolveRequestPolicy(env, configured, "JT_ZALO_API");
+  const policy = resolveRequestPolicy(env, configured, "JT_ZALO_API");
+  // The vendored Zalo SDK reads retry.limit (not retry.retries). Passing only
+  // retries silently retained the SDK default of three retries on GET/HEAD.
+  // Keep retries for diagnostics/compatibility and explicitly set the SDK key.
+  return { ...policy, limit: policy.retries };
 }
 
 function createZaloClient() {

@@ -46,3 +46,19 @@ test("core HTTP requests clamp per-command timeout and retries to shared policy"
     userAgent: "test"
   });
 });
+
+
+test("Zalo retry policy maps retries to the vendored SDK actual limit option", () => {
+  const { resolveZaloRetryPolicy, createZaloClient } = require("../core/login");
+  const policy = resolveZaloRetryPolicy({}, {});
+  assert.equal(policy.timeoutMs, 8000);
+  assert.equal(policy.retries, 0);
+  assert.equal(policy.limit, 0);
+  assert.deepEqual(policy.methods, ["GET", "HEAD"]);
+
+  // Regression guard: the actual SDK constructor must receive the key it reads.
+  const client = createZaloClient();
+  assert.equal(client.options.retry.timeoutMs, 8000);
+  assert.equal(client.options.retry.limit, 0);
+  assert.equal(client.options.retry.retries, 0);
+});

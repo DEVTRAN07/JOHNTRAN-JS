@@ -181,7 +181,7 @@ function formatRequestPolicy(policy = null) {
     if (!value || typeof value !== "object") return "  • " + label + ": không rõ";
     return "  • " + label + ": timeout " +
       Math.max(0, Number(value.timeoutMs) || 0) + " ms · retry " +
-      Math.max(0, Number(value.retries) || 0);
+      Math.max(0, Number(value.limit ?? value.retries) || 0);
   };
   return [
     formatOne("Zalo API", policy.zalo),
@@ -328,7 +328,9 @@ module.exports.run = async function ({ api, event, reply }) {
   try {
     const resolvePolicy = require("../../core/http/requestPolicy").resolveRequestPolicy;
     requestPolicy = {
-      zalo: resolvePolicy(process.env, global.config?.zalo_client_config?.retry || {}, "JT_ZALO_API"),
+      // Read the exact policy adapter passed into ZaloClient, including the
+      // SDK-specific limit field, rather than reconstructing a lookalike.
+      zalo: require("../../core/login").resolveZaloRetryPolicy(),
       external: resolvePolicy(process.env, {}, "JT_HTTP")
     };
   } catch {}

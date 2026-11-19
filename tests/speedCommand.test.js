@@ -182,7 +182,7 @@ test("/speed distinguishes Zalo delivery delay from bot processing latency", () 
 
 test("/speed shows the active bounded Zalo and external HTTP timeout policy", () => {
   const lines = command._test.formatRequestPolicy({
-    zalo: { timeoutMs: 8000, retries: 0 },
+    zalo: { timeoutMs: 8000, retries: 0, limit: 0 },
     external: { timeoutMs: 8000, retries: 1 }
   }).join("|");
   assert.match(lines, /Zalo API: timeout 8000 ms · retry 0/);
