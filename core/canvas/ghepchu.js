@@ -262,7 +262,7 @@ function drawText(ctx, value, x, y, options = {}) {
     align,
     maxWidth,
     baseline,
-    multicolor: words.length > 1 || words.some(word => theme.splitGraphemes(word).length > 1)
+    multicolor: options.multicolor !== false
   });
   ctx.restore();
 }
@@ -455,4 +455,4 @@ async function renderGhepChu(data = {}) {
   return outputPath;
 }
 
-module.exports = { renderGhepChu, TEMPLATE_PATH };
+module.exports = { renderGhepChu, TEMPLATE_PATH, _test: { drawText } };
