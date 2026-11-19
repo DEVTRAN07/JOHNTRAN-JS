@@ -301,22 +301,22 @@ test("CommonJS image captions preserve randomized text colors", async () => {
       }];
     }
   };
-  const sendMessage = sendMessageFactory(ctx, api);
+  api.sendMessage = sendMessageFactory(ctx, api);
+  const wrapped = wrapApi(api, "thread-id", 1, "menu");
   const caption = "@Nguyễn Văn A\\n🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành";
-  const styles = [
-    { start: 0, len: 14, st: TextStyle.Red },
-    { start: 15, len: 17, st: TextStyle.Green }
-  ];
 
-  await sendMessage({
+  await wrapped.sendMessage({
     msg: caption,
-    styles,
     attachments: ["/tmp/jt_menu_1_ab12.png"],
-    mentions: [{ uid: "12345", pos: 0, len: 14 }]
+    mentions: [{ uid: "12345", pos: 0, len: "@Nguyễn Văn A".length }]
   }, "thread-id", 1);
 
   assert.equal(requestParams.length, 1, "a single PNG with caption should use one image request");
   assert.equal(requestParams[0].desc, caption);
   const textProperties = JSON.parse(requestParams[0].textProperties);
-  assert.deepEqual(textProperties.styles, styles);
+  const appliedColors = textProperties.styles.map(style => style.st).filter(color => RANDOM_COLORS.has(color));
+  assert.ok(appliedColors.length >= 5, "all caption words should receive randomized color styles");
+  assert.ok(new Set(appliedColors).size >= 3, "caption should use several different colors");
+  assert.ok(textProperties.styles.every(style => RANDOM_COLORS.has(style.st)),
+    "the caption should not lose the randomized style metadata");
 });
