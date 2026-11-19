@@ -71,13 +71,14 @@ test("local media cache removes expired entries", async () => {
   }
 });
 
-test("MEDIA_CACHE_TTL_* environment values are interpreted as seconds", () => {
+test("MEDIA_CACHE_TTL_* environment values are interpreted as seconds", async () => {
   const restoreEnv = withoutR2();
   const previous = process.env.MEDIA_CACHE_TTL_IMAGE;
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "johntran-cache-ttl-"));
   try {
     process.env.MEDIA_CACHE_TTL_IMAGE = "2";
     const cache = new MediaCache({ cacheDir });
+    await cache._ready;
     assert.equal(cache.stats().ttls.image, 2000);
   } finally {
     if (previous === undefined) delete process.env.MEDIA_CACHE_TTL_IMAGE;
