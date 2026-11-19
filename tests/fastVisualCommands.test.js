@@ -58,8 +58,11 @@ test("menu creates and sends its card under one second without waiting for profi
   const elapsed = performance.now() - started;
 
   assert.ok(elapsed < 1000, `menu fast path took ${elapsed.toFixed(1)}ms`);
-  assert.match(sent[0]?.msg || "", /Đang chuẩn bị menu/, "progress acknowledgement must be first");
-  assert.ok(sent.some(item => Array.isArray(item.attachments)), "the visual menu card must still be sent");
+  assert.equal(sent.length, 1, "menu should send only its final card, without a progress message");
+  assert.doesNotMatch(sent[0]?.msg || "", /Đang chuẩn bị menu/,
+    "the temporary progress placeholder must not be sent");
+  assert.ok(Array.isArray(sent[0]?.attachments), "the visual menu card must be sent in the first response");
+  assert.match(sent[0]?.msg || "", /@Tester/, "the final card caption should remain attached to the menu");
   assert.equal(renderRequests.filter(type => type === "menu").length, 1, "menu must still request a canvas card");
 });
 
