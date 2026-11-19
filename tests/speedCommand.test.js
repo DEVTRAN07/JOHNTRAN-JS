@@ -54,6 +54,30 @@ test("/speed reports HTTP fetch timing separately from complete Zalo API timing"
   assert.match(report, /lỗi 1/);
 });
 
+test("/speed shows queue wait and worker saturation separately from API latency", () => {
+  const emptyMetrics = {
+    getLatencyStats: () => ({ count: 0 }),
+    getCommandLatencyStats: () => [],
+    getCommandExecutionLatencyStats: () => [],
+    getListenerStageLatencyStats: () => [],
+    getZaloApiLatencyStats: () => [],
+    getFirstResponseLatencyByCommandStats: () => []
+  };
+  const jobQueues = {
+    global: { active: 4, pending: 7, concurrency: 4 },
+    canvas: { active: 1, pending: 3, avgWaitMs: 240, maxWaitMs: 510, waitCount: 12 },
+    http: { active: 1, pending: 0, avgWaitMs: 5, maxWaitMs: 12, waitCount: 8 }
+  };
+  const workers = {
+    canvas: { workers: 2, busy: 2, pending: 4, rejected: 1 }
+  };
+  const report = command._test.buildSpeedReport(emptyMetrics, 20, null, null, jobQueues, workers);
+  assert.match(report, /HÀNG ĐỢI \/ WORKER/);
+  assert.match(report, /Global: 4\/4 slot · chờ 7/);
+  assert.match(report, /canvas: active 1 · pending 3 · wait TB 240\.0 ms · max 510\.0 ms/);
+  assert.match(report, /Worker canvas: busy 2\/2 · pending 4 · reject 1/);
+});
+
 test("/speed handles an empty metrics store", () => {
   const emptyMetrics = {
     getLatencyStats: () => ({ count: 0 }),
