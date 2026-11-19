@@ -94,9 +94,13 @@ async function sendTopchatCard(api, event, data) {
 }
 
 function emptyRankingMessage(thread, today, listenerDiagnostics = {}) {
-  const diagnostics = thread?.topchatDiagnostics?.date === today
-    ? thread.topchatDiagnostics
-    : { received: 0, counted: 0, rejected: 0, duplicates: 0 };
+  const hasCurrentRuntimeDiagnostics = listenerDiagnostics?.date === today &&
+    Number(listenerDiagnostics.received) > 0;
+  const diagnostics = hasCurrentRuntimeDiagnostics
+    ? listenerDiagnostics
+    : thread?.topchatDiagnostics?.date === today
+      ? thread.topchatDiagnostics
+      : { received: 0, counted: 0, rejected: 0, duplicates: 0 };
   const realtime = `\n📡 Realtime: nhận ${Number(diagnostics.received) || 0}, ghi nhận ${Number(diagnostics.counted) || 0}, bị lọc ${Number(diagnostics.rejected) || 0}, trùng ${Number(diagnostics.duplicates) || 0} tin.`;
   const listenerLine = `\n🎧 Listener: ${Number(listenerDiagnostics.events) || 0} event, nhóm ${Number(listenerDiagnostics.groups) || 0}, tự gửi ${Number(listenerDiagnostics.self) || 0}, người khác ${Number(listenerDiagnostics.other) || 0}, type=${String(listenerDiagnostics.lastType || "none")}, msgType=${String(listenerDiagnostics.lastMessageType || "none")}.`;
   const historyComplete = thread?.topchatHistoryDate === today &&

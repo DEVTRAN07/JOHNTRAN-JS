@@ -77,6 +77,7 @@ function metricsPayload() {
     eventLoop: safe(getEventLoopMetrics, null),
     jobQueues,
     workers,
+    topchat: safe(() => require("../plugins/events/topchatCounter").getStats(), {}),
     messageCache,
     cache: allStats()
   };

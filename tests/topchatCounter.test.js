@@ -407,26 +407,54 @@ test("topchat without ranking sends the clean Canvas empty-state card", async ()
   assert.ok(png.length > 1000);
 });
 
-test("topchat persists realtime diagnostics even when every incoming group message is filtered", async () => {
+test("topchat keeps filtered-only realtime diagnostics in memory without a database write", async () => {
   global.config = { prefix: "/" };
-  const Threads = fakeThreads({ "topchat-live-diagnostics": { prefix: "/" } });
+  const storedIds = Array.from({ length: 5000 }, (_, index) => "stored-" + index);
+  let mapCalls = 0;
+  const originalMap = storedIds.map;
+  storedIds.map = function (...args) {
+    mapCalls++;
+    return originalMap.apply(this, args);
+  };
+  const Threads = fakeThreads({
+    "topchat-live-diagnostics": {
+      prefix: "/",
+      topchatDate: vietnamDateKey(),
+      topchatSeenMessageIds: storedIds
+    }
+  });
   const threadId = "topchat-live-diagnostics";
+
   await counter.run({
     event: makeGroupMessage(threadId, "u1", "diag-command", "/menu"),
     Threads,
     isSelf: false
   });
+
+  assert.equal(Threads.writeCount || 0, 0, "a filtered command must not trigger a row upsert");
+  assert.equal(mapCalls, 0, "a filtered command must not rebuild the 5,000-ID dedupe Set");
+  assert.equal(counter._test.pendingGroups.has(threadId), false, "diagnostics-only events must not leave a pending DB batch");
+
+  const diagnostics = counter.getRuntimeDiagnostics(threadId);
+  assert.equal(diagnostics.received, 1);
+  assert.equal(diagnostics.counted, 0);
+  assert.equal(diagnostics.rejected, 1);
+  const message = topchat._test.emptyRankingMessage({}, vietnamDateKey(), diagnostics);
+  assert.match(message, /Realtime: nhận 1, ghi nhận 0, bị lọc 1 tin/);
+
+  // Once a rankable message arrives, its normal batch persists the aggregated
+  // in-memory diagnostics together with the actual ranking update.
   await counter.run({
     event: makeGroupMessage(threadId, "u1", "diag-normal", "hello"),
     Threads,
     isSelf: false
   });
-  await counter.flushAll(Threads);
-
-  const diagnostics = Threads.rows.get(threadId).data.topchatDiagnostics;
-  assert.equal(diagnostics.received, 2);
-  assert.equal(diagnostics.counted, 1);
-  assert.equal(diagnostics.rejected, 1);
+  await counter.flushGroup(threadId, Threads);
+  const saved = Threads.rows.get(threadId).data.topchatDiagnostics;
+  assert.equal(saved.received, 2);
+  assert.equal(saved.counted, 1);
+  assert.equal(saved.rejected, 1);
+  assert.equal(saved.duplicates, 0);
 });
 
 test("topchat does not trust legacy history completion markers without a version", () => {

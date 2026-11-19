@@ -10,7 +10,9 @@ const MAX_RUNTIME_DIAGNOSTIC_GROUPS = 1000;
 const MAX_SEEN_PER_GROUP = 10000;
 const MAX_SEEN_GROUPS = 1000;
 const MAX_STORED_IDS = 10000;
-const DEFAULT_FLUSH_DELAY_MS = 750;
+// Keep live ranking updates batched. /topchat explicitly flushes before reading,
+// so a longer debounce lowers per-group Supabase writes without stale command output.
+const DEFAULT_FLUSH_DELAY_MS = 2500;
 const FLUSH_DELAY_MS = Math.max(100, Math.min(10000,
   Number(process.env.JT_TOPCHAT_FLUSH_MS) || DEFAULT_FLUSH_DELAY_MS
 ));
@@ -26,27 +28,45 @@ module.exports.config = {
   cooldowns: 0
 };
 
+function createRuntimeDiagnosticSnapshot(date = vietnamDateKey()) {
+  return {
+    date,
+    events: 0,
+    groups: 0,
+    private: 0,
+    unknown: 0,
+    self: 0,
+    other: 0,
+    received: 0,
+    counted: 0,
+    rejected: 0,
+    duplicates: 0,
+    lastType: "missing",
+    lastMessageType: "",
+    lastSeenAt: 0
+  };
+}
+
+function getOrCreateRuntimeDiagnostics(threadId) {
+  const key = String(threadId || "");
+  if (!key) return null;
+  const today = vietnamDateKey();
+  let value = runtimeDiagnostics.get(key);
+  if (!value || value.date !== today) value = createRuntimeDiagnosticSnapshot(today);
+  // Refresh LRU order and keep diagnostics memory bounded.
+  runtimeDiagnostics.delete(key);
+  runtimeDiagnostics.set(key, value);
+  while (runtimeDiagnostics.size > MAX_RUNTIME_DIAGNOSTIC_GROUPS) {
+    runtimeDiagnostics.delete(runtimeDiagnostics.keys().next().value);
+  }
+  return value;
+}
+
 function observeIncomingEvent(event) {
   const threadId = String(event?.threadId || event?.data?.idTo || "");
   if (!threadId) return null;
 
-  const today = vietnamDateKey();
-  let value = runtimeDiagnostics.get(threadId);
-  if (!value || value.date !== today) {
-    value = {
-      date: today,
-      events: 0,
-      groups: 0,
-      private: 0,
-      unknown: 0,
-      self: 0,
-      other: 0,
-      lastType: "missing",
-      lastMessageType: "",
-      lastSeenAt: 0
-    };
-  }
-
+  const value = getOrCreateRuntimeDiagnostics(threadId);
   value.events++;
   if (isGroupMessage(event)) value.groups++;
   else if (event?.type === 0 || event?.type === "0" ||
@@ -58,26 +78,35 @@ function observeIncomingEvent(event) {
   value.lastType = String(event?.type ?? "missing").slice(0, 20);
   value.lastMessageType = String(event?.data?.msgType || "").slice(0, 40);
   value.lastSeenAt = Date.now();
-
-  runtimeDiagnostics.delete(threadId);
-  runtimeDiagnostics.set(threadId, value);
-  while (runtimeDiagnostics.size > MAX_RUNTIME_DIAGNOSTIC_GROUPS) {
-    runtimeDiagnostics.delete(runtimeDiagnostics.keys().next().value);
-  }
   return { ...value };
 }
 
 function getRuntimeDiagnostics(threadId) {
-  const key = String(threadId || "");
-  const value = runtimeDiagnostics.get(key);
+  const value = runtimeDiagnostics.get(String(threadId || ""));
   if (!value || value.date !== vietnamDateKey()) {
-    return {
-      date: vietnamDateKey(), events: 0, groups: 0, private: 0,
-      unknown: 0, self: 0, other: 0, lastType: "none",
-      lastMessageType: "", lastSeenAt: 0
-    };
+    return createRuntimeDiagnosticSnapshot();
   }
   return { ...value };
+}
+
+function getStats() {
+  const now = Date.now();
+  let pendingMessages = 0;
+  let oldestPendingMs = 0;
+  for (const pending of pendingGroups.values()) {
+    pendingMessages += Math.max(0, Number(pending.total) || 0);
+    const createdAt = Number(pending.createdAt) || now;
+    oldestPendingMs = Math.max(oldestPendingMs, now - createdAt);
+  }
+  return {
+    flushDelayMs: FLUSH_DELAY_MS,
+    activeWriteQueues: writeQueues.size,
+    pendingGroups: pendingGroups.size,
+    pendingMessages,
+    seenGroups: seenMessages.size,
+    diagnosticGroups: runtimeDiagnostics.size,
+    oldestPendingMs
+  };
 }
 
 function rememberMessage(threadId, data) {
@@ -146,8 +175,7 @@ function makePending(dateKey, storedIds = []) {
   const storedIdsSet = new Set(Array.isArray(storedIds) ? storedIds.map(String) : []);
   return {
     dateKey, counts: new Map(), ids: [], idsSet: new Set(), storedIdsSet,
-    total: 0, history: false, liveReceived: 0, liveCounted: 0,
-    liveRejected: 0, liveDuplicates: 0, timer: null
+    total: 0, history: false, createdAt: Date.now(), timer: null
   };
 }
 
@@ -184,17 +212,17 @@ async function flushGroupUnlocked(threadId, Threads) {
   const idsToAdd = pending.ids.filter(id => !storedSet.has(id));
   thread.topchatCounts = counts;
   thread.topchatSeenMessageIds = [...storedIds, ...idsToAdd].slice(-MAX_STORED_IDS);
-  if (pending.liveReceived > 0) {
-    const previousDiag = thread.topchatDiagnostics?.date === pending.dateKey
-      ? thread.topchatDiagnostics
-      : { date: pending.dateKey, received: 0, counted: 0, rejected: 0, duplicates: 0, lastSeenAt: 0 };
+  const realtimeDiagnostics = runtimeDiagnostics.get(threadId);
+  if (realtimeDiagnostics?.date === pending.dateKey && realtimeDiagnostics.received > 0) {
+    // Persist the latest diagnostics alongside a real ranking/history batch,
+    // not through a separate DB write for every filtered command.
     thread.topchatDiagnostics = {
       date: pending.dateKey,
-      received: Math.max(0, Number(previousDiag.received) || 0) + pending.liveReceived,
-      counted: Math.max(0, Number(previousDiag.counted) || 0) + pending.liveCounted,
-      rejected: Math.max(0, Number(previousDiag.rejected) || 0) + pending.liveRejected,
-      duplicates: Math.max(0, Number(previousDiag.duplicates) || 0) + pending.liveDuplicates,
-      lastSeenAt: Date.now()
+      received: realtimeDiagnostics.received,
+      counted: realtimeDiagnostics.counted,
+      rejected: realtimeDiagnostics.rejected,
+      duplicates: realtimeDiagnostics.duplicates,
+      lastSeenAt: realtimeDiagnostics.lastSeenAt || Date.now()
     };
   }
   if (pending.history) {
@@ -243,7 +271,10 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
       await flushGroupUnlocked(threadId, Threads);
       pending = null;
     }
-    if (!pending) {
+
+    // History imports are already batched by caller and must preserve coverage
+    // state even when a group's custom prefix filters some entries.
+    if (source === "history" && !pending) {
       const storedIds = thread.topchatDate === dateKey && Array.isArray(thread.topchatSeenMessageIds)
         ? thread.topchatSeenMessageIds : [];
       pending = makePending(dateKey, storedIds);
@@ -253,27 +284,46 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
 
     let added = 0;
     const receivedAt = source === "live" ? Date.now() : 0;
+    const realtimeDiagnostics = source === "live"
+      ? getOrCreateRuntimeDiagnostics(threadId)
+      : null;
+
     for (const message of messages) {
-      if (source === "live") pending.liveReceived++;
+      if (realtimeDiagnostics) {
+        realtimeDiagnostics.received++;
+        realtimeDiagnostics.lastSeenAt = Date.now();
+      }
+
       if (!isCountableMessage(message, dateKey, prefix, receivedAt)) {
-        if (source === "live") pending.liveRejected++;
+        if (realtimeDiagnostics) realtimeDiagnostics.rejected++;
         continue;
       }
+
+      // Do not build a Set from up to 10,000 persisted message IDs for a
+      // command/media event that will never enter the ranking. Create the
+      // batch only after the message passes the inexpensive eligibility test.
+      if (!pending) {
+        const storedIds = thread.topchatDate === dateKey && Array.isArray(thread.topchatSeenMessageIds)
+          ? thread.topchatSeenMessageIds : [];
+        pending = makePending(dateKey, storedIds);
+        pendingGroups.set(threadId, pending);
+      }
+
       const data = message.data || {};
       const uid = String(data.uidFrom || data.senderId || "");
       const messageId = String(data.cliMsgId || data.msgId || "");
       if (messageId && (pending.storedIdsSet.has(messageId) || pending.idsSet.has(messageId))) {
-        if (source === "live") pending.liveDuplicates++;
+        if (realtimeDiagnostics) realtimeDiagnostics.duplicates++;
         continue;
       }
       if (messageId && !rememberMessage(threadId, data)) {
-        if (source === "live") pending.liveDuplicates++;
+        if (realtimeDiagnostics) realtimeDiagnostics.duplicates++;
         continue;
       }
 
       const member = pending.counts.get(uid) || { count: 0, name: "", avatar: "" };
       member.count += 1;
-      if (source === "live") pending.liveCounted++;
+      if (realtimeDiagnostics) realtimeDiagnostics.counted++;
       member.name = String(data.dName || data.senderName || data.name || member.name || "Thành viên").slice(0, 40);
       member.avatar = avatarUrl(data) || member.avatar || "";
       pending.counts.set(uid, member);
@@ -284,7 +334,14 @@ async function applyMessagesToGroup(threadId, messages, Threads, dateKey, source
         pending.ids.push(messageId);
       }
     }
-    if (added || source === "history" || source === "live") scheduleFlush(threadId, Threads, pending);
+
+    if (added || source === "history") {
+      scheduleFlush(threadId, Threads, pending);
+    } else if (pending && pending.total === 0 && !pending.history && !pending.timer) {
+      // Filtered/duplicate-only live traffic is diagnostics-only; keep it in
+      // the bounded runtime map, not as a dangling pending DB batch.
+      if (pendingGroups.get(threadId) === pending) pendingGroups.delete(threadId);
+    }
     return added;
   });
 }
@@ -346,6 +403,7 @@ module.exports.run = async function ({ event, Threads }) {
 };
 module.exports.observeIncomingEvent = observeIncomingEvent;
 module.exports.getRuntimeDiagnostics = getRuntimeDiagnostics;
+module.exports.getStats = getStats;
 module.exports.recordHistoryMessages = recordHistoryMessages;
 module.exports.markHistoryCoverage = markHistoryCoverage;
 module.exports.flushGroup = flushGroup;
@@ -354,5 +412,5 @@ module.exports._test = {
   rememberMessage, recordMessage, recordHistoryMessages, markHistoryCoverage, isGroupMessage,
   applyMessagesToGroup, flushGroup, flushAll, enqueueGroupWrite, isCountableMessage,
   writeQueues, seenMessages, pendingGroups, runtimeDiagnostics,
-  observeIncomingEvent, getRuntimeDiagnostics, MAX_STORED_IDS, MAX_SEEN_GROUPS, FLUSH_DELAY_MS
+  observeIncomingEvent, getRuntimeDiagnostics, getStats, MAX_STORED_IDS, MAX_SEEN_GROUPS, FLUSH_DELAY_MS
 };

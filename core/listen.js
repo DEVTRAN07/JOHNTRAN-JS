@@ -448,9 +448,14 @@ function startListening(api) {
     // Count every group event for diagnostics. The counter still excludes
     // bot-self messages from the actual member ranking.
     if (isGroupMessage(event)) {
-      void topchatCounter.run({ event, Threads }).catch((err) => {
-        logger.log(`Lỗi ghi thống kê Topchat: ${err.message}`, "warn");
-      });
+      const topchatStartedAt = performance.now();
+      void topchatCounter.run({ event, Threads }).then(
+        () => metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt),
+        (err) => {
+          metrics.trackListenerStageLatency?.("topchat-counter", performance.now() - topchatStartedAt);
+          logger.log(`Lỗi ghi thống kê Topchat: ${err.message}`, "warn");
+        }
+      );
     }
 
     Promise.resolve(onMessage(event, { ...options, receivedAt })).catch((err) => {
