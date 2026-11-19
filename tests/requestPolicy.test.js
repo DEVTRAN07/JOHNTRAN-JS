@@ -62,3 +62,28 @@ test("Zalo retry policy maps retries to the vendored SDK actual limit option", (
   assert.equal(client.options.retry.limit, 0);
   assert.equal(client.options.retry.retries, 0);
 });
+
+
+test("vendored Zalo SDK sends only one GET attempt when the mapped retry limit is zero", async () => {
+  const { request } = require("../vendor/zalo-client/dist/cjs/core/http.cjs");
+  const { resolveZaloRetryPolicy } = require("../core/login");
+  const calls = [];
+  const ctx = {
+    cookie: { getCookieString: async () => "" },
+    userAgent: "JOHNTRAN test",
+    options: {
+      retry: resolveZaloRetryPolicy({}, {}),
+      polyfill: async () => {
+        calls.push("attempt");
+        throw new Error("simulated network failure");
+      }
+    }
+  };
+
+  await assert.rejects(
+    request(ctx, "https://chat.zalo.me/api/test", { method: "GET" }),
+    /simulated network failure/
+  );
+  assert.equal(calls.length, 1,
+    "the vendored SDK must not keep its default three retries when policy says zero");
+});
