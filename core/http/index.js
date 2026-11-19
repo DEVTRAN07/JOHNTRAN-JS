@@ -4,9 +4,11 @@ const zlib = require("zlib");
 const { URL } = require("url");
 const logger = require("../../utils/logger");
 const { resolveWithDoH } = require("./dns");
+const { resolveRequestPolicy } = require("./requestPolicy");
 
-const DEFAULT_TIMEOUT = 20000;
-const DEFAULT_RETRIES = 2;
+const HTTP_REQUEST_POLICY = resolveRequestPolicy(process.env, {}, "JT_HTTP");
+const DEFAULT_TIMEOUT = HTTP_REQUEST_POLICY.timeoutMs;
+const DEFAULT_RETRIES = HTTP_REQUEST_POLICY.retries;
 const MAX_REDIRECTS = 5;
 const SENSITIVE_QUERY = /(^|[?&])(st|e|sig|sign|token|key|apikey|api_key|secret|password|client_secret|access_token)=([^&]*)/gi;
 
@@ -155,7 +157,24 @@ async function rawRequest(rawUrl, options = {}, redirectsLeft = MAX_REDIRECTS) {
   }
 }
 
+function normalizeRequestOptions(options = {}) {
+  const requestedTimeout = Number(options.timeout);
+  const timeout = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+    ? Math.min(Math.floor(requestedTimeout), DEFAULT_TIMEOUT)
+    : DEFAULT_TIMEOUT;
+  const requestedRetries = options.retries == null
+    ? DEFAULT_RETRIES
+    : Number(options.retries);
+  const retries = Number.isSafeInteger(requestedRetries)
+    ? Math.max(0, Math.min(DEFAULT_RETRIES, requestedRetries))
+    : DEFAULT_RETRIES;
+  return { ...options, timeout, retries };
+}
+
 async function request(rawUrl, options = {}) {
+  // Clamp call-site overrides to the shared policy so a stale per-command
+  // timeout cannot silently restore 20-60 second waits.
+  options = normalizeRequestOptions(options);
   const config = global.config || {};
   const guard = hostAllowed(rawUrl, config);
   if (!guard.allowed) {
@@ -199,4 +218,4 @@ async function getBuffer(rawUrl, options = {}) {
   return { status: response.status, buffer: response.body, contentType: response.headers["content-type"] || "" };
 }
 
-module.exports = { request, getJson, getBuffer, redactUrl, hostAllowed };
+module.exports = { request, getJson, getBuffer, redactUrl, hostAllowed, normalizeRequestOptions, HTTP_REQUEST_POLICY };

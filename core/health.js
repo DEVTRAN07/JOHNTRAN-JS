@@ -73,6 +73,12 @@ function speedPayload() {
     commandExecutionLatency: safe(() => metrics?.getCommandExecutionLatencyStats?.(10), []),
     zaloApiLatency: safe(() => metrics?.getZaloApiLatencyStats?.(10), []),
     httpTransport: safe(() => require("./http/transport").getZaloHttpTransportStats(), null),
+    requestPolicy: safe(() => ({
+      zalo: require("./http/requestPolicy").resolveRequestPolicy(
+        process.env, global.config?.zalo_client_config?.retry || {}, "JT_ZALO_API"
+      ),
+      external: require("./http/requestPolicy").resolveRequestPolicy(process.env, {}, "JT_HTTP")
+    }), null),
     jobQueues: safe(() => jobQueue?.stats?.(), {}),
     workers: safe(() => require("./workerPool").stats(), {}),
     mediaResources: safe(() => ({

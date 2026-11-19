@@ -3,6 +3,7 @@ const path = require("path");
 const os = require("os");
 const { ZaloClient, LoginQRCallbackEventType } = require("zalo-client");
 const logger = require("../utils/logger");
+const { resolveRequestPolicy } = require("./http/requestPolicy");
 const { getJsonData, displayQRCodeInConsole } = require("../utils/index");
 const { registerStickerApi } = require("./stickerService");
 
@@ -112,9 +113,16 @@ function readImageHeaderSize(buf) {
   return null;
 }
 
+function resolveZaloRetryPolicy(env = process.env, configured = global.config?.zalo_client_config?.retry || {}) {
+  return resolveRequestPolicy(env, configured, "JT_ZALO_API");
+}
+
 function createZaloClient() {
+  const clientOptions = global.config?.zalo_client_config || {};
+  const retry = resolveZaloRetryPolicy();
   return new ZaloClient({
-    ...global.config.zalo_client_config,
+    ...clientOptions,
+    retry,
     imageMetadataGetter: async (filePath) => {
       const fileHandle = await fs.promises.open(filePath, "r");
       try {
@@ -369,6 +377,8 @@ async function login() {
 
 module.exports = login;
 module.exports.resolveUserAgent = resolveUserAgent;
+module.exports.resolveZaloRetryPolicy = resolveZaloRetryPolicy;
+module.exports.createZaloClient = createZaloClient;
 module.exports.deviceLabel = deviceLabel;
 module.exports.USER_AGENTS = USER_AGENTS;
 module.exports.getLoginState = getLoginState;

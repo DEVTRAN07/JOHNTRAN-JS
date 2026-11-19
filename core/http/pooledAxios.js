@@ -1,6 +1,9 @@
 const axios = require("axios");
 const http = require("http");
 const https = require("https");
+const { resolveRequestPolicy } = require("./requestPolicy");
+
+const HTTP_REQUEST_POLICY = resolveRequestPolicy(process.env, {}, "JT_HTTP");
 
 const httpAgent = new http.Agent({
   keepAlive: true,
@@ -17,12 +20,31 @@ const httpsAgent = new https.Agent({
 const pooledAxios = axios.create({
   httpAgent,
   httpsAgent,
+  timeout: HTTP_REQUEST_POLICY.timeoutMs
 });
 
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
-const MAX_RETRIES = 3;
-const RETRY_DELAY_BASE = 1000;
+const MAX_RETRIES = 1;
+const RETRY_DELAY_BASE = HTTP_REQUEST_POLICY.delayMs;
+
+// Enforce a finite timeout even when a caller explicitly passes timeout: 0
+// (Axios otherwise waits for the operating system's network timeout).
+pooledAxios.interceptors.request.use(config => {
+  const requestedTimeout = Number(config.timeout);
+  config.timeout = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+    ? Math.min(Math.floor(requestedTimeout), HTTP_REQUEST_POLICY.timeoutMs)
+    : HTTP_REQUEST_POLICY.timeoutMs;
+
+  const requestedRetryLimit = Number.isInteger(config.__retryLimit)
+    ? config.__retryLimit
+    : HTTP_REQUEST_POLICY.retries;
+  config.__retryLimit = Math.max(
+    0,
+    Math.min(HTTP_REQUEST_POLICY.retries, requestedRetryLimit, MAX_RETRIES)
+  );
+  return config;
+});
 
 function isNetworkError(error) {
   return (
@@ -58,8 +80,8 @@ pooledAxios.interceptors.response.use(
 
     config.__retryCount = config.__retryCount || 0;
     const retryLimit = Number.isInteger(config.__retryLimit)
-      ? Math.max(0, Math.min(MAX_RETRIES, config.__retryLimit))
-      : MAX_RETRIES;
+      ? Math.max(0, Math.min(HTTP_REQUEST_POLICY.retries, MAX_RETRIES, config.__retryLimit))
+      : HTTP_REQUEST_POLICY.retries;
     if (config.__retryCount >= retryLimit) return Promise.reject(error);
 
     if (!shouldRetry(error)) return Promise.reject(error);
@@ -85,4 +107,4 @@ function installAxiosGuard(instance = pooledAxios) {
   }
 }
 
-module.exports = { pooledAxios, installAxiosGuard };
+module.exports = { pooledAxios, installAxiosGuard, HTTP_REQUEST_POLICY };
