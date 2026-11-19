@@ -59,6 +59,14 @@ function shouldExecuteMessageCommand(options = {}) {
   return options.skipCommandExecution !== true;
 }
 
+// The panel transcript is auxiliary UI state. Defer its bounded in-memory
+// ring update so it cannot sit between WebSocket receive and command dispatch.
+function schedulePanelIncomingRecord(event) {
+  setImmediate(() => {
+    try { panelBridge.recordIncoming(event); } catch { /* panel history is non-critical */ }
+  });
+}
+
 // Use the synchronous thread mirror on the message hot path. A cache miss
 // must not await Supabase/database readiness: unknown groups remain fail-closed
 // until the existing mirror or durable last-known cache can confirm their state.
@@ -336,10 +344,9 @@ function startListening(api) {
       logger.log(`Lỗi updateMessageCache (bỏ qua): ${err.message}`, "warn", { source: "listener-cache", isGroup: event?.type === ThreadType.Group, groupId: event?.threadId });
     }
 
-    // Panel chat: ghi tin vào bộ nhớ để panel xem/gửi tiếp
-    try {
-      panelBridge.recordIncoming(event);
-    } catch { /* bỏ qua */ }
+    // Panel history is secondary to command response; append it on the
+    // next event-loop turn rather than before the command hot path.
+    schedulePanelIncomingRecord(event);
 
     metrics.trackListenerStageLatency?.("message-preprocess", performance.now() - preprocessingStartedAt);
 
@@ -900,6 +907,7 @@ module.exports.shouldExecuteMessageCommand = shouldExecuteMessageCommand;
 module.exports.shouldProcessUndoEvent = shouldProcessUndoEvent;
 module.exports.shouldCacheIncomingMessage = shouldCacheIncomingMessage;
 module.exports.getThreadDataForMessage = getThreadDataForMessage;
+module.exports.schedulePanelIncomingRecord = schedulePanelIncomingRecord;
 
 module.exports.computeReconnectDelay = computeReconnectDelay;
 
