@@ -248,6 +248,15 @@ function createDatabaseFacade(backend, options = {}) {
       if (typeof backend.flush === "function") return backend.flush();
       return undefined;
     },
+    // Operational status is a memory-only snapshot for realtime listener
+    // paths. The full getStatus() below performs file/mount diagnostics and is
+    // reserved for Panel/health reporting.
+    getOperationalStatus() {
+      if (typeof backend.getOperationalStatus === "function") {
+        return backend.getOperationalStatus();
+      }
+      return getDatabaseStatus(backend, options);
+    },
     getStatus() {
       return getDatabaseStatus(backend, options);
     },
