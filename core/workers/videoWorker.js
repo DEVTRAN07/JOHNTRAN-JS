@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const ffmpeg = require("fluent-ffmpeg");
 const { probeVideo } = require("../videoMeta");
+const { FFMPEG_THREADS } = require("../mediaResourceLimits");
 
 ffmpeg.setFfmpegPath(require("ffmpeg-static"));
 
@@ -17,6 +18,7 @@ function convertDurationToFiveDigits(durationStr) {
 async function extractThumbnail(videoPath, thumbnailPath) {
   return new Promise((resolve, reject) => {
     ffmpeg(videoPath)
+      .outputOptions(["-threads " + FFMPEG_THREADS])
       .on("end", () => {
         resolve(thumbnailPath);
       })
