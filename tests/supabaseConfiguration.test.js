@@ -17,8 +17,30 @@ test("database selects JSON when no Supabase credentials or driver are configure
   });
 });
 
-test("database selects Supabase only with URL and service-role key", () => {
+test("legacy Supabase credentials do not auto-enable remote storage", () => {
   const config = resolveDatabaseConfig({
+    SUPABASE_URL: "https://unit-test.supabase.co",
+    SUPABASE_SERVICE_KEY: "unit-test-service-role"
+  });
+  assert.deepEqual(config, {
+    driver: "json", url: "", serviceKey: "", forced: false
+  });
+});
+
+test("an old Supabase .env setting is ignored without the new opt-in flag", () => {
+  const config = resolveDatabaseConfig({
+    JT_DB_DRIVER: "supabase",
+    SUPABASE_URL: "https://unit-test.supabase.co",
+    SUPABASE_SERVICE_KEY: "unit-test-service-role"
+  });
+  assert.equal(config.driver, "json");
+  assert.equal(config.forced, true);
+});
+
+test("Supabase is selected only after two explicit opt-ins", () => {
+  const config = resolveDatabaseConfig({
+    JT_DB_DRIVER: "supabase",
+    JT_ENABLE_REMOTE_DATABASE: "true",
     SUPABASE_URL: "https://unit-test.supabase.co",
     SUPABASE_SERVICE_KEY: "unit-test-service-role"
   });
@@ -30,6 +52,8 @@ test("database selects Supabase only with URL and service-role key", () => {
 
 test("modern Supabase Secret API key is preferred over the legacy service_role key", () => {
   const config = resolveDatabaseConfig({
+    JT_DB_DRIVER: "supabase",
+    JT_ENABLE_REMOTE_DATABASE: "true",
     SUPABASE_URL: "https://unit-test.supabase.co",
     SUPABASE_SECRET_KEY: "sb_secret_unit_test",
     SUPABASE_SERVICE_KEY: "legacy-key-must-not-win"
@@ -41,22 +65,24 @@ test("modern Supabase Secret API key is preferred over the legacy service_role k
 
 test("explicit Supabase driver fails fast when either credential is missing", () => {
   assert.throws(
-    () => resolveDatabaseConfig({ JT_DB_DRIVER: "supabase", SUPABASE_URL: "https://unit-test.supabase.co" }),
+    () => resolveDatabaseConfig({ JT_DB_DRIVER: "supabase", JT_ENABLE_REMOTE_DATABASE: "true", SUPABASE_URL: "https://unit-test.supabase.co" }),
     /SUPABASE_SERVICE_KEY/
   );
   assert.throws(
-    () => resolveDatabaseConfig({ JT_DB_DRIVER: "supabase", SUPABASE_SERVICE_KEY: "secret" }),
+    () => resolveDatabaseConfig({ JT_DB_DRIVER: "supabase", JT_ENABLE_REMOTE_DATABASE: "true", SUPABASE_SERVICE_KEY: "secret" }),
     /SUPABASE_URL/
   );
 });
 
-test("partial Supabase configuration never silently falls back to JSON", () => {
-  assert.throws(
-    () => resolveDatabaseConfig({ SUPABASE_URL: "https://unit-test.supabase.co" }),
-    /cần SUPABASE_URL và SUPABASE_SECRET_KEY/
+test("partial Supabase configuration is ignored unless remote storage is explicitly enabled", () => {
+  assert.deepEqual(
+    resolveDatabaseConfig({ SUPABASE_URL: "https://unit-test.supabase.co" }),
+    { driver: "json", url: "", serviceKey: "", forced: false }
   );
   assert.throws(
     () => resolveDatabaseConfig({
+      JT_DB_DRIVER: "supabase",
+      JT_ENABLE_REMOTE_DATABASE: "true",
       SUPABASE_URL: "https://unit-test.supabase.co",
       SUPABASE_ANON_KEY: "publishable-or-anon-only"
     }),
