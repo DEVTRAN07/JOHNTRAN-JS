@@ -98,7 +98,7 @@ test("menu no longer sends a progress placeholder before its Canvas card", () =>
 });
 
 
-test("menu sends the Canvas image first and a real colored greeting message immediately below it", async () => {
+test("menu keeps the real @mention and randomized greeting in the Canvas image caption", async () => {
   const sent = [];
   const rawApi = {
     async sendMessage(payload, threadId, type) {
@@ -116,15 +116,14 @@ test("menu sends the Canvas image first and a real colored greeting message imme
     api, "/tmp/jt_menu_1_ab12.png", caption, [mention], "menu-thread", 1
   );
 
-  assert.equal(sent.length, 2, "the image and greeting should be two ordered messages");
-  assert.equal(sent[0].payload.msg, "", "the image itself must not use the photo-description caption");
+  assert.equal(sent.length, 1, "the Canvas card and its caption must be one Zalo message");
+  assert.equal(sent[0].payload.msg, caption, "the tag and greeting must stay in the card caption");
   assert.deepEqual(sent[0].payload.attachments, ["/tmp/jt_menu_1_ab12.png"]);
-  assert.equal(sent[1].payload.msg, caption, "the greeting should be displayed as a separate message below the card");
-  assert.deepEqual(sent[1].payload.mentions, [mention], "the @Wuang tag must remain a real Zalo mention");
-  const colors = sent[1].payload.styles.filter(style =>
+  assert.deepEqual(sent[0].payload.mentions, [mention], "the @Wuang tag must remain a real Zalo mention");
+  const colors = sent[0].payload.styles.filter(style =>
     [TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green].includes(style.st)
   );
-  assert.ok(colors.length >= 12, "the greeting and prompt should each receive random colors");
+  assert.ok(colors.length >= 12, "the greeting and prompt inside the card caption must receive random colors");
   assert.ok(colors.every(style => style.start >= mention.len),
     "random text color spans must not overlap the Zalo-managed @Wuang mention");
   assert.ok(colors.some(style => style.start >= caption.indexOf("🤖")),

@@ -58,15 +58,12 @@ test("menu creates and sends its card under one second without waiting for profi
   const elapsed = performance.now() - started;
 
   assert.ok(elapsed < 1000, `menu fast path took ${elapsed.toFixed(1)}ms`);
-  assert.equal(sent.length, 2, "menu should send the Canvas image and its greeting as separate ordered messages");
-  assert.equal(sent[0]?.msg, "", "the visual card should not rely on a styled photo description");
-  assert.ok(Array.isArray(sent[0]?.attachments), "the Canvas card must be the first response");
-  assert.doesNotMatch(sent[1]?.msg || "", /Đang chuẩn bị menu/,
-    "the temporary progress placeholder must not be sent");
-  assert.match(sent[1]?.msg || "", /@Tester/, "the tagged greeting should follow the Canvas card");
-  assert.match(sent[1]?.msg || "", /Chào bạn|Chào quản trị viên|Chào chủ nhân/,
-    "the greeting should stay in the text message below the card");
-  assert.ok(Array.isArray(sent[1]?.mentions), "the greeting should preserve real Zalo mention metadata");
+  assert.equal(sent.length, 1, "menu should send the Canvas card and its caption in one Zalo request");
+  assert.ok(Array.isArray(sent[0]?.attachments), "the card image must be sent with its caption");
+  assert.match(sent[0]?.msg || "", /@Tester/, "the greeting tag should remain inside the card caption");
+  assert.match(sent[0]?.msg || "", /Chào bạn|Chào quản trị viên|Chào chủ nhân/,
+    "the greeting should stay directly beneath the Canvas image as its caption");
+  assert.ok(Array.isArray(sent[0]?.mentions), "the card caption should preserve real Zalo mention metadata");
   assert.equal(renderRequests.filter(type => type === "menu").length, 1, "menu must still request a canvas card");
 });
 
