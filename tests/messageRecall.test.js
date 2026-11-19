@@ -306,159 +306,108 @@ test("zero recall delay disables local recall without sending a TTL field", asyn
   }
 });
 
-test("CommonJS image captions preserve randomized text colors", async () => {
-  const secretKey = Buffer.alloc(16, 7).toString("base64");
-  const requestParams = [];
-  const ctx = {
-    secretKey,
-    API_VERSION: 1,
-    API_TYPE: 30,
-    imei: "test-device",
-    settings: { features: { sharefile: { max_file: 10, max_size_share_file_v3: 50 } } },
-    options: {
-      polyfill: async (url, options) => {
-        const encrypted = new URL(url).searchParams.get("params") ||
-          new URLSearchParams(options?.body || "").get("params");
-        requestParams.push(JSON.parse(decodeAES(secretKey, encrypted)));
-        const data = encodeAES(secretKey, JSON.stringify({ error_code: 0, data: { msgId: "caption-image-id" } }));
-        return new Response(JSON.stringify({ error_code: 0, data }), {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        });
-      }
-    },
-    cookie: new CookieJar(),
-    userAgent: "test-agent"
+test("image captions become multicolor pixels in one composed Canvas attachment", async () => {
+  const os = require("node:os");
+  const path = require("node:path");
+  const { createCanvas, loadImage } = require("canvas");
+  const theme = require("../core/canvas/theme");
+  const { composeImageCaption, cleanupComposedCaption } = require("../core/canvas/attachmentCaption");
+  const originalPath = path.join(os.tmpdir(), "jt-caption-source-" + process.pid + ".png");
+  const originalImage = createCanvas(720, 420);
+  const originalCtx = originalImage.getContext("2d");
+  originalCtx.fillStyle = "#20354d";
+  originalCtx.fillRect(0, 0, 720, 420);
+  fs.writeFileSync(originalPath, originalImage.toBuffer("image/png"));
+
+  const caption = "@Wuang\n🤖 Chào chủ nhân!\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
+  const drawnLines = [];
+  const originalDraw = theme.drawMulticolorText;
+  theme.drawMulticolorText = function(ctx, value, x, y, options) {
+    drawnLines.push({ value: String(value), multicolor: options?.multicolor });
+    return originalDraw.call(this, ctx, value, x, y, options);
   };
-  const api = {
-    zpwServiceMap: {
-      chat: ["https://chat.example"],
-      group: ["https://group.example"],
-      file: ["https://file.example"]
-    },
-    async uploadAttachment() {
-      return [{
-        fileType: "image",
-        photoId: "photo-id",
-        width: 750,
-        height: 520,
-        normalUrl: "https://cdn.example/menu.png",
-        hdUrl: "https://cdn.example/menu-hd.png",
-        totalSize: 12000
-      }];
-    }
-  };
-  api.sendMessage = sendMessageFactory(ctx, api);
-  const wrapped = wrapApi(api, "thread-id", 1, "menu");
-  const caption = "@Nguyễn Văn A\n🤖 Chào chủ nhân!\n👉 Rất vui được đồng hành";
 
-  await wrapped.sendMessage({
-    msg: caption,
-    attachments: ["/tmp/jt_menu_1_ab12.png"],
-    mentions: [{ uid: "12345", pos: 0, len: "@Nguyễn Văn A".length }]
-  }, "thread-id", 1);
-
-  assert.equal(requestParams.length, 1, "a single PNG with caption should use one image request");
-  assert.equal(requestParams[0].desc, caption);
-  const imageMentions = JSON.parse(requestParams[0].mentionInfo);
-  assert.equal(imageMentions.length, 1, "the image caption must preserve its real Zalo mention");
-  assert.equal(imageMentions[0].uid, "12345");
-  assert.equal(imageMentions[0].pos, 0);
-  assert.equal(imageMentions[0].len, "@Nguyễn Văn A".length);
-  const textProperties = JSON.parse(requestParams[0].textProperties);
-  const appliedColors = textProperties.styles.map(style => style.st).filter(color => RANDOM_COLORS.has(color));
-  assert.ok(appliedColors.length >= 5, "all caption words should receive randomized color styles");
-  assert.ok(new Set(appliedColors).size >= 3, "caption should use several different colors");
-  assert.ok(textProperties.styles.every(style => RANDOM_COLORS.has(style.st)),
-    "the caption should not lose the randomized style metadata");
-  const mentionEnd = "@Nguyễn Văn A".length;
-  assert.ok(textProperties.styles.every(style =>
-    style.start + style.len <= 0 || style.start >= mentionEnd),
-  "caption colors must not overlap the Zalo mention span");
-  assert.ok(textProperties.styles.some(style => style.start >= caption.indexOf("🤖")),
-    "the greeting line beneath the tagged name must carry colors");
-  assert.ok(textProperties.styles.some(style => style.start >= caption.indexOf("👉")),
-    "the prompt line beneath the tagged name must carry colors");
-});
-
-
-test("PNG, JPG, JPEG and WEBP card captions all preserve randomized text colors and mentions", async () => {
-  for (const extension of ["png", "jpg", "jpeg", "webp"]) {
-    const secretKey = Buffer.alloc(16, 11).toString("base64");
-    const requestParams = [];
-    const ctx = {
-      secretKey,
-      API_VERSION: 1,
-      API_TYPE: 30,
-      imei: "test-device",
-      settings: { features: { sharefile: { max_file: 10, max_size_share_file_v3: 50 } } },
-      options: {
-        polyfill: async (url, options) => {
-          const encrypted = new URL(url).searchParams.get("params") ||
-            new URLSearchParams(options?.body || "").get("params");
-          requestParams.push(JSON.parse(decodeAES(secretKey, encrypted)));
-          const data = encodeAES(secretKey, JSON.stringify({ error_code: 0, data: { msgId: "multi-format-card" } }));
-          return new Response(JSON.stringify({ error_code: 0, data }), {
-            status: 200,
-            headers: { "content-type": "application/json" }
-          });
-        }
-      },
-      cookie: new CookieJar(),
-      userAgent: "test-agent"
-    };
-    const rawApi = {
-      zpwServiceMap: {
-        chat: ["https://chat.example"],
-        group: ["https://group.example"],
-        file: ["https://file.example"]
-      },
-      async uploadAttachment() {
-        return [{
-          fileType: "image",
-          photoId: "card-photo-id",
-          width: 750,
-          height: 520,
-          normalUrl: "https://cdn.example/card.png",
-          hdUrl: "https://cdn.example/card-hd.png",
-          totalSize: 12000
-        }];
-      }
-    };
-    rawApi.sendMessage = sendMessageFactory(ctx, rawApi);
-    const wrapped = wrapApi(rawApi, "format-card-thread", ThreadType.Group, "card-format");
-    const caption = `@Wuang
-🤖 Chào chủ nhân!
-👉 Card ${extension.toUpperCase()} này cũng phải có màu chữ ngẫu nhiên.`;
-    const mention = { uid: "12345", pos: 0, len: "@Wuang".length };
-
-    await wrapped.sendMessage({
+  let composed;
+  try {
+    composed = await composeImageCaption({
       msg: caption,
-      attachments: [`/tmp/jt_menu_1_ab12.${extension}`],
-      mentions: [mention]
-    }, "format-card-thread", ThreadType.Group);
+      attachments: [originalPath],
+      mentions: [{ uid: "12345", pos: 0, len: "@Wuang".length }]
+    });
+  } finally {
+    theme.drawMulticolorText = originalDraw;
+  }
 
-    assert.equal(requestParams.length, 1, extension + " caption must share one request with its image");
-    assert.equal(requestParams[0].desc, caption, extension + " caption must remain attached to the image");
-    const mentionInfo = JSON.parse(requestParams[0].mentionInfo);
-    assert.equal(mentionInfo[0].uid, "12345", extension + " caption must preserve its real tag");
-    const textProperties = JSON.parse(requestParams[0].textProperties);
-    const colors = textProperties.styles.filter(style => RANDOM_COLORS.has(style.st));
-    assert.ok(colors.length >= 10, extension + " caption words must receive random colors");
-    assert.ok(colors.every(style => style.start >= mention.len),
-      extension + " color spans must not overlap the mention");
-    assert.ok(colors.some(style => style.start >= caption.indexOf("🤖")),
-      extension + " greeting line must be colored");
-    assert.ok(colors.some(style => style.start >= caption.indexOf("👉")),
-      extension + " prompt line must be colored");
+  try {
+    assert.equal(composed.composed, true);
+    assert.equal(composed.payload.msg, "", "Zalo must not receive an unstyled description below the image");
+    assert.equal(composed.payload.mentions, undefined,
+      "an @name painted into the Canvas is visual, not an interactive Zalo mention");
+    assert.equal(composed.payload.attachments.length, 1);
+    const image = await loadImage(composed.payload.attachments[0]);
+    assert.equal(image.width, 720);
+    assert.ok(image.height > 420, "the generated attachment must contain a visible caption footer");
+    assert.ok(drawnLines.some(line => line.value === "@Wuang" && line.multicolor === true));
+    assert.ok(drawnLines.some(line => line.value.includes("Chào chủ nhân") && line.multicolor === true));
+    assert.ok(drawnLines.some(line => line.value.includes("Rất vui") && line.multicolor === true));
+  } finally {
+    await cleanupComposedCaption(composed?.tempFile);
+    fs.rmSync(originalPath, { force: true });
   }
 });
 
+test("shared send wrapper uploads one composed image instead of a separate caption bubble", async () => {
+  const os = require("node:os");
+  const path = require("node:path");
+  const { createCanvas, loadImage } = require("canvas");
+  const sourcePath = path.join(os.tmpdir(), "jt-wrapper-caption-" + process.pid + ".png");
+  fs.writeFileSync(sourcePath, createCanvas(640, 360).toBuffer("image/png"));
+  const sent = [];
+  const rawApi = {
+    async sendMessage(payload, threadId, type) {
+      const image = await loadImage(payload.attachments[0]);
+      sent.push({
+        payload,
+        threadId,
+        type,
+        width: image.width,
+        height: image.height,
+        fileExistsDuringUpload: fs.existsSync(payload.attachments[0])
+      });
+      return { message: null, attachment: [] };
+    }
+  };
+  const wrapped = wrapApi(rawApi, "caption-thread", ThreadType.Group, "caption-test");
+  const caption = "@Member\n✨ Nội dung này phải có nhiều màu\nKhông được tách thành tin nhắn thứ hai.";
 
+  try {
+    await wrapped.sendMessage({ msg: caption, attachments: [sourcePath] });
+    assert.equal(sent.length, 1, "one card with caption must be sent in one API call");
+    assert.equal(sent[0].payload.msg, "");
+    assert.equal(sent[0].payload.mentions, undefined);
+    assert.equal(sent[0].payload.attachments.length, 1);
+    assert.ok(sent[0].fileExistsDuringUpload);
+    assert.equal(sent[0].width, 640);
+    assert.ok(sent[0].height > 360);
+    assert.equal(sent[0].threadId, "caption-thread");
+    assert.equal(sent[0].type, ThreadType.Group);
+    assert.equal(fs.existsSync(sent[0].payload.attachments[0]), false,
+      "the temporary composed PNG is removed after upload finishes");
+  } finally {
+    fs.rmSync(sourcePath, { force: true });
+  }
+});
 
-test("menu tag and random colors stay in the same Canvas image request in the real CommonJS SDK", async () => {
-  const secretKey = Buffer.alloc(16, 9).toString("base64");
+test("real CommonJS SDK receives the composed colored card, not an unstyled description", async () => {
+  const os = require("node:os");
+  const path = require("node:path");
+  const { createCanvas, loadImage } = require("canvas");
+  const sourcePath = path.join(os.tmpdir(), "jt-sdk-caption-" + process.pid + ".png");
+  fs.writeFileSync(sourcePath, createCanvas(720, 400).toBuffer("image/png"));
+
+  const secretKey = Buffer.alloc(16, 13).toString("base64");
   const requestParams = [];
+  const uploaded = [];
   const ctx = {
     secretKey,
     API_VERSION: 1,
@@ -470,10 +419,7 @@ test("menu tag and random colors stay in the same Canvas image request in the re
         const encrypted = new URL(url).searchParams.get("params") ||
           new URLSearchParams(options?.body || "").get("params");
         requestParams.push(JSON.parse(decodeAES(secretKey, encrypted)));
-        const data = encodeAES(secretKey, JSON.stringify({
-          error_code: 0,
-          data: { msgId: `menu-message-${requestParams.length}` }
-        }));
+        const data = encodeAES(secretKey, JSON.stringify({ error_code: 0, data: { msgId: "composed-caption-id" } }));
         return new Response(JSON.stringify({ error_code: 0, data }), {
           status: 200,
           headers: { "content-type": "application/json" }
@@ -489,75 +435,61 @@ test("menu tag and random colors stay in the same Canvas image request in the re
       group: ["https://group.example"],
       file: ["https://file.example"]
     },
-    async uploadAttachment() {
+    async uploadAttachment(attachments) {
+      const image = await loadImage(attachments[0]);
+      uploaded.push({ path: attachments[0], width: image.width, height: image.height });
       return [{
         fileType: "image",
-        photoId: "menu-photo-id",
-        width: 750,
-        height: 520,
-        normalUrl: "https://cdn.example/menu.png",
-        hdUrl: "https://cdn.example/menu-hd.png",
-        totalSize: 12000
+        photoId: "composed-photo-id",
+        width: image.width,
+        height: image.height,
+        normalUrl: "https://cdn.example/composed.png",
+        hdUrl: "https://cdn.example/composed-hd.png",
+        totalSize: fs.statSync(attachments[0]).size
       }];
-    }
+    },
+    async undo() {}
   };
   rawApi.sendMessage = sendMessageFactory(ctx, rawApi);
-  const wrapped = wrapApi(rawApi, "menu-thread", ThreadType.Group, "menu");
-  const menuCommand = require("../plugins/commands/menu");
-  const caption = `@Wuang
-🤖 Chào chủ nhân!
-👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀`;
-  const mention = { uid: "12345", pos: 0, len: "@Wuang".length };
+  const wrapped = wrapApi(rawApi, "sdk-caption-thread", ThreadType.Group, "sdk-caption-test");
 
-  await menuCommand._sendMenuCardAndGreeting(
-    wrapped, "/tmp/jt_menu_1_ab12.png", caption, [mention], "menu-thread", ThreadType.Group
-  );
+  try {
+    await wrapped.sendMessage({
+      msg: "@Wuang\\n🤖 Chào chủ nhân!\\n👉 Dòng này phải có màu trong chính ảnh.",
+      attachments: [sourcePath],
+      mentions: [{ uid: "12345", pos: 0, len: "@Wuang".length }],
+      recallAfterMs: 0
+    });
 
-  assert.equal(requestParams.length, 1, "one Canvas image with a caption must be one SDK request");
-  const imageParams = requestParams[0];
-  assert.equal(imageParams.desc, caption, "Zalo image description must contain the tagged greeting");
-  const mentions = JSON.parse(imageParams.mentionInfo);
-  assert.deepEqual(mentions, [{
-    uid: "12345",
-    pos: 0,
-    len: "@Wuang".length,
-    type: 0
-  }], "the image caption must preserve a real group mention");
-
-  const textProperties = JSON.parse(imageParams.textProperties);
-  const colorStyles = textProperties.styles.filter(style => RANDOM_COLORS.has(style.st));
-  assert.ok(colorStyles.length >= 10, "caption words after the mention must reach Zalo with random colors");
-  assert.ok(colorStyles.every(style => style.start >= mention.len),
-    "no random color span may overlap the Zalo-managed @Wuang mention");
-  assert.ok(colorStyles.some(style => style.start >= caption.indexOf("🤖")),
-    "the greeting line below the tag must be colored");
-  assert.ok(colorStyles.some(style => style.start >= caption.indexOf("👉")),
-    "the prompt line below the tag must be colored");
+    assert.equal(uploaded.length, 1, "only the composed card is uploaded");
+    assert.equal(uploaded[0].width, 720);
+    assert.ok(uploaded[0].height > 400, "uploaded image contains the appended footer");
+    assert.equal(fs.existsSync(uploaded[0].path), false, "temporary file is cleaned after upload");
+    assert.equal(requestParams.length, 1, "the image and footer are still one SDK message");
+    assert.equal(requestParams[0].desc, "", "Zalo receives no unstyled photo description");
+    assert.equal(requestParams[0].mentionInfo, undefined,
+      "a decorative @name inside image pixels is not sent as an interactive mention");
+    assert.equal(requestParams[0].textProperties, undefined,
+      "caption colors are rendered into the uploaded PNG, not delegated to ignored image styles");
+  } finally {
+    fs.rmSync(sourcePath, { force: true });
+  }
 });
-test("tagged menu captions color the greeting and prompt without overlapping the @mention", () => {
-  const { randomize } = require("../core/styled");
-  const caption = "@Nguyễn Văn A\\n🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
-  const mentionLength = "@Nguyễn Văn A".length;
-  const result = randomize({
-    msg: caption,
-    mentions: [{ uid: "12345", pos: 0, len: mentionLength }]
-  }, { random: () => 0.5 });
 
-  assert.equal(result.msg, caption, "coloring must not rewrite the caption text");
-  assert.deepEqual(result.mentions, [{ uid: "12345", pos: 0, len: mentionLength }],
-    "Zalo mention metadata must stay unchanged");
+test("normal text messages continue to receive randomized styles without Canvas composition", async () => {
+  const sent = [];
+  const rawApi = {
+    async sendMessage(payload) {
+      sent.push(payload);
+      return { message: null, attachment: [] };
+    }
+  };
+  const wrapped = wrapApi(rawApi, "plain-thread", ThreadType.Group, "plain-test");
+  await wrapped.sendMessage({ msg: "Tin nhắn chữ thường vẫn phải có màu ngẫu nhiên" });
 
-  const mentionEnd = mentionLength;
-  assert.ok(result.styles.length >= 12, "greeting and prompt words should receive colors");
-  assert.ok(result.styles.every(style => RANDOM_COLORS.has(style.st)),
-    "generated caption styles should be color styles");
-  assert.ok(result.styles.every(style =>
-    style.start + style.len <= 0 || style.start >= mentionEnd),
-    "no color style may overlap the @mention range");
-  assert.ok(result.styles.some(style => style.start >= caption.indexOf("🤖")),
-    "the owner greeting below the tag must be colored");
-  assert.ok(result.styles.some(style => style.start >= caption.indexOf("👉")),
-    "the prompt below the tag must be colored");
+  assert.equal(sent.length, 1);
+  assert.ok(sent[0].styles.some(style => RANDOM_COLORS.has(style.st)));
+  assert.equal(sent[0].attachments, undefined);
 });
 
 test("raw game sends keep random colors while preserving mentions and attachments", async () => {

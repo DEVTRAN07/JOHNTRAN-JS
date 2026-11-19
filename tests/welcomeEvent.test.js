@@ -28,20 +28,19 @@ function fixture({ enabled = true, goodbyeEnabled = true, type = "join", members
   return { sent, api, Threads, event };
 }
 
-test("JOIN sends the Canvas and its colored-text caption with @mention in one message", async () => {
+test("JOIN sends each Canvas and its colored @name in one message", async () => {
   rendered = [];
   const f = fixture();
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
   assert.equal(f.sent.length, 2);
-  for (const sent of f.sent) {
-    assert.deepEqual(sent.payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
-    assert.match(sent.payload.msg, /👋 Chào mừng @\. đến với nhóm!/);
-    assert.match(sent.payload.msg, /🎉 Rất vui được gặp bạn/);
-    assert.equal(sent.payload.mentions.length, 1);
-    const mention = sent.payload.mentions[0];
-    assert.equal(sent.payload.msg.slice(mention.pos, mention.pos + mention.len), "@.");
+  for (const [index, name] of ["Member One", "Member Two"].entries()) {
+    const payload = f.sent[index].payload;
+    assert.deepEqual(payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
+    assert.ok(payload.msg.includes("@" + name));
+    assert.match(payload.msg, /👋 Chào mừng/);
+    assert.match(payload.msg, /🎉 Rất vui được gặp bạn/);
+    assert.equal(payload.mentions, undefined, "the @name is painted in the Canvas footer");
   }
-  assert.deepEqual(f.sent.map(s => s.payload.mentions[0].uid), ["user-1", "user-2"]);
   assert.deepEqual(rendered.map(x => x.member.name), ["Member One", "Member Two"]);
   assert.equal(rendered[0].member.avatarUrl, "https://example.com/member-1.jpg");
   assert.equal(rendered[1].member.avatarUrl, "https://example.com/member-2.jpg");
@@ -90,11 +89,10 @@ test("missing group-member avatar falls back to Zalo avatar URL endpoint", async
   assert.equal(members[0].avatarUrl, "https://example.com/fallback.jpg");
 });
 
-test("welcome event mention points only to the member represented by its card", () => {
-  const message = eventPlugin._test.makePersonalMessage({ uid: "user-9" });
-  assert.equal(message.mentions.length, 1);
-  assert.equal(message.mentions[0].uid, "user-9");
-  assert.equal(message.msg.slice(message.mentions[0].pos, message.mentions[0].pos + 2), "@.");
+test("welcome event tag is visible text in the colored Canvas footer", () => {
+  const message = eventPlugin._test.makePersonalMessage({ uid: "user-9", name: "Member Nine" });
+  assert.ok(message.msg.includes("@Member Nine"));
+  assert.equal(message.mentions, undefined);
 });
 
 test("welcome event does nothing when disabled or when event is not JOIN", async () => {
@@ -111,7 +109,9 @@ test("welcome event does nothing when disabled or when event is not JOIN", async
   await eventPlugin.run({ ...legacyJoinEnabled, isSelf: false, threadType: 1, eventType: "group_event" });
   assert.equal(legacyJoinEnabled.sent.length, 2, "legacy JOIN-on groups must automatically get OUT too");
   assert.ok(legacyJoinEnabled.sent.every(item => item.payload.attachments?.length === 1));
-  assert.deepEqual(legacyJoinEnabled.sent.map(item => item.payload.mentions[0].uid), ["user-1", "user-2"]);
+  assert.ok(legacyJoinEnabled.sent.every(item => item.payload.mentions === undefined));
+  assert.ok(legacyJoinEnabled.sent[0].payload.msg.includes("@Member One"));
+  assert.ok(legacyJoinEnabled.sent[1].payload.msg.includes("@Member Two"));
 
   const allDisabled = fixture({ type: "leave", enabled: false, goodbyeEnabled: true });
   await eventPlugin.run({ ...allDisabled, isSelf: false, threadType: 1, eventType: "group_event" });
@@ -143,12 +143,12 @@ test("leave event sends one personalized Goodbye Canvas per departed member", as
   assert.equal(f.sent.length, 2);
   assert.deepEqual(rendered.map(card => card.mode), ["goodbye", "goodbye"]);
   assert.deepEqual(rendered.map(card => card.member.name), ["Former One", "Former Two"]);
-  for (const sent of f.sent) {
-    assert.deepEqual(sent.payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
-    assert.equal(sent.payload.msg, "👋 Tạm biệt @. Chúc bạn mọi điều tốt đẹp!");
-    assert.equal(sent.payload.mentions.length, 1);
-  }
-  assert.deepEqual(f.sent.map(item => item.payload.mentions[0].uid), ["former-1", "former-2"]);
+  assert.deepEqual(f.sent.map(item => item.payload.msg), [
+    "👋 Tạm biệt @Former One Chúc bạn mọi điều tốt đẹp!",
+    "👋 Tạm biệt @Former Two Chúc bạn mọi điều tốt đẹp!"
+  ]);
+  assert.ok(f.sent.every(sent => sent.payload.attachments?.length === 1));
+  assert.ok(f.sent.every(sent => sent.payload.mentions === undefined));
 });
 
 test("remove-member event is treated as OUT and resolves departed user avatars through user profiles", async () => {
@@ -174,8 +174,8 @@ test("remove-member event is treated as OUT and resolves departed user avatars t
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
   assert.equal(f.sent.length, 1);
   assert.deepEqual(f.sent[0].payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
-  assert.equal(f.sent[0].payload.msg, "👋 Tạm biệt @. Chúc bạn mọi điều tốt đẹp!");
-  assert.equal(f.sent[0].payload.mentions[0].uid, "removed-user");
+  assert.equal(f.sent[0].payload.msg, "👋 Tạm biệt @Resolved Former Member Chúc bạn mọi điều tốt đẹp!");
+  assert.equal(f.sent[0].payload.mentions, undefined);
   assert.deepEqual(lookups, [["getUserInfo", ["removed-user"], 240]]);
   assert.equal(rendered[0].mode, "goodbye");
   assert.equal(rendered[0].member.name, "Resolved Former Member");
@@ -199,9 +199,9 @@ test("BLOCK_MEMBER event is treated as OUT and sends a Goodbye Canvas", async ()
   await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
   assert.equal(f.sent.length, 1);
   assert.equal(rendered.length, 1);
-  assert.equal(f.sent[0].payload.msg, "👋 Tạm biệt @. Chúc bạn mọi điều tốt đẹp!");
+  assert.equal(f.sent[0].payload.msg, "👋 Tạm biệt @Blocked Member Chúc bạn mọi điều tốt đẹp!");
   assert.deepEqual(f.sent[0].payload.attachments, ["/tmp/jt-welcome-event-test.png"]);
-  assert.equal(f.sent[0].payload.mentions[0].uid, "blocked-user");
+  assert.equal(f.sent[0].payload.mentions, undefined);
   assert.equal(rendered[0].mode, "goodbye");
   assert.equal(rendered[0].member.name, "Blocked Member");
 });

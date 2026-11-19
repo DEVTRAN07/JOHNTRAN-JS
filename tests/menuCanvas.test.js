@@ -1,8 +1,9 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const { loadImage } = require("canvas");
+const { createCanvas, loadImage } = require("canvas");
+const os = require("node:os");
+const path = require("node:path");
 const { test } = require("node:test");
-const { TextStyle } = require("zalo-client");
 const { wrapApi } = require("../core/message");
 const menuCommand = require("../plugins/commands/menu");
 const theme = require("../core/canvas/theme");
@@ -98,11 +99,26 @@ test("menu no longer sends a progress placeholder before its Canvas card", () =>
 });
 
 
-test("menu keeps the real @mention and randomized greeting in the Canvas image caption", async () => {
+test("menu tag and greeting are painted in the same multicolor Canvas attachment", async () => {
+  const sourcePath = path.join(os.tmpdir(), "jt-menu-caption-source-" + process.pid + ".png");
+  fs.writeFileSync(sourcePath, createCanvas(700, 460).toBuffer("image/png"));
   const sent = [];
+  const drawn = [];
+  const originalDraw = theme.drawMulticolorText;
+  theme.drawMulticolorText = function(ctx, value, x, y, options) {
+    drawn.push({ value: String(value), multicolor: options?.multicolor });
+    return originalDraw.call(this, ctx, value, x, y, options);
+  };
+
   const rawApi = {
     async sendMessage(payload, threadId, type) {
-      sent.push({ payload, threadId, type });
+      const image = await loadImage(payload.attachments[0]);
+      sent.push({
+        payload, threadId, type,
+        imageWidth: image.width,
+        imageHeight: image.height,
+        uploadedFileExists: fs.existsSync(payload.attachments[0])
+      });
       return { message: null, attachment: [] };
     }
   };
@@ -112,22 +128,26 @@ test("menu keeps the real @mention and randomized greeting in the Canvas image c
 👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀`;
   const mention = { uid: "12345", pos: 0, len: "@Wuang".length };
 
-  await menuCommand._sendMenuCardAndGreeting(
-    api, "/tmp/jt_menu_1_ab12.png", caption, [mention], "menu-thread", 1
-  );
+  try {
+    await menuCommand._sendMenuCardAndGreeting(
+      api, sourcePath, caption, [mention], "menu-thread", 1
+    );
 
-  assert.equal(sent.length, 1, "the Canvas card and its caption must be one Zalo message");
-  assert.equal(sent[0].payload.msg, caption, "the tag and greeting must stay in the card caption");
-  assert.deepEqual(sent[0].payload.attachments, ["/tmp/jt_menu_1_ab12.png"]);
-  assert.deepEqual(sent[0].payload.mentions, [mention], "the @Wuang tag must remain a real Zalo mention");
-  const colors = sent[0].payload.styles.filter(style =>
-    [TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green].includes(style.st)
-  );
-  assert.ok(colors.length >= 12, "the greeting and prompt inside the card caption must receive random colors");
-  assert.ok(colors.every(style => style.start >= mention.len),
-    "random text color spans must not overlap the Zalo-managed @Wuang mention");
-  assert.ok(colors.some(style => style.start >= caption.indexOf("🤖")),
-    "the greeting line must be colored");
-  assert.ok(colors.some(style => style.start >= caption.indexOf("👉")),
-    "the prompt line must be colored");
+    assert.equal(sent.length, 1, "card + tag + greeting must remain one Zalo message");
+    assert.equal(sent[0].payload.msg, "", "Zalo must not render an unstyled photo description");
+    assert.equal(sent[0].payload.mentions, undefined,
+      "the @name painted into the image is visual and is not an interactive Zalo mention");
+    assert.equal(sent[0].payload.attachments.length, 1);
+    assert.equal(sent[0].imageWidth, 700);
+    assert.ok(sent[0].imageHeight > 460, "the card PNG must contain a caption footer");
+    assert.equal(sent[0].threadId, "menu-thread");
+    assert.equal(sent[0].type, 1);
+    assert.ok(sent[0].uploadedFileExists);
+    assert.ok(drawn.some(item => item.value === "@Wuang" && item.multicolor));
+    assert.ok(drawn.some(item => item.value.includes("Chào chủ nhân") && item.multicolor));
+    assert.ok(drawn.some(item => item.value.includes("Rất vui") && item.multicolor));
+  } finally {
+    theme.drawMulticolorText = originalDraw;
+    fs.rmSync(sourcePath, { force: true });
+  }
 });

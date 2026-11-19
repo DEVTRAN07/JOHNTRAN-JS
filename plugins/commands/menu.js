@@ -21,9 +21,9 @@ module.exports.config = {
 };
 
 async function sendMenuCardAndGreeting(api, imagePath, caption, mentions, threadId, type) {
-  // Keep the tag and greeting in the image's own description so Zalo renders
-  // one Canvas card with its caption directly beneath it. wrapApi() applies
-  // randomized textProperties, and the vendored SDK preserves them on images.
+  // Keep the tag and greeting attached to the card in one Zalo message.
+  // wrapApi() rasterizes the caption as multicolor text inside the PNG because
+  // Zalo's image-description UI ignores textProperties styles.
   return api.sendMessage({
     msg: caption,
     attachments: [imagePath],
