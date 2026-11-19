@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
+# zalo-client is a local file: dependency; it must exist before npm ci.
+COPY vendor/zalo-client ./vendor/zalo-client
 RUN npm ci --omit=dev
 
 FROM node:22.22.1-bookworm-slim AS runtime
