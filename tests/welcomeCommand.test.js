@@ -47,15 +47,19 @@ test("welcome command shows a Canvas status card with the actual group name", as
   assert.equal(rendered.at(-1).groupName, "Tổ Cu 5 · Bot dép lào");
 });
 
-test("welcome on/off persist the legacy event_welcome setting", async () => {
+test("welcome on/off toggle JOIN and OUT together", async () => {
   rendered.length = 0;
   const f = fixture();
   f.context.args = ["on"]; await command.run(f.context);
   assert.equal(f.data.event_welcome, true);
+  assert.equal(f.data.event_goodbye, true);
   assert.equal(rendered.at(-1).enabled, true);
+  assert.equal(rendered.at(-1).goodbyeEnabled, true);
   f.context.args = ["off"]; await command.run(f.context);
   assert.equal(f.data.event_welcome, false);
+  assert.equal(f.data.event_goodbye, false);
   assert.equal(rendered.at(-1).enabled, false);
+  assert.equal(rendered.at(-1).goodbyeEnabled, false);
   assert.equal(f.sent.length, 2);
 });
 
@@ -74,9 +78,15 @@ test("welcome test resolves caller avatar and real profile name", async () => {
   try {
     f.context.args = ["test"];
     await command.run(f.context);
-    assert.equal(f.sent.length, 2, "/welcome test must send both JOIN and OUT previews");
+    assert.equal(f.sent.length, 4, "/welcome test sends each Canvas followed by its mention text");
     assert.deepEqual(rendered.slice(-2).map(card => card.mode), ["welcome", "goodbye"]);
+    assert.deepEqual(f.sent.map(item => Boolean(item.payload.attachments?.length)), [true, false, true, false]);
+    assert.equal(f.sent[1].payload.mentions[0].uid, "test-requester-uid");
+    assert.match(f.sent[1].payload.msg, /Chào mừng @\./);
+    assert.equal(f.sent[3].payload.mentions[0].uid, "test-requester-uid");
+    assert.match(f.sent[3].payload.msg, /Tạm biệt @\./);
     assert.deepEqual(rendered.at(-1).member, {
+      uid: "test-requester-uid",
       name: "Quang Profile",
       avatarUrl: "https://example.com/quang-profile.jpg"
     });
@@ -107,26 +117,26 @@ test.after(() => {
 });
 
 
-test("welcome out on/off persists an independent goodbye setting", async () => {
+test("legacy welcome out on/off aliases toggle the combined switch", async () => {
   rendered.length = 0;
-  const f = fixture({ initial: { event_welcome: true, event_goodbye: false } });
+  const f = fixture({ initial: { event_welcome: false, event_goodbye: false } });
   f.context.args = ["out", "on"];
   await command.run(f.context);
-  assert.equal(f.data.event_welcome, true, "OUT toggle must not change JOIN");
+  assert.equal(f.data.event_welcome, true);
   assert.equal(f.data.event_goodbye, true);
-  assert.equal(rendered.at(-1).mode, "status");
   assert.equal(rendered.at(-1).enabled, true);
   assert.equal(rendered.at(-1).goodbyeEnabled, true);
 
   f.context.args = ["out", "off"];
   await command.run(f.context);
-  assert.equal(f.data.event_welcome, true, "turning OUT off must preserve JOIN");
+  assert.equal(f.data.event_welcome, false);
   assert.equal(f.data.event_goodbye, false);
+  assert.equal(rendered.at(-1).enabled, false);
   assert.equal(rendered.at(-1).goodbyeEnabled, false);
   assert.equal(f.sent.length, 2);
 });
 
-test("welcome out status shows both switches without changing either one", async () => {
+test("legacy welcome out status follows the single JOIN master flag", async () => {
   rendered.length = 0;
   const f = fixture({ initial: { event_welcome: true, event_goodbye: false } });
   f.context.args = ["out"];
@@ -134,7 +144,7 @@ test("welcome out status shows both switches without changing either one", async
   assert.equal(f.data.event_welcome, true);
   assert.equal(f.data.event_goodbye, false);
   assert.equal(rendered.at(-1).enabled, true);
-  assert.equal(rendered.at(-1).goodbyeEnabled, false);
+  assert.equal(rendered.at(-1).goodbyeEnabled, true);
 });
 
 
@@ -151,7 +161,7 @@ test("welcome reuses listener threadData instead of issuing a duplicate storage 
   await command.run(f.context);
   assert.equal(getDataCalls, 0);
   assert.equal(rendered.at(-1).enabled, true);
-  assert.equal(rendered.at(-1).goodbyeEnabled, false);
+  assert.equal(rendered.at(-1).goodbyeEnabled, true);
   assert.equal(rendered.at(-1).groupName, "Nhóm từ cache");
 });
 

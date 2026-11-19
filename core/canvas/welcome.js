@@ -135,22 +135,26 @@ function drawStatusCard(ctx, width, height, spec, palette) {
   ctx.strokeStyle = "rgba(98,220,255,.35)"; ctx.lineWidth = Math.max(1, S(.8)); ctx.stroke(); ctx.restore();
   drawText(ctx, "CHÀO MỪNG THÀNH VIÊN", margin, S(132), 27, palette.text, true, "left", width - margin * 2);
   drawText(ctx, groupName, margin, S(161), 15, palette.muted, false, "left", width - margin * 2);
-  const enabled = Boolean(spec.enabled), statusColor = enabled ? palette.green : palette.red;
+  const enabled = Boolean(spec.enabled);
+  const goodbyeEnabled = Boolean(spec.goodbyeEnabled);
+  const synchronized = enabled === goodbyeEnabled;
+  const statusColor = synchronized
+    ? (enabled ? palette.green : palette.red)
+    : palette.accent;
+  const statusLabel = synchronized
+    ? (enabled ? "JOIN + OUT  ·  ĐANG BẬT" : "JOIN + OUT  ·  ĐANG TẮT")
+    : "CHƯA ĐỒNG BỘ  ·  JOIN " + (enabled ? "BẬT" : "TẮT") +
+      " / OUT " + (goodbyeEnabled ? "BẬT" : "TẮT");
   ctx.save(); ctx.beginPath(); ctx.arc(margin + S(10), S(222), S(6), 0, Math.PI * 2);
   ctx.fillStyle = statusColor; ctx.fill(); ctx.restore();
-  drawText(ctx, enabled ? "JOIN  ·  ĐANG BẬT" : "JOIN  ·  ĐANG TẮT",
+  drawText(ctx, statusLabel,
     margin + S(28), S(227), 14, statusColor, true, "left", width - margin * 2 - S(30));
+  drawText(ctx, "Một lệnh duy nhất điều khiển cả JOIN và OUT",
+    margin, S(270), 12.5, palette.muted, true, "left", width - margin * 2);
 
-  const goodbyeEnabled = Boolean(spec.goodbyeEnabled);
-  const goodbyeColor = goodbyeEnabled ? palette.green : palette.red;
-  ctx.save(); ctx.beginPath(); ctx.arc(margin + S(10), S(258), S(6), 0, Math.PI * 2);
-  ctx.fillStyle = goodbyeColor; ctx.fill(); ctx.restore();
-  drawText(ctx, goodbyeEnabled ? "OUT  ·  ĐANG BẬT" : "OUT  ·  ĐANG TẮT",
-    margin + S(28), S(263), 14, goodbyeColor, true, "left", width - margin * 2 - S(30));
-
-  drawText(ctx, prefix + "welcome on/off       ·  Bật/tắt JOIN", margin, S(320), 13.5, palette.text, true);
-  drawText(ctx, prefix + "welcome out on/off   ·  Bật/tắt OUT", margin, S(352), 13.5, palette.text, true);
-  drawText(ctx, prefix + "welcome test         ·  Xem 2 card JOIN + OUT", margin, S(384), 13.5, palette.text, true);
+  drawText(ctx, prefix + "welcome on    ·  Bật JOIN + OUT", margin, S(320), 13.5, palette.text, true);
+  drawText(ctx, prefix + "welcome off   ·  Tắt JOIN + OUT", margin, S(352), 13.5, palette.text, true);
+  drawText(ctx, prefix + "welcome test  ·  Xem 2 card + tag bên dưới", margin, S(384), 13.5, palette.text, true);
   drawText(ctx, botName, width - margin, height - S(20), 9, palette.accent, true, "right");
 }
 async function renderWelcomeCard(spec = {}) {
