@@ -36,10 +36,9 @@ jobs:
           chmod +x native/bin/jt-message-cache
       - name: Build Rust text colorizer used by live message path
         run: |
-          cargo test --manifest-path native/Cargo.toml -p text-style-rs
-          cargo build --manifest-path native/Cargo.toml -p text-style-rs --release
-          mkdir -p native/text-style-rs
-          cp native/target/release/libtext_style_rs.so native/text-style-rs/text_style_rs.node
+          cargo test --manifest-path native/text-style-rs/Cargo.toml
+          cargo build --manifest-path native/text-style-rs/Cargo.toml --release
+          cp native/text-style-rs/target/release/libtext_style_rs.so native/text-style-rs/text_style_rs.node
       - run: npm test
       - run: node scripts/test-commands.js
       - run: node scripts/test-all.js

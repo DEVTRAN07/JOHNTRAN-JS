@@ -5,8 +5,8 @@ members = [
   "sticker-rs",
   "canvas-rs",
   "ffmpeg-rs",
-  "text-style-rs",
 ]
+exclude = ["text-style-rs"]
 
 [workspace.dependencies]
 napi = { version = "2", features = ["derive"] }

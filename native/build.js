@@ -8,7 +8,6 @@ const CRATES = [
   { name: "sticker-rs", addon: "sticker_rs.node" },
   { name: "canvas-rs", addon: "canvas_rs.node" },
   { name: "ffmpeg-rs", addon: "ffmpeg_rs.node" },
-  { name: "text-style-rs", addon: "text_style_rs.node" },
 ];
 
 function which(cmd) {
@@ -61,6 +60,15 @@ function main() {
       console.log("copied " + libPath + " -> " + addonPath);
     }
   }
+  // The text-style N-API module is a standalone workspace. Building it alone
+  // avoids resolving optional image/audio crates in the legacy native workspace.
+  const textStyleDir = path.join(NATIVE_DIR, "text-style-rs");
+  run("cargo", ["build", "--manifest-path", path.join(textStyleDir, "Cargo.toml"), "--release"], { cwd: textStyleDir });
+  const textStyleLibrary = path.join(textStyleDir, "target", "release", "libtext_style_rs." + libExt());
+  const textStyleAddon = path.join(textStyleDir, "text_style_rs.node");
+  if (!fs.existsSync(textStyleLibrary)) throw new Error("expected Rust text-style library not found: " + textStyleLibrary);
+  fs.copyFileSync(textStyleLibrary, textStyleAddon);
+  console.log("copied " + textStyleLibrary + " -> " + textStyleAddon);
   console.log("Native build complete.");
 }
 

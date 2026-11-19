@@ -2,9 +2,9 @@
 FROM rust:1.86-bookworm AS rust-build
 WORKDIR /build
 COPY rust/message-cache ./rust/message-cache
-COPY native ./native
+COPY native/text-style-rs ./native/text-style-rs
 RUN cargo build --manifest-path rust/message-cache/Cargo.toml --release \
-    && cargo build --manifest-path native/Cargo.toml -p text-style-rs --release
+    && cargo build --manifest-path native/text-style-rs/Cargo.toml --release
 
 # Install Node production dependencies with the native build libraries required
 # by the existing Canvas package.
@@ -29,7 +29,7 @@ COPY --from=node-deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p native/bin
 COPY --from=rust-build /build/rust/message-cache/target/release/jt-message-cache ./native/bin/jt-message-cache
-COPY --from=rust-build /build/native/target/release/libtext_style_rs.so ./native/text-style-rs/text_style_rs.node
+COPY --from=rust-build /build/native/text-style-rs/target/release/libtext_style_rs.so ./native/text-style-rs/text_style_rs.node
 RUN chmod 755 ./native/bin/jt-message-cache
 EXPOSE 10000
 CMD ["node", "index.js"]

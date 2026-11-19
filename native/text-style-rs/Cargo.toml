@@ -9,5 +9,8 @@ name = "text_style_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { workspace = true, features = ["derive"] }
-napi-derive = { workspace = true }
+napi = { version = "2", features = ["derive"] }
+napi-derive = "2"
+
+[workspace]
+resolver = "2"
