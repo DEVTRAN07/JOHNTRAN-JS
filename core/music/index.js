@@ -130,6 +130,13 @@ function redactStreamDiagnostics(value) {
     .replace(/(client_id|token|secret|sig|signature)=([^&\s]+)/gi, "$1=[redacted]");
 }
 
+function buildHlsAudioCodecArgs(quality = null) {
+  const requestedQuality = Number(quality);
+  return [128, 320].includes(requestedQuality)
+    ? ["-c:a", "aac", "-b:a", requestedQuality + "k"]
+    : ["-c:a", "copy"];
+}
+
 function downloadHlsToAac(streamUrl, filePath, quality = null) {
   return new Promise((resolve, reject) => {
     const ffmpegPath = resolveFfmpegPath({ staticPath: ffmpegStaticPath });
@@ -140,10 +147,7 @@ function downloadHlsToAac(streamUrl, filePath, quality = null) {
     // SoundCloud HLS is already AAC. Keep the source packets by default
     // instead of encoding AAC -> MP3 -> AAC. Only re-encode once when the
     // user explicitly chooses a bitrate, and write AAC/ADTS directly.
-    const requestedQuality = Number(quality);
-    const audioCodecArgs = [128, 320].includes(requestedQuality)
-      ? ["-c:a", "aac", "-b:a", requestedQuality + "k"]
-      : ["-c:a", "copy"];
+    const audioCodecArgs = buildHlsAudioCodecArgs(quality);
     const args = [
       "-hide_banner", "-loglevel", "warning", "-y",
       "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
@@ -272,5 +276,6 @@ module.exports = {
   clearPending,
   pickKey,
   downloadToFile,
-  processAudioInWorker
+  processAudioInWorker,
+  _test: { buildHlsAudioCodecArgs }
 };
