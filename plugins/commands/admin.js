@@ -51,7 +51,7 @@ async function sendAdminCard(api, event, reply, spec) {
   }
 }
 
-module.exports.run = async ({ args = [], event, api, Threads, reply }) => {
+module.exports.run = async ({ args = [], event, api, Threads, reply, threadData }) => {
   const action = args[0]?.toLowerCase();
   const { threadId, type, data } = event;
   let targetIds = [];
@@ -161,11 +161,16 @@ module.exports.run = async ({ args = [], event, api, Threads, reply }) => {
     case "boxonly": {
       const keyMap = { adminonly: "admin_only", supportonly: "support_only", boxonly: "box_only" };
       const key = keyMap[action];
-      const threadData = await Threads.getData(threadId);
-      const currentValue = threadData.data[key] || false;
+      const record = threadData && typeof threadData === "object"
+        ? threadData
+        : await Threads.getData(threadId);
+      const data = record?.data && typeof record.data === "object"
+        ? { ...record.data }
+        : record && typeof record === "object" ? { ...record } : {};
+      const currentValue = data[key] === true;
       const newValue = !currentValue;
-      threadData.data[key] = newValue;
-      await Threads.setData(threadId, threadData.data);
+      data[key] = newValue;
+      await Threads.setData(threadId, data);
       return reply.success("Đã " + (newValue ? "bật" : "tắt") + " chế độ " + key.replace("_", " ") + ".");
     }
 

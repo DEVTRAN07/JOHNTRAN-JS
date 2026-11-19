@@ -115,3 +115,25 @@ test("admin Canvas renderer is registered in the worker", () => {
   assert.equal(typeof renderer.renderAdminCard, "function");
   assert.match(workerSource, /case "admin":\s*return require\("\.\.\/canvas\/settings"\)\.renderAdminCard/);
 });
+
+
+test("/admin permission toggles reuse listener threadData without a storage read", async () => {
+  const sent = [];
+  const data = { admin_only: false };
+  let reads = 0;
+  global.config = { name_bot: "JOHNTRAN" };
+  global.users = { admin: [], support: [] };
+  await adminCommand.run({
+    args: ["adminonly"],
+    event: { threadId: "admin-cache-toggle", type: 1, data: {} },
+    api: mockApi(sent),
+    Threads: {
+      async getData() { reads++; throw new Error("unexpected cold read"); },
+      async setData(_id, next) { Object.assign(data, next); }
+    },
+    threadData: { data },
+    reply: mockReply()
+  });
+  assert.equal(reads, 0);
+  assert.equal(data.admin_only, true);
+});
