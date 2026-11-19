@@ -90,7 +90,8 @@ test("dispatcher isolates command failures and reports failure reaction", async 
     logger: ctx.logger, metrics: ctx.metrics, Reactions: ctx.Reactions
   });
   assert.deepEqual(ctx.reactions, ["cry"]);
-  assert.deepEqual(ctx.errors, ["Đã xảy ra lỗi khi xử lý lệnh!"]);
+  assert.equal(ctx.errors.length, 1);
+  assert.match(ctx.errors[0], /^Đã xảy ra lỗi khi xử lý lệnh!\\nMã lỗi: [A-F0-9]{8}$/);
   assert.deepEqual(ctx.tracked, [
     ["command", { command: "broken" }],
     ["error", { command: "broken" }]
