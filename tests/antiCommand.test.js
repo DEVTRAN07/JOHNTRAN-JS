@@ -177,3 +177,22 @@ test.after(() => {
     try { fs.unlinkSync(item.file); } catch {}
   }
 });
+
+
+test("bare /anti reuses listener threadData instead of reading the group again", async () => {
+  const sent = [];
+  const data = { anti_link: true, anti_spam: false };
+  let reads = 0;
+  const renderStart = rendered.length;
+  await command.run({
+    api: { async sendMessage(payload, threadId, type) { sent.push({ payload, threadId, type }); } },
+    event: { threadId: "anti-cache-menu", type: ThreadType.Group, data: { uidFrom: "member" } },
+    args: [],
+    Threads: { async getData() { reads++; throw new Error("unexpected cold read"); } },
+    threadData: { data }
+  });
+  assert.equal(reads, 0);
+  assert.equal(rendered.length, renderStart + 1);
+  assert.equal(rendered.at(-1).data.items.find(item => item.key === "anti_link").enabled, true);
+  assert.equal(sent.length, 1);
+});

@@ -1404,10 +1404,14 @@ function buildAntiMenuText(threadData = {}, prefix = "/") {
   return lines.join("\n");
 }
 
-async function sendAntiMenu({ api, event, Threads }) {
+async function sendAntiMenu({ api, event, Threads, threadData }) {
   const prefix = global.config?.prefix || "/";
-  const record = await Threads.getData(event.threadId);
-  const data = record?.data || {};
+  const record = threadData && typeof threadData === "object"
+    ? threadData
+    : await Threads.getData(event.threadId);
+  const data = record?.data && typeof record.data === "object"
+    ? record.data
+    : record && typeof record === "object" ? record : {};
   const items = ANTI_MENU_ITEMS.map(item => ({
     key:item.key,
     label:item.label,
@@ -1458,7 +1462,7 @@ module.exports._menu = {
   buildAntiMenuText
 };
 
-module.exports.run = async function ({ api, event, args, Threads }) {
+module.exports.run = async function ({ api, event, args, Threads, threadData }) {
   const { threadId, type } = event;
   if (type !== ThreadType.Group) {
     return api.sendMessage("Lệnh này chỉ có thể được sử dụng trong nhóm chat.", threadId, type);
@@ -1473,12 +1477,12 @@ module.exports.run = async function ({ api, event, args, Threads }) {
   const key = keyMap[action];
 
   if (!key) {
-    return sendAntiMenu({ api, event, Threads });
+    return sendAntiMenu({ api, event, Threads, threadData });
   }
 
   const mode = String(args?.[1] || "").trim().toLowerCase();
   if (mode && mode !== "on" && mode !== "off") {
-    return sendAntiMenu({ api, event, Threads });
+    return sendAntiMenu({ api, event, Threads, threadData });
   }
 
   const userId = event?.data?.uidFrom;
@@ -1489,8 +1493,12 @@ module.exports.run = async function ({ api, event, args, Threads }) {
     }, threadId, type);
   }
 
-  const record = await Threads.getData(threadId);
-  const data = { ...(record?.data || {}) };
+  const record = threadData && typeof threadData === "object"
+    ? threadData
+    : await Threads.getData(threadId);
+  const data = record?.data && typeof record.data === "object"
+    ? { ...record.data }
+    : record && typeof record === "object" ? { ...record } : {};
   const newValue = mode === "on" ? true : mode === "off" ? false : data[key] !== true;
 
   // Keep the legacy /anti link|undo|spam route consistent with dedicated
