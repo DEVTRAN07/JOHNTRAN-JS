@@ -5,7 +5,7 @@ const { wrapApi, sendStyledRawMessage, DEFAULT_AUTO_RECALL_MS } = require("../co
 const { sendMessageFactory } = require("../vendor/zalo-client/dist/cjs/api/sendMessage.cjs");
 const { encodeAES, decodeAES } = require("../vendor/zalo-client/dist/cjs/core/crypto.cjs");
 const { CookieJar } = require("tough-cookie");
-const { TextStyle } = require("zalo-client");
+const { TextStyle, ThreadType } = require("zalo-client");
 const RANDOM_COLORS = new Set([TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green]);
 
 test("CommonJS sendMessage returns the same cliMsgId it sent to Zalo", async () => {
@@ -376,6 +376,87 @@ test("CommonJS image captions preserve randomized text colors", async () => {
     "the prompt line beneath the tagged name must carry colors");
 });
 
+
+
+test("menu card image is followed by a separately colored mention message in the real CommonJS SDK payload", async () => {
+  const secretKey = Buffer.alloc(16, 9).toString("base64");
+  const requestParams = [];
+  const ctx = {
+    secretKey,
+    API_VERSION: 1,
+    API_TYPE: 30,
+    imei: "test-device",
+    settings: { features: { sharefile: { max_file: 10, max_size_share_file_v3: 50 } } },
+    options: {
+      polyfill: async (url, options) => {
+        const encrypted = new URL(url).searchParams.get("params") ||
+          new URLSearchParams(options?.body || "").get("params");
+        requestParams.push(JSON.parse(decodeAES(secretKey, encrypted)));
+        const data = encodeAES(secretKey, JSON.stringify({
+          error_code: 0,
+          data: { msgId: `menu-message-${requestParams.length}` }
+        }));
+        return new Response(JSON.stringify({ error_code: 0, data }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+    },
+    cookie: new CookieJar(),
+    userAgent: "test-agent"
+  };
+  const rawApi = {
+    zpwServiceMap: {
+      chat: ["https://chat.example"],
+      group: ["https://group.example"],
+      file: ["https://file.example"]
+    },
+    async uploadAttachment() {
+      return [{
+        fileType: "image",
+        photoId: "menu-photo-id",
+        width: 750,
+        height: 520,
+        normalUrl: "https://cdn.example/menu.png",
+        hdUrl: "https://cdn.example/menu-hd.png",
+        totalSize: 12000
+      }];
+    }
+  };
+  rawApi.sendMessage = sendMessageFactory(ctx, rawApi);
+  const wrapped = wrapApi(rawApi, "menu-thread", ThreadType.Group, "menu");
+  const menuCommand = require("../plugins/commands/menu");
+  const caption = `@Wuang
+🤖 Chào chủ nhân!
+👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀`;
+  const mention = { uid: "12345", pos: 0, len: "@Wuang".length };
+
+  await menuCommand._sendMenuCardAndGreeting(
+    wrapped, "/tmp/jt_menu_1_ab12.png", caption, [mention], "menu-thread", ThreadType.Group
+  );
+
+  assert.equal(requestParams.length, 2, "the real SDK should send one image request and one text request");
+  assert.equal(requestParams[0].desc, "", "the Canvas image must have no photo-description caption");
+  assert.equal(requestParams[0].textProperties, undefined,
+    "the first request must not depend on photo-caption text styling");
+
+  assert.equal(requestParams[1].message, caption, "the greeting must be sent as a normal text message");
+  const mentions = JSON.parse(requestParams[1].mentionInfo);
+  assert.equal(mentions.length, 1);
+  assert.equal(mentions[0].uid, "12345");
+  assert.equal(mentions[0].pos, 0);
+  assert.equal(mentions[0].len, "@Wuang".length);
+
+  const textProperties = JSON.parse(requestParams[1].textProperties);
+  const colorStyles = textProperties.styles.filter(style => RANDOM_COLORS.has(style.st));
+  assert.ok(colorStyles.length >= 10, "the greeting and prompt must reach Zalo with random color styles");
+  assert.ok(colorStyles.every(style => style.start >= mention.len),
+    "no text color span may overlap the Zalo-managed @Wuang mention");
+  assert.ok(colorStyles.some(style => style.start >= caption.indexOf("🤖")),
+    "the owner greeting line must carry color styles");
+  assert.ok(colorStyles.some(style => style.start >= caption.indexOf("👉")),
+    "the prompt line must carry color styles");
+});
 
 test("tagged menu captions color the greeting and prompt without overlapping the @mention", () => {
   const { randomize } = require("../core/styled");
