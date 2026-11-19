@@ -17,7 +17,7 @@ function drawText(ctx, text, x, y, scale, options = {}) {
     align: options.align || "left",
     baseline: options.baseline || "alphabetic",
     maxWidth: options.maxWidth,
-    multicolor: words.length > 1 || words.some(word => theme.splitGraphemes(word).length > 1)
+    multicolor: options.multicolor !== false
   });
   ctx.restore();
 }
@@ -398,5 +398,5 @@ function renderTlmn(data = {}) {
 
 module.exports = {
   renderTlmn,
-  _test: { suitInfo, rankText, seatLayout, drawPlayingCard }
+  _test: { suitInfo, rankText, seatLayout, drawPlayingCard, drawText }
 };
