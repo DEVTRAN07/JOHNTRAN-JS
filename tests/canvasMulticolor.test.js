@@ -216,3 +216,28 @@ test("playing-card rank and index text are randomized while suit glyphs keep red
   assert.ok(suitGlyphs.length >= 2 && suitGlyphs.every(item => item.color === "#bd3442"),
     "suit symbols should keep their semantic suit color");
 });
+
+test("Canvas renderers do not add direct fixed-color text outside icon and avatar glyph paths", () => {
+  const root = path.join(__dirname, "..", "core", "canvas");
+  const allowedDirectDraws = new Set([
+    "theme.js",       // shared renderer implementation
+    "botGroups.js",   // one-letter initials use theme.randomTextColor()
+    "profileCard.js", // one-letter initials use theme.randomTextColor()
+    "status.js",      // one-letter initials use theme.randomTextColor()
+    "topchat.js",     // one-letter initials use theme.randomTextColor()
+    "music.js",       // decorative music-note glyph only
+    "noituGuide.js"   // decorative HUD glyphs; all words use drawMulticolorText()
+  ]);
+  const files = fs.readdirSync(root).filter(file => file.endsWith(".js"));
+  const unreviewed = [];
+
+  for (const file of files) {
+    const source = fs.readFileSync(path.join(root, file), "utf8");
+    if (/\\bctx\\.fillText\\s*\\(/.test(source) && !allowedDirectDraws.has(file)) {
+      unreviewed.push(file);
+    }
+  }
+
+  assert.deepEqual(unreviewed, [],
+    "new Canvas text must use the shared multicolor renderer or an explicitly reviewed glyph path");
+});
