@@ -381,10 +381,29 @@ function startListening(api) {
 
     const dispatchMessageEvents = (dispatchOptions = {}) => {
       if (isGroupThread && !groupBotEnabled) return;
+
+      // The listener already has the group's committed settings snapshot.
+      // Do not create Guard/Anti event contexts for protections that are OFF:
+      // enabled protections still run on command text exactly as before.
+      let skipAnti = dispatchOptions.skipAnti === true || !isGroupThread;
+      let skipGuard = dispatchOptions.skipGuard === true || !isGroupThread;
+      if (isGroupThread && threadData && typeof threadData === "object") {
+        const antiCommand = global.client?.commands?.get?.("anti");
+        const getRelevantKeys = antiCommand?._test?.getRelevantAntiProtectionKeys;
+        if (typeof getRelevantKeys === "function") {
+          const source = threadData?.data || threadData;
+          const relevantKeys = getRelevantKeys("message");
+          skipAnti = skipAnti || !relevantKeys.some(key => source?.[key] === true);
+        }
+        skipGuard = skipGuard || threadInfo.event_guard !== true;
+      }
+
       Promise.resolve(handleEvent("message", event, api, event.isSelf === true, {
         ...dispatchOptions,
-        // Top Chat already runs once in handleIncoming before command filtering.
-        // Exclude its registry subscription so one group message is not counted twice.
+        skipAnti,
+        skipGuard,
+        // Top Chat is handled separately and prefixed commands use a direct
+        // diagnostics increment instead of a background no-op.
         skipTopchatCounter: isGroupMessage(event),
         threadData
       }))
