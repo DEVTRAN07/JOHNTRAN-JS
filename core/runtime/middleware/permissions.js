@@ -63,11 +63,27 @@ function checkGroupPermissions({
   threadInfo,
   isBotAdmin = false,
   isSupport = false,
+  isGroupAdmin = false,
   logger = console
 } = {}) {
   // Most commands take this synchronous path: no API request and no Promise.
   if (!isGroup || !threadInfo?.box_only || isBotAdmin) {
     return evaluateGroupPermissions({ isGroup, threadInfo, isBotAdmin, isSupport });
+  }
+
+  // Zalo may include an explicit admin marker on the incoming group message.
+  // Guard already trusts these positive markers. Reuse the same confirmed
+  // signal here so box_only does not issue an extra getGroupInfo request for
+  // every command sent by a known group admin. Never infer admin from a
+  // missing/false marker; those users keep the live verification path.
+  if (isGroupAdmin === true) {
+    return evaluateGroupPermissions({
+      isGroup,
+      threadInfo,
+      isBotAdmin,
+      isSupport,
+      groupAdminState: TRIT.TRUE
+    });
   }
 
   const applyGroupAdminState = state => evaluateGroupPermissions({
