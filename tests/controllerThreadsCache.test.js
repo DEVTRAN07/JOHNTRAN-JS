@@ -18,6 +18,35 @@ const db = require("../utils/db");
 const keepAlive = setInterval(() => {}, 1000);
 after(() => clearInterval(keepAlive));
 
+test("hot cached group reads skip synchronous storage health and filesystem probes", async () => {
+  const backend = db.db;
+  const originalGetStatus = backend.getStatus;
+  const threadId = "thread-cache-zero-health-probe-" + process.pid;
+
+  await Threads.setBotEnabled(threadId, true);
+  const loaded = await Threads.getData(threadId);
+  const cachedRecord = threadCache.get(threadId);
+  assert.strictEqual(cachedRecord, loaded);
+
+  let healthReads = 0;
+  backend.getStatus = () => {
+    healthReads++;
+    throw new Error("hot cache hit must not inspect storage health");
+  };
+
+  try {
+    const result = Threads.getCachedData(threadId);
+    assert.strictEqual(result, cachedRecord,
+      "hot path should return the already-normalized record without cloning it");
+    assert.equal(healthReads, 0,
+      "hot cache hits must not call JsonStore.getStatus()/filesystem probes");
+  } finally {
+    backend.getStatus = originalGetStatus;
+    threadCache.invalidate(threadId);
+    durableThreadCache.invalidate(threadId);
+  }
+});
+
 test("setData keeps the database record envelope in the LRU cache", async () => {
   const threadId = "thread-cache-set-" + process.pid;
   await Threads.setData(threadId, { anti_link: true, prefix: "!" });

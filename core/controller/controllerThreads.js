@@ -98,20 +98,22 @@ module.exports = {
   // not yield to an async cache read before command parsing starts.
   getCachedData: (threadId) => {
     const key = String(threadId);
-    // Supabase starts with an empty mirror while its first snapshot is loading.
-    // Never create a default-OFF record during that window.
-    const status = getStoreStatus();
-    const storageDegraded = status?.ok === false;
-    // A transient sync/connection error must not turn a previously enabled
-    // group OFF just because its five-minute LRU entry expired. The cache
-    // represents the last known committed state; reads remain available while
-    // writes continue to fail closed until storage recovers.
+
+    // HOT PATH: active groups are already represented by normalized records in
+    // the in-memory LRU. Return the record directly before asking the storage
+    // engine for health. For JsonStore, getStatus() performs synchronous
+    // filesystem probes (stat/exists + Render mount inspection); doing that for
+    // every chat message needlessly blocks the Node.js event loop.
     const cached = threadCache.get(key);
     if (cached !== undefined) {
-      return cached && typeof cached.then !== "function"
-        ? rememberThreadRecord(cached, key)
-        : null;
+      return cached && typeof cached.then !== "function" ? cached : null;
     }
+
+    // A cold miss still checks storage health before reading/synthesizing a row.
+    // Supabase may not have completed its first mirror snapshot yet; never
+    // create a default-OFF record during that window.
+    const status = getStoreStatus();
+    const storageDegraded = status?.ok === false;
 
     // A long DB outage must not turn an ON group OFF just because the normal
     // five-minute hot cache expired. The bounded durable cache contains only
@@ -126,7 +128,7 @@ module.exports = {
     }
 
     // JSON/Supabase adapters expose an in-memory mirror. Read it synchronously
-    // on the message hot path while storage is healthy.
+    // on a cold cache miss while storage is healthy.
     try {
       let record;
       if (hasData("Threads", "threadId", key)) {
