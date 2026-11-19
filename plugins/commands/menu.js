@@ -32,14 +32,14 @@ async function sendMenuCardAndGreeting(api, imagePath, caption, mentions, thread
 }
 
 module.exports.run = async function ({ api, event }) {
-  // Start the first visible response before requester lookup and Canvas render.
-  sendFastAcknowledgement(api, event?.threadId, event?.type, "⏳ Đang mở danh mục lệnh...");
   const senderId = event?.data?.uidFrom;
   const commands = global.client?.commands;
   if (!(commands instanceof Map)) {
     return api.sendMessage({ msg: "📂 Danh mục đang được khởi tạo, vui lòng thử lại.\n💡 gõ next / prev để chuyển trang." }, event.threadId, event.type);
   }
 
+  // Start the first visible response before requester lookup and Canvas render.
+  sendFastAcknowledgement(api, event?.threadId, event?.type, "⏳ Đang mở danh mục lệnh...");
   let imagePath;
   try {
     // Profile/avatar is decorative; refresh it without adding a wait to menu.

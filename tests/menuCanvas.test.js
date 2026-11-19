@@ -46,6 +46,7 @@ test("menu does not treat /menu <command> as a command-info shortcut", async () 
       args: ["play"]
     });
 
+    assert.equal(sent.length, 1, "an unavailable command registry should not send a progress acknowledgement");
     assert.match(sent[0][0].msg, /gõ next \/ prev/);
     assert.doesNotMatch(sent[0][0].msg, /\/menu next/);
     assert.doesNotMatch(sent[0][0].msg, /Cách dùng: play/);
