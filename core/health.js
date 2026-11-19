@@ -97,7 +97,10 @@ function metricsPayload() {
     workers,
     topchat: safe(() => require("../plugins/events/topchatCounter").getStats(), {}),
     messageCache,
-    cache: allStats()
+    cache: allStats(),
+    // Error details are only exposed by the existing Bearer-protected
+    // /metrics route. The journal redacts credentials before persistence.
+    recentErrors: safe(() => require("./runtime/errorJournal").snapshot(20), null)
   };
 }
 
