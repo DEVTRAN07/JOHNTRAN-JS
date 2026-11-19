@@ -417,6 +417,50 @@ test("antirecall ignores its own restored message even when Zalo omits isSelf", 
 });
 
 
+
+
+test("antirecall ignores deliberate bot-message recalls from game commands", async () => {
+  const cliMsgId = "intentional-bot-recall-" + Date.now();
+  const event = makeEvent({
+    uidFrom: "bot-id",
+    cliMsgId,
+    msgId: "intentional-bot-message-" + cliMsgId,
+    content: "Bàn chơi cũ cần được thay thế"
+  });
+  updateMessageCache(event);
+
+  const { api, calls } = makeApi();
+  const undoEvent = {
+    threadId: event.threadId,
+    isGroup: true,
+    isSelf: false,
+    data: {
+      uidFrom: "bot-id",
+      content: { cliMsgId },
+      ts: Date.now()
+    }
+  };
+
+  try {
+    await recallIntentionally(
+      api,
+      { msgId: event.data.msgId, cliMsgId },
+      event.threadId,
+      ThreadType.Group,
+      "test-game-card"
+    );
+    await run({ anti_undo: true }, api, undoEvent, "undo");
+
+    assert.equal(calls.undone.length, 1, "the game command still recalls its previous card");
+    assert.equal(calls.sent.length, 0,
+      "Anti-Recall must not restore a card that the game deliberately replaced");
+    assert.equal(calls.lookups, 0,
+      "intentional recalls must be filtered before bot-role network checks");
+  } finally {
+    delete getMessageCache()[cliMsgId];
+  }
+});
+
 test("antirecall prepares temp folder before restoring a shared file", async () => {
   const cliMsgId = "anti-undo-file-" + Date.now();
   updateMessageCache({
