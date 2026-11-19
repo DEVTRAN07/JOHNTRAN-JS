@@ -1,5 +1,6 @@
 "use strict";
 
+const { randomUUID } = require("node:crypto");
 const { performance } = require("node:perf_hooks");
 const { ThreadType } = require("zalo-client");
 
@@ -83,13 +84,38 @@ async function dispatchCommand({
         reactAuto(Reactions.OK);
       }
     } catch (error) {
-      logger.log(`Lỗi khi xử lý lệnh '${commandName}': ${error.message}`, "error", { source: "command", commandName, isGroup: event?.type === ThreadType.Group, groupId: event?.type === ThreadType.Group ? event?.threadId : "" });
-      metrics?.track?.("error", { command: commandName });
-      // Send the useful error message first; reactions are secondary UI.
+      const errorId = randomUUID().slice(0, 8).toUpperCase();
+      const errorStack = error?.stack || error?.message || String(error);
+      // Keep the end-user response generic, but make the actual stack trace
+      // searchable by the short reference shown in chat. The logger redacts
+      // common credentials before the error journal persists the stack.
+      logger.log(`[${errorId}] Lỗi khi xử lý lệnh '${commandName}': ${errorStack}`, "error", {
+        source: "command",
+        commandName, isGroup: event?.type === ThreadType.Group,
+        groupId: event?.type === ThreadType.Group ? event?.threadId : "",
+        code: error?.code
+      });
+      const context = {
+        source: "command",
+        commandName,
+        code: error?.code,
+        isGroup: event?.type === ThreadType.Group,
+        groupId: event?.type === ThreadType.Group ? event?.threadId : ""
+      };
       try {
-        await reply?.error?.("Đã xảy ra lỗi khi xử lý lệnh!");
+        metrics?.track?.("error", { command: commandName });
       } catch {
-        // Ignore reply failures; command errors are already logged.
+        // Telemetry must not hide the original command exception.
+      }
+
+      try {
+        await reply?.error?.(`Đã xảy ra lỗi khi xử lý lệnh!\nMã lỗi: ${errorId}`);
+      } catch (replyError) {
+        logger.log(
+          `[${errorId}] Không gửi được thông báo lỗi về Zalo: ${replyError?.stack || replyError?.message || String(replyError)}`,
+          "error",
+          { ...context, source: "command-error-reply" }
+        );
       }
       reactAuto(Reactions.CRY);
     } finally {
@@ -97,7 +123,18 @@ async function dispatchCommand({
       reply?.finishCommand?.();
     }
   } catch (error) {
-    logger.log(`Lỗi pipeline lệnh '${commandName}': ${error.message}`, "error");
+    const errorId = randomUUID().slice(0, 8).toUpperCase();
+    logger.log(
+      `[${errorId}] Lỗi pipeline lệnh '${commandName}': ${error?.stack || error?.message || String(error)}`,
+      "error",
+      {
+        source: "command-pipeline",
+        commandName,
+        code: error?.code,
+        isGroup: event?.type === ThreadType.Group,
+        groupId: event?.type === ThreadType.Group ? event?.threadId : ""
+      }
+    );
   } finally {
     metrics?.trackCommandExecutionLatency?.(commandName, performance.now() - commandStartedAt);
   }
