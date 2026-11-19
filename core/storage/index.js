@@ -8,6 +8,50 @@ const { Worker } = require("node:worker_threads");
 const DEFAULT_FLUSH_DELAY = 400;
 const WRITER_ACK_TIMEOUT_MS = 30000;
 
+// A Panel process may host several bot stores. Shutdown must wait for every
+// store before process.exit(), otherwise the first worker to finish could
+// terminate the process while another store still has pending writes.
+const registeredStores = new Set();
+let processHooksInstalled = false;
+let shutdownPromise = null;
+
+function installProcessHooks() {
+  if (processHooksInstalled) return;
+  processHooksInstalled = true;
+
+  process.on("beforeExit", () => {
+    const pending = [...registeredStores].filter(store => store.pendingFlush);
+    if (!pending.length) return;
+    // flushAndWait() refs each worker until its durable acknowledgement arrives.
+    void Promise.all(pending.map(store => store.flushAndWait().catch(error => {
+      logger.log("JSON writer worker không flush được trước khi thoát: " + error.message, "error");
+      return store.flushSync();
+    })));
+  });
+
+  const shutdown = () => {
+    if (shutdownPromise) return shutdownPromise;
+    const stores = [...registeredStores];
+    shutdownPromise = Promise.all(stores.map(store => store.flushAndWait().catch(error => {
+      logger.log("JSON writer worker không flush được khi tắt bot: " + error.message, "error");
+      return store.flushSync();
+    }))).finally(() => process.exit(0));
+    return shutdownPromise;
+  };
+
+  process.once("SIGINT", () => { void shutdown(); });
+  process.once("SIGTERM", () => { void shutdown(); });
+
+  // Last-resort synchronous safety net for explicit process.exit() paths.
+  process.on("exit", () => {
+    for (const store of registeredStores) {
+      try { store.writerWorker?.terminate(); } catch {}
+      store.writerWorker = null;
+      store.flushSync();
+    }
+  });
+}
+
 class JsonStore {
   constructor(file, tables = []) {
     this.file = path.resolve(file);
@@ -27,7 +71,6 @@ class JsonStore {
     this.persistedSequence = 0;
     this.flushRequestSequence = 0;
     this.flushRequests = new Map();
-    this.beforeExitFlush = null;
 
     for (const table of tables) this.data[table] = {};
 
@@ -35,32 +78,8 @@ class JsonStore {
     if (this.loaded && process.env.JT_JSON_WRITER_WORKER !== "0") {
       this.startWriterWorker(tables);
     }
-
-    // Drain pending worker writes before a normal event-loop shutdown. The
-    // worker is ref'ed only while a durable flush request is outstanding.
-    process.on("beforeExit", () => {
-      if (!this.pendingFlush || this.beforeExitFlush) return;
-      this.beforeExitFlush = this.flushAndWait()
-        .catch(error => {
-          logger.log("JSON writer worker không flush được trước khi thoát: " + error.message, "error");
-          this.flushSync();
-        })
-        .finally(() => { this.beforeExitFlush = null; });
-    });
-
-    // Last-resort synchronous safety net for explicit process.exit() paths.
-    const flush = () => {
-      try { this.writerWorker?.terminate(); } catch {}
-      this.writerWorker = null;
-      this.flushSync();
-    };
-    process.on("exit", flush);
-    process.on("SIGINT", () => {
-      void this.flushAndWait().catch(() => this.flushSync()).finally(() => process.exit(0));
-    });
-    process.on("SIGTERM", () => {
-      void this.flushAndWait().catch(() => this.flushSync()).finally(() => process.exit(0));
-    });
+    registeredStores.add(this);
+    installProcessHooks();
   }
 
   load(tables) {
