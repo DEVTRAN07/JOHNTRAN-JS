@@ -148,8 +148,8 @@ test("leave event sends one personalized Goodbye Canvas per departed member", as
   assert.deepEqual(rendered.map(card => card.mode), ["goodbye", "goodbye"]);
   assert.deepEqual(rendered.map(card => card.member.name), ["Former One", "Former Two"]);
   assert.deepEqual([f.sent[0], f.sent[2]].map(item => item.payload.attachments?.length), [1, 1]);
-  assert.match(f.sent[1].payload.msg, /Tạm biệt @\\. đã rời nhóm/);
-  assert.match(f.sent[3].payload.msg, /Tạm biệt @\\. đã rời nhóm/);
+  assert.match(f.sent[1].payload.msg, /Tạm biệt @\. đã rời nhóm/);
+  assert.match(f.sent[3].payload.msg, /Tạm biệt @\. đã rời nhóm/);
   assert.deepEqual([f.sent[1], f.sent[3]].map(item => item.payload.mentions[0].uid), ["former-1", "former-2"]);
 });
 
@@ -206,7 +206,7 @@ test("BLOCK_MEMBER event is treated as OUT and sends a Goodbye Canvas", async ()
   assert.equal(f.sent[1].payload.mentions[0].uid, "blocked-user");
   assert.equal(rendered[0].mode, "goodbye");
   assert.equal(rendered[0].member.name, "Blocked Member");
-  assert.match(f.sent[1].payload.msg, /Tạm biệt @\\. đã rời nhóm/);
+  assert.match(f.sent[1].payload.msg, /Tạm biệt @\. đã rời nhóm/);
 });
 
 test("JOIN hydration stops after group-member profile already provides the avatar", async () => {
