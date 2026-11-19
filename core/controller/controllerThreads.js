@@ -70,9 +70,8 @@ function getStoreStatus() {
     // The JSON backend is an in-memory mirror after startup. Its operational
     // state is already available in memory; the full facade getStatus() also
     // stats files and parses mountinfo, which can block the Zalo event loop.
-    const store = databaseBackend?.db;
-    if (typeof store?.getOperationalStatus === "function") {
-      return store.getOperationalStatus();
+    if (typeof databaseBackend?.getOperationalStatus === "function") {
+      return databaseBackend.getOperationalStatus();
     }
     // Supabase getStatus() is an in-memory state snapshot and does not perform
     // filesystem diagnostics, so retain it as the fallback.
