@@ -78,6 +78,36 @@ test("/speed shows queue wait and worker saturation separately from API latency"
   assert.match(report, /Worker canvas: busy 2\/2 · pending 4 · reject 1/);
 });
 
+test("/speed reports effective CPU, FFmpeg and media concurrency limits", () => {
+  const report = command._test.buildSpeedReport(
+    {
+      getLatencyStats: () => ({ count: 0 }),
+      getCommandLatencyStats: () => [],
+      getCommandExecutionLatencyStats: () => [],
+      getListenerStageLatencyStats: () => [],
+      getZaloApiLatencyStats: () => [],
+      getFirstResponseLatencyByCommandStats: () => []
+    },
+    10,
+    null,
+    null,
+    {},
+    {},
+    {
+      availableCpus: 2,
+      ffmpegThreads: 1,
+      stickerConcurrency: 1,
+      downloadConcurrency: 1
+    }
+  );
+
+  assert.match(report, /GIỚI HẠN TÀI NGUYÊN MEDIA/);
+  assert.match(report, /CPU khả dụng: 2 lõi/);
+  assert.match(report, /FFmpeg: 1 thread\/lượt/);
+  assert.match(report, /STK: 1 job đồng thời/);
+  assert.match(report, /Tải media: 1 job đồng thời/);
+});
+
 test("/speed handles an empty metrics store", () => {
   const emptyMetrics = {
     getLatencyStats: () => ({ count: 0 }),
