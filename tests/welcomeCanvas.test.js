@@ -19,7 +19,7 @@ test("welcome Canvas uses only two structural layers, without an inset frame", (
   const source = fs.readFileSync(require.resolve("../core/canvas/welcome"), "utf8");
   assert.ok(source.includes("theme.paintBackground(ctx, width, height"));
   assert.ok(source.includes('ctx.strokeStyle = "rgba(245,252,255,.82)"'));
-  assert.ok(source.includes("Exactly two structural layers"));
+  assert.ok(source.includes("exactly two") && source.includes("structural layers"));
   assert.ok(!source.includes("rgba(105,221,255,.18)"));
   assert.ok(!source.includes("margin + S(2)"));
 });
