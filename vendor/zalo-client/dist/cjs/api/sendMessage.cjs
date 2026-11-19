@@ -257,7 +257,7 @@ const sendMessageFactory = factory.apiFactory()((api, ctx, utils$1) => {
             body: new URLSearchParams({ params: encryptedParams }),
         };
     }
-    async function handleAttachment({ msg, attachments, mentions, quote, ttl, urgency }, threadId, type, outerClientId) {
+    async function handleAttachment({ msg, attachments, mentions, quote, ttl, urgency, styles }, threadId, type, outerClientId) {
         if (!attachments)
             throw new errors.ZaloApiError("Missing attachments");
         if (!Array.isArray(attachments))
@@ -318,6 +318,9 @@ const sendMessageFactory = factory.apiFactory()((api, ctx, utils$1) => {
                         },
                         body: new URLSearchParams(),
                     };
+                    // Keep text styling on a single-image caption (the CommonJS
+                    // build is used by require(), just like the ESM build).
+                    if (msg) handleStyles(data.params, styles);
                     break;
                 }
                 case "video": {
@@ -478,7 +481,7 @@ const sendMessageFactory = factory.apiFactory()((api, ctx, utils$1) => {
                 msg = "";
                 mentions = undefined;
             }
-            const handledData = await handleAttachment({ msg, mentions, attachments, quote, ttl, urgency }, threadId, type, clientId);
+            const handledData = await handleAttachment({ msg, mentions, attachments, quote, ttl, urgency, styles }, threadId, type, clientId);
             responses.attachment = await send(handledData, clientId);
             msg = "";
         }
