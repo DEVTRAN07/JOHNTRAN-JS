@@ -38,7 +38,7 @@ const BUILTINS_WITHOUT_USER_DATA = new Set([
   "delmsg", "events", "getavt", "getlink", "getvd", "getvoice", "girl", "hon",
   "id", "infofb", "jobs", "lyric", "menu", "noi", "noitu", "reloadconfig",
   "restart", "sam", "scl", "spam", "spamsticker", "stats", "status", "stk",
-  "theme", "tiktok", "tlmn", "topchat", "vdgirl"
+  "theme", "tiktok", "tlmn", "topchat", "vdgirl", "welcome"
 ]);
 
 async function runCommandPipeline(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
