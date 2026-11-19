@@ -199,6 +199,30 @@ Danh sách kết quả được nhớ 5 phút; trả lời bằng số thứ t�
 
 ---
 
+## ⚡ Hiệu năng và chẩn đoán độ trễ
+
+Khi bot phản hồi chậm, hãy chạy lệnh admin `/speed` sau khi bot đã nhận đủ một vài tin nhắn. Báo cáo tách riêng:
+
+- **Nhận tin → phản hồi đầu tiên**: thời gian từ WebSocket event đến khi Zalo xác nhận gửi phản hồi đầu tiên.
+- **Handler / pipeline**: thời gian xử lý nội bộ của lệnh.
+- **API Zalo và HTTP fetch**: thời gian chờ mạng/API, tách biệt với thời gian handler.
+- **Hàng đợi / worker**: số job đang chạy, đang chờ và thời gian chờ trung bình/tối đa.
+- **Event loop và tài nguyên media**: độ trễ event loop, số CPU khả dụng, số thread FFmpeg và giới hạn job STK/tải media.
+
+### Thiết lập cho VPS ít CPU
+
+Mặc định FFmpeg dùng một thread cho mỗi lượt chuyển mã. STK và tải media tự giới hạn ở 1 job khi Node.js chỉ nhìn thấy tối đa 2 CPU; máy nhiều CPU có thể chạy tối đa 2 job. Có thể giữ cấu hình an toàn trong `.env`:
+
+```env
+JT_FFMPEG_THREADS=1
+JT_DOWNLOAD_CONCURRENCY=1
+JT_STICKER_CONCURRENCY=1
+```
+
+Chỉ nâng lên 2–4 thread hoặc tăng số job sau khi `/speed` cho thấy event loop còn dư tài nguyên. Tăng concurrency trên VPS nhỏ có thể khiến lệnh chữ cũng bị chậm do FFmpeg tranh CPU.
+
+**Lưu ý:** Các benchmark trong CI chỉ đo xử lý nội bộ, không đo mạng Zalo. Nếu P95 `sendMessage` hoặc HTTP Zalo cao, chuyển code sang Rust không thể loại bỏ thời gian máy chủ Zalo hoặc đường truyền; cần kiểm tra kết nối/mạng và số liệu từ chính máy bot.
+
 ## 🏗️ Kiến trúc bot — JOHNTRAN V5
 
 > Sơ đồ dưới đây mô tả **kiến trúc xử lý logic V5** và các ranh giới module. Các thư mục cũ vẫn được giữ để tương thích; việc di chuyển toàn bộ mã nguồn sang cấu trúc đích được thực hiện từng bước, không giả định rằng mọi thư mục đích đã tồn tại.
