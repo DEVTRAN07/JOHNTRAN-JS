@@ -211,7 +211,9 @@ module.exports.config = {
   usage: "anti [link|undo|spam] [on|off]",
   preferCommandOnBare: true,
   cooldowns: 2,
-  event_type: ["message", "undo", "reaction", "group_event"]
+  event_type: ["message", "undo", "reaction", "group_event"],
+  // Anti remains active on command messages for link/word/media moderation.
+  allowCommandMessages: true
 };
 
 const baseUndoMsg = `👤 {name} đã thu hồi tin nhắn sau...\n` +

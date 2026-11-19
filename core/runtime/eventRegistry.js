@@ -88,9 +88,50 @@ function dispatchEvent({
   };
 }
 
+/**
+ * Filter passive message subscribers before dispatch. Prefixed commands must
+ * not fan out to every chat/game automation: only moderation handlers (or
+ * plugins that explicitly opt in) should inspect command text.
+ */
+function filterDispatchSources(sources = {}, options = {}) {
+  const sourceEvents = sources.events instanceof Map ? sources.events : new Map();
+  const sourceCommands = sources.commands instanceof Map ? sources.commands : new Map();
+  const skipTopchatCounter = options.skipTopchatCounter === true;
+  const skipGameConsumers = options.skipGameConsumers === true;
+  const skipAntiHandler = options.skipAnti === true;
+  const isCommandMessage = options.isCommandMessage === true;
+
+  const events = new Map([...sourceEvents].filter(([name, eventModule]) => {
+    const key = String(name || eventModule?.config?.name || "").toLowerCase();
+    if (skipTopchatCounter && key === "topchatcounter") return false;
+    if (skipGameConsumers && (key === "noitu" || key === "tlmn")) return false;
+    const commandAware = key === "guard" || eventModule?.config?.allowCommandMessages === true;
+    if (isCommandMessage && (
+      eventModule?.config?.ignoreCommandMessages === true ||
+      !commandAware
+    )) return false;
+    return true;
+  }));
+
+  const commands = new Map([...sourceCommands].filter(([name, command]) => {
+    const key = String(name || command?.config?.name || "").toLowerCase();
+    if (skipAntiHandler && key === "anti") return false;
+    if (skipGameConsumers && (key === "noitu" || key === "tlmn")) return false;
+    const commandAware = key === "anti" || command?.config?.allowCommandMessages === true;
+    if (isCommandMessage && (
+      command?.config?.ignoreCommandMessages === true ||
+      !commandAware
+    )) return false;
+    return true;
+  }));
+
+  return { events, commands };
+}
+
 module.exports = {
   buildRegistry,
   getEventRegistry,
   invalidateEventRegistry,
+  filterDispatchSources,
   dispatchEvent
 };
