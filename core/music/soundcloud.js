@@ -435,7 +435,7 @@ async function apiGet(apiPath, params = {}, retry = true) {
 
 async function officialApiGet(apiPath, params = {}, retry = true) {
   const accessToken = await discoverAccessToken();
-  const url = new URL(apiPath.replace(/^\\/+/, ""), OFFICIAL_API_BASE + "/");
+  const url = new URL(apiPath.replace(/^\/+/, ""), OFFICIAL_API_BASE + "/");
   for (const [key, value] of Object.entries(params || {})) {
     if (value !== undefined && value !== null && value !== "") {
       url.searchParams.set(key, String(value));
