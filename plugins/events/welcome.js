@@ -12,7 +12,7 @@ module.exports.config = {
   author: "JOHNTRAN",
   description: "Tự động chào từng thành viên bằng Canvas riêng có ảnh đại diện",
   category: "Sự kiện",
-  usage: "welcome on|off|test",
+  usage: "welcome on|off | welcome out on|off | welcome test",
   cooldowns: 0
 };
 
@@ -64,9 +64,12 @@ function newMembers(eventData) {
   return [];
 }
 
-function isJoinEvent(event, eventType, eventData) {
-  return [event?.type, event?.act, eventType, eventData?.act, eventData?.type]
-    .some(value => String(value || "").toLowerCase() === GroupEventType.JOIN);
+function eventKind(event, eventType, eventData) {
+  const values = [event?.type, event?.act, eventType, eventData?.act, eventData?.type]
+    .map(value => String(value || "").toLowerCase());
+  if (values.includes(GroupEventType.JOIN)) return "welcome";
+  if (values.includes(GroupEventType.LEAVE) || values.includes(GroupEventType.REMOVE_MEMBER)) return "goodbye";
+  return "";
 }
 
 function settleWithin(task, timeoutMs = PROFILE_LOOKUP_TIMEOUT_MS) {
@@ -103,14 +106,22 @@ async function hydrateMemberProfiles(api, members, options = {}) {
   );
   const ids = missing.map(member => String(member.uid));
   let groupProfiles = null;
+  let userProfiles = null;
   let avatarProfiles = null;
   const requests = [];
 
-  if (typeof api?.getGroupMembersInfo === "function") {
+  if (options.includeGroupMembers !== false && typeof api?.getGroupMembersInfo === "function") {
     requests.push(settleWithin(
       Promise.resolve().then(() => api.getGroupMembersInfo(ids)),
       timeoutMs
     ).then(result => { groupProfiles = result; }));
+  }
+  // Resolve departed users from user profiles because they are no longer in the group.
+  if (typeof api?.getUserInfo === "function") {
+    requests.push(settleWithin(
+      Promise.resolve().then(() => api.getUserInfo(ids, 240)),
+      timeoutMs
+    ).then(result => { userProfiles = result; }));
   }
   // Fallback for a group-member response whose profile record omits its photo.
   if (typeof api?.getAvatarUrlProfile === "function") {
@@ -122,7 +133,7 @@ async function hydrateMemberProfiles(api, members, options = {}) {
   if (requests.length) await Promise.all(requests);
 
   for (const member of missing) {
-    const profile = pickUser(groupProfiles, member.uid);
+    const profile = pickUser(userProfiles, member.uid) || pickUser(groupProfiles, member.uid);
     const avatarUrl = normalizeAvatar(
       profile?.avatar,
       profile?.avatarUrl,
@@ -141,10 +152,14 @@ function cleanupCard(filePath) {
   try { require("node:fs").rmSync(filePath, { force: true }); } catch {}
 }
 
-function makePersonalMessage(member) {
-  const prefix = "👋 Chào mừng ";
+function makePersonalMessage(member, kind = "welcome") {
+  const isGoodbye = kind === "goodbye";
+  const prefix = isGoodbye ? "👋 Tạm biệt " : "👋 Chào mừng ";
+  const suffix = isGoodbye
+    ? " đã rời nhóm. Chúc bạn mọi điều tốt đẹp!"
+    : " đến với nhóm!\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!";
   return {
-    msg: prefix + "@. đến với nhóm!\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!",
+    msg: prefix + "@." + suffix,
     mentions: [{ pos: prefix.length, uid: member.uid, len: 2 }]
   };
 }
@@ -152,9 +167,11 @@ function makePersonalMessage(member) {
 module.exports.run = async function ({
   api, event, eventType, Threads, isSelf, threadType, threadData
 }) {
-  if (isSelf || event?.isSelf || !isJoinEvent(event, eventType, event?.data)) return;
-
+  if (isSelf || event?.isSelf) return;
   const eventData = event?.data || {};
+  const kind = eventKind(event, eventType, eventData);
+  if (!kind) return;
+
   const threadId = event?.threadId;
   if (!threadId) return;
 
@@ -162,7 +179,8 @@ module.exports.run = async function ({
     ? threadData.data
     : (threadData && typeof threadData === "object" ? threadData : null);
   const thread = cached || (await Threads.getData(threadId))?.data || {};
-  if (!thread.event_welcome) return;
+  const enabled = kind === "welcome" ? thread.event_welcome === true : thread.event_goodbye === true;
+  if (!enabled) return;
 
   const members = newMembers(eventData);
   let botId = "";
@@ -171,7 +189,7 @@ module.exports.run = async function ({
   if (!joined.length) return;
 
   try {
-    await hydrateMemberProfiles(api, joined);
+    await hydrateMemberProfiles(api, joined, { includeGroupMembers: kind === "welcome" });
   } catch (error) {
     console.warn("[WELCOME_PROFILE]", error?.message || error);
   }
@@ -183,7 +201,7 @@ module.exports.run = async function ({
   const cards = await Promise.all(joined.map(async member => {
     try {
       return await welcomeCanvas.renderWelcomeCard({
-        mode: "welcome",
+        mode: kind,
         member: { name: member.name, avatarUrl: member.avatarUrl },
         groupName,
         prefix,
@@ -198,7 +216,7 @@ module.exports.run = async function ({
   for (let index = 0; index < joined.length; index++) {
     const member = joined[index];
     const cardPath = cards[index];
-    const message = makePersonalMessage(member);
+    const message = makePersonalMessage(member, kind);
     const payload = {
       ...message,
       ...(cardPath ? { attachments: [cardPath], ttlKind: "card" } : {})
@@ -222,6 +240,6 @@ module.exports.run = async function ({
 };
 
 module.exports._test = {
-  newMembers, isJoinEvent, makePersonalMessage, normalizeAvatar,
+  newMembers, eventKind, makePersonalMessage, normalizeAvatar,
   hydrateMemberProfiles, PROFILE_LOOKUP_TIMEOUT_MS
 };

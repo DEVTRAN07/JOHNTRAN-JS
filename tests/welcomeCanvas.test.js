@@ -75,3 +75,37 @@ test("concurrent welcome cards share one in-flight theme preparation", async () 
     for (const file of files) try { fs.rmSync(file, { force: true }); } catch {}
   }
 });
+
+
+test("goodbye Canvas renders its own OUT message using the same one-person layout", async () => {
+  const file = await welcome.renderWelcomeCard({
+    mode: "goodbye",
+    member: { name: "Hoàng Tùng" },
+    groupName: "Tổ cu 5 - Bot dép lào"
+  });
+  try {
+    const image = await loadImage(fs.readFileSync(file));
+    assert.equal(image.width, theme.WIDTH);
+    assert.equal(image.height, theme.S(220));
+    assert.ok(fs.statSync(file).size > 1000);
+  } finally {
+    try { fs.rmSync(file, { force: true }); } catch {}
+  }
+});
+
+test("welcome status card renders independent JOIN and OUT settings", async () => {
+  const file = await welcome.renderWelcomeCard({
+    mode: "status",
+    enabled: true,
+    goodbyeEnabled: false
+  });
+  try {
+    assert.ok(fs.statSync(file).size > 1000);
+    const source = fs.readFileSync(require.resolve("../core/canvas/welcome"), "utf8");
+    assert.ok(source.includes("JOIN  ·  ĐANG BẬT"));
+    assert.ok(source.includes("OUT  ·  ĐANG TẮT"));
+    assert.ok(source.includes("Tạm biệt "));
+  } finally {
+    try { fs.rmSync(file, { force: true }); } catch {}
+  }
+});

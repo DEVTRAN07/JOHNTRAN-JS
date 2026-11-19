@@ -13,7 +13,7 @@ module.exports.config = {
   author: "JOHNTRAN",
   description: "Quản lý lời chào thành viên mới bằng Canvas",
   category: "Quản lý nhóm",
-  usage: "welcome | welcome on|off | welcome test",
+  usage: "welcome | welcome on|off | welcome out on|off | welcome test",
   cooldowns: 2,
   dependencies: { canvas: "" }
 };
@@ -166,6 +166,7 @@ module.exports.run = async function ({
   const record = await Threads.getData(event.threadId);
   const thread = record?.data && typeof record.data === "object" ? record.data : {};
   const enabled = Boolean(thread.event_welcome);
+  const goodbyeEnabled = Boolean(thread.event_goodbye);
   const common = {
     prefix,
     groupName: await resolveGroupName(api, event, thread, threadData),
@@ -177,25 +178,37 @@ module.exports.run = async function ({
     await Threads.setData(event.threadId, thread);
     return sendCard({
       api, event, reply,
-      spec: { ...common, mode: "status", enabled: thread.event_welcome }
+      spec: { ...common, mode: "status", enabled: thread.event_welcome, goodbyeEnabled: Boolean(thread.event_goodbye) }
+    });
+  }
+
+  if (["out", "leave", "goodbye"].includes(action)) {
+    const outAction = String(args[1] || "status").toLowerCase();
+    if (["on", "off"].includes(outAction)) {
+      thread.event_goodbye = outAction === "on";
+      await Threads.setData(event.threadId, thread);
+    }
+    return sendCard({
+      api, event, reply,
+      spec: { ...common, mode: "status", enabled: Boolean(thread.event_welcome), goodbyeEnabled: Boolean(thread.event_goodbye) }
     });
   }
 
   if (["test", "preview", "xem", "demo"].includes(action)) {
-    return sendCard({
-      api, event, reply,
-      spec: { ...common, mode: "welcome", member: await requester(api, event) }
-    });
+    const member = await requester(api, event);
+    const preview = { ...common, member };
+    await sendCard({ api, event, reply, spec: { ...preview, mode: "welcome" } });
+    return sendCard({ api, event, reply, spec: { ...preview, mode: "goodbye" } });
   }
 
   if (["status", "help"].includes(action)) {
     return sendCard({
       api, event, reply,
-      spec: { ...common, mode: "status", enabled }
+      spec: { ...common, mode: "status", enabled, goodbyeEnabled }
     });
   }
 
-  const usage = prefix + "welcome | " + prefix + "welcome on|off | " + prefix + "welcome test";
+  const usage = prefix + "welcome | " + prefix + "welcome on|off | " + prefix + "welcome out on|off | " + prefix + "welcome test";
   return reply?.error
     ? reply.error("Cách dùng: " + usage)
     : api.sendMessage({ msg: "Cách dùng: " + usage }, event.threadId, event.type);
