@@ -234,10 +234,20 @@ test("retry timer keeps the job counted while it waits in the runnable queue", a
 });
 
 
-test("STK worker lane defaults to two concurrent jobs", () => {
-  const { DEFAULT_LANES, STICKER_CONCURRENCY } = require("../core/jobQueue");
-  assert.equal(STICKER_CONCURRENCY, 2);
-  assert.equal(DEFAULT_LANES.sticker.concurrency, 2);
+test("heavy media lanes use CPU-aware concurrency and preserve a slot for chat", () => {
+  const { DEFAULT_LANES, STICKER_CONCURRENCY, DOWNLOAD_CONCURRENCY } = require("../core/jobQueue");
+  const {
+    getAvailableCpuCount,
+    resolveHeavyMediaConcurrency
+  } = require("../core/mediaResourceLimits");
+  const expected = resolveHeavyMediaConcurrency(getAvailableCpuCount());
+
+  assert.equal(STICKER_CONCURRENCY, expected);
+  assert.equal(DOWNLOAD_CONCURRENCY, expected);
+  assert.equal(DEFAULT_LANES.sticker.concurrency, expected);
+  assert.equal(DEFAULT_LANES.download.concurrency, expected);
+  assert.equal(DEFAULT_LANES["music-audio"].concurrency, 1);
+  assert.equal(DEFAULT_LANES.canvas.concurrency, 1);
 });
 
 
