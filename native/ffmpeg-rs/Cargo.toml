@@ -9,7 +9,7 @@ name = "ffmpeg_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { workspace = true, features = ["derive"] }
+napi = { workspace = true }
 ffmpeg-next = "7"
 
 [features]
