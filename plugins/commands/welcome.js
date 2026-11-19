@@ -13,7 +13,7 @@ module.exports.config = {
   author: "JOHNTRAN",
   description: "Quản lý lời chào thành viên mới bằng Canvas",
   category: "Quản lý nhóm",
-  usage: "welcome | welcome on|off | welcome out on|off | welcome test",
+  usage: "welcome | welcome on|off | welcome test",
   cooldowns: 2,
   dependencies: { canvas: "" }
 };
@@ -119,12 +119,17 @@ async function requester(api, event) {
       avatarWaitMs: 300
     });
     return {
+      uid: String(data.uidFrom || data.uid || event?.uidFrom || event?.senderID || event?.senderId || ""),
       name: cleanText(profile?.requesterName, fallbackName),
       avatarUrl: cleanText(profile?.requesterAvatarUrl, fallbackAvatar)
     };
   } catch (error) {
     console.warn("[WELCOME_REQUESTER]", error?.message || error);
-    return { name: fallbackName, avatarUrl: fallbackAvatar };
+    return {
+      uid: String(data.uidFrom || data.uid || event?.uidFrom || event?.senderID || event?.senderId || ""),
+      name: fallbackName,
+      avatarUrl: fallbackAvatar
+    };
   }
 }
 
@@ -144,6 +149,33 @@ async function sendCard({ api, event, reply, spec }) {
     return api.sendMessage({ msg: message }, event.threadId, event.type);
   } finally {
     cleanupLater(cardPath);
+  }
+}
+
+function makePersonalMessage(member, kind = "welcome") {
+  const isGoodbye = kind === "goodbye";
+  const prefix = isGoodbye ? "👋 Tạm biệt " : "👋 Chào mừng ";
+  const suffix = isGoodbye
+    ? " đã rời nhóm. Chúc bạn mọi điều tốt đẹp!"
+    : " đến với nhóm!\\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!";
+  const uid = String(member?.uid || "");
+  const name = cleanText(member?.name, "bạn");
+  if (!uid) return { msg: prefix + name + suffix };
+  return {
+    msg: prefix + "@." + suffix,
+    mentions: [{ pos: prefix.length, uid, len: 2 }]
+  };
+}
+
+async function sendPreview({ api, event, reply, spec, member, mode }) {
+  await sendCard({ api, event, reply, spec });
+  // A separate message makes the tag render below, not as a Canvas caption.
+  const tag = makePersonalMessage(member, mode);
+  try {
+    return await api.sendMessage(tag, event.threadId, event.type);
+  } catch (error) {
+    console.error("[WELCOME_PREVIEW_TAG]", error?.stack || error);
+    return false;
   }
 }
 
@@ -172,8 +204,9 @@ module.exports.run = async function ({
   const thread = record?.data && typeof record.data === "object"
     ? record.data
     : record && typeof record === "object" ? record : {};
+  // event_welcome is the single master switch for both JOIN and OUT.
   const enabled = Boolean(thread.event_welcome);
-  const goodbyeEnabled = Boolean(thread.event_goodbye);
+  const goodbyeEnabled = enabled;
   const common = {
     prefix,
     groupName: await resolveGroupName(api, event, thread, threadData),
@@ -181,31 +214,47 @@ module.exports.run = async function ({
   };
 
   if (["on", "off"].includes(action)) {
-    thread.event_welcome = action === "on";
+    const nextEnabled = action === "on";
+    thread.event_welcome = nextEnabled;
+    // Keep the legacy field synchronized for older status readers/configs.
+    thread.event_goodbye = nextEnabled;
     await Threads.setData(event.threadId, thread);
     return sendCard({
       api, event, reply,
-      spec: { ...common, mode: "status", enabled: thread.event_welcome, goodbyeEnabled: Boolean(thread.event_goodbye) }
+      spec: { ...common, mode: "status", enabled: nextEnabled, goodbyeEnabled: nextEnabled }
     });
   }
 
+  // Backward-compatible syntax: /welcome out on|off now toggles the same
+  // combined JOIN + OUT switch instead of exposing a second independent toggle.
   if (["out", "leave", "goodbye"].includes(action)) {
-    const outAction = String(args[1] || "status").toLowerCase();
-    if (["on", "off"].includes(outAction)) {
-      thread.event_goodbye = outAction === "on";
+    const legacyAction = String(args[1] || "status").toLowerCase();
+    if (["on", "off"].includes(legacyAction)) {
+      const nextEnabled = legacyAction === "on";
+      thread.event_welcome = nextEnabled;
+      thread.event_goodbye = nextEnabled;
       await Threads.setData(event.threadId, thread);
     }
+    const nextEnabled = Boolean(thread.event_welcome);
     return sendCard({
       api, event, reply,
-      spec: { ...common, mode: "status", enabled: Boolean(thread.event_welcome), goodbyeEnabled: Boolean(thread.event_goodbye) }
+      spec: { ...common, mode: "status", enabled: nextEnabled, goodbyeEnabled: nextEnabled }
     });
   }
 
   if (["test", "preview", "xem", "demo"].includes(action)) {
     const member = await requester(api, event);
     const preview = { ...common, member };
-    await sendCard({ api, event, reply, spec: { ...preview, mode: "welcome" } });
-    return sendCard({ api, event, reply, spec: { ...preview, mode: "goodbye" } });
+    await sendPreview({
+      api, event, reply, member,
+      spec: { ...preview, mode: "welcome" },
+      mode: "welcome"
+    });
+    return sendPreview({
+      api, event, reply, member,
+      spec: { ...preview, mode: "goodbye" },
+      mode: "goodbye"
+    });
   }
 
   if (["status", "help"].includes(action)) {
@@ -215,12 +264,13 @@ module.exports.run = async function ({
     });
   }
 
-  const usage = prefix + "welcome | " + prefix + "welcome on|off | " + prefix + "welcome out on|off | " + prefix + "welcome test";
+  const usage = prefix + "welcome | " + prefix + "welcome on|off (JOIN + OUT) | " + prefix + "welcome test";
   return reply?.error
     ? reply.error("Cách dùng: " + usage)
     : api.sendMessage({ msg: "Cách dùng: " + usage }, event.threadId, event.type);
 };
 
 module.exports._test = {
-  extractGroupName, resolveGroupName, requester, cleanupLater, GROUP_LOOKUP_TIMEOUT_MS
+  extractGroupName, resolveGroupName, requester, makePersonalMessage, sendPreview,
+  cleanupLater, GROUP_LOOKUP_TIMEOUT_MS
 };
