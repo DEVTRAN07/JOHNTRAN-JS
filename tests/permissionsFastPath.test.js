@@ -64,6 +64,29 @@ test("box-only group check waits for live group info and permits its admin", asy
   assert.equal(apiCalls, 1);
 });
 
+test("box-only fast path accepts an explicit positive Zalo group-admin marker without REST lookup", () => {
+  let apiCalls = 0;
+  const result = checkGroupPermissions({
+    api: {
+      async getGroupInfo() {
+        apiCalls++;
+        throw new Error("confirmed event admin must not need a REST lookup");
+      }
+    },
+    threadId: "group-event-admin-fast",
+    isGroup: true,
+    UIDUsage: "admin-1",
+    isGroupAdmin: true,
+    threadInfo: { box_only: true },
+    logger: { log() {} }
+  });
+
+  assert.equal(typeof result?.then, "undefined");
+  assert.equal(result.denied, null);
+  assert.equal(result.isGroupAdmin, true);
+  assert.equal(apiCalls, 0);
+});
+
 test("box-only lookup failure preserves the existing deny behavior", async () => {
   const result = await checkGroupPermissions({
     api: { getGroupInfo: async () => { throw new Error("offline"); } },
