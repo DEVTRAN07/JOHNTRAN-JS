@@ -70,6 +70,8 @@ function speedPayload() {
     commandExecutionLatency: safe(() => metrics?.getCommandExecutionLatencyStats?.(10), []),
     zaloApiLatency: safe(() => metrics?.getZaloApiLatencyStats?.(10), []),
     httpTransport: safe(() => require("./http/transport").getZaloHttpTransportStats(), null),
+    jobQueues: safe(() => require("./jobQueue").stats(), {}),
+    workers: safe(() => require("./workerPool").stats(), {}),
     topchat: safe(() => require("../plugins/events/topchatCounter").getStats(), {})
   };
 }
