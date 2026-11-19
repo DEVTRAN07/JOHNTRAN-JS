@@ -101,6 +101,17 @@ function createNativeCacheWriter(binaryPath, filePath) {
         delete(key) {
             return send({ op: "delete", key: String(key) });
         },
+        mutateBatch(mutations) {
+            if (!Array.isArray(mutations) || mutations.length === 0) return true;
+            // Serialize one bounded IPC frame for a batch instead of one JSON
+            // frame + pipe write for every incoming message.
+            return send({
+                op: "batch",
+                mutations: mutations.map(item => item.op === "delete"
+                    ? { op: "delete", key: String(item.key) }
+                    : { op: "upsert", key: String(item.key), value: item.value })
+            });
+        },
         flush(timeoutMs = 30000) {
             if (!active) return Promise.resolve({ ok: false, error: "Rust cache worker unavailable" });
             const id = ++nextId;
@@ -174,27 +185,44 @@ function createNativeCacheMutationQueue(writer, options = {}) {
             return;
         }
 
-        let processed = 0;
+        const batch = [];
         for (const [key, mutation] of pending) {
-            if (processed >= batchSize) break;
+            if (batch.length >= batchSize) break;
             pending.delete(key);
+            batch.push({ key, ...mutation });
+        }
 
+        let acceptedCount = 0;
+        if (batch.length && typeof writer.mutateBatch === "function") {
             let accepted = false;
-            try {
-                accepted = mutation.op === "delete"
-                    ? writer.delete(key)
-                    : writer.upsert(key, mutation.value);
-            } catch {
-                accepted = false;
+            try { accepted = writer.mutateBatch(batch) !== false; } catch { accepted = false; }
+            if (accepted) acceptedCount = batch.length;
+        } else {
+            for (const mutation of batch) {
+                let accepted = false;
+                try {
+                    accepted = mutation.op === "delete"
+                        ? writer.delete(mutation.key)
+                        : writer.upsert(mutation.key, mutation.value);
+                } catch {
+                    accepted = false;
+                }
+                if (accepted === false) break;
+                acceptedCount++;
             }
+        }
 
-            if (accepted === false) {
-                pending.set(key, mutation);
-                failed++;
-                break;
+        sent += acceptedCount;
+        if (acceptedCount < batch.length) {
+            failed++;
+            // Requeue unaccepted mutations without overwriting newer values
+            // already enqueued for the same key while this batch was sent.
+            for (let index = batch.length - 1; index >= acceptedCount; index--) {
+                const mutation = batch[index];
+                if (!pending.has(mutation.key)) {
+                    pending.set(mutation.key, { op: mutation.op, ...(mutation.op === "upsert" ? { value: mutation.value } : {}) });
+                }
             }
-            sent++;
-            processed++;
         }
 
         if (pending.size) {
