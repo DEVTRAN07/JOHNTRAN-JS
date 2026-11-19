@@ -79,6 +79,7 @@ async function resolveGroupName(api, event, thread, threadData) {
     event?.threadName,
     threadData?.groupName,
     threadData?.threadName,
+    threadData?.data?.name,
     threadData?.name,
     thread?.groupName,
     thread?.threadName,
