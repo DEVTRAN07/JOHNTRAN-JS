@@ -176,3 +176,62 @@ test("JOIN and OUT event kinds are recognized independently", () => {
   assert.equal(eventPlugin._test.eventKind({ type: "remove_member" }, "group_event", {}), "goodbye");
   assert.equal(eventPlugin._test.eventKind({ type: "update" }, "group_event", {}), "");
 });
+
+
+test("BLOCK_MEMBER event is treated as OUT and sends a Goodbye Canvas", async () => {
+  rendered = [];
+  const f = fixture({
+    type: "block_member",
+    members: [{ id: "blocked-user", dName: "Blocked Member", avatar: "https://example.com/blocked.jpg" }]
+  });
+  await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
+  assert.equal(f.sent.length, 1);
+  assert.equal(rendered.length, 1);
+  assert.equal(rendered[0].mode, "goodbye");
+  assert.equal(rendered[0].member.name, "Blocked Member");
+  assert.match(f.sent[0].payload.msg, /Tạm biệt @. đã rời nhóm/);
+});
+
+test("JOIN hydration stops after group-member profile already provides the avatar", async () => {
+  const members = [{ uid: "fast-user", name: "Event Name", avatarUrl: "" }];
+  const calls = [];
+  await eventPlugin._test.hydrateMemberProfiles({
+    async getGroupMembersInfo(ids) {
+      calls.push(["group", ids]);
+      return { profiles: {
+        "fast-user_0": { id: "fast-user", displayName: "Resolved Fast User", avatar: "https://example.com/fast.jpg" }
+      }};
+    },
+    async getUserInfo() { calls.push(["user"]); throw new Error("Must not perform redundant user lookup"); },
+    async getAvatarUrlProfile() { calls.push(["avatar"]); throw new Error("Must not perform redundant avatar lookup"); }
+  }, members);
+  assert.deepEqual(calls, [["group", ["fast-user"]]]);
+  assert.deepEqual(members[0], {
+    uid: "fast-user",
+    name: "Resolved Fast User",
+    avatarUrl: "https://example.com/fast.jpg"
+  });
+});
+
+test("OUT hydration uses avatar-only endpoint only when user profile has no avatar", async () => {
+  const members = [{ uid: "former-user", name: "Former User", avatarUrl: "" }];
+  const calls = [];
+  await eventPlugin._test.hydrateMemberProfiles({
+    async getGroupMembersInfo() { calls.push("group"); throw new Error("OUT member is not a current group member"); },
+    async getUserInfo(ids, size) {
+      calls.push(["user", ids, size]);
+      return { changed_profiles: {
+        "former-user_0": { userId: "former-user", displayName: "Former User", avatar: "" }
+      }};
+    },
+    async getAvatarUrlProfile(ids, size) {
+      calls.push(["avatar", ids, size]);
+      return { "former-user_0": { avatar: "https://example.com/former-fallback.jpg" } };
+    }
+  }, members, { includeGroupMembers: false });
+  assert.deepEqual(calls, [
+    ["user", ["former-user"], 240],
+    ["avatar", ["former-user"], 240]
+  ]);
+  assert.equal(members[0].avatarUrl, "https://example.com/former-fallback.jpg");
+});
