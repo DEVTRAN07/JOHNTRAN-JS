@@ -112,11 +112,13 @@ test("bot messages are scheduled for recall after one minute", async () => {
 });
 
 
-test("every auto-recalled message gets a clock-face reaction countdown", async () => {
+test("auto-recalled messages skip cosmetic countdown reactions by default", async () => {
   const originalSetTimeout = global.setTimeout;
+  const previousCountdown = process.env.JT_RECALL_COUNTDOWN_ENABLED;
   const scheduled = [];
   const reactions = [];
   const undone = [];
+  delete process.env.JT_RECALL_COUNTDOWN_ENABLED;
   global.setTimeout = (callback, delay) => {
     scheduled.push({ callback, delay });
     return { unref() {} };
@@ -141,19 +143,63 @@ test("every auto-recalled message gets a clock-face reaction countdown", async (
     await wrapped.sendMessage({ msg: "this message will be recalled", recallAfterMs: 2500 });
     await Promise.resolve();
 
-    assert.equal(reactions.length, 2, "text and attachment both receive the initial clock reaction");
+    assert.equal(reactions.length, 0, "normal replies must not spend extra Zalo calls on clock decorations");
+    assert.equal(scheduled.length, 2, "automatic recall remains scheduled for both text and attachment");
+    for (const timer of scheduled) await timer.callback();
+    assert.equal(undone.length, 2, "text and attachment are still recalled");
+  } finally {
+    global.setTimeout = originalSetTimeout;
+    if (previousCountdown === undefined) delete process.env.JT_RECALL_COUNTDOWN_ENABLED;
+    else process.env.JT_RECALL_COUNTDOWN_ENABLED = previousCountdown;
+  }
+});
+
+test("clock countdown remains available when explicitly enabled", async () => {
+  const originalSetTimeout = global.setTimeout;
+  const previousCountdown = process.env.JT_RECALL_COUNTDOWN_ENABLED;
+  const scheduled = [];
+  const reactions = [];
+  const undone = [];
+  process.env.JT_RECALL_COUNTDOWN_ENABLED = "1";
+  global.setTimeout = (callback, delay) => {
+    scheduled.push({ callback, delay });
+    return { unref() {} };
+  };
+
+  try {
+    const api = {
+      async sendMessage() {
+        return {
+          message: { msgId: 41, cliMsgId: "enabled-clock-text" },
+          attachment: [{ msgId: 42, cliMsgId: "enabled-clock-image" }]
+        };
+      },
+      async addReaction(icon, destination) {
+        reactions.push({ icon, destination });
+      },
+      async undo(message, threadId, type) {
+        undone.push({ message, threadId, type });
+      }
+    };
+    const wrapped = wrapApi(api, "thread-clock-enabled", 1, "test");
+    await wrapped.sendMessage({ msg: "countdown enabled", recallAfterMs: 2500 });
+    await Promise.resolve();
+
+    assert.equal(reactions.length, 2, "text and attachment receive initial clock reactions");
     assert.ok(reactions.every(item => item.icon.rType === 0 && item.icon.source === 6));
     assert.deepEqual(reactions.map(item => item.destination.data), [
-      { msgId: "31", cliMsgId: "clock-text" },
-      { msgId: "32", cliMsgId: "clock-image" }
+      { msgId: "41", cliMsgId: "enabled-clock-text" },
+      { msgId: "42", cliMsgId: "enabled-clock-image" }
     ]);
 
     for (const timer of scheduled) await timer.callback();
     await Promise.resolve();
-    assert.equal(reactions.length, 4, "stale clock ticks are coalesced per message instead of sent in a burst");
-    assert.equal(undone.length, 2, "text and attachment are both recalled");
+    assert.equal(reactions.length, 4, "stale clock ticks remain coalesced per message");
+    assert.equal(undone.length, 2, "automatic recall still works with countdown enabled");
   } finally {
     global.setTimeout = originalSetTimeout;
+    if (previousCountdown === undefined) delete process.env.JT_RECALL_COUNTDOWN_ENABLED;
+    else process.env.JT_RECALL_COUNTDOWN_ENABLED = previousCountdown;
   }
 });
 

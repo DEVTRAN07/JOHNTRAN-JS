@@ -28,6 +28,14 @@ const recallReactionStates = new Map();
 let activeRecallReactions = 0;
 
 const DEFAULT_AUTO_RECALL_MS = readRecallDelay(process.env.JT_AUTO_RECALL_MS, 60 * 1000);
+
+// Countdown reactions are cosmetic, but each message can create several extra
+// Zalo API calls. Keep automatic recall enabled while opting countdowns out by
+// default; operators can restore them with JT_RECALL_COUNTDOWN_ENABLED=1.
+function isRecallCountdownEnabled() {
+  const value = String(process.env.JT_RECALL_COUNTDOWN_ENABLED || "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
 const MAX_RECALL_DELAY_MS = 2_147_483_647;
 const RECALL_COUNTDOWN_CLOCKS = Object.freeze([
   "🕙", "🕘", "🕗", "🕖", "🕕", "🕔", "🕓", "🕒", "🕑", "🕐", "⏰"
@@ -214,7 +222,9 @@ function scheduleRecall(api, response, threadId, type, delayMs = DEFAULT_AUTO_RE
       continue;
     }
 
-    scheduleRecallCountdown(api, message, threadId, type, delayMs);
+    if (isRecallCountdownEnabled()) {
+      scheduleRecallCountdown(api, message, threadId, type, delayMs);
+    }
     const timer = setTimeout(async () => {
       try {
         await api.undo({ msgId, cliMsgId }, threadId, type);
@@ -615,12 +625,14 @@ module.exports = {
   wrapApi,
   sendStyledRawMessage,
   DEFAULT_AUTO_RECALL_MS,
+  isRecallCountdownEnabled,
   extractRecallOptions,
   scheduleRecall,
   scheduleRecallCountdown,
   _test: {
     addRecallClock,
     getRecallCountdownUpdates,
+    isRecallCountdownEnabled,
     getRecallReactionQueueStats: () => ({
       active: activeRecallReactions,
       pending: recallReactionQueue.length,
