@@ -440,7 +440,7 @@ test("topchat keeps filtered-only realtime diagnostics in memory without a datab
   assert.equal(diagnostics.counted, 0);
   assert.equal(diagnostics.rejected, 1);
   const message = topchat._test.emptyRankingMessage({}, vietnamDateKey(), diagnostics);
-  assert.match(message, /Realtime: nhận 1, ghi nhận 0, bị lọc 1 tin/);
+  assert.match(message, /Realtime: nhận 1, ghi nhận 0, bị lọc 1, trùng 0 tin/);
 
   // Once a rankable message arrives, its normal batch persists the aggregated
   // in-memory diagnostics together with the actual ranking update.
