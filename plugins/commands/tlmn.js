@@ -9,6 +9,7 @@ const engine = require("../../core/games/tlmnEngine");
 const { firstMention, withRequesterMention } = require("../../core/mentions");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const { sendGameGuideOnce } = require("../../core/games/gameGuideDelivery");
+const { sendStyledRawMessage } = require("../../core/message");
 
 const DEFAULT_COINS = 100000;
 const MIN_BET = 1000;
@@ -160,10 +161,8 @@ async function sendMoveError(api, event, uid, code, message) {
 
 async function sendPrivateNotice(api, uid, message) {
   const destination = privateDestination(api, uid);
-  return getRawApi(api).sendMessage(
-    { msg: String(message || "") },
-    destination.threadId,
-    destination.type
+  return sendStyledRawMessage(
+    getRawApi(api), { msg: String(message || "") }, destination.threadId, destination.type
   );
 }
 
@@ -208,10 +207,8 @@ async function sendPrivateGameGuide(api, Users, uid) {
     Users,
     uid: userId,
     gameKey: "tlmn_rules_v2",
-    send: () => getRawApi(api).sendMessage(
-      { msg: gameGuide() },
-      destination.threadId,
-      destination.type
+    send: () => sendStyledRawMessage(
+      getRawApi(api), { msg: gameGuide() }, destination.threadId, destination.type
     )
   });
   if (!result.ok) console.warn("[TLMN_PRIVATE_GUIDE]", result.code);
@@ -821,24 +818,24 @@ async function renderImage(api, kind, key, threadId, type, data, caption, fallba
     const payload = { msg: caption, attachments: [imagePath], recallAfterMs: 0, ttlKind: "card" };
     if (kind === "group") {
       return await sendReplacement(api, key, threadId, type,
-        rawApi => rawApi.sendMessage(withRequesterMention(
+        rawApi => sendStyledRawMessage(rawApi, withRequesterMention(
         data.event,
         data.mentions?.length ? { ...payload, mentions: data.mentions } : payload
       ), threadId, type));
     }
     return await sendReplacement(api, key, threadId, type,
-      rawApi => rawApi.sendMessage(payload, threadId, type));
+      rawApi => sendStyledRawMessage(rawApi, payload, threadId, type));
   } catch (error) {
     console.error("[TLMN_CANVAS]", error?.stack || error);
     const rawApi = getRawApi(api);
     try {
-      if (kind === "group") return await rawApi.sendMessage(withRequesterMention(
+      if (kind === "group") return await sendStyledRawMessage(rawApi, withRequesterMention(
         data.event,
         data.mentions?.length
           ? { msg: fallbackText || caption, mentions: data.mentions }
           : { msg: fallbackText || caption }
       ), threadId, type);
-      return await rawApi.sendMessage({ msg: fallbackText || caption }, threadId, type);
+      return await sendStyledRawMessage(rawApi, { msg: fallbackText || caption }, threadId, type);
     } catch (sendError) {
       console.error("[TLMN_SEND]", sendError?.message || sendError);
       return null;
@@ -959,22 +956,22 @@ async function sendPrivateHand(api, room, item, hand, turn = false) {
       isAdmin: adminHand
     }, { timeout: 20000, poolSize: 1 });
     const response = await sendReplacement(api, key, destination.threadId, destination.type, rawApiInstance =>
-      rawApiInstance.sendMessage({ msg: caption, attachments: [imagePath], recallAfterMs: 0, ttlKind: "card" },
+      sendStyledRawMessage(rawApiInstance, { msg: caption, attachments: [imagePath], recallAfterMs: 0, ttlKind: "card" },
         destination.threadId, destination.type));
     if (recallTargets(response).length) {
       delivered = true;
     } else {
       // A successful-looking API call without message IDs cannot be safely
       // recalled later. Send a text-only hand so the player is not left blind.
-      const fallbackResponse = await rawApi.sendMessage(
-        { msg: fallback }, destination.threadId, destination.type
+      const fallbackResponse = await sendStyledRawMessage(
+        rawApi, { msg: fallback }, destination.threadId, destination.type
       );
       delivered = Boolean(fallbackResponse);
     }
   } catch (error) {
     console.error("[TLMN_PRIVATE_HAND]", error?.stack || error);
     try {
-      await rawApi.sendMessage({ msg: fallback }, destination.threadId, destination.type);
+      await sendStyledRawMessage(rawApi, { msg: fallback }, destination.threadId, destination.type);
       delivered = true;
     } catch {}
   } finally {
