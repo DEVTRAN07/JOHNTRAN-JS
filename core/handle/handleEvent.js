@@ -6,7 +6,7 @@ const metrics = require("../metrics");
 
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
-const { dispatchEvent, filterDispatchSources } = require("../runtime/eventRegistry");
+const { dispatchEvent } = require("../runtime/eventRegistry");
 const { createEventContext } = require("../runtime/eventContext");
 const { isEnabled: isGroupBotEnabled } = require("../runtime/groupBotState");
 
@@ -90,12 +90,11 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
   const sources = getDispatchSources(
     eventType, eventData, isSelf, global.client?.events, global.client?.commands
   );
-  const filteredSources = filterDispatchSources(sources, dispatchOptions);
-
   return dispatchEvent({
-    events: filteredSources.events,
-    commands: filteredSources.commands,
+    events: sources.events,
+    commands: sources.commands,
     eventType,
+    dispatchOptions,
     async onEventModule(eventModule, name) {
       const startedAt = performance.now();
       try {

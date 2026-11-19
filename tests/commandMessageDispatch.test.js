@@ -2,77 +2,141 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { filterDispatchSources } = require("../core/runtime/eventRegistry");
+const {
+  dispatchEvent,
+  getEventRegistry,
+  invalidateEventRegistry
+} = require("../core/runtime/eventRegistry");
 
-function plugin(name, config = {}) {
-  return { config: { name, ...config } };
+function eventPlugin(name, config = {}, calls = []) {
+  return {
+    config: { name, event_type: ["message"], ...config },
+    async run() { calls.push(name); }
+  };
 }
 
-test("command messages only reach explicit subscribers while Guard and Anti stay active", () => {
-  const sources = {
-    events: new Map([
-      ["guard", plugin("guard", { allowCommandMessages: true })],
-      ["rank", plugin("rank")],
-      ["topchatcounter", plugin("topchatcounter")],
-      ["custom-command-aware", plugin("custom-command-aware", { allowCommandMessages: true })]
-    ]),
-    commands: new Map([
-      ["anti", plugin("anti", { allowCommandMessages: true })],
-      ["menu", plugin("menu")],
-      ["noitu", plugin("noitu", { allowCommandMessages: true })],
-      ["custom-command-aware", plugin("custom-command-aware", { allowCommandMessages: true })]
-    ])
+function commandPlugin(name, config = {}, calls = []) {
+  return {
+    config: { name, event_type: ["message"], ...config },
+    async handleEvent() { calls.push(name); }
   };
+}
 
-  const filtered = filterDispatchSources(sources, {
-    isCommandMessage: true,
-    skipGameConsumers: true,
-    skipTopchatCounter: true
+function dispatch(sources, dispatchOptions = {}) {
+  const calls = [];
+  const result = dispatchEvent({
+    ...sources,
+    eventType: "message",
+    dispatchOptions,
+    onEventModule: async (module, name) => module.run(name),
+    onCommandModule: async (module, name) => module.handleEvent(name)
+  });
+  return { result, calls };
+}
+
+test("command messages only reach Guard, Anti and explicit opt-in subscribers", async () => {
+  const calls = [];
+  const events = new Map([
+    ["guard", eventPlugin("guard", {}, calls)],
+    ["rank", eventPlugin("rank", {}, calls)],
+    ["topchatcounter", eventPlugin("topchatcounter", {}, calls)],
+    ["custom", eventPlugin("custom", { allowCommandMessages: true }, calls)]
+  ]);
+  const commands = new Map([
+    ["anti", commandPlugin("anti", {}, calls)],
+    ["menu", commandPlugin("menu", {}, calls)],
+    ["noitu", commandPlugin("noitu", { allowCommandMessages: true }, calls)],
+    ["custom", commandPlugin("custom", { allowCommandMessages: true }, calls)]
+  ]);
+  const sources = { events, commands };
+  const cachedRegistry = getEventRegistry(events, commands);
+
+  const result = dispatchEvent({
+    ...sources,
+    eventType: "message",
+    dispatchOptions: {
+      isCommandMessage: true,
+      skipGameConsumers: true,
+      skipTopchatCounter: true
+    },
+    onEventModule: async (module, name) => module.run(name),
+    onCommandModule: async (module, name) => module.handleEvent(name)
   });
 
-  assert.deepEqual([...filtered.events.keys()], ["guard", "custom-command-aware"]);
-  assert.deepEqual([...filtered.commands.keys()], ["anti", "custom-command-aware"]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(result, { eventModules: 2, commandModules: 2 });
+  assert.deepEqual(calls.sort(), ["anti", "custom", "custom", "guard"]);
+  assert.strictEqual(getEventRegistry(events, commands), cachedRegistry,
+    "command dispatch must reuse the same cached registry");
 });
 
-test("ordinary messages keep normal subscribers while avoiding duplicate game and Top Chat work", () => {
-  const sources = {
-    events: new Map([
-      ["guard", plugin("guard")],
-      ["rank", plugin("rank")],
-      ["topchatcounter", plugin("topchatcounter")],
-      ["noitu", plugin("noitu")],
-      ["tlmn", plugin("tlmn")]
-    ]),
-    commands: new Map([
-      ["anti", plugin("anti")],
-      ["noitu", plugin("noitu")],
-      ["tlmn", plugin("tlmn")],
-      ["music", plugin("music")]
-    ])
-  };
+test("ordinary messages preserve normal subscribers while skipping duplicate game and Top Chat consumers", async () => {
+  const calls = [];
+  const events = new Map([
+    ["guard", eventPlugin("guard", {}, calls)],
+    ["rank", eventPlugin("rank", {}, calls)],
+    ["topchatcounter", eventPlugin("topchatcounter", {}, calls)],
+    ["noitu", eventPlugin("noitu", {}, calls)],
+    ["tlmn", eventPlugin("tlmn", {}, calls)]
+  ]);
+  const commands = new Map([
+    ["anti", commandPlugin("anti", {}, calls)],
+    ["noitu", commandPlugin("noitu", {}, calls)],
+    ["tlmn", commandPlugin("tlmn", {}, calls)],
+    ["music", commandPlugin("music", {}, calls)]
+  ]);
 
-  const filtered = filterDispatchSources(sources, {
-    skipGameConsumers: true,
-    skipTopchatCounter: true
+  const result = dispatchEvent({
+    events,
+    commands,
+    eventType: "message",
+    dispatchOptions: {
+      skipGameConsumers: true,
+      skipTopchatCounter: true
+    },
+    onEventModule: async (module, name) => module.run(name),
+    onCommandModule: async (module, name) => module.handleEvent(name)
   });
 
-  assert.deepEqual([...filtered.events.keys()], ["guard", "rank"]);
-  assert.deepEqual([...filtered.commands.keys()], ["anti", "music"]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(result, { eventModules: 2, commandModules: 2 });
+  assert.deepEqual(calls.sort(), ["anti", "guard", "music", "rank"]);
 });
 
-test("explicit opt-in does not override ignoreCommandMessages", () => {
-  const sources = {
-    events: new Map([["ignored", plugin("ignored", {
+test("ignoreCommandMessages overrides explicit command-message opt-in", async () => {
+  const calls = [];
+  const events = new Map([
+    ["ignored-event", eventPlugin("ignored-event", {
       allowCommandMessages: true,
       ignoreCommandMessages: true
-    })]]),
-    commands: new Map([["ignored", plugin("ignored", {
+    }, calls)]
+  ]);
+  const commands = new Map([
+    ["ignored-command", commandPlugin("ignored-command", {
       allowCommandMessages: true,
       ignoreCommandMessages: true
-    })]])
-  };
+    }, calls)]
+  ]);
 
-  const filtered = filterDispatchSources(sources, { isCommandMessage: true });
-  assert.equal(filtered.events.size, 0);
-  assert.equal(filtered.commands.size, 0);
+  const result = dispatchEvent({
+    events,
+    commands,
+    eventType: "message",
+    dispatchOptions: { isCommandMessage: true },
+    onEventModule: async (module, name) => module.run(name),
+    onCommandModule: async (module, name) => module.handleEvent(name)
+  });
+
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(result, { eventModules: 0, commandModules: 0 });
+  assert.deepEqual(calls, []);
+});
+
+test("invalidating plugin maps rebuilds the cached registry only after invalidation", () => {
+  const events = new Map([["guard", eventPlugin("guard")]]);
+  const commands = new Map([["anti", commandPlugin("anti")]]);
+  const first = getEventRegistry(events, commands);
+  assert.strictEqual(getEventRegistry(events, commands), first);
+  invalidateEventRegistry(events);
+  assert.notStrictEqual(getEventRegistry(events, commands), first);
 });
