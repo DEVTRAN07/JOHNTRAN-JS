@@ -1,5 +1,7 @@
 "use strict";
 
+const { recallIntentionally } = require("../../core/runtime/intentionalRecall");
+
 const game = require("../../core/runtime/services/games/noituService");
 const { withRequesterMention } = require("../../core/mentions");
 const fs = require("fs");
@@ -74,10 +76,12 @@ async function recallSoloLastPrompt(api, session) {
   let recalled = false;
   for (const message of refs) {
     try {
-      await api.undo(
+      await recallIntentionally(
+        api,
         { msgId: message.msgId, cliMsgId: message.cliMsgId },
         session.threadId,
-        session.threadType
+        session.threadType,
+        "noitu-solo-prompt"
       );
       recalled = true;
     } catch (error) {
