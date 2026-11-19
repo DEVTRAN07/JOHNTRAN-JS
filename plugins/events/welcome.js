@@ -325,7 +325,7 @@ function makePersonalMessage(member, kind = "welcome") {
   const isGoodbye = kind === "goodbye";
   const prefix = isGoodbye ? "👋 Tạm biệt " : "👋 Chào mừng ";
   const suffix = isGoodbye
-    ? " đã rời nhóm. Chúc bạn mọi điều tốt đẹp!"
+    ? " Chúc bạn mọi điều tốt đẹp!"
     : " đến với nhóm!\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!";
   return {
     msg: prefix + "@." + suffix,
@@ -392,27 +392,27 @@ module.exports.run = async function ({
     const member = joined[index];
     const cardPath = cards[index];
     const message = makePersonalMessage(member, kind);
+    const payload = {
+      ...message,
+      ...(cardPath ? { attachments: [cardPath], ttlKind: "card" } : {})
+    };
 
-    // Send the Canvas as its own bubble first. The personalized @mention is a
-    // second text bubble so it always appears directly below the person's card.
-    if (cardPath) {
-      try {
-        await api.sendMessage({
-          msg: "",
-          attachments: [cardPath],
-          ttlKind: "card"
-        }, threadId, threadType || ThreadType.Group);
-      } catch (error) {
-        console.error("[WELCOME_CARD_SEND]", member.uid, error?.stack || error);
-      } finally {
-        cleanupCard(cardPath);
-      }
-    }
-
+    // Zalo renders msg + mentions as the Canvas caption. Keep the image,
+    // personalized text and @mention in one message instead of a second bubble.
     try {
-      await api.sendMessage(message, threadId, threadType || ThreadType.Group);
+      await api.sendMessage(payload, threadId, threadType || ThreadType.Group);
     } catch (error) {
-      console.error("[WELCOME_TAG_SEND]", member.uid, error?.stack || error);
+      console.error("[WELCOME_SEND]", member.uid, error?.stack || error);
+      // If Canvas upload fails, still deliver the exact text/mention.
+      if (cardPath) {
+        try {
+          await api.sendMessage(message, threadId, threadType || ThreadType.Group);
+        } catch (fallbackError) {
+          console.error("[WELCOME_FALLBACK]", member.uid, fallbackError?.message || fallbackError);
+        }
+      }
+    } finally {
+      cleanupCard(cardPath);
     }
   }
 };
