@@ -3,6 +3,8 @@
 // text thẳng trong API (bold, màu, cỡ chữ, list) — phản hồi TỨC THÌ (0ms,
 // đúng 1 API call) mà vẫn đẹp. Bot dùng style làm mặc định.
 const { TextStyle } = require("zalo-client");
+const { performance } = require("node:perf_hooks");
+const nativeRuntime = require("../native");
 
 // Màu theo loại tin (Zalo chỉ có 4 màu cố định + 2 cỡ chữ)
 // Emoji phải là BMP 1 đơn vị UTF-16 (❌ ✅ ◆ ▲) — offset style tính theo
@@ -52,7 +54,7 @@ function normalizeExcludedRanges(ranges, textLength) {
   }).filter(Boolean);
 }
 
-function randomColorStyles(message, options = {}) {
+function randomColorStylesJs(message, options = {}) {
   const text = String(message ?? "");
   if (!text) return [];
 
@@ -80,6 +82,41 @@ function randomColorStyles(message, options = {}) {
     previousColor = color;
   }
 
+  return styles;
+}
+
+function randomColorStyles(message, options = {}) {
+  const text = String(message ?? "");
+  if (!text) return [];
+
+  const excludedRanges = normalizeExcludedRanges(options.excludeRanges, text.length);
+  const startedAt = performance.now();
+  let styles = null;
+  let backend = "js";
+
+  // Normal message delivery uses the Rust N-API tokenizer. Injected RNGs
+  // stay on JavaScript to preserve deterministic tests and caller contracts.
+  if (typeof options.random !== "function") {
+    try {
+      styles = nativeRuntime.randomColorStyles(text, RANDOM_TEXT_COLORS, excludedRanges);
+      if (Array.isArray(styles)) backend = "rust";
+    } catch {
+      styles = null;
+    }
+  }
+
+  if (!Array.isArray(styles)) {
+    styles = randomColorStylesJs(text, { ...options, excludeRanges });
+  }
+
+  try {
+    require("./metrics").trackListenerStageLatency?.(
+      "style-colorize:" + backend,
+      performance.now() - startedAt
+    );
+  } catch {
+    // Colorization telemetry must never affect message delivery.
+  }
   return styles;
 }
 

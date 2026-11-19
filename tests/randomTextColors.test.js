@@ -7,6 +7,7 @@ const path = require("node:path");
 const { TextStyle } = require("zalo-client");
 const { createCanvas } = require("canvas");
 const styledText = require("../core/styled");
+const nativeRuntime = require("../native");
 const theme = require("../core/canvas/theme");
 const { wrapApi } = require("../core/message");
 
@@ -182,4 +183,36 @@ test("each new and legacy Canvas context gets a random color seed", () => {
 test("Canvas sanitizer preserves rare emoji and uncommon Unicode characters", () => {
   const value = "Hệ thống ² ᴬ ᴮ 🪼";
   assert.equal(theme.sanitizeGlyphs(value), value);
+});
+
+
+test("Rust N-API colorizer preserves UTF-16 offsets and skips tagged mention ranges", () => {
+  if (!nativeRuntime.nativeAvailable.textStyle) {
+    const output = styledText.randomize("🤖 Chào bạn nhé", { random: () => 0.4 });
+    assert.equal(output.styles.length, 4);
+    return;
+  }
+
+  const msg = "🤖 Chào bạn nhé\\n👉 你好";
+  const spans = nativeRuntime.randomColorStyles(msg, [
+    TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green
+  ]);
+  const expected = [...msg.matchAll(/\\S+/gu)].map(match => ({
+    start: match.index,
+    len: match[0].length
+  }));
+  assert.deepEqual(spans.map(({ start, len }) => ({ start, len })), expected);
+
+  const mentionSpans = nativeRuntime.randomColorStyles(
+    "@Wuang chào bạn",
+    [TextStyle.Red, TextStyle.Orange, TextStyle.Yellow, TextStyle.Green],
+    [{ start: 0, end: 6 }]
+  );
+  assert.deepEqual(
+    mentionSpans.map(({ start, len }) => ({ start, len })),
+    [{ start: 7, len: 4 }, { start: 12, len: 3 }]
+  );
+  for (let index = 1; index < mentionSpans.length; index++) {
+    assert.notEqual(mentionSpans[index].st, mentionSpans[index - 1].st);
+  }
 });

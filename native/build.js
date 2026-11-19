@@ -8,6 +8,7 @@ const CRATES = [
   { name: "sticker-rs", addon: "sticker_rs.node" },
   { name: "canvas-rs", addon: "canvas_rs.node" },
   { name: "ffmpeg-rs", addon: "ffmpeg_rs.node" },
+  { name: "text-style-rs", addon: "text_style_rs.node" },
 ];
 
 function which(cmd) {

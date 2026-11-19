@@ -5,6 +5,7 @@ members = [
   "sticker-rs",
   "canvas-rs",
   "ffmpeg-rs",
+  "text-style-rs",
 ]
 
 [workspace.dependencies]

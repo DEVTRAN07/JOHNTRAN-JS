@@ -18,6 +18,20 @@ function tryLoad(crateDir, addon) {
 const stickerNative = tryLoad("sticker-rs", "sticker_rs.node");
 const canvasNative = tryLoad("canvas-rs", "canvas_rs.node");
 const ffmpegNative = tryLoad("ffmpeg-rs", "ffmpeg_rs.node");
+const textStyleNative = tryLoad("text-style-rs", "text_style_rs.node");
+
+function randomColorStyles(text, colors, excludedRanges = []) {
+  if (!textStyleNative.ok || typeof textStyleNative.mod.random_color_styles !== "function") return null;
+  try {
+    return textStyleNative.mod.random_color_styles(
+      String(text ?? ""),
+      Array.isArray(colors) ? colors.map(String) : [],
+      Array.isArray(excludedRanges) ? excludedRanges : []
+    );
+  } catch {
+    return null;
+  }
+}
 
 function wrap(fn) {
   return async function (options) {
@@ -122,15 +136,18 @@ const exports = {
   probe: wrap({ name: "probe", native: ffmpegNative, fallback: (o) => jsProbe(o) }),
   decodeFrame: wrap({ name: "decode_frame", native: ffmpegNative, fallback: (o) => jsDecodeFrame(o.input, o.timeSeconds) }),
   encode: wrap({ name: "encode", native: ffmpegNative, fallback: (o) => jsEncode(o.input, o.output) }),
+  randomColorStyles,
   nativeAvailable: {
     sticker: stickerNative.ok,
     canvas: canvasNative.ok,
     ffmpeg: ffmpegNative.ok,
+    textStyle: textStyleNative.ok,
   },
   loadErrors: {
     sticker: stickerNative.ok ? null : String(stickerNative.err && stickerNative.err.message),
     canvas: canvasNative.ok ? null : String(canvasNative.err && canvasNative.err.message),
     ffmpeg: ffmpegNative.ok ? null : String(ffmpegNative.err && ffmpegNative.err.message),
+    textStyle: textStyleNative.ok ? null : String(textStyleNative.err && textStyleNative.err.message),
   },
 };
 

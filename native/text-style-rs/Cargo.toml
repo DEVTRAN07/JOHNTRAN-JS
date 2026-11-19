@@ -1,0 +1,13 @@
+[package]
+name = "text-style-rs"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "text_style_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { workspace = true, features = ["derive"] }
+napi-derive = { workspace = true }
