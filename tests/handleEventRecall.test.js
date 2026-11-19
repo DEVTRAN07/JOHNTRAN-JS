@@ -10,6 +10,8 @@ test("active Nối Từ event replies use the shared recall-clock wrapper", asyn
   const originalHandler = noituCommand.handleEvent;
   const originalHasActiveGame = noituCommand.hasActiveGameForThread;
   const originalSetTimeout = global.setTimeout;
+  const previousCountdown = process.env.JT_RECALL_COUNTDOWN_ENABLED;
+  process.env.JT_RECALL_COUNTDOWN_ENABLED = "1";
   const scheduled = [];
   const reactions = [];
   const sent = [];
@@ -68,5 +70,7 @@ test("active Nối Từ event replies use the shared recall-clock wrapper", asyn
     noituCommand.handleEvent = originalHandler;
     noituCommand.hasActiveGameForThread = originalHasActiveGame;
     global.setTimeout = originalSetTimeout;
+    if (previousCountdown === undefined) delete process.env.JT_RECALL_COUNTDOWN_ENABLED;
+    else process.env.JT_RECALL_COUNTDOWN_ENABLED = previousCountdown;
   }
 });
