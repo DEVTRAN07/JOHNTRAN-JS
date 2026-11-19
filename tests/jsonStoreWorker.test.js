@@ -27,7 +27,7 @@ test("JSON persistence serializes and writes in a dedicated worker", async () =>
   });
 
   assert.equal(store.getOperationalStatus().pendingFlush, true);
-  assert.equal(await facade.flush(), true);
+  assert.equal(await store.flushAndWait(), true);
 
   const persisted = JSON.parse(await fs.readFile(file, "utf8"));
   assert.equal(persisted.Users["worker-user"].data.name, "Worker persistence");
