@@ -242,11 +242,16 @@ function createDatabaseFacade(backend, options = {}) {
     allData(table) {
       return backend.all(table);
     },
+    // Preserve the synchronous legacy flush() contract for old plugins.
+    // New durability-sensitive code uses saveDataAndWait()/flushAndWait().
     flush() {
-      if (typeof backend.flushAndWait === "function") return backend.flushAndWait();
       if (typeof backend.flushSync === "function") return backend.flushSync();
       if (typeof backend.flush === "function") return backend.flush();
       return undefined;
+    },
+    flushAndWait() {
+      if (typeof backend.flushAndWait === "function") return backend.flushAndWait();
+      return Promise.resolve(this.flush());
     },
     // Operational status is a memory-only snapshot for realtime listener
     // paths. The full getStatus() below performs file/mount diagnostics and is
