@@ -30,7 +30,7 @@ function formatRows(rows, labelPrefix = "") {
   );
 }
 
-function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null) {
+function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null, transport = null) {
   const latency = source.getLatencyStats?.() || {};
   const commands = source.getCommandLatencyStats?.(6) || [];
   const handlers = source.getCommandExecutionLatencyStats?.(6) || [];
@@ -68,6 +68,17 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
     "📡 API ZALO",
     ...formatRows(apiCalls),
     "",
+    "🔌 HTTP FETCH / KẾT NỐI",
+    ...(transport?.byHost?.length
+      ? transport.byHost.slice(0, 5).map(item =>
+          "  • " + String(item.host || "unknown") +
+          ": P95 " + formatMs(item.p95Ms) +
+          " · TB " + formatMs(item.avgMs) +
+          " · " + Math.max(0, Number(item.count) || 0) + " mẫu" +
+          (item.failed ? " · lỗi " + item.failed : "")
+        )
+      : ["  • Chưa có mẫu fetch trong phiên này"]),
+    "",
     "🚀 NHẬN TIN → PHẢN HỒI ĐẦU TIÊN",
     ...formatRows(firstResponse, "/"),
     "",
@@ -86,7 +97,10 @@ module.exports.run = async function ({ api, event, reply }) {
   try {
     eventLoop = require("../../core/health").getEventLoopMetrics({ reset: false });
   } catch { /* event-loop sampling is optional diagnostic data */ }
-  const report = buildSpeedReport(metrics, process.uptime(), eventLoop);
+  let transport = null;
+  try { transport = require("../../core/http/transport").getZaloHttpTransportStats(); }
+  catch { /* HTTP diagnostics are optional */ }
+  const report = buildSpeedReport(metrics, process.uptime(), eventLoop, transport);
   if (typeof reply?.text === "function") return reply.text(report);
   return api.sendMessage({ msg: report }, event.threadId, event.type);
 };
