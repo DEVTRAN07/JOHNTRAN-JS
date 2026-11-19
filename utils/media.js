@@ -3,6 +3,7 @@ const path = require("path");
 const logger = require("./logger");
 const ffmpeg = require("fluent-ffmpeg");
 const { tryUnlink } = require("./file");
+const { FFMPEG_THREADS } = require("../core/mediaResourceLimits");
 
 ffmpeg.setFfmpegPath(require("ffmpeg-static"));
 
@@ -101,6 +102,7 @@ function convertMp3ToAac(inputPath, outputPath) {
     ffmpeg(inputPath)
       .output(outputPath)
       .audioCodec("aac")
+      .outputOptions(["-threads " + FFMPEG_THREADS])
       .on("end", () => {
         resolve(outputPath);
       })
