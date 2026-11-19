@@ -5,16 +5,181 @@ const { createTrack } = require("./models");
 const db = require("../../utils/db");
 
 const SOURCE = "SoundCloud";
+// Official API is preferred when OAuth credentials are configured.
+// The legacy api-v2 path remains as a compatibility fallback for existing
+// installations that have only a public client_id configured.
 const API_BASE = "https://api-v2.soundcloud.com";
+const OFFICIAL_API_BASE = "https://api.soundcloud.com";
+const OAUTH_TOKEN_URL = "https://secure.soundcloud.com/oauth/token";
 const HOME_URL = "https://soundcloud.com/";
 const CLIENT_ID_CACHE = path.join(__dirname, "..", "..", "data", "soundcloud_client_id.txt");
 const CLIENT_ID_TTL = 24 * 60 * 60 * 1000;
 const CLIENT_ID_NEGATIVE_TTL = 5 * 60 * 1000;
 const CLIENT_ID_KEY = "soundcloud_client_id";
+const OAUTH_TOKEN_KEY = "soundcloud_oauth_token";
+const OAUTH_EXPIRY_SKEW_MS = 60 * 1000;
 
 let cachedClientId = null;
 let discovering = null;
 let negativeUntil = 0;
+let cachedAccessToken = null;
+let accessTokenExpiresAt = 0;
+let cachedRefreshToken = null;
+let tokenDiscovering = null;
+
+function getOAuthCredentials() {
+  const musicConfig = global.config?.music || {};
+  return {
+    clientId: String(
+      musicConfig.soundcloud_client_id ||
+      process.env.SOUNDCLOUD_CLIENT_ID ||
+      process.env.JT_MUSIC__SOUNDCLOUD_CLIENT_ID ||
+      ""
+    ).trim(),
+    clientSecret: String(
+      musicConfig.soundcloud_client_secret ||
+      process.env.SOUNDCLOUD_CLIENT_SECRET ||
+      process.env.JT_MUSIC__SOUNDCLOUD_CLIENT_SECRET ||
+      ""
+    ).trim()
+  };
+}
+
+function hasOAuthCredentials() {
+  const credentials = getOAuthCredentials();
+  return Boolean(credentials.clientId && credentials.clientSecret);
+}
+
+function readCachedOAuthToken() {
+  try {
+    const row = db.getData("BotStats", "name", OAUTH_TOKEN_KEY);
+    const data = row?.data || {};
+    if (typeof data.accessToken === "string" &&
+        data.accessToken.length > 10 &&
+        Number.isFinite(Number(data.expiresAt))) {
+      return {
+        accessToken: data.accessToken,
+        expiresAt: Number(data.expiresAt),
+        refreshToken: typeof data.refreshToken === "string" ? data.refreshToken : ""
+      };
+    }
+  } catch { /* token cache is optional */ }
+  return null;
+}
+
+function writeCachedOAuthToken(token) {
+  if (!token?.accessToken) return;
+  try {
+    db.saveData("BotStats", "name", OAUTH_TOKEN_KEY, {
+      accessToken: token.accessToken,
+      expiresAt: Number(token.expiresAt) || 0,
+      refreshToken: token.refreshToken || ""
+    });
+  } catch { /* authentication still works for the current process */ }
+}
+
+async function requestOAuthToken(credentials, refreshToken = "") {
+  const authorization = Buffer.from(
+    credentials.clientId + ":" + credentials.clientSecret,
+    "utf8"
+  ).toString("base64");
+  const fields = refreshToken
+    ? { grant_type: "refresh_token", refresh_token: refreshToken }
+    : { grant_type: "client_credentials" };
+
+  const response = await pooledAxios.post(
+    OAUTH_TOKEN_URL,
+    new URLSearchParams(fields).toString(),
+    {
+      timeout: 15000,
+      __retryLimit: 0,
+      headers: {
+        Authorization: "Basic " + authorization,
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded"
+      }
+    }
+  );
+
+  const body = response?.data || {};
+  const accessToken = String(body.access_token || "").trim();
+  if (!accessToken) {
+    throw new Error(
+      "SoundCloud OAuth không trả access_token. " +
+      String(body.error_description || body.error || "Kiểm tra Client ID/Client Secret.")
+    );
+  }
+  const expiresIn = Math.max(60, Number(body.expires_in) || 3600);
+  return {
+    accessToken,
+    expiresAt: Date.now() + expiresIn * 1000,
+    refreshToken: String(body.refresh_token || (refreshToken || "")).trim()
+  };
+}
+
+async function discoverAccessToken(forceRefresh = false) {
+  const credentials = getOAuthCredentials();
+  if (!credentials.clientId || !credentials.clientSecret) {
+    const error = new Error(
+      "Thiếu SoundCloud API credentials. Hãy cấu hình music.soundcloud_client_id " +
+      "và music.soundcloud_client_secret trong config.yml hoặc biến môi trường JT_MUSIC__SOUNDCLOUD_CLIENT_ID / JT_MUSIC__SOUNDCLOUD_CLIENT_SECRET."
+    );
+    error.needCredentials = true;
+    error.notAvailable = true;
+    throw error;
+  }
+
+  if (!forceRefresh && cachedAccessToken &&
+      accessTokenExpiresAt - Date.now() > OAUTH_EXPIRY_SKEW_MS) {
+    return cachedAccessToken;
+  }
+  if (tokenDiscovering) return tokenDiscovering;
+
+  tokenDiscovering = (async () => {
+    let previous = null;
+    if (!forceRefresh) {
+      previous = readCachedOAuthToken();
+      if (previous && previous.expiresAt - Date.now() > OAUTH_EXPIRY_SKEW_MS) {
+        cachedAccessToken = previous.accessToken;
+        accessTokenExpiresAt = previous.expiresAt;
+        cachedRefreshToken = previous.refreshToken || null;
+        return cachedAccessToken;
+      }
+    } else {
+      previous = readCachedOAuthToken();
+    }
+
+    // Refresh tokens are single-use. Reuse the most recently persisted value;
+    // when the provider does not issue one, request a new client-credentials token.
+    const refreshToken = previous?.refreshToken || cachedRefreshToken || "";
+    let next;
+    try {
+      next = await requestOAuthToken(credentials, refreshToken);
+    } catch (error) {
+      if (!refreshToken) throw error;
+      // A stale/rotated refresh token must not prevent a fresh client-credentials grant.
+      next = await requestOAuthToken(credentials);
+    }
+
+    cachedAccessToken = next.accessToken;
+    accessTokenExpiresAt = next.expiresAt;
+    cachedRefreshToken = next.refreshToken || null;
+    writeCachedOAuthToken(next);
+    return cachedAccessToken;
+  })();
+
+  try {
+    return await tokenDiscovering;
+  } finally {
+    tokenDiscovering = null;
+  }
+}
+
+function clearCachedOAuthToken() {
+  cachedAccessToken = null;
+  accessTokenExpiresAt = 0;
+  // Keep the last refresh token so a 401 can rotate it on the next request.
+}
 
 function readCachedClientId() {
   try {
@@ -268,9 +433,61 @@ async function apiGet(apiPath, params = {}, retry = true) {
   }
 }
 
+async function officialApiGet(apiPath, params = {}, retry = true) {
+  const accessToken = await discoverAccessToken();
+  const url = new URL(apiPath.replace(/^\/+/, ""), OFFICIAL_API_BASE + "/");
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  try {
+    const response = await pooledAxios.get(url.toString(), {
+      timeout: 15000,
+      __retryLimit: 1,
+      headers: {
+        Accept: "application/json",
+        Authorization: "OAuth " + accessToken
+      }
+    });
+    const status = Number(response?.status || 0);
+    const data = response?.data;
+    if (status === 401 && retry) {
+      clearCachedOAuthToken();
+      await discoverAccessToken(true);
+      return officialApiGet(apiPath, params, false);
+    }
+    if (status >= 400) {
+      const message = data?.errors?.[0]?.error_message ||
+        data?.message || data?.error || "HTTP " + status;
+      const error = new Error("SoundCloud API chính thức lỗi HTTP " + status + ": " + message);
+      error.status = status;
+      error.notAvailable = true;
+      throw error;
+    }
+    if (data && Array.isArray(data.errors) && data.errors.length) {
+      const error = new Error(String(data.errors[0].error_message || data.errors[0]));
+      error.notAvailable = true;
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    const status = Number(error?.response?.status || error?.status || 0);
+    if (retry && status === 401) {
+      clearCachedOAuthToken();
+      await discoverAccessToken(true);
+      return officialApiGet(apiPath, params, false);
+    }
+    if (error.notAvailable || error.status || error.response) throw error;
+    throw error;
+  }
+}
+
 function toTrack(item) {
   return createTrack({
     id: item.id,
+    urn: item.urn || (item.id ? "soundcloud:tracks:" + item.id : ""),
     title: item.title,
     artist: item.user ? item.user.username : null,
     duration: Math.round((item.duration || item.full_duration || 0) / 1000),
@@ -289,10 +506,20 @@ function popularity(item) {
 
 async function search(query, limit) {
   const wanted = Math.max(Number(limit) || 20, 20);
-  const data = await apiGet("/search/tracks", { q: query, limit: Math.max(wanted, 40) });
-  const collection = data ? data.collection : [];
+  const maxResults = Math.max(wanted, 40);
+  const data = hasOAuthCredentials()
+    ? await officialApiGet("/tracks", {
+      q: query,
+      limit: maxResults,
+      access: "playable",
+      linked_partitioning: "true"
+    })
+    : await apiGet("/search/tracks", { q: query, limit: maxResults });
+  const collection = Array.isArray(data) ? data : (data ? data.collection : []);
   const tracks = collection
-    .filter((item) => item && item.id && !(item.policy || "").includes("BLOCK"))
+    .filter((item) => item && item.id &&
+      item.access !== "blocked" &&
+      !(item.policy || "").toUpperCase().includes("BLOCK"))
     .sort((a, b) => popularity(b) - popularity(a))
     .slice(0, wanted)
     .map(toTrack);
@@ -379,18 +606,21 @@ function extractResolvedStreamUrl(response, requestUrl) {
   return null;
 }
 
-async function resolveTranscodingUrl(transcoding, clientId, retryAuth = true) {
+async function resolveTranscodingUrl(transcoding, clientId, retryAuth = true, accessToken = null) {
   let streamUrl;
   try {
     streamUrl = new URL(transcoding.url);
-    streamUrl.searchParams.set("client_id", clientId);
+    if (clientId) streamUrl.searchParams.set("client_id", clientId);
 
     const response = await pooledAxios.get(streamUrl.toString(), {
       timeout: 12000,
       __retryLimit: 0,
       maxRedirects: 0,
       validateStatus: (status) => status >= 200 && status < 400,
-      headers: { Accept: "application/json, application/vnd.apple.mpegurl, audio/*, */*" }
+      headers: {
+        Accept: "application/json, application/vnd.apple.mpegurl, audio/*, */*",
+        ...(accessToken ? { Authorization: "OAuth " + accessToken } : {})
+      }
     });
 
     const resolvedUrl = extractResolvedStreamUrl(response, streamUrl.toString());
@@ -401,7 +631,12 @@ async function resolveTranscodingUrl(transcoding, clientId, retryAuth = true) {
     return resolvedUrl;
   } catch (err) {
     const status = Number(err?.response?.status || err?.status || 0);
-    if (retryAuth && (status === 401 || status === 403)) {
+    if (retryAuth && accessToken && status === 401) {
+      clearCachedOAuthToken();
+      const refreshedToken = await discoverAccessToken(true);
+      return resolveTranscodingUrl(transcoding, null, false, refreshedToken);
+    }
+    if (retryAuth && !accessToken && (status === 401 || status === 403)) {
       clearCachedClientId();
       const refreshedClientId = await discoverClientId();
       if (refreshedClientId && refreshedClientId !== clientId) {
@@ -432,13 +667,75 @@ function selectResolveCandidates(candidates) {
   return progressive ? [progressive] : [];
 }
 
+function getOfficialTranscodingCandidates(streams) {
+  const source = streams && typeof streams === "object" ? streams : {};
+  // SoundCloud removed progressive MP3 and is migrating its catalogue to AAC.
+  // Keep HLS MP3 as a fallback for older tracks that have not been retranscoded.
+  return [
+    ["hls_aac_160_url", "aac_160"],
+    ["hls_aac_96_url", "aac_96"],
+    ["hls_mp3_128_url", "mp3_128"]
+  ].flatMap(([field, quality]) => {
+    const url = source[field];
+    if (typeof url !== "string" || !/^https:\/\//i.test(url)) return [];
+    return [{ item: { url }, protocol: "hls", quality }];
+  });
+}
+
+async function resolveOfficialTrack(track) {
+  const urn = String(track?.urn || (track?.id ? "soundcloud:tracks:" + track.id : "")).trim();
+  if (!urn) throw new Error("SoundCloud không trả track URN để lấy luồng phát.");
+
+  const streams = await officialApiGet(
+    "/tracks/" + encodeURIComponent(urn) + "/streams"
+  );
+  const candidates = getOfficialTranscodingCandidates(streams);
+  if (!candidates.length) {
+    const error = new Error(
+      "Bài hát này chưa có luồng AAC HLS/MP3 HLS hoặc bị giới hạn quyền phát trên SoundCloud."
+    );
+    error.notAvailable = true;
+    throw error;
+  }
+
+  const accessToken = await discoverAccessToken();
+  const attempts = await Promise.all(candidates.map(async candidate => {
+    try {
+      return {
+        candidate,
+        url: await resolveTranscodingUrl(candidate.item, null, true, accessToken)
+      };
+    } catch (error) {
+      return { candidate, error };
+    }
+  }));
+  const successful = attempts.filter(item => item.url);
+  if (!successful.length) {
+    const error = attempts[0]?.error ||
+      new Error("SoundCloud không trả được địa chỉ AAC HLS hợp lệ.");
+    error.notAvailable = true;
+    throw error;
+  }
+
+  return {
+    url: successful[0].url,
+    protocol: "hls",
+    fallbackUrls: [...new Set(successful.slice(1).map(item => item.url))]
+  };
+}
+
 async function resolve(track) {
+  if (hasOAuthCredentials()) return resolveOfficialTrack(track);
+
   const clientId = await discoverClientId();
   const data = await apiGet("/tracks/" + encodeURIComponent(track.id));
   const transcodings = data && data.media && data.media.transcodings ? data.media.transcodings : [];
   const candidates = selectResolveCandidates(getTranscodingCandidates(transcodings));
   if (!candidates.length) {
-    const error = new Error("Bài hát này không có luồng phát được (có thể bị giới hạn bản quyền hoặc khu vực).");
+    const error = new Error(
+      "Bài hát không có luồng phát trên API SoundCloud cũ. " +
+      "Nên cấu hình music.soundcloud_client_secret để chuyển sang API chính thức (AAC HLS)."
+    );
     error.notAvailable = true;
     throw error;
   }
@@ -459,7 +756,8 @@ async function resolve(track) {
       fallbackUrls: [...new Set(successful.slice(1).map(item => item.url))]
     };
   }
-  const error = attempts[0]?.error || new Error("SoundCloud không cung cấp URL stream hợp lệ.");
+  const error = attempts[0]?.error ||
+    new Error("SoundCloud không cung cấp URL stream hợp lệ.");
   error.notAvailable = true;
   throw error;
 }
@@ -474,8 +772,23 @@ module.exports = {
     scriptUrlsFromHtml,
     extractClientId,
     getTranscodingCandidates,
+    getOfficialTranscodingCandidates,
     selectResolveCandidates,
     discoverClientIdFromScripts,
+    getOAuthCredentials,
+    hasOAuthCredentials,
+    requestOAuthToken,
+    discoverAccessToken,
+    clearCachedOAuthToken,
+    resetAuthCache() {
+      cachedClientId = null;
+      discovering = null;
+      negativeUntil = 0;
+      cachedAccessToken = null;
+      accessTokenExpiresAt = 0;
+      cachedRefreshToken = null;
+      tokenDiscovering = null;
+    },
     pickTranscoding,
     extractResolvedStreamUrl,
     CLIENT_ID_SCRIPT_LIMIT,

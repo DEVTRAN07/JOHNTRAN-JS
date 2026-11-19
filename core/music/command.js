@@ -103,7 +103,7 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
         }, { priority: -1 }).catch((error) => logger.log("[music] Now Playing nền lỗi: " + error.message, "warn"));
       });
     } catch (error) {
-      logger.log(`[music:${providerName}] ${error.message}`, "error");
+      logger.log(`[music:${providerName}] ${error?.stack || error?.message || error}`, "error", { source: "music-playback", commandName: providerName });
       await friendlyError(error, reply);
       void Promise.resolve(reply.failed?.()).catch(() => {});
     } finally {
@@ -248,6 +248,12 @@ async function runMusic(providerName, { api, event, args, reply, Threads: thread
       })
     );
   } catch (error) {
+    logger.log(
+      "[music:" + providerName + "] Search failed: " +
+        String(error?.stack || error?.message || error),
+      "error",
+      { source: "music-search", commandName: providerName }
+    );
     return friendlyError(error, reply);
   }
 

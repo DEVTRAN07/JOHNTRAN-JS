@@ -259,3 +259,55 @@ test("/stk re-sends a recent avatar UID cache without looking up avatar or reloa
     service.processDiscordSticker = originalProcess;
   }
 });
+
+
+test("/stk background failures include a traceable error ID and failing stage", async () => {
+  const originalProcess = service.processDiscordSticker;
+  const originalEnsureFrame = service.ensureDecorationFile;
+  const sent = [];
+  service.ensureDecorationFile = async () => "/tmp/stk-error-frame.png";
+  service.processDiscordSticker = async () => {
+    const error = new Error("synthetic renderer failure");
+    error.stickerStage = "ffmpeg";
+    throw error;
+  };
+
+  const api = {
+    async sendMessage(message) {
+      sent.push(message);
+      return { ok: true };
+    }
+  };
+  const event = {
+    threadId: "stk-error-journal-test",
+    type: 1,
+    data: {
+      uidFrom: "stk-error-user",
+      dName: "Tester",
+      msgId: "stk-error-message",
+      cliMsgId: "stk-error-client",
+      quote: {
+        attach: JSON.stringify({
+          photoUrl: "https://files.zdn.vn/stk-error-image.png"
+        })
+      }
+    }
+  };
+
+  try {
+    const result = await command.run({ api, event, args: ["12"] });
+    assert.equal(result, true);
+
+    for (let i = 0; i < 60 && !sent.some(item => /Mã lỗi: [A-F0-9]{8}/.test(item.msg || "")); i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    const failure = sent.find(item => /Mã lỗi: [A-F0-9]{8}/.test(item.msg || ""));
+    assert.ok(failure, "the asynchronous STK failure must send a searchable error ID");
+    assert.match(failure.msg, /Giai đoạn: ffmpeg/);
+    assert.match(failure.msg, /synthetic renderer failure/);
+  } finally {
+    service.processDiscordSticker = originalProcess;
+    service.ensureDecorationFile = originalEnsureFrame;
+  }
+});
