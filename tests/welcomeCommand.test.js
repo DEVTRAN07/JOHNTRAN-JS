@@ -82,7 +82,7 @@ test("welcome test resolves caller avatar and real profile name", async () => {
     assert.deepEqual(rendered.slice(-2).map(card => card.mode), ["welcome", "goodbye"]);
     assert.deepEqual(f.sent.map(item => Boolean(item.payload.attachments?.length)), [true, true]);
     assert.equal(f.sent[0].payload.mentions[0].uid, "test-requester-uid");
-    assert.match(f.sent[0].payload.msg, /👋 Chào mừng @\\. đến với nhóm!/);
+    assert.match(f.sent[0].payload.msg, /👋 Chào mừng @\. đến với nhóm!/);
     assert.equal(f.sent[1].payload.mentions[0].uid, "test-requester-uid");
     assert.equal(f.sent[1].payload.msg, "👋 Tạm biệt @. Chúc bạn mọi điều tốt đẹp!");
     assert.deepEqual(rendered.at(-1).member, {
