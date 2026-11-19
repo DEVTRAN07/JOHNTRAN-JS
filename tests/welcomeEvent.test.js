@@ -226,7 +226,7 @@ test("OUT hydration uses avatar-only endpoint only when user profile has no avat
     },
     async getAvatarUrlProfile(ids, size) {
       calls.push(["avatar", ids, size]);
-      return { former-user_0: { avatar: "https://example.com/former-fallback.jpg" } };
+      return { "former-user_0": { avatar: "https://example.com/former-fallback.jpg" } };
     }
   }, members, { includeGroupMembers: false });
   assert.deepEqual(calls, [
