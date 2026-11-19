@@ -91,8 +91,8 @@ function drawMemberAvatar(ctx, member, x, y, size, palette) {
 }
 function drawWelcomeBanner(ctx, width, height, spec, member, palette) {
   const S = theme.S, margin = S(13);
-  // Exactly two structural layers: the full-bleed theme photo and one
-  // transparent foreground frame. Do not add a second inset frame.
+  // One full-bleed theme photo + one transparent foreground: exactly two
+  // structural layers. Do not add a second inset frame.
   theme.paintBackground(ctx, width, height, {
     veilAlpha: [.17, .23, .31], vignetteAlpha: .17, auroraStrength: .13, sharpen: .34
   });
