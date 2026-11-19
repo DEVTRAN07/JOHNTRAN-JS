@@ -128,7 +128,7 @@ async function jsEncode(input, output) {
   });
 }
 
-const exports = {
+const nativeApi = {
   encodeWebp: wrap({ name: "encode_webp", native: stickerNative, fallback: jsEncodeWebp }),
   encodeGif: wrap({ name: "encode_gif", native: stickerNative, fallback: jsEncodeGif }),
   encodeSticker: wrap({ name: "encode_sticker", native: stickerNative, fallback: jsEncodeSticker }),
@@ -151,4 +151,4 @@ const exports = {
   },
 };
 
-module.exports = exports;
+module.exports = nativeApi;
