@@ -368,6 +368,33 @@ test("CommonJS image captions preserve randomized text colors", async () => {
     "the caption should not lose the randomized style metadata");
 });
 
+
+test("tagged menu captions color the greeting and prompt without overlapping the @mention", () => {
+  const { randomize } = require("../core/styled");
+  const caption = "@Nguyễn Văn A\\n🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành, chủ nhân muốn khám phá tính năng nào? 🚀";
+  const mentionLength = "@Nguyễn Văn A".length;
+  const result = randomize({
+    msg: caption,
+    mentions: [{ uid: "12345", pos: 0, len: mentionLength }]
+  }, { random: () => 0.5 });
+
+  assert.equal(result.msg, caption, "coloring must not rewrite the caption text");
+  assert.deepEqual(result.mentions, [{ uid: "12345", pos: 0, len: mentionLength }],
+    "Zalo mention metadata must stay unchanged");
+
+  const mentionEnd = mentionLength;
+  assert.ok(result.styles.length >= 12, "greeting and prompt words should receive colors");
+  assert.ok(result.styles.every(style => RANDOM_COLORS.has(style.st)),
+    "generated caption styles should be color styles");
+  assert.ok(result.styles.every(style =>
+    style.start + style.len <= 0 || style.start >= mentionEnd),
+    "no color style may overlap the @mention range");
+  assert.ok(result.styles.some(style => style.start >= caption.indexOf("🤖")),
+    "the owner greeting below the tag must be colored");
+  assert.ok(result.styles.some(style => style.start >= caption.indexOf("👉")),
+    "the prompt below the tag must be colored");
+});
+
 test("raw game sends keep random colors while preserving mentions and attachments", async () => {
   const sent = [];
   const rawApi = {
