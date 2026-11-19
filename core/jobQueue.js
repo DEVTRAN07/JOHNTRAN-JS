@@ -2,8 +2,11 @@
 
 // Bounded in-process queues. Retry backoff is delayed outside active worker
 // slots, so a temporarily failing provider cannot block unrelated work.
-const DOWNLOAD_CONCURRENCY = positiveEnv("JT_DOWNLOAD_CONCURRENCY", 2);
-const STICKER_CONCURRENCY = positiveEnv("JT_STICKER_CONCURRENCY", 2);
+const { getAvailableCpuCount, resolveHeavyMediaConcurrency } = require("./mediaResourceLimits");
+const AVAILABLE_CPUS = getAvailableCpuCount();
+const DEFAULT_HEAVY_MEDIA_CONCURRENCY = resolveHeavyMediaConcurrency(AVAILABLE_CPUS);
+const DOWNLOAD_CONCURRENCY = positiveEnv("JT_DOWNLOAD_CONCURRENCY", DEFAULT_HEAVY_MEDIA_CONCURRENCY);
+const STICKER_CONCURRENCY = positiveEnv("JT_STICKER_CONCURRENCY", DEFAULT_HEAVY_MEDIA_CONCURRENCY);
 
 const DEFAULT_LANES = {
   sticker: { concurrency: STICKER_CONCURRENCY, maxPending: 30, maxInFlight: 31 },
