@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.dependencies]
-napi = { version = "2", features = ["derive"] }
+napi = { version = "2" }
 napi-derive = { version = "2" }
 
 [profile.release]
