@@ -235,3 +235,76 @@ test("OUT hydration uses avatar-only endpoint only when user profile has no avat
   ]);
   assert.equal(members[0].avatarUrl, "https://example.com/former-fallback.jpg");
 });
+
+
+test("duplicate UIDs in one JOIN/OUT payload are merged into one member card", () => {
+  const members = eventPlugin._test.newMembers({ updateMembers: [
+    { id: "same-user", dName: "Same User", avatar: "" },
+    { id: "same-user", dName: "Same User", avatar_25: "https://example.com/same-user.jpg" }
+  ] });
+  assert.equal(members.length, 1);
+  assert.equal(members[0].uid, "same-user");
+  assert.equal(members[0].avatarUrl, "https://example.com/same-user.jpg");
+});
+
+test("automatic event resolves real group name from getGroupInfo and caches it", async () => {
+  eventPlugin._test.clearWelcomeEventCaches();
+  const calls = [];
+  const api = {
+    async getGroupInfo(groupId) {
+      calls.push(groupId);
+      return { gridInfoMap: {
+        [groupId]: { name: "Nhóm JOHNTRAN · IT25A" }
+      }};
+    }
+  };
+  const event = {
+    threadId: "group-name-123",
+    data: { groupName: "Nhóm hiện tại" }
+  };
+  assert.equal(await eventPlugin._test.resolveGroupName(api, event), "Nhóm JOHNTRAN · IT25A");
+  assert.equal(await eventPlugin._test.resolveGroupName(api, event), "Nhóm JOHNTRAN · IT25A");
+  assert.deepEqual(calls, ["group-name-123"]);
+  eventPlugin._test.clearWelcomeEventCaches();
+});
+
+test("profile hydration resolves a missing member name even when the avatar is already present", async () => {
+  const members = [{
+    uid: "known-avatar-user",
+    name: "Thành viên mới",
+    avatarUrl: "https://example.com/already-have-avatar.jpg"
+  }];
+  const calls = [];
+  await eventPlugin._test.hydrateMemberProfiles({
+    async getGroupMembersInfo(ids) {
+      calls.push(ids);
+      return { profiles: {
+        "known-avatar-user_0": {
+          id: "known-avatar-user",
+          displayName: "Real Zalo Display Name",
+          avatar: ""
+        }
+      }};
+    },
+    async getUserInfo() {
+      throw new Error("A resolved name and existing avatar must not trigger another lookup");
+    }
+  }, members);
+  assert.deepEqual(calls, [["known-avatar-user"]]);
+  assert.equal(members[0].name, "Real Zalo Display Name");
+  assert.equal(members[0].avatarUrl, "https://example.com/already-have-avatar.jpg");
+});
+
+test("replayed WebSocket JOIN event is sent only once", async () => {
+  eventPlugin._test.clearWelcomeEventCaches();
+  rendered = [];
+  const f = fixture({
+    members: [{ id: "replayed-user", dName: "Replayed User", avatar: "https://example.com/replayed.jpg" }]
+  });
+  f.event.data.time = "1795059000000";
+  await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
+  await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
+  assert.equal(f.sent.length, 1);
+  assert.equal(rendered.length, 1);
+  eventPlugin._test.clearWelcomeEventCaches();
+});
