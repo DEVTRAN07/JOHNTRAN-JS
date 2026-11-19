@@ -163,8 +163,14 @@ module.exports.run = async function ({
 
   const action = String(args[0] || "status").toLowerCase();
   const prefix = String(global.config?.prefix || "/");
-  const record = await Threads.getData(event.threadId);
-  const thread = record?.data && typeof record.data === "object" ? record.data : {};
+  // Listener already resolved this group's record before dispatch. Reuse that
+  // snapshot for command reads instead of issuing a second Supabase request.
+  const record = threadData && typeof threadData === "object"
+    ? threadData
+    : await Threads.getData(event.threadId);
+  const thread = record?.data && typeof record.data === "object"
+    ? record.data
+    : record && typeof record === "object" ? record : {};
   const enabled = Boolean(thread.event_welcome);
   const goodbyeEnabled = Boolean(thread.event_goodbye);
   const common = {

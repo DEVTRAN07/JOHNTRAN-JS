@@ -1,5 +1,32 @@
 "use strict";
 
+function trackStorageRead(stage, startedAt) {
+  try {
+    require("../../metrics").trackListenerStageLatency?.(
+      `storage:${stage}`,
+      Number(process.hrtime.bigint() - startedAt) / 1e6
+    );
+  } catch {
+    // Storage timing must never change data access behavior.
+  }
+}
+
+function measuredRead(stage, read) {
+  const startedAt = process.hrtime.bigint();
+  let result;
+  try {
+    result = read();
+  } catch (error) {
+    trackStorageRead(stage, startedAt);
+    throw error;
+  }
+  if (result && typeof result.then === "function") {
+    return Promise.resolve(result).finally(() => trackStorageRead(stage, startedAt));
+  }
+  trackStorageRead(stage, startedAt);
+  return result;
+}
+
 /**
  * User domain service facade.
  *
@@ -12,7 +39,7 @@ function createUserService(controller) {
 
   return {
     getAll(...args) { return controller.getAll(...args); },
-    getData(...args) { return controller.getData(...args); },
+    getData(...args) { return measuredRead("user-getData", () => controller.getData(...args)); },
     getCachedData(...args) { return controller.getCachedData?.(...args) ?? null; },
     setData(...args) { return controller.setData(...args); },
     setDataAndWait(...args) {

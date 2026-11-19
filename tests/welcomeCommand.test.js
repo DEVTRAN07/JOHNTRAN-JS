@@ -136,3 +136,35 @@ test("welcome out status shows both switches without changing either one", async
   assert.equal(rendered.at(-1).enabled, true);
   assert.equal(rendered.at(-1).goodbyeEnabled, false);
 });
+
+
+test("welcome reuses listener threadData instead of issuing a duplicate storage read", async () => {
+  rendered.length = 0;
+  const f = fixture({ initial: { event_welcome: true, event_goodbye: false } });
+  let getDataCalls = 0;
+  f.context.Threads.getData = async () => {
+    getDataCalls++;
+    return { data: { event_welcome: false, event_goodbye: true } };
+  };
+  f.context.threadData = { data: { event_welcome: true, event_goodbye: false, name: "Nhóm từ cache" } };
+
+  await command.run(f.context);
+  assert.equal(getDataCalls, 0);
+  assert.equal(rendered.at(-1).enabled, true);
+  assert.equal(rendered.at(-1).goodbyeEnabled, false);
+  assert.equal(rendered.at(-1).groupName, "Nhóm từ cache");
+});
+
+test("welcome falls back to durable thread read when listener cache is absent", async () => {
+  rendered.length = 0;
+  const f = fixture({ initial: { event_welcome: true, event_goodbye: false } });
+  let getDataCalls = 0;
+  f.context.Threads.getData = async () => {
+    getDataCalls++;
+    return { data: { event_welcome: true, event_goodbye: false } };
+  };
+
+  await command.run(f.context);
+  assert.equal(getDataCalls, 1);
+  assert.equal(rendered.at(-1).enabled, true);
+});
