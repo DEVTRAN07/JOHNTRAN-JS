@@ -510,6 +510,12 @@ function wrapApi(api, threadId, type, commandName, event = null) {
   let reply = null;
   const markResponseStarted = () => {
     reply?.markResponseStarted?.();
+    try {
+      // Measure bot-side preparation separately from the Zalo send round-trip.
+      require("./metrics").trackFirstResponseStartLatency?.(event, performance.now(), commandName);
+    } catch {
+      // First-send telemetry must never interfere with message delivery.
+    }
   };
   const markResponseDelivered = () => {
     try {
