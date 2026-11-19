@@ -96,6 +96,8 @@ test("/speed reports effective CPU, FFmpeg and media concurrency limits", () => 
     {
       availableCpus: 2,
       ffmpegThreads: 1,
+      globalJobConcurrency: 1,
+      defaultGlobalJobConcurrency: 1,
       stickerConcurrency: 1,
       downloadConcurrency: 1
     }
