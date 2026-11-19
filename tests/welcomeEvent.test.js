@@ -115,7 +115,11 @@ test("welcome event does nothing when disabled or when event is not JOIN", async
 
   const legacyJoinEnabled = fixture({ type: "leave", enabled: true, goodbyeEnabled: false });
   await eventPlugin.run({ ...legacyJoinEnabled, isSelf: false, threadType: 1, eventType: "group_event" });
-  assert.equal(legacyJoinEnabled.sent.length, 2, "legacy JOIN-on groups must automatically get OUT too");
+  assert.equal(legacyJoinEnabled.sent.length, 4, "legacy JOIN-on groups must automatically get OUT too, with one card and tag per member");
+  assert.deepEqual(
+    legacyJoinEnabled.sent.map(item => Boolean(item.payload.attachments?.length)),
+    [true, false, true, false]
+  );
 
   const allDisabled = fixture({ type: "leave", enabled: false, goodbyeEnabled: true });
   await eventPlugin.run({ ...allDisabled, isSelf: false, threadType: 1, eventType: "group_event" });
