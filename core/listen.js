@@ -59,23 +59,35 @@ function shouldExecuteMessageCommand(options = {}) {
   return options.skipCommandExecution !== true;
 }
 
-// Preserve an already cached private-thread override, but do not cold-load or
-// create a Threads group record for a direct message. Group messages keep the
-// original durable fallback because prefix and bot-enabled state live there.
+// Use the synchronous thread mirror on the message hot path. A cache miss
+// must not await Supabase/database readiness: unknown groups remain fail-closed
+// until the existing mirror or durable last-known cache can confirm their state.
 function getThreadDataForMessage(event, Threads) {
   const threadId = event?.threadId;
   if (threadId == null || threadId === "") return null;
 
+  // Keep cached private-thread overrides, but never issue a cold group read
+  // for a private message.
+  if (typeof Threads?.getCachedData !== "function") {
+    // Compatibility for injected/legacy adapters. The production ThreadService
+    // always exposes getCachedData(), so this fallback is not used on the hot path.
+    return event?.type === ThreadType.Group && typeof Threads?.getData === "function"
+      ? Threads.getData(threadId)
+      : null;
+  }
+
   let cached = null;
   try {
-    cached = Threads?.getCachedData?.(threadId) || null;
+    cached = Threads.getCachedData(threadId) || null;
   } catch {
-    // A cache failure should not trigger a private-thread database read.
+    // A cache failure must not turn into an unbounded database wait.
+    return null;
   }
-  if (cached) return cached;
 
-  if (event?.type !== ThreadType.Group) return null;
-  return Threads.getData(threadId);
+  // Production getCachedData() is synchronous. Treat an unexpected Promise as
+  // unavailable and fail closed rather than awaiting remote storage in listener.
+  if (cached && typeof cached.then === "function") return null;
+  return cached;
 }
 
 function shouldProcessUndoEvent(event) {
@@ -305,9 +317,9 @@ function startListening(api) {
     // never be executed again after reconnect.
     if (!shouldExecuteMessageCommand(options)) return;
 
-    // Active groups are normally already cached. Use the synchronous cache
-    // hit so a hot message can enter command parsing without an avoidable
-    // Promise/microtask boundary; cold groups retain the safe async fallback.
+    // Read group settings synchronously. A cold/degraded cache miss stays
+    // fail-closed instead of waiting for a remote database ready/read promise
+    // on the WebSocket listener and delaying every later message.
     const threadLookupStartedAt = performance.now();
     let threadData = null;
     try {
