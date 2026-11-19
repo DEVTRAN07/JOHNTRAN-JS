@@ -1,5 +1,6 @@
 "use strict";
 
+const { randomUUID } = require("node:crypto");
 const { enqueue } = require("../../core/jobQueue");
 const { parseQuote } = require("../../core/mediaReply");
 const { getUserAvatar } = require("../../core/runtime/requesterProfile");
@@ -320,12 +321,31 @@ module.exports.run = async function ({ api, event, args }) {
     );
     void safeReaction(api, event, "✅");
   }).catch(async error => {
-    console.error("[stk] Tạo sticker thất bại:", error?.stack || error);
+    const errorId = randomUUID().slice(0, 8).toUpperCase();
+    const stage = String(error?.stickerStage || "background-job").slice(0, 48);
+    const details = String(error?.userMessage || error?.message || error).slice(0, 280);
+    try {
+      require("../../utils/logger").log(
+        "[" + errorId + "] [stk] Giai đoạn " + stage + " thất bại: " +
+          String(error?.stack || error),
+        "error",
+        {
+          source: "sticker-job",
+          commandName: "stk",
+          code: error?.code,
+          isGroup: Number(event?.type) === 1,
+          groupId: Number(event?.type) === 1 ? event?.threadId : ""
+        }
+      );
+    } catch {
+      console.error("[stk] [" + errorId + "] Tạo sticker thất bại:", error?.stack || error);
+    }
     await safeSend(
       api,
       event,
-      "❌ Đã xảy ra lỗi khi tạo sticker Discord:\n" +
-        String(error?.userMessage || error?.message || error).slice(0, 350),
+      "❌ Đã xảy ra lỗi khi tạo sticker Discord.\n" +
+        "Mã lỗi: " + errorId + "\n" +
+        "Giai đoạn: " + stage + "\n" + details,
       mentions
     );
     void safeReaction(api, event, "😢");
