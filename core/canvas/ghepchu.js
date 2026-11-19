@@ -255,7 +255,6 @@ function drawText(ctx, value, x, y, options = {}) {
     ctx.shadowOffsetY = 2;
   }
   const text = String(value ?? "");
-  const words = text.match(/[\p{L}\p{M}\p{N}]+/gu) || [];
   theme.drawMulticolorText(ctx, text, x, y, {
     font: ctx.font,
     color,
