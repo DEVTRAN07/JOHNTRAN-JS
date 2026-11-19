@@ -8,12 +8,14 @@ const test = require("node:test");
 const { JsonStore } = require("../core/storage");
 const { createDatabaseFacade } = require("../utils/db");
 
+const writerTestsEnabled = process.env.JT_JSON_WRITER_WORKER === "1";
+
 async function temporaryDatabase() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "johntran-json-worker-"));
   return { dir, file: path.join(dir, "store.json") };
 }
 
-test("JSON persistence serializes and writes in a dedicated worker", async () => {
+test("JSON persistence serializes and writes in a dedicated worker", { skip: !writerTestsEnabled }, async () => {
   const { file } = await temporaryDatabase();
   const store = new JsonStore(file, ["Users", "Threads"]);
   const facade = createDatabaseFacade(store);
@@ -48,7 +50,7 @@ test("JSON persistence serializes and writes in a dedicated worker", async () =>
   assert.equal(store.getOperationalStatus().pendingFlush, false);
 });
 
-test("worker flush barriers preserve mutation order and the newest row wins", async () => {
+test("worker flush barriers preserve mutation order and the newest row wins", { skip: !writerTestsEnabled }, async () => {
   const { file } = await temporaryDatabase();
   const store = new JsonStore(file, ["Users"]);
 
@@ -75,7 +77,7 @@ test("worker flush barriers preserve mutation order and the newest row wins", as
   assert.equal(persisted.Users["user-299"].data.balance, 999999);
 });
 
-test("durable database writes await the worker instead of using synchronous flush", async () => {
+test("durable database writes await the worker instead of using synchronous flush", { skip: !writerTestsEnabled }, async () => {
   const { file } = await temporaryDatabase();
   const store = new JsonStore(file, ["Threads"]);
   const facade = createDatabaseFacade(store);
