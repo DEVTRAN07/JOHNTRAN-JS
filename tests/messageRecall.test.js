@@ -258,3 +258,65 @@ test("zero recall delay disables local recall without sending a TTL field", asyn
     global.setTimeout = originalSetTimeout;
   }
 });
+
+test("CommonJS image captions preserve randomized text colors", async () => {
+  const secretKey = Buffer.alloc(16, 7).toString("base64");
+  const requestParams = [];
+  const ctx = {
+    secretKey,
+    API_VERSION: 1,
+    API_TYPE: 30,
+    imei: "test-device",
+    settings: { features: { sharefile: { max_file: 10, max_size_share_file_v3: 50 } } },
+    options: {
+      polyfill: async (url, options) => {
+        const encrypted = new URL(url).searchParams.get("params") ||
+          new URLSearchParams(options?.body || "").get("params");
+        requestParams.push(JSON.parse(decodeAES(secretKey, encrypted)));
+        const data = encodeAES(secretKey, JSON.stringify({ error_code: 0, data: { msgId: "caption-image-id" } }));
+        return new Response(JSON.stringify({ error_code: 0, data }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+    },
+    cookie: new CookieJar(),
+    userAgent: "test-agent"
+  };
+  const api = {
+    zpwServiceMap: {
+      chat: ["https://chat.example"],
+      group: ["https://group.example"],
+      file: ["https://file.example"]
+    },
+    async uploadAttachment() {
+      return [{
+        fileType: "image",
+        photoId: "photo-id",
+        width: 750,
+        height: 520,
+        normalUrl: "https://cdn.example/menu.png",
+        hdUrl: "https://cdn.example/menu-hd.png",
+        totalSize: 12000
+      }];
+    }
+  };
+  const sendMessage = sendMessageFactory(ctx, api);
+  const caption = "@Nguyễn Văn A\\n🤖 Chào chủ nhân!\\n👉 Rất vui được đồng hành";
+  const styles = [
+    { start: 0, len: 14, st: TextStyle.Red },
+    { start: 15, len: 17, st: TextStyle.Green }
+  ];
+
+  await sendMessage({
+    msg: caption,
+    styles,
+    attachments: ["/tmp/jt_menu_1_ab12.png"],
+    mentions: [{ uid: "12345", pos: 0, len: 14 }]
+  }, "thread-id", 1);
+
+  assert.equal(requestParams.length, 1, "a single PNG with caption should use one image request");
+  assert.equal(requestParams[0].desc, caption);
+  const textProperties = JSON.parse(requestParams[0].textProperties);
+  assert.deepEqual(textProperties.styles, styles);
+});
