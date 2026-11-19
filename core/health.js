@@ -77,6 +77,8 @@ function speedPayload() {
     mediaResources: safe(() => ({
       availableCpus: mediaLimits?.getAvailableCpuCount?.() || null,
       ffmpegThreads: mediaLimits?.FFMPEG_THREADS || null,
+      globalJobConcurrency: jobQueue?.GLOBAL_CONCURRENCY || null,
+      defaultGlobalJobConcurrency: jobQueue?.DEFAULT_GLOBAL_CONCURRENCY || null,
       stickerConcurrency: jobQueue?.STICKER_CONCURRENCY || null,
       downloadConcurrency: jobQueue?.DOWNLOAD_CONCURRENCY || null
     }), null),
