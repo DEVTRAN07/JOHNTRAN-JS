@@ -71,6 +71,22 @@ async function sendTrack(reply, threadId, type, track, providerName, api, qualit
   sendingLock.set(lockKey, true);
   try {
     const provider = music.getProvider(providerName);
+
+    // Selecting a result can spend seconds resolving, downloading and
+    // transcoding audio. Send an explicit first response before starting those
+    // stages so the user never sees a silent command while media is prepared.
+    try {
+      await send(
+        api,
+        threadId,
+        type,
+        "⏳ Đã nhận lựa chọn \"" + String(track?.title || "bài hát").slice(0, 100) +
+          "\" trên " + provider.label + ". Bot đang chuẩn bị âm thanh..."
+      );
+    } catch (ackError) {
+      logger.log("[music] Không gửi được tin báo chuẩn bị phát: " +
+        (ackError?.message || ackError), "warn");
+    }
     // The dispatcher owns delayed progress feedback; avoid an extra Zalo
     // reaction request before resolving or starting the audio pipeline.
 
@@ -298,7 +314,11 @@ function createMusicCommand(providerName, meta = {}) {
       category: "Nhạc",
       usage: `${providerName} <từ khóa | số thứ tự | next>`,
       cooldowns: 5,
-      dependencies: meta.dependencies || {}
+      dependencies: meta.dependencies || {},
+      // Search/playback can take longer than a normal text command. Give
+      // Reply's delayed acknowledgement a fallback if the first status send
+      // itself cannot be accepted by Zalo.
+      backgroundExecution: true
     },
     run: (context) => runMusic(providerName, context)
   };
