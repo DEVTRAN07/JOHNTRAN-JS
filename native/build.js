@@ -4,10 +4,10 @@ const path = require("path");
 const { execFileSync, spawnSync } = require("child_process");
 
 const NATIVE_DIR = path.resolve(__dirname);
+// Only ship the audited production addon. canvas-rs and ffmpeg-rs remain
+// prototypes until their build/runtime contracts pass the same CI gate.
 const CRATES = [
   { name: "sticker-rs", addon: "sticker_rs.node" },
-  { name: "canvas-rs", addon: "canvas_rs.node" },
-  { name: "ffmpeg-rs", addon: "ffmpeg_rs.node" },
 ];
 
 function which(cmd) {
