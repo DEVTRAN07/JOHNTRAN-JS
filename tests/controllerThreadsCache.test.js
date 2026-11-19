@@ -47,6 +47,31 @@ test("hot cached group reads skip synchronous storage health and filesystem prob
   }
 });
 
+test("cold group cache misses use memory-only health instead of filesystem diagnostics", async () => {
+  const backend = db.db;
+  const originalGetStatus = backend.getStatus;
+  const threadId = "thread-cache-cold-no-filesystem-" + process.pid;
+  await Threads.setBotEnabled(threadId, true);
+  threadCache.invalidate(threadId);
+
+  let diagnosticReads = 0;
+  backend.getStatus = () => {
+    diagnosticReads++;
+    throw new Error("listener cache miss must not inspect filesystem diagnostics");
+  };
+
+  try {
+    const record = Threads.getCachedData(threadId);
+    assert.equal(record?.data?.bot_enabled, true);
+    assert.equal(diagnosticReads, 0,
+      "cold group lookup must use the in-memory operational health snapshot");
+  } finally {
+    backend.getStatus = originalGetStatus;
+    threadCache.invalidate(threadId);
+    durableThreadCache.invalidate(threadId);
+  }
+});
+
 test("setData keeps the database record envelope in the LRU cache", async () => {
   const threadId = "thread-cache-set-" + process.pid;
   await Threads.setData(threadId, { anti_link: true, prefix: "!" });
