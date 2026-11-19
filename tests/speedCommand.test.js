@@ -113,6 +113,39 @@ test("/speed reports effective CPU, FFmpeg and media concurrency limits", () => 
   assert.match(report, /Tải media: 1 job đồng thời/);
 });
 
+test("/speed reports JSON writer state without exposing file paths", () => {
+  const rows = command._test.formatStorageDiagnostics({
+    driver: "json",
+    ok: true,
+    pendingFlush: true,
+    writer: { enabled: true, ready: true, sequence: 42, persistedSequence: 39 },
+    lastFlushAt: 1000
+  }, 2000).join("\\n");
+
+  assert.match(rows, /Driver: JSON/);
+  assert.match(rows, /background worker hoạt động/);
+  assert.match(rows, /Pending flush: có/);
+  assert.match(rows, /39\\/42 đã ghi/);
+  assert.doesNotMatch(rows, /filePath|store\.json|serviceKey/);
+});
+
+test("/speed reports Supabase retry pressure without credentials", () => {
+  const rows = command._test.formatStorageDiagnostics({
+    driver: "supabase",
+    syncEnabled: true,
+    consecutiveFailures: 2,
+    pendingWrites: 5,
+    retryQueueSize: 3,
+    lastSyncAgeMs: 1200,
+    serviceKey: "must-not-leak"
+  }).join("\\n");
+
+  assert.match(rows, /Driver: SUPABASE/);
+  assert.match(rows, /Pending writes: 5 · retry queue: 3/);
+  assert.match(rows, /lỗi liên tiếp 2/);
+  assert.doesNotMatch(rows, /must-not-leak|serviceKey|SUPABASE_SECRET_KEY/);
+});
+
 test("/speed handles an empty metrics store", () => {
   const emptyMetrics = {
     getLatencyStats: () => ({ count: 0 }),
