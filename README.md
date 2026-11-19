@@ -462,7 +462,7 @@ Dùng PM2 hoặc systemd để tự khởi động lại tiến trình sau reboo
 - Mặc định bot dùng **JSON local** tại `data/store.json`; không gọi database từ xa trong luồng xử lý tin nhắn.
 - File này giữ cấu hình nhóm, người dùng, thống kê và dữ liệu tính năng. Sao lưu thư mục `data/` định kỳ.
 - Với máy chủ dùng ổ đĩa tạm, đặt `JT_PERSISTENT_DIR` tới thư mục volume bền vững.
-- Supabase chỉ được sử dụng khi chủ động đặt `JT_DB_DRIVER=supabase` cùng credentials hợp lệ. Chỉ thêm cấu hình này khi thực sự cần đồng bộ nhiều tiến trình/máy.
+- Supabase chỉ được sử dụng khi chủ động đặt cả `JT_DB_DRIVER=supabase` và `JT_ENABLE_REMOTE_DATABASE=true`, cùng credentials hợp lệ. Chỉ thêm cấu hình này khi thực sự cần đồng bộ nhiều tiến trình/máy.
 - Có thể publish giao diện Panel tĩnh từ thư mục `docs/` bằng GitHub Pages.
 - REMOTE PANEL URL phải trỏ đến domain/IP của máy chủ bạn tự quản lý; token là `JT_PANEL__TOKEN`.
 - Mở cổng cần thiết trên firewall và cấu hình HTTPS/reverse proxy trước khi public Panel.
