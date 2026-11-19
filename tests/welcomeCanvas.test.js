@@ -15,6 +15,14 @@ test("welcome Canvas follows the shared one-person photo layout", () => {
   assert.ok(source.includes("avatarCache.warmAvatar")); assert.ok(source.includes("drawMemberAvatar"));
   assert.ok(source.includes("One full-bleed theme photo")); assert.ok(!source.includes("theme.panel"));
 });
+test("welcome Canvas uses only two structural layers, without an inset frame", () => {
+  const source = fs.readFileSync(require.resolve("../core/canvas/welcome"), "utf8");
+  assert.ok(source.includes("theme.paintBackground(ctx, width, height"));
+  assert.ok(source.includes('ctx.strokeStyle = "rgba(245,252,255,.82)"'));
+  assert.ok(source.includes("exactly two") && source.includes("structural layers"));
+  assert.ok(!source.includes("rgba(105,221,255,.18)"));
+  assert.ok(!source.includes("margin + S(2)"));
+});
 test("welcome member normalization prefers full Zalo avatar and sanitizes names", () => {
   assert.deepEqual(welcome._test.normalizeMember({ member: {
     name: "  Hoàng\n Tùng  ", avatar: "https://example.com/full.jpg", avatar_25: "https://example.com/small.jpg"
