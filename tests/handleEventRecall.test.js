@@ -54,6 +54,9 @@ test("active Nối Từ event replies use the shared recall-clock wrapper", asyn
 
     await Promise.resolve();
     await Promise.resolve();
+    // The recall-clock scheduler dispatches addReaction on its own microtask.
+    // Yield one real event-loop turn before observing that side effect.
+    await new Promise(resolve => originalSetTimeout(resolve, 0));
 
     assert.equal(result.consumed, true);
     assert.equal(sent.length, 1);
