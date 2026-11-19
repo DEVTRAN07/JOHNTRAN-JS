@@ -218,3 +218,21 @@ test("Rust N-API colorizer preserves UTF-16 offsets and skips tagged mention ran
     assert.notEqual(mentionSpans[index].st, mentionSpans[index - 1].st);
   }
 });
+
+
+test("JavaScript colorization fallback keeps the mention range separate and colors text after it", () => {
+  const message = "@Wuang 🤖 Chào chủ nhân! 👉 Rất vui được đồng hành";
+  const mentionLength = "@Wuang".length;
+  const styles = styledText.randomColorStyles(message, {
+    random: () => 0.4,
+    excludeRanges: [{ start: 0, end: mentionLength }]
+  });
+
+  assert.ok(styles.length >= 7, "words after the tag must still be colored");
+  assert.ok(styles.every(style => COLOR_STYLES.has(style.st)),
+    "all generated spans should use supported Zalo colors");
+  assert.ok(styles.every(style => style.start >= mentionLength),
+    "no generated color span may overlap the @Wuang tag");
+  assert.ok(styles.some(style => style.start >= message.indexOf("🤖")));
+  assert.ok(styles.some(style => style.start >= message.indexOf("👉")));
+});
