@@ -4,6 +4,15 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const stats = require("../core/stats");
 
+test("Panel stats use a long cache TTL to avoid repeated background Zalo API scans", () => {
+  const thirtyMinutes = 30 * 60 * 1000;
+  assert.equal(stats.PROFILE_CACHE_TTL, thirtyMinutes);
+  assert.equal(stats.FRIENDS_CACHE_TTL, thirtyMinutes);
+  assert.equal(stats.GROUPS_CACHE_TTL, thirtyMinutes);
+  assert.ok(stats.GROUP_INFO_CONCURRENCY <= 4,
+    "background group detail requests must remain bounded");
+});
+
 test("collectStats coalesces parallel refreshes and caches remote profile/friend/group calls", async () => {
   stats.invalidate();
   const prefix = "stats-test-" + process.pid + "-";
