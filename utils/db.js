@@ -22,12 +22,17 @@ function resolveDatabaseConfig(env = process.env) {
     throw new Error("Cấu hình xung đột: JT_DB_DRIVER=supabase nhưng SUPABASE_DISABLE=true.");
   }
 
-  const forceJson = requestedDriver === "json" || disabled;
-  if (forceJson) return { driver: "json", url: "", serviceKey: "", forced: true };
-
-  const anySupabaseValue = Boolean(url || serviceKey);
+  const explicitlyJson = requestedDriver === "json";
   const explicitlySupabase = requestedDriver === "supabase";
-  if (explicitlySupabase || anySupabaseValue) {
+
+  // A copied .env may still contain old Supabase credentials. Never start
+  // network database sync just because those variables happen to exist:
+  // remote storage is opt-in and requires JT_DB_DRIVER=supabase explicitly.
+  if (!explicitlySupabase) {
+    return { driver: "json", url: "", serviceKey: "", forced: explicitlyJson || disabled };
+  }
+
+  if (explicitlySupabase) {
     if (!url || !serviceKey) {
       throw new Error(
         "Thiếu cấu hình Supabase: cần SUPABASE_URL và SUPABASE_SECRET_KEY " +
@@ -50,8 +55,8 @@ if (DATABASE_CONFIG.driver === "supabase") {
   db = new SupabaseStore(DATABASE_CONFIG.url, DATABASE_CONFIG.serviceKey);
   logger.log("Database: Supabase (bot_threads / bot_users / bot_metrics / bot_stats / bot_media_cache)", "info");
 } else {
-  if (DATABASE_CONFIG.forced && (process.env.SUPABASE_URL || process.env.SUPABASE_SERVICE_KEY)) {
-    logger.log("Database: forced JSON store (JT_DB_DRIVER/SUPABASE_DISABLE) mặc dù Supabase env có sẵn", "warn");
+  if (process.env.SUPABASE_URL || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY) {
+    logger.log("Database: bỏ qua Supabase credentials vì chưa chọn JT_DB_DRIVER=supabase; đang dùng JSON local.", "warn");
   }
 
   // Khi có Persistent Disk nhưng không chỉ định JT_DB_FILE, đặt file JSON
