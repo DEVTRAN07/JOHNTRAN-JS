@@ -490,15 +490,36 @@ function defineWrapped(wrapped, name, fn) {
   });
 }
 
+function shouldPrepareImageCaption(message) {
+  const source = message && typeof message === "object" ? message : null;
+  const caption = typeof source?.msg === "string" ? source.msg : "";
+  const attachments = Array.isArray(source?.attachments)
+    ? source.attachments
+    : source?.attachments ? [source.attachments] : [];
+
+  // Plain text is the most common reply path. Do not load Canvas/node-canvas
+  // or create an async boundary when there is no image caption to compose.
+  if (!source || !caption.trim() || attachments.length !== 1 || source.quote ||
+      caption.length > 2400) return false;
+  if (caption.includes("@.") && Array.isArray(source.mentions) && source.mentions.length) {
+    return false;
+  }
+  return true;
+}
+
 async function sendStyledRawMessage(api, message, threadId, type) {
   if (typeof api?.sendMessage !== "function") {
     throw new TypeError("Zalo API sendMessage() is required");
   }
 
-  const captionRenderer = require("./canvas/attachmentCaption");
-  const prepared = await captionRenderer.composeImageCaption(message);
-  if (prepared.error) {
-    logger.log("Không thể ghép caption vào Canvas ảnh: " + (prepared.error?.message || prepared.error), "warn");
+  let captionRenderer = null;
+  let prepared = { payload: message, tempFile: null };
+  if (shouldPrepareImageCaption(message)) {
+    captionRenderer = require("./canvas/attachmentCaption");
+    prepared = await captionRenderer.composeImageCaption(message);
+    if (prepared.error) {
+      logger.log("Không thể ghép caption vào Canvas ảnh: " + (prepared.error?.message || prepared.error), "warn");
+    }
   }
 
   let outgoing = prepared.payload;
@@ -511,7 +532,9 @@ async function sendStyledRawMessage(api, message, threadId, type) {
   try {
     return await api.sendMessage(outgoing, threadId, type);
   } finally {
-    await captionRenderer.cleanupComposedCaption(prepared.tempFile);
+    if (prepared.tempFile && captionRenderer) {
+      await captionRenderer.cleanupComposedCaption(prepared.tempFile);
+    }
   }
 }
 
@@ -547,10 +570,16 @@ function wrapApi(api, threadId, type, commandName, event = null) {
     // Zalo drops textProperties from photo descriptions in its chat UI.
     // Rasterize single-image captions into the Canvas itself so the complete
     // card + caption remains one message and every word has visible color.
-    const captionRenderer = require("./canvas/attachmentCaption");
-    const prepared = await captionRenderer.composeImageCaption(content);
-    if (prepared.error) {
-      logger.log("Không thể ghép caption vào Canvas ảnh: " + (prepared.error?.message || prepared.error), "warn");
+    // Only image-caption messages need Canvas composition. Text-only replies
+    // stay on the shortest path and never load node-canvas.
+    let captionRenderer = null;
+    let prepared = { payload: content, tempFile: null };
+    if (shouldPrepareImageCaption(content)) {
+      captionRenderer = require("./canvas/attachmentCaption");
+      prepared = await captionRenderer.composeImageCaption(content);
+      if (prepared.error) {
+        logger.log("Không thể ghép caption vào Canvas ảnh: " + (prepared.error?.message || prepared.error), "warn");
+      }
     }
 
     let outgoing = prepared.payload;
@@ -566,7 +595,9 @@ function wrapApi(api, threadId, type, commandName, event = null) {
       scheduleRecall(api, response, targetThreadId, targetType, extracted.delayMs);
       return response;
     } finally {
-      await captionRenderer.cleanupComposedCaption(prepared.tempFile);
+      if (prepared.tempFile && captionRenderer) {
+        await captionRenderer.cleanupComposedCaption(prepared.tempFile);
+      }
     }
   });
 
@@ -659,6 +690,7 @@ module.exports = {
     addRecallClock,
     getRecallCountdownUpdates,
     isRecallCountdownEnabled,
+    shouldPrepareImageCaption,
     getRecallReactionQueueStats: () => ({
       active: activeRecallReactions,
       pending: recallReactionQueue.length,
