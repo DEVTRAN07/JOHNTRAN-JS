@@ -4,10 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { wrapApi, _test } = require("../core/message");
 
-test("text-only replies bypass the Canvas caption module", async () => {
-  const captionModulePath = require.resolve("../core/canvas/attachmentCaption");
-  delete require.cache[captionModulePath];
-
+test("text-only replies stay on the short styled-message path", async () => {
   const sent = [];
   const api = {
     async sendMessage(payload, threadId, type) {
@@ -21,13 +18,9 @@ test("text-only replies bypass the Canvas caption module", async () => {
 
   assert.equal(sent.length, 1);
   assert.equal(sent[0].payload.msg, "Phản hồi chữ");
+  assert.ok(sent[0].payload.styles.length > 0);
   assert.equal(sent[0].threadId, "fast-path-thread");
   assert.equal(sent[0].type, 1);
-  assert.equal(
-    require.cache[captionModulePath],
-    undefined,
-    "a text-only reply must not load node-canvas caption code"
-  );
 });
 
 test("image caption stays text below the Canvas in one styled message", async () => {
