@@ -327,10 +327,9 @@ function makePersonalMessage(member, kind = "welcome") {
   const suffix = isGoodbye
     ? " đã rời nhóm. Chúc bạn mọi điều tốt đẹp!"
     : " đến với nhóm!\n🎉 Rất vui được gặp bạn. Chúc bạn có những phút giây vui vẻ cùng mọi người!";
-  return {
-    msg: prefix + "@." + suffix,
-    mentions: [{ pos: prefix.length, uid: member.uid, len: 2 }]
-  };
+  // This @name is painted into the card footer; it is visual text, not an
+  // interactive Zalo notification mention.
+  return { msg: prefix + "@" + cleanText(member?.name, "bạn") + suffix };
 }
 
 module.exports.run = async function ({
@@ -393,15 +392,16 @@ module.exports.run = async function ({
     const cardPath = cards[index];
     const message = makePersonalMessage(member, kind);
 
-    // Send the Canvas as its own bubble first. The personalized @mention is a
-    // second text bubble so it always appears directly below the person's card.
+    // Combine the personal greeting and card. The shared send wrapper
+    // paints every caption word into the image instead of a plain text bubble.
     if (cardPath) {
       try {
         await api.sendMessage({
-          msg: "",
+          ...message,
           attachments: [cardPath],
           ttlKind: "card"
         }, threadId, threadType || ThreadType.Group);
+        continue;
       } catch (error) {
         console.error("[WELCOME_CARD_SEND]", member.uid, error?.stack || error);
       } finally {
@@ -409,6 +409,7 @@ module.exports.run = async function ({
       }
     }
 
+    // Text-only fallback when Canvas rendering or upload failed.
     try {
       await api.sendMessage(message, threadId, threadType || ThreadType.Group);
     } catch (error) {
