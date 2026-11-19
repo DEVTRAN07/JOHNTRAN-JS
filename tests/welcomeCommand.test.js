@@ -43,6 +43,7 @@ test("welcome command shows a Canvas status card with the actual group name", as
   assert.deepEqual(f.sent[0].payload.attachments, ["/tmp/jt-welcome-command-test.png"]);
   assert.equal(rendered.at(-1).mode, "status");
   assert.equal(rendered.at(-1).enabled, false);
+  assert.equal(rendered.at(-1).goodbyeEnabled, false);
   assert.equal(rendered.at(-1).groupName, "Tổ Cu 5 · Bot dép lào");
 });
 
@@ -73,12 +74,14 @@ test("welcome test resolves caller avatar and real profile name", async () => {
   try {
     f.context.args = ["test"];
     await command.run(f.context);
-    assert.equal(rendered.at(-1).mode, "welcome");
+    assert.equal(f.sent.length, 2, "/welcome test must send both JOIN and OUT previews");
+    assert.deepEqual(rendered.slice(-2).map(card => card.mode), ["welcome", "goodbye"]);
     assert.deepEqual(rendered.at(-1).member, {
       name: "Quang Profile",
       avatarUrl: "https://example.com/quang-profile.jpg"
     });
     assert.equal(rendered.at(-1).groupName, "Tổ Cu 5 · Bot dép lào");
+    assert.deepEqual(rendered.at(-2).member, rendered.at(-1).member);
     assert.ok(lookupOptions.waitMs > 0);
     assert.ok(lookupOptions.avatarWaitMs > 0);
   } finally {
@@ -101,4 +104,35 @@ test("welcome command is group-only", async () => {
 test.after(() => {
   canvas.renderWelcomeCard = originalRender;
   requesterProfile.getRequesterProfile = originalGetRequesterProfile;
+});
+
+
+test("welcome out on/off persists an independent goodbye setting", async () => {
+  rendered.length = 0;
+  const f = fixture({ initial: { event_welcome: true, event_goodbye: false } });
+  f.context.args = ["out", "on"];
+  await command.run(f.context);
+  assert.equal(f.data.event_welcome, true, "OUT toggle must not change JOIN");
+  assert.equal(f.data.event_goodbye, true);
+  assert.equal(rendered.at(-1).mode, "status");
+  assert.equal(rendered.at(-1).enabled, true);
+  assert.equal(rendered.at(-1).goodbyeEnabled, true);
+
+  f.context.args = ["out", "off"];
+  await command.run(f.context);
+  assert.equal(f.data.event_welcome, true, "turning OUT off must preserve JOIN");
+  assert.equal(f.data.event_goodbye, false);
+  assert.equal(rendered.at(-1).goodbyeEnabled, false);
+  assert.equal(f.sent.length, 2);
+});
+
+test("welcome out status shows both switches without changing either one", async () => {
+  rendered.length = 0;
+  const f = fixture({ initial: { event_welcome: true, event_goodbye: false } });
+  f.context.args = ["out"];
+  await command.run(f.context);
+  assert.equal(f.data.event_welcome, true);
+  assert.equal(f.data.event_goodbye, false);
+  assert.equal(rendered.at(-1).enabled, true);
+  assert.equal(rendered.at(-1).goodbyeEnabled, false);
 });

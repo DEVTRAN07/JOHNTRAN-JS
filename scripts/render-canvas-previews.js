@@ -338,6 +338,17 @@ async function main() {
     }))
   );
 
+  await saveDirect(
+    "26-goodbye-card",
+    Promise.resolve(welcomeCanvas.renderWelcomeCard({
+      mode: "goodbye",
+      member: { name: "Quang Nguyen", avatarUrl: "" },
+      groupName: "JOHNTRAN Community",
+      prefix: "/",
+      botName: "JOHNTRAN"
+    }))
+  );
+
   // /card directly invokes profileCard.render(), outside canvasWorker.
   const config = require("../core/config");
   global.config = typeof config.load === "function" ? config.load() : {};
@@ -395,8 +406,9 @@ async function main() {
     "01 menu, 02 menu folder, 03 topchat, 04 status, 05 /card profile,",
     "06 music search, 07 now playing, 08-11 reply.card variants, 12 generic card,",
     "13 Tiến Lên table, 14 Tiến Lên private hand, 15 Sâm table, 16 Sâm private hand, 19 Anti-Protection V2, 20 photo theme gallery, 21 Nối Từ guide, 22 Ghép Chữ, 23 Caro board.",
+    "24 Welcome JOIN, 25 Welcome status, 26 Goodbye OUT.",
     "",
-    "Reference only (not mapped into canvasWorker):",
+    "Direct renderer reference only:",
     "17-18 legacy profile and avatar renderer previews."
   ].join("\n"), "utf8");
 

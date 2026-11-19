@@ -107,9 +107,14 @@ function drawWelcomeBanner(ctx, width, height, spec, member, palette) {
   const textLeft = avatarX + avatarSize + S(34), textRight = width - S(34);
   const center = (textLeft + textRight) / 2, maxWidth = textRight - textLeft;
   drawText(ctx, cleanText(spec.groupName, "Cộng đồng JOHNTRAN"), center, S(61), 18, palette.text, true, "center", maxWidth);
-  drawText(ctx, "Chào mừng " + member.name, center, S(105), 29, palette.text, true, "center", maxWidth);
-  drawText(ctx, "Đã tham gia nhóm", center, S(143), 17, palette.text, true, "center", maxWidth);
-  drawText(ctx, cleanText(spec.footerText, "Chúc bạn có những phút giây vui vẻ cùng mọi người!"),
+  const isGoodbye = spec.mode === "goodbye";
+  drawText(ctx, (isGoodbye ? "Tạm biệt " : "Chào mừng ") + member.name,
+    center, S(105), 29, palette.text, true, "center", maxWidth);
+  drawText(ctx, isGoodbye ? "Đã rời nhóm" : "Đã tham gia nhóm",
+    center, S(143), 17, palette.text, true, "center", maxWidth);
+  drawText(ctx, cleanText(spec.footerText, isGoodbye
+    ? "Chúc bạn mọi điều tốt đẹp trên chặng đường tiếp theo!"
+    : "Chúc bạn có những phút giây vui vẻ cùng mọi người!"),
     center, S(181), 12.5, palette.muted, true, "center", maxWidth);
   drawText(ctx, cleanText(spec.botName || global.config?.name_bot || "JOHNTRAN"),
     textRight, height - S(12), 8.5, palette.accent, true, "right", S(150));
@@ -133,18 +138,26 @@ function drawStatusCard(ctx, width, height, spec, palette) {
   const enabled = Boolean(spec.enabled), statusColor = enabled ? palette.green : palette.red;
   ctx.save(); ctx.beginPath(); ctx.arc(margin + S(10), S(222), S(6), 0, Math.PI * 2);
   ctx.fillStyle = statusColor; ctx.fill(); ctx.restore();
-  drawText(ctx, enabled ? "ĐANG BẬT  ·  BOT SẼ TỰ ĐỘNG CHÀO NGƯỜI MỚI" : "ĐANG TẮT  ·  BOT KHÔNG GỬI LỜI CHÀO",
+  drawText(ctx, enabled ? "JOIN  ·  ĐANG BẬT" : "JOIN  ·  ĐANG TẮT",
     margin + S(28), S(227), 14, statusColor, true, "left", width - margin * 2 - S(30));
-  drawText(ctx, prefix + "welcome on     ·  Bật lời chào", margin, S(310), 14, palette.text, true);
-  drawText(ctx, prefix + "welcome off    ·  Tắt lời chào", margin, S(343), 14, palette.text, true);
-  drawText(ctx, prefix + "welcome test   ·  Xem trước card", margin, S(376), 14, palette.text, true);
+
+  const goodbyeEnabled = Boolean(spec.goodbyeEnabled);
+  const goodbyeColor = goodbyeEnabled ? palette.green : palette.red;
+  ctx.save(); ctx.beginPath(); ctx.arc(margin + S(10), S(258), S(6), 0, Math.PI * 2);
+  ctx.fillStyle = goodbyeColor; ctx.fill(); ctx.restore();
+  drawText(ctx, goodbyeEnabled ? "OUT  ·  ĐANG BẬT" : "OUT  ·  ĐANG TẮT",
+    margin + S(28), S(263), 14, goodbyeColor, true, "left", width - margin * 2 - S(30));
+
+  drawText(ctx, prefix + "welcome on/off       ·  Bật/tắt JOIN", margin, S(320), 13.5, palette.text, true);
+  drawText(ctx, prefix + "welcome out on/off   ·  Bật/tắt OUT", margin, S(352), 13.5, palette.text, true);
+  drawText(ctx, prefix + "welcome test         ·  Xem 2 card JOIN + OUT", margin, S(384), 13.5, palette.text, true);
   drawText(ctx, botName, width - margin, height - S(20), 9, palette.accent, true, "right");
 }
 async function renderWelcomeCard(spec = {}) {
   await prepareWelcomeTheme();
   theme.initFonts(); theme.ensureTheme();
   const S = theme.S, width = theme.WIDTH, palette = theme.getCardPalette();
-  const mode = spec.mode === "status" ? "status" : "welcome";
+  const mode = ["status", "goodbye"].includes(spec.mode) ? spec.mode : "welcome";
   const height = mode === "status" ? S(560) : S(220);
   const { canvas, ctx } = theme.newCanvas(width, height);
   if (mode === "status") {

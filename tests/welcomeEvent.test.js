@@ -7,9 +7,9 @@ const originalRender = canvas.renderWelcomeCard;
 let rendered = [];
 canvas.renderWelcomeCard = async spec => { rendered.push(spec); return "/tmp/jt-welcome-event-test.png"; };
 
-function fixture({ enabled = true, type = "join", members } = {}) {
+function fixture({ enabled = true, goodbyeEnabled = true, type = "join", members } = {}) {
   const sent = [];
-  const Threads = { async getData() { return { data: { event_welcome: enabled } }; } };
+  const Threads = { async getData() { return { data: { event_welcome: enabled, event_goodbye: goodbyeEnabled } }; } };
   const api = {
     async getOwnId() { return "bot-id"; },
     async sendMessage(payload, threadId, threadType) { sent.push({ payload, threadId, threadType }); return true; }
@@ -102,10 +102,14 @@ test("welcome event does nothing when disabled or when event is not JOIN", async
   const disabled = fixture({ enabled: false });
   await eventPlugin.run({ ...disabled, isSelf: false, threadType: 1, eventType: "group_event" });
   assert.equal(disabled.sent.length, 0);
-  const leave = fixture({ type: "leave" });
-  await eventPlugin.run({ ...leave, isSelf: false, threadType: 1, eventType: "group_event" });
-  assert.equal(leave.sent.length, 0);
+  const update = fixture({ type: "update" });
+  await eventPlugin.run({ ...update, isSelf: false, threadType: 1, eventType: "group_event" });
+  assert.equal(update.sent.length, 0);
   assert.equal(rendered.length, 0);
+
+  const goodbyeDisabled = fixture({ type: "leave", goodbyeEnabled: false });
+  await eventPlugin.run({ ...goodbyeDisabled, isSelf: false, threadType: 1, eventType: "group_event" });
+  assert.equal(goodbyeDisabled.sent.length, 0);
 });
 
 test("welcome event never greets the bot account as a new member", async () => {
@@ -117,3 +121,58 @@ test("welcome event never greets the bot account as a new member", async () => {
 });
 
 test.after(() => { canvas.renderWelcomeCard = originalRender; });
+
+
+test("leave event sends one personalized Goodbye Canvas per departed member", async () => {
+  rendered = [];
+  const f = fixture({
+    type: "leave",
+    members: [
+      { id: "former-1", dName: "Former One", avatar: "https://example.com/former-1.jpg" },
+      { id: "former-2", dName: "Former Two", avatar_25: "https://example.com/former-2.jpg" },
+      { id: "bot-id", dName: "Bot" }
+    ]
+  });
+  await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
+  assert.equal(f.sent.length, 2);
+  assert.deepEqual(rendered.map(card => card.mode), ["goodbye", "goodbye"]);
+  assert.deepEqual(rendered.map(card => card.member.name), ["Former One", "Former Two"]);
+  assert.match(f.sent[0].payload.msg, /Tạm biệt @\. đã rời nhóm/);
+  assert.match(f.sent[1].payload.msg, /Tạm biệt @\. đã rời nhóm/);
+  assert.deepEqual(f.sent.map(item => item.payload.mentions[0].uid), ["former-1", "former-2"]);
+});
+
+test("remove-member event is treated as OUT and resolves departed user avatars through user profiles", async () => {
+  rendered = [];
+  const f = fixture({
+    type: "remove_member",
+    members: [{ id: "removed-user", dName: "Event Name", avatar: "" }]
+  });
+  const lookups = [];
+  f.api.getUserInfo = async (ids, size) => {
+    lookups.push(["getUserInfo", ids, size]);
+    return { changed_profiles: {
+      "removed-user_0": {
+        userId: "removed-user",
+        displayName: "Resolved Former Member",
+        avatar: "https://example.com/removed-user.jpg"
+      }
+    }};
+  };
+  f.api.getGroupMembersInfo = async () => {
+    throw new Error("Departed users should not be looked up in current group members");
+  };
+  await eventPlugin.run({ ...f, isSelf: false, threadType: 1, eventType: "group_event" });
+  assert.equal(f.sent.length, 1);
+  assert.deepEqual(lookups, [["getUserInfo", ["removed-user"], 240]]);
+  assert.equal(rendered[0].mode, "goodbye");
+  assert.equal(rendered[0].member.name, "Resolved Former Member");
+  assert.equal(rendered[0].member.avatarUrl, "https://example.com/removed-user.jpg");
+});
+
+test("JOIN and OUT event kinds are recognized independently", () => {
+  assert.equal(eventPlugin._test.eventKind({ type: "join" }, "group_event", {}), "welcome");
+  assert.equal(eventPlugin._test.eventKind({ type: "leave" }, "group_event", {}), "goodbye");
+  assert.equal(eventPlugin._test.eventKind({ type: "remove_member" }, "group_event", {}), "goodbye");
+  assert.equal(eventPlugin._test.eventKind({ type: "update" }, "group_event", {}), "");
+});
