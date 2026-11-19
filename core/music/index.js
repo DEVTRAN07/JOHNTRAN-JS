@@ -9,6 +9,7 @@ const db = require("../../utils/db");
 const { caches } = require("../cache");
 const { runInWorker } = require("../workerPool");
 const { enqueue } = require("../jobQueue");
+const { FFMPEG_THREADS } = require("../mediaResourceLimits");
 
 const providers = new Map();
 
@@ -149,6 +150,7 @@ function downloadHlsToMp3(streamUrl, filePath, quality = 128) {
       "-reconnect_delay_max", "5",
       "-i", streamUrl,
       "-vn", "-c:a", "libmp3lame", "-b:a", `${bitrate}k`,
+      "-threads", String(FFMPEG_THREADS),
       "-f", "mp3", filePath
     ];
 
