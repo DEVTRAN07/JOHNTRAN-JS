@@ -30,13 +30,14 @@ function formatRows(rows, labelPrefix = "") {
   );
 }
 
-function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime()) {
+function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), eventLoop = null) {
   const latency = source.getLatencyStats?.() || {};
   const commands = source.getCommandLatencyStats?.(6) || [];
   const handlers = source.getCommandExecutionLatencyStats?.(6) || [];
   const listener = source.getListenerStageLatencyStats?.(10) || [];
   const apiCalls = source.getZaloApiLatencyStats?.(6) || [];
   const firstResponse = source.getFirstResponseLatencyByCommandStats?.(6) || [];
+  const loop = eventLoop;
 
   const totalSamples = Math.max(0, Number(latency.count) || 0);
   const latencyLine = totalSamples
@@ -70,13 +71,22 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime()) {
     "🚀 NHẬN TIN → PHẢN HỒI ĐẦU TIÊN",
     ...formatRows(firstResponse, "/"),
     "",
+    "🧠 EVENT LOOP",
+    loop
+      ? "P95 " + formatMs(loop.p95Ms) + " · P99 " + formatMs(loop.p99Ms) + " · Max " + formatMs(loop.maxMs)
+      : "Chưa có mẫu event-loop.",
+    "",
     "Ghi chú: P95 là thời gian 95% mẫu không vượt quá; API Zalo gồm cả thời gian chờ mạng.",
     "Dữ liệu chỉ là thống kê trong bộ nhớ kể từ lần bot khởi động gần nhất."
   ].join("\n");
 }
 
 module.exports.run = async function ({ api, event, reply }) {
-  const report = buildSpeedReport();
+  let eventLoop = null;
+  try {
+    eventLoop = require("../../core/health").getEventLoopMetrics({ reset: false });
+  } catch { /* event-loop sampling is optional diagnostic data */ }
+  const report = buildSpeedReport(metrics, process.uptime(), eventLoop);
   if (typeof reply?.text === "function") return reply.text(report);
   return api.sendMessage({ msg: report }, event.threadId, event.type);
 };
