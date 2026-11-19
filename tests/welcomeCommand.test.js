@@ -78,13 +78,13 @@ test("welcome test resolves caller avatar and real profile name", async () => {
   try {
     f.context.args = ["test"];
     await command.run(f.context);
-    assert.equal(f.sent.length, 4, "/welcome test sends each Canvas followed by its mention text");
+    assert.equal(f.sent.length, 2, "/welcome test puts each caption and @mention in the Canvas message");
     assert.deepEqual(rendered.slice(-2).map(card => card.mode), ["welcome", "goodbye"]);
-    assert.deepEqual(f.sent.map(item => Boolean(item.payload.attachments?.length)), [true, false, true, false]);
+    assert.deepEqual(f.sent.map(item => Boolean(item.payload.attachments?.length)), [true, true]);
+    assert.equal(f.sent[0].payload.mentions[0].uid, "test-requester-uid");
+    assert.match(f.sent[0].payload.msg, /👋 Chào mừng @\. đến với nhóm!/);
     assert.equal(f.sent[1].payload.mentions[0].uid, "test-requester-uid");
-    assert.match(f.sent[1].payload.msg, /Chào mừng @\./);
-    assert.equal(f.sent[3].payload.mentions[0].uid, "test-requester-uid");
-    assert.match(f.sent[3].payload.msg, /Tạm biệt @\./);
+    assert.equal(f.sent[1].payload.msg, "👋 Tạm biệt @. Chúc bạn mọi điều tốt đẹp!");
     assert.deepEqual(rendered.at(-1).member, {
       uid: "test-requester-uid",
       name: "Quang Profile",
