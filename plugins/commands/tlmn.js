@@ -12,6 +12,7 @@ const { firstMention, withRequesterMention } = require("../../core/mentions");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const { sendGameGuideOnce } = require("../../core/games/gameGuideDelivery");
 const { sendStyledRawMessage } = require("../../core/message");
+const { extractPlainText } = require("../../core/runtime/plainText");
 
 const DEFAULT_COINS = 100000;
 const MIN_BET = 1000;
@@ -2073,7 +2074,7 @@ async function runCommand(context) {
 async function handleIncoming(context = {}) {
   const { api, event, isSelf, Threads } = context;
   if ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true) return false;
-  const content = String(event?.data?.content || "").trim();
+  const content = extractPlainText(event?.data?.content);
   const prefix = String(global.config?.prefix || "!");
   if (!content || content.startsWith(prefix) || event?.type !== ThreadType.Group) return false;
   const lower = engine.normalizeText(content);
@@ -2146,7 +2147,7 @@ function shouldQueueIncoming(context = {}) {
   if ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true) return false;
   if (event?.type !== ThreadType.Group) return false;
 
-  const content = String(event?.data?.content || "").trim();
+  const content = extractPlainText(event?.data?.content);
   if (!content) return false;
   const prefix = String(global.config?.prefix || "!");
   if (content.startsWith(prefix)) return false;
