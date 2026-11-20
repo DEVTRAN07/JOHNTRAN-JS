@@ -20,7 +20,7 @@ const supabaseStore = fs.readFileSync(path.join(root, "core/storage/supabase.js"
 const panelBridge = fs.readFileSync(path.join(root, "core/panelBridge.js"), "utf8");
 const bridgeProfile = fs.readFileSync(path.join(root, "panel/bridgeProfile.js"), "utf8");
 const botManager = fs.readFileSync(path.join(root, "panel/botManager.js"), "utf8");
-const johnTran = fs.readFileSync(path.join(root, "JohnTran.js"), "utf8");
+const johnTran = fs.readFileSync(path.join(root, "src/app/startBot.js"), "utf8");
 
 test("rebuilt panel JavaScript parses without browser-side dependencies", () => {
   assert.doesNotThrow(() => new vm.Script(js, { filename: "docs/panel.js" }));
@@ -410,7 +410,7 @@ test("system view checks storage in each logged-in child bot and the bot registr
 });
 
 test("storage diagnostics never reveal Supabase secrets or silently replace a legacy registry", () => {
-  const diagnostics = fs.readFileSync(path.join(root, "core/storage/diagnostics.js"), "utf8");
+  const diagnostics = fs.readFileSync(path.join(root, "src/infrastructure/storage/diagnostics.js"), "utf8");
   const botManager = fs.readFileSync(path.join(root, "panel/botManager.js"), "utf8");
   assert.match(diagnostics, /JT_PERSISTENT_DIR/);
   assert.match(diagnostics, /verified-mount/);
@@ -455,7 +455,7 @@ test("structured error monitor is protected and aggregates master plus child bot
   const errorJournal = fs.readFileSync(path.join(root, "core/runtime/errorJournal.js"), "utf8");
   const loggerSource = fs.readFileSync(path.join(root, "utils/logger.js"), "utf8");
   const botManager = fs.readFileSync(path.join(root, "panel/botManager.js"), "utf8");
-  const dispatcher = fs.readFileSync(path.join(root, "core/runtime/dispatcher.js"), "utf8");
+  const dispatcher = fs.readFileSync(path.join(root, "src/application/commands/dispatcher.js"), "utf8");
   const listener = fs.readFileSync(path.join(root, "core/listen.js"), "utf8");
   const supabase = fs.readFileSync(path.join(root, "core/storage/supabase.js"), "utf8");
 

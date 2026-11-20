@@ -1,0 +1,47 @@
+name: Architecture v5 compatibility
+
+on:
+  push:
+    branches: [refactor/v5-clean-architecture]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: johntran-v5-architecture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  architecture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Verify domain, schema, adapters and dispatchers
+        env:
+          JT_JSON_WRITER_WORKER: "0"
+        run: |
+          node --test --test-force-exit \
+            tests/domainState.test.js \
+            tests/storageSchema.test.js \
+            tests/architectureCompatibility.test.js \
+            tests/runtimeDispatcher.test.js \
+            tests/runtimeEventRegistry.test.js \
+            tests/databaseDurability.test.js \
+            tests/caroGame.test.js \
+            tests/noituEngine.test.js \
+            tests/ghepchuService.test.js \
+            tests/noituQuickGame.test.js \
+            tests/noituRoomGame.test.js \
+            tests/noituCommand.test.js \
+            tests/runtimeIntegration.test.js \
+            tests/samGame.test.js \
+            tests/tlmnGame.test.js
+      - name: Verify JSON writer in isolated worker process
+        env:
+          JT_JSON_WRITER_WORKER: "1"
+        run: timeout 90s node --test --test-force-exit tests/jsonStoreWorker.test.js
