@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const soundcloud = require("../core/music/soundcloud");
 
 const clientId = "0123456789abcdef0123456789abcdef";
+const olderClientId = "abcdef0123456789abcdef0123456789";
 
 test("SoundCloud resolves only the preferred two HLS variants", () => {
   const candidates = [
@@ -18,31 +19,50 @@ test("SoundCloud resolves only the preferred two HLS variants", () => {
   assert.deepEqual(selected.map(item => item.item.preset), ["aac_320", "aac_160"]);
 });
 
-test("SoundCloud client_id discovery scans script bundles concurrently and cancels slow lookups", async () => {
+test("SoundCloud bundle parser prioritizes the latest sndcdn asset", () => {
+  const urls = soundcloud._test.scriptUrlsFromHtml(`
+    <script src="https://a-v2.sndcdn.com/assets/old-app.js"></script>
+    <script src="https://a-v2.sndcdn.com/assets/new-app.js"></script>
+    <script src="https://example.com/untrusted.js"></script>
+  `);
+
+  assert.deepEqual(urls, [
+    "https://a-v2.sndcdn.com/assets/new-app.js",
+    "https://a-v2.sndcdn.com/assets/old-app.js"
+  ]);
+});
+
+test("SoundCloud parser accepts the client_id marker used in current bundles", () => {
+  assert.equal(
+    soundcloud._test.extractClientId(`window.config={client_id:"${clientId}"}`),
+    clientId
+  );
+});
+
+test("SoundCloud bundle discovery scans recent bundles in priority order", async () => {
   const urls = [
-    "https://a-v2.sndcdn.com/slow.js",
-    "https://a-v2.sndcdn.com/fast.js",
-    "https://a-v2.sndcdn.com/unused.js"
+    "https://a-v2.sndcdn.com/assets/new-app.js",
+    "https://a-v2.sndcdn.com/assets/old-app.js"
   ];
-  const pending = new Set();
-  const started = [];
-  const request = (url, options) => new Promise((resolve, reject) => {
-    started.push(url);
-    pending.add(url);
-    const timer = setTimeout(() => {
-      pending.delete(url);
-      resolve({ data: url.includes("fast.js") ? "client_id=" + clientId : "no client id" });
-    }, url.includes("fast.js") ? 20 : 250);
-    options.signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      pending.delete(url);
-      reject(new Error("aborted"));
-    }, { once: true });
+  const requests = [];
+  const found = await soundcloud._test.discoverClientIdFromScripts(urls, async (url, options) => {
+    requests.push({ url, range: options.headers.Range });
+    return {
+      data: url.includes("new-app.js")
+        ? `window.config={client_id:"${clientId}"}`
+        : `window.config={client_id:"${olderClientId}"}`
+    };
   });
-  const startedAt = Date.now();
-  const found = await soundcloud._test.discoverClientIdFromScripts(urls, request);
+
   assert.equal(found, clientId);
-  assert.ok(Date.now() - startedAt < 150);
-  assert.equal(started.length, 3);
-  assert.equal(pending.size, 0);
+  assert.deepEqual(requests.map(item => item.url), urls);
+  assert.ok(requests.every(item => item.range === "bytes=0-50000"));
+});
+
+test("SoundCloud bundle discovery returns null when no bundle exposes a client ID", async () => {
+  const found = await soundcloud._test.discoverClientIdFromScripts([
+    "https://a-v2.sndcdn.com/assets/empty.js"
+  ], async () => ({ data: "window.config={version:'test'};" }));
+
+  assert.equal(found, null);
 });
