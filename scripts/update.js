@@ -18,7 +18,7 @@ function normalizeRemote(remote) {
 
 function isTargetRemote(remote) {
   const normalized = normalizeRemote(remote);
-  const match = normalized.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)$/i);
+  const match = normalized.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)$/i);
   return Boolean(match &&
     match[1].toLowerCase() === "devtran07" &&
     match[2].toLowerCase() === "johntran-js");
@@ -103,7 +103,7 @@ function ensureRepository() {
 function updateRepository() {
   ensureRepository();
   console.log("[update] Đang kiểm tra origin/main...");
-  run("git", ["fetch", "--prune", "origin", TARGET_BRANCH]);
+  run("git", ["fetch", "--prune", "origin", "+refs/heads/" + TARGET_BRANCH + ":refs/remotes/origin/" + TARGET_BRANCH]);
 
   const oldSha = run("git", ["rev-parse", "HEAD"]);
   const remoteSha = run("git", ["rev-parse", "refs/remotes/origin/" + TARGET_BRANCH]);

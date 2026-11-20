@@ -14,6 +14,7 @@ test("isTargetRemote rejects unrelated remotes", () => {
   assert.equal(isTargetRemote("https://github.com/DEVTRAN07/JOHNTRAN-JS.git"), true);
   assert.equal(isTargetRemote("https://github.com/someone/other-bot.git"), false);
   assert.equal(isTargetRemote("https://example.com/DEVTRAN07/JOHNTRAN-JS.git"), false);
+  assert.equal(isTargetRemote("http://github.com/DEVTRAN07/JOHNTRAN-JS.git"), false);
 });
 
 test("parseAheadBehind reads git rev-list counts", () => {
