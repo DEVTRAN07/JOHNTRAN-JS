@@ -10,6 +10,7 @@ Domain chứa quy tắc nghiệp vụ thuần, không biết về Zalo SDK, HTTP
 - games/engines/: caroEngine, noituEngine, samEngine và tlmnEngine là luật chơi thuần, không phụ thuộc Zalo, file hay network.
 - src/application/games/services/: session map, timer, lobby, room và điều phối phiên chơi; gọi engine từ domain.
 - Pipeline nhạc, provider mạng, cache tải, FFmpeg và upload thuộc src/application/media/music, không đưa vào domain vì đây là orchestration/I/O.
+- Quy trình bật/tắt Anti, kiểm tra quyền nhóm, ghi dữ liệu và render thông báo thuộc src/application/moderation/antiToggle; domain/moderation/protectionState chỉ giữ schema và quy tắc trạng thái thuần.
 - users/: quyền và policy người dùng.
 - moderation/: quyết định chống spam/link/thu hồi; tải nội dung và gọi API vẫn nằm ngoài domain.
 

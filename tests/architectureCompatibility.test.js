@@ -42,3 +42,7 @@ test("legacy music paths point to the v5 application music service", () => {
   assert.equal(require("../core/music/soundcloud"), require("../src/application/media/music/soundcloud"));
   assert.equal(require("../core/music/ui"), require("../src/application/media/music/ui"));
 });
+
+test("legacy Anti toggle path points to the v5 application moderation service", () => {
+  assert.equal(require("../core/runtime/antiToggle"), require("../src/application/moderation/antiToggle"));
+});

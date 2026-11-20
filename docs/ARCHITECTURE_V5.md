@@ -20,6 +20,7 @@ src/
     events/threadQueue.js        # Queue theo nhóm khi cần thứ tự
     games/services/              # Điều phối phiên chơi, timer và state trong RAM
     media/music/                 # Provider, cache, FFmpeg và pipeline nhạc
+    moderation/antiToggle.js     # Điều phối quyền, lưu trạng thái và thông báo Anti
   domain/
     groups/botState.js           # Chính sách bật/tắt bot theo nhóm, hàm thuần
     games/engines/               # Luật chơi thuần, không Zalo/I/O
@@ -48,6 +49,7 @@ Zalo WebSocket
   -> domain.games.engines (luật chơi thuần)
   -> application.games.services (session/timer/state của từng trò chơi)
   -> application.media.music (provider, cache, FFmpeg và upload)
+  -> application.moderation.antiToggle (quyền + ghi cấu hình + render card)
   -> command registry -> permission/cooldown -> dispatcher -> plugin.run -> Zalo API
   -> event registry -> event plugins + command.handleEvent
 Ghi dữ liệu: RAM mirror -> worker thread -> file JSON tạm -> atomic rename
