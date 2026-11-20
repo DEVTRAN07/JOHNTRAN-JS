@@ -15,3 +15,13 @@ test("legacy domain paths point to the new pure group and moderation modules",()
  assert.equal(require("../core/runtime/groupBotState"),require("../src/domain/groups/botState"));
  assert.equal(require("../core/runtime/antiProtection"),require("../src/domain/moderation/protectionState"));
 });
+
+test("legacy game service paths point to the v5 application services",()=>{
+ assert.equal(require("../core/runtime/services/games/caroService"),require("../src/application/games/services/caroService"));
+ assert.equal(require("../core/runtime/services/games/ghepchuService"),require("../src/application/games/services/ghepchuService"));
+ assert.equal(require("../core/runtime/services/games/noituQuickService"),require("../src/application/games/services/noituQuickService"));
+ assert.equal(require("../core/runtime/services/games/noituRoomService"),require("../src/application/games/services/noituRoomService"));
+ assert.equal(require("../core/runtime/services/games/noituService"),require("../src/application/games/services/noituService"));
+ assert.equal(require("../core/runtime/services/games/samService"),require("../src/application/games/services/samService"));
+ assert.equal(require("../core/runtime/services/games/tlmnService"),require("../src/application/games/services/tlmnService"));
+});

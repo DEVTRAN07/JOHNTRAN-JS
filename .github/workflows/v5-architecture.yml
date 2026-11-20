@@ -31,7 +31,15 @@ jobs:
             tests/architectureCompatibility.test.js \
             tests/runtimeDispatcher.test.js \
             tests/runtimeEventRegistry.test.js \
-            tests/databaseDurability.test.js
+            tests/databaseDurability.test.js \
+            tests/caroGame.test.js \
+            tests/ghepchuService.test.js \
+            tests/noituQuickGame.test.js \
+            tests/noituRoomGame.test.js \
+            tests/noituCommand.test.js \
+            tests/runtimeIntegration.test.js \
+            tests/samGame.test.js \
+            tests/tlmnGame.test.js
       - name: Verify JSON writer in isolated worker process
         env:
           JT_JSON_WRITER_WORKER: "1"
