@@ -82,7 +82,10 @@ function isPriorityReplyRequest(input, init = {}) {
   if (method !== "POST") return false;
   const url = readRequestUrl(input);
   if (!url) return false;
-  return /\\/api\\/(?:group\\/(?:sendmsg|mention|quote)|message\\/(?:sms|quote))\\/?$/i.test(url.pathname);
+  const segments = url.pathname.toLowerCase().split("/").filter(Boolean);
+  const route = segments.slice(-2).join("/");
+  return route === "group/sendmsg" || route === "group/mention" ||
+    route === "group/quote" || route === "message/sms" || route === "message/quote";
 }
 
 function createFetchMetrics(options = {}) {
