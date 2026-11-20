@@ -1,9 +1,14 @@
 # Domain layer
 
-Đặt business rules thuần theo miền:
-- groups/: bật/tắt bot, quyền và cấu hình nhóm.
-- users/: quyền, hồ sơ và trạng thái người dùng.
-- games/: luật chơi và state transition không phụ thuộc Zalo.
-- moderation/: quyết định chống spam/link/thu hồi.
+Domain chứa quy tắc nghiệp vụ thuần, không biết về Zalo SDK, HTTP, Express, filesystem, Canvas hay database.
 
-Domain service không import Zalo SDK, Express, filesystem hoặc Supabase. Adapter trong core/ và plugins/ gọi domain service rồi chuyển kết quả thành phản hồi Zalo. Chỉ chuyển từng miền sau khi có test tương thích với plugin cũ.
+## Đã chuyển
+- groups/botState.js: xác định trạng thái bật/tắt, ngoại lệ /bot on và /bot status, tạo snapshot trạng thái nhóm.
+- moderation/protectionState.js: danh sách feature Anti, đọc trạng thái boolean nghiêm ngặt và cập nhật một flag mà không mất các thiết lập khác.
+
+## Miền tiếp theo
+- games/: luật và state transition; timer/transport là application service, không đưa API gửi tin vào engine.
+- users/: quyền và policy người dùng.
+- moderation/: quyết định chống spam/link/thu hồi; tải nội dung và gọi API vẫn nằm ngoài domain.
+
+Adapter tương thích trong core/runtime giữ nguyên đường dẫn mà plugin cũ sử dụng. Chỉ xóa adapter khi toàn bộ plugin/test đã dùng đường dẫn chuẩn và có xác nhận triển khai.

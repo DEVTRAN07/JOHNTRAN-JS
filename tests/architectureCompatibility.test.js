@@ -11,3 +11,7 @@ test("legacy storage paths point to the new infrastructure modules",()=>{
  assert.equal(require("../core/storage"),require("../src/infrastructure/storage"));
  assert.equal(require("../core/storage/diagnostics"),require("../src/infrastructure/storage/diagnostics"));
 });
+test("legacy domain paths point to the new pure group and moderation modules",()=>{
+ assert.equal(require("../core/runtime/groupBotState"),require("../src/domain/groups/botState"));
+ assert.equal(require("../core/runtime/antiProtection"),require("../src/domain/moderation/protectionState"));
+});

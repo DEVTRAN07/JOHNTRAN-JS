@@ -18,15 +18,18 @@ src/
     commands/dispatcher.js       # Gọi plugin, lỗi, phản hồi trạng thái
     events/registry.js           # Index/dispatch event handlers
     events/threadQueue.js        # Queue theo nhóm khi cần thứ tự
+  domain/
+    groups/botState.js           # Chính sách bật/tắt bot theo nhóm, hàm thuần
+    moderation/protectionState.js# Schema/trạng thái Anti, hàm thuần
+    README.md                    # Quy ước cho domain service mới
   infrastructure/storage/
     index.js                     # JSON store trong RAM
     schema.js                    # Hợp đồng dữ liệu dùng chung
     jsonWriterWorker.js          # Ghi file ngoài event loop
     diagnostics.js               # Kiểm tra độ bền filesystem
-  domain/README.md               # Quy ước cho domain service mới
 core/                            # Zalo adapter, listener, controller, canvas, media
-  runtime/                       # Adapter tương thích trỏ tới src/application
-  storage/                       # Adapter tương thích trỏ tới src/infrastructure
+  runtime/                       # Adapter tương thích trỏ tới src
+  storage/                       # Adapter tương thích trỏ tới src
 plugins/commands/                # Giữ nguyên lệnh hiện có
 plugins/events/                  # Giữ nguyên event plugin
 data/store.json                  # Dữ liệu runtime, không commit dữ liệu thật
@@ -38,6 +41,7 @@ tests/                            # Test nghiệp vụ, tương thích và hiệ
 Zalo WebSocket
   -> core/listen.js
   -> RAM cache nhóm + phân loại message
+  -> domain.groups.botState (policy thuần, không I/O)
   -> command registry -> permission/cooldown -> dispatcher -> plugin.run -> Zalo API
   -> event registry -> event plugins + command.handleEvent
 Ghi dữ liệu: RAM mirror -> worker thread -> file JSON tạm -> atomic rename
@@ -48,13 +52,14 @@ Ghi dữ liệu: RAM mirror -> worker thread -> file JSON tạm -> atomic rename
 2. Dữ liệu group/user trên hot path phải có cache RAM và invalidation rõ.
 3. Log, thống kê, panel transcript, cache phụ và media chạy nền sau khi command bắt đầu phản hồi.
 4. Không stringify toàn bộ store trên event loop; JSON writer worker phụ trách serialize.
-5. Không xếp mọi message của nhóm vào một queue chung; chỉ tuần tự hóa thao tác bắt buộc đúng thứ tự.
+5. Không xếp mọi message của nhóm vào một queue chung; chỉ tuần tự hóa thao tác bắt buộc.
 6. Media/nhạc cần timeout, dedupe, concurrency limit và acknowledgement.
-7. Không đổi API plugin cũ nếu chưa có adapter và test tương thích.
+7. Domain chỉ xử lý quy tắc và trạng thái; Zalo API, storage và render nằm ở adapter/application layer.
+8. Không đổi API plugin cũ nếu chưa có adapter và test tương thích.
 
 Thời gian cuối cùng vẫn phụ thuộc WebSocket/Zalo API và dịch vụ ngoài. Cấu trúc này giảm công việc đồng bộ phía bot, không thể bảo đảm luôn dưới 1 giây khi upstream chậm.
 
 ## Lộ trình
-- Giai đoạn 1 (commit này): chuyển composition root, command/event dispatch và JSON storage vào src; đường dẫn cũ làm adapter.
-- Giai đoạn 2: chuyển từng miền anti, games, welcome và media sang domain service thuần.
+- Giai đoạn 1: chuyển composition root, command/event dispatch và JSON storage vào src.
+- Giai đoạn 2: chuyển chính sách nhóm và cấu hình Anti sang domain; tiếp theo chuyển các engine game và service theo từng nhóm.
 - Giai đoạn 3: gỡ adapter cũ chỉ sau khi test tương thích và profiling xác nhận.
