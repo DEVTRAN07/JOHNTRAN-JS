@@ -333,6 +333,74 @@ function buildSpeedReport(source = metrics, uptimeSeconds = process.uptime(), ev
   return limitSpeedReport(report);
 }
 
+function buildLatencyDiagnosis({ delivery = null, firstStart = null, firstComplete = null, sendMessage = null, eventLoop = null } = {}) {
+  const sampleCount = Math.max(0, Number(firstStart?.count) || 0);
+  const deliveryP95 = Number(delivery?.p95Ms);
+  const startP95 = Number(firstStart?.p95Ms);
+  const completeP95 = Number(firstComplete?.p95Ms);
+  const sendP95 = Number(sendMessage?.p95Ms);
+  const loopP99 = Number(eventLoop?.p99Ms);
+  const loopMax = Number(eventLoop?.maxMs);
+
+  let cause = "Chưa đủ mẫu để kết luận";
+  let explanation = "Hãy gửi vài lệnh văn bản đơn giản, sau đó chạy lại /speed diagnose.";
+  let severity = "unknown";
+
+  if (sampleCount >= 3) {
+    if (Number.isFinite(deliveryP95) && deliveryP95 >= 2000) {
+      cause = "Độ trễ trước khi bot nhận tin (Zalo/WebSocket hoặc mạng)";
+      explanation = "Timestamp trong tin đã cũ trước khi listener của bot nhận được event. Tối ưu command handler sẽ không sửa được đoạn trễ này.";
+      severity = "upstream";
+    } else if ((Number.isFinite(loopP99) && loopP99 >= 150) ||
+               (Number.isFinite(loopMax) && loopMax >= 750)) {
+      cause = "Event loop của tiến trình bị nghẽn";
+      explanation = "Node.js không xử lý callback đúng hạn; cần tìm tác vụ đồng bộ nặng hoặc CPU/RAM bị tranh chấp.";
+      severity = "event-loop";
+    } else if (Number.isFinite(sendP95) && sendP95 >= 1500) {
+      cause = "Request gửi tin tới Zalo chậm";
+      explanation = "Bot đã bắt đầu gửi nhưng API sendMessage mất nhiều thời gian mới hoàn tất. Cần kiểm tra kết nối máy chủ và phản hồi từ Zalo.";
+      severity = "zalo-send";
+    } else if (Number.isFinite(startP95) && startP95 >= 1000) {
+      cause = "Pipeline nội bộ trước phản hồi đầu tiên chậm";
+      explanation = "Độ trễ phát sinh sau khi bot nhận tin nhưng trước khi gọi API gửi; cần khoanh vùng listener, phân quyền hoặc handler của lệnh.";
+      severity = "bot-pipeline";
+    } else if (Number.isFinite(completeP95) && completeP95 >= 2000) {
+      cause = "Độ trễ chưa khớp với các chặng đã đo";
+      explanation = "Thời gian hoàn tất phản hồi cao nhưng các chỉ số thành phần chưa chỉ ra một điểm nghẽn rõ ràng; cần xem log và mẫu chi tiết.";
+      severity = "unclassified";
+    } else {
+      cause = "Chưa thấy nghẽn lớn trong các mẫu gần đây";
+      explanation = "Nếu người dùng vẫn thấy chậm, hãy so sánh thời điểm gửi thực tế với timestamp Zalo và kiểm tra bot có đang chạy đúng commit mới nhất không.";
+      severity = "healthy";
+    }
+  }
+
+  const metricLine = (label, value) =>
+    label + ": " + (Number.isFinite(Number(value)) ? formatMs(value) : "chưa có mẫu");
+
+  return {
+    sampleCount,
+    cause,
+    explanation,
+    severity,
+    lines: [
+      "⚡ JOHNTRAN · SPEED DIAGNOSIS",
+      "Mẫu receive → send: " + sampleCount,
+      "NGHI VẤN: " + cause,
+      explanation,
+      "",
+      metricLine("Zalo tạo tin → bot nhận (P95)", delivery?.p95Ms),
+      metricLine("Bot nhận → bắt đầu gửi (P95)", firstStart?.p95Ms),
+      metricLine("API sendMessage (P95)", sendMessage?.p95Ms),
+      metricLine("Nhận tin → gửi xong (P95)", firstComplete?.p95Ms),
+      "Event loop: P99 " + (Number.isFinite(loopP99) ? formatMs(loopP99) : "chưa có mẫu") +
+        " · Max " + (Number.isFinite(loopMax) ? formatMs(loopMax) : "chưa có mẫu"),
+      "",
+      "Chạy /speed diagnose sau vài lệnh văn bản đơn giản để lấy mẫu mới."
+    ]
+  };
+}
+
 function normalizeErrorCode(value) {
   return String(value ?? "").trim().replace(/[^a-f0-9]/gi, "").toUpperCase().slice(0, 8);
 }
@@ -367,6 +435,17 @@ function formatCommandError(event, code) {
 
 module.exports.run = async function ({ api, event, reply, args = [] } = {}) {
   const action = String(args?.[0] || "").trim().toLowerCase();
+  if (action === "diagnose" || action === "diag") {
+    const eventLoop = safeRead(() => require("../../core/health").getEventLoopMetrics({ reset: false }), null);
+    const diagnosis = buildLatencyDiagnosis({
+      delivery: safeRead(() => metrics.getMessageDeliveryAgeStats(), null),
+      firstStart: safeRead(() => metrics.getFirstResponseStartLatencyStats(), null),
+      firstComplete: safeRead(() => metrics.getFirstResponseLatencyStats(), null),
+      sendMessage: safeRead(() => metrics.getZaloApiLatencyStats(20).find(item => item.command === "sendMessage"), null),
+      eventLoop
+    });
+    return api.sendMessage({ msg: diagnosis.lines.join("\n") }, event.threadId, event.type);
+  }
   if (action === "log" || action === "error" || action === "trace") {
     const code = normalizeErrorCode(args?.[1]);
     if (code.length !== 8) {
@@ -441,4 +520,4 @@ module.exports.run = async function ({ api, event, reply, args = [] } = {}) {
   if (typeof reply?.text === "function") return reply.text(report);
   throw new Error("/speed không có API hợp lệ để gửi báo cáo.");
 };
-module.exports._test = { MAX_SPEED_REPORT_CHARS, limitSpeedReport, safeRead, normalizeErrorCode, findCommandError, formatCommandError, formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, formatRequestPolicy, formatMessageDeliveryAge, buildSpeedReport };
+module.exports._test = { buildLatencyDiagnosis,  MAX_SPEED_REPORT_CHARS, limitSpeedReport, safeRead, normalizeErrorCode, findCommandError, formatCommandError, formatMs, formatRows, formatQueueAndWorkerPressure, formatMediaResources, formatStorageDiagnostics, formatMessageCacheDiagnostics, formatRequestPolicy, formatMessageDeliveryAge, buildSpeedReport };

@@ -3,6 +3,7 @@ const path = require("path");
 const logger = require("./logger");
 const { JsonStore } = require("../core/storage");
 const { getJsonPersistenceStatus } = require("../core/storage/diagnostics");
+const { STORE_TABLES } = require("../src/infrastructure/storage/schema");
 
 function resolveDatabaseConfig(env = process.env) {
   const requestedDriver = String(env.JT_DB_DRIVER || "").trim().toLowerCase();
@@ -82,7 +83,7 @@ if (DATABASE_CONFIG.driver === "supabase") {
     logger.log("Đã sao chép master store.json sang JT_PERSISTENT_DIR; giữ nguyên file nguồn.", "info");
   }
 
-  db = new JsonStore(dbFile, ["Users", "Threads", "Metrics", "BotStats", "MediaCache"]);
+  db = new JsonStore(dbFile, STORE_TABLES);
   logger.log(`Database: JSON store (${dbFile})`, "info");
   if (process.env.RENDER || process.env.RENDER_SERVICE_ID) {
     logger.log("CẢNH BÁO: JSON store trên Render chỉ bền vững khi JT_DB_FILE nằm trong Persistent Disk đã gắn. Cấu hình JT_PERSISTENT_DIR đúng mount path để kiểm tra.", "warn");
