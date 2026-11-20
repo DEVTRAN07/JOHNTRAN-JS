@@ -36,9 +36,18 @@ function resolveTransportOptions(env = process.env, overrides = {}) {
     1_000,
     60_000
   );
+  // Reserve an independent pool for text replies. Background group/profile
+  // lookups must not consume every socket needed to answer a chat command.
+  const replyConnections = positiveInt(
+    overrides.replyConnections ?? env.JT_ZALO_HTTP_REPLY_CONNECTIONS,
+    4,
+    1,
+    16
+  );
 
   return {
     connections,
+    replyConnections,
     pipelining: 1,
     keepAliveTimeout: keepAliveTimeoutMs,
     keepAliveMaxTimeout: keepAliveMaxTimeoutMs,
@@ -50,15 +59,30 @@ function resolveTransportOptions(env = process.env, overrides = {}) {
   };
 }
 
-function readRequestHost(input) {
+function readRequestUrl(input) {
   try {
     const raw = typeof input === "string" || input instanceof URL
       ? input
       : input?.url;
-    return new URL(raw).hostname.toLowerCase().slice(0, 120);
+    return new URL(raw);
   } catch {
-    return "unknown";
+    return null;
   }
+}
+
+function readRequestHost(input) {
+  return readRequestUrl(input)?.hostname.toLowerCase().slice(0, 120) || "unknown";
+}
+
+// Only plain-text send endpoints receive reserved connections. File uploads,
+// profile reads, group-info lookups, reactions and other background API calls
+// stay on the shared pool.
+function isPriorityReplyRequest(input, init = {}) {
+  const method = String(init?.method || input?.method || "GET").toUpperCase();
+  if (method !== "POST") return false;
+  const url = readRequestUrl(input);
+  if (!url) return false;
+  return /\\/api\\/(?:group\\/(?:sendmsg|mention|quote)|message\\/(?:sms|quote))\\/?$/i.test(url.pathname);
 }
 
 function createFetchMetrics(options = {}) {
@@ -138,8 +162,13 @@ let nativeFetch = null;
 let trackedFetch = null;
 let previousDispatcher = null;
 let httpAgent = null;
+let replyAgent = null;
 let activeOptions = null;
 const fetchMetrics = createFetchMetrics();
+const laneMetrics = {
+  reply: { count: 0, failed: 0 },
+  shared: { count: 0, failed: 0 }
+};
 
 function installZaloHttpTransport(options = {}) {
   if (installed) {
@@ -154,30 +183,42 @@ function installZaloHttpTransport(options = {}) {
   previousDispatcher = getGlobalDispatcher();
   nativeFetch = globalThis.fetch.bind(globalThis);
 
-  // Node's default Undici idle keep-alive timeout is 4 seconds. A Zalo bot
-  // often receives commands farther apart than that, which forces fresh TCP/TLS
-  // handshakes. Keep a small bounded pool warm for up to one minute instead.
-  httpAgent = new Agent(activeOptions);
+  // Node's default Undici idle keep-alive timeout is 4 seconds. Keep the
+  // shared pool warm, and reserve a second independent pool for command replies.
+  // An Agent owns its own per-origin connection limits, so a burst of background
+  // getGroupInfo/getAllFriends requests cannot occupy the reply pool.
+  const { replyConnections, ...sharedAgentOptions } = activeOptions;
+  httpAgent = new Agent(sharedAgentOptions);
+  replyAgent = new Agent({ ...sharedAgentOptions, connections: replyConnections });
   setGlobalDispatcher(httpAgent);
 
   trackedFetch = function trackedZaloFetch(input, init) {
     const host = readRequestHost(input);
     const startedAt = performance.now();
+    const priorityReply = isPriorityReplyRequest(input, init);
+    const lane = priorityReply ? laneMetrics.reply : laneMetrics.shared;
+    lane.count++;
+    const requestOptions = priorityReply
+      ? { ...(init || {}), dispatcher: replyAgent }
+      : init;
 
     let request;
     try {
-      request = nativeFetch(input, init);
+      request = nativeFetch(input, requestOptions);
     } catch (error) {
+      lane.failed++;
       fetchMetrics.record(host, performance.now() - startedAt, 0, true);
       throw error;
     }
 
     return Promise.resolve(request).then(
       response => {
+        if (!response?.ok) lane.failed++;
         fetchMetrics.record(host, performance.now() - startedAt, response?.status || 0, false);
         return response;
       },
       error => {
+        lane.failed++;
         fetchMetrics.record(host, performance.now() - startedAt, 0, true);
         throw error;
       }
@@ -203,13 +244,17 @@ async function closeZaloHttpTransport() {
     setGlobalDispatcher(previousDispatcher);
   }
   try {
-    await httpAgent?.close?.();
+    await Promise.all([
+      httpAgent?.close?.(),
+      replyAgent?.close?.()
+    ]);
   } finally {
     installed = false;
     nativeFetch = null;
     trackedFetch = null;
     previousDispatcher = null;
     httpAgent = null;
+    replyAgent = null;
     activeOptions = null;
   }
   return true;
@@ -220,10 +265,15 @@ function getZaloHttpTransportStats() {
     enabled: installed,
     options: activeOptions ? {
       connections: activeOptions.connections,
+      replyConnections: activeOptions.replyConnections,
       keepAliveTimeoutMs: activeOptions.keepAliveTimeout,
       keepAliveMaxTimeoutMs: activeOptions.keepAliveMaxTimeout,
       connectTimeoutMs: activeOptions.connect.timeout
     } : null,
+    lanes: {
+      reply: { ...laneMetrics.reply },
+      shared: { ...laneMetrics.shared }
+    },
     ...fetchMetrics.stats(8)
   };
 }
@@ -234,5 +284,7 @@ module.exports = {
   getZaloHttpTransportStats,
   resolveTransportOptions,
   createFetchMetrics,
-  readRequestHost
+  readRequestUrl,
+  readRequestHost,
+  isPriorityReplyRequest
 };
