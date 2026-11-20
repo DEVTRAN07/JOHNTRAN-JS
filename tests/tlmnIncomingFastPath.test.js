@@ -156,3 +156,38 @@ test("TLMN idle-group fast path keeps case-insensitive and accented GO keywords"
     engine.normalizeText = originalNormalize;
   }
 });
+
+
+test("TLMN ignores non-text object payloads without primitive coercion errors", async () => {
+  global.config = { prefix: "/" };
+  const content = Object.create(null);
+  const context = {
+    isSelf: false,
+    Threads: { getCachedData: () => ({ data: { tlmn_enabled: true } }) },
+    event: {
+      type: ThreadType.Group,
+      threadId: "tlmn-object-payload",
+      data: { uidFrom: "player-1", content }
+    }
+  };
+
+  assert.doesNotThrow(() => command._test.shouldQueueIncoming(context));
+  assert.equal(command._test.shouldQueueIncoming(context), false);
+  assert.equal(await command.handleIncoming(context), false);
+});
+
+test("TLMN reads text title from structured message payloads", () => {
+  global.config = { prefix: "/" };
+  const content = Object.assign(Object.create(null), { title: "go" });
+  const context = {
+    isSelf: false,
+    Threads: { getCachedData: () => ({ data: { tlmn_enabled: true } }) },
+    event: {
+      type: ThreadType.Group,
+      threadId: "tlmn-object-title",
+      data: { uidFrom: "player-1", content }
+    }
+  };
+
+  assert.equal(command._test.shouldQueueIncoming(context), true);
+});
