@@ -263,9 +263,9 @@ function extractClientId(source) {
 
 // Resolve a rotating SoundCloud client_id from current web bundles in parallel.
 // The old serial scan could spend 25s × 25 scripts before a search failed.
-const CLIENT_ID_SCRIPT_LIMIT = 8;
-const CLIENT_ID_SCRIPT_TIMEOUT_MS = 8000;
-const CLIENT_ID_HOME_TIMEOUT_MS = 9000;
+const CLIENT_ID_SCRIPT_LIMIT = 16;
+const CLIENT_ID_SCRIPT_TIMEOUT_MS = 6000;
+const CLIENT_ID_HOME_TIMEOUT_MS = 8000;
 
 async function discoverClientIdFromScripts(scriptUrls, request = pooledAxios.get) {
   const urls = [...new Set(Array.isArray(scriptUrls) ? scriptUrls : [])]
