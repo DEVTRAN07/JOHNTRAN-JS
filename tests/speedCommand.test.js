@@ -325,7 +325,7 @@ test("/speed diagnose identifies slow outgoing Zalo send API", () => {
     eventLoop: { p99Ms: 30, maxMs: 55 }
   });
   assert.equal(result.severity, "zalo-send");
-  assert.match(result.cause, /sendMessage/);
+  assert.match(result.cause, /gửi tin tới Zalo/);
 });
 
 test("/speed diagnose identifies internal command/listener pipeline delay", () => {
