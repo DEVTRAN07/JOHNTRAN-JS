@@ -21,11 +21,12 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - name: Verify schema, adapters, dispatchers and legacy compatibility
+      - name: Verify domain, schema, adapters and dispatchers
         env:
           JT_JSON_WRITER_WORKER: "0"
         run: |
           node --test --test-force-exit \
+            tests/domainState.test.js \
             tests/storageSchema.test.js \
             tests/architectureCompatibility.test.js \
             tests/runtimeDispatcher.test.js \
