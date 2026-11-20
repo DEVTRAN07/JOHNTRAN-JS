@@ -585,3 +585,38 @@ test("Caro leaving a waiting PvP lobby replaces the old board card", async () =>
     workerRender.renderCanvas = originalRender;
   }
 });
+
+
+test("Caro safely ignores non-text object message payloads", async () => {
+  const content = Object.create(null);
+  const context = {
+    isSelf: false,
+    Threads: {},
+    event: {
+      type: 1,
+      threadId: "caro-object-payload",
+      data: { uidFrom: "player-1", content }
+    }
+  };
+
+  await assert.doesNotReject(async () => {
+    assert.equal(await caroCommand.handleIncoming(context), false);
+  });
+});
+
+test("Caro reads text title from structured message payloads", async () => {
+  const content = Object.assign(Object.create(null), { title: "1" });
+  const context = {
+    isSelf: false,
+    Threads: {},
+    event: {
+      type: 1,
+      threadId: "caro-object-title",
+      data: { uidFrom: "player-1", content }
+    }
+  };
+
+  await assert.doesNotReject(async () => {
+    assert.equal(await caroCommand.handleIncoming(context), false);
+  });
+});

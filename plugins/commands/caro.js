@@ -7,6 +7,7 @@ const { withRequesterMention } = require("../../core/mentions");
 const game = require("../../core/runtime/services/games/caroService");
 const workerRender = require("../../core/canvas/workerRender");
 const { sendStyledRawMessage } = require("../../core/message");
+const { extractPlainText } = require("../../core/runtime/plainText");
 
 // One live Caro canvas card per group. A replacement is sent first; only
 // after Zalo returns its message IDs do we recall the previous board image.
@@ -642,7 +643,7 @@ async function handleIncoming(context = {}) {
   // when allow_self_command is explicitly enabled.
   if (selfMessage && global.config?.allow_self_command !== true) return false;
 
-  const content = String(event?.data?.content || "").trim();
+  const content = extractPlainText(event?.data?.content);
   if (!content) return false;
   const prefix = global.config?.prefix || "/";
   if (content.startsWith(prefix)) return false;
