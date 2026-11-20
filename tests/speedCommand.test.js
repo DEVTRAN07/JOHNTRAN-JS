@@ -290,3 +290,86 @@ test("/speed log rejects malformed error codes without reading logs", () => {
   assert.equal(command._test.findCommandError([], "D78"), null);
   assert.match(command._test.formatCommandError(null, "D78"), /Không tìm thấy mã lỗi D78/);
 });
+
+
+test("/speed diagnose identifies delayed Zalo/WebSocket delivery before bot receive", () => {
+  const result = command._test.buildLatencyDiagnosis({
+    delivery: { count: 8, p95Ms: 12000 },
+    firstStart: { count: 8, p95Ms: 80 },
+    firstComplete: { count: 8, p95Ms: 300 },
+    sendMessage: { count: 8, p95Ms: 180 },
+    eventLoop: { p99Ms: 25, maxMs: 40 }
+  });
+  assert.equal(result.severity, "upstream");
+  assert.match(result.lines.join("\\n"), /Zalo\\/WebSocket/);
+});
+
+test("/speed diagnose identifies event-loop stalls", () => {
+  const result = command._test.buildLatencyDiagnosis({
+    delivery: { count: 8, p95Ms: 80 },
+    firstStart: { count: 8, p95Ms: 700 },
+    firstComplete: { count: 8, p95Ms: 950 },
+    sendMessage: { count: 8, p95Ms: 200 },
+    eventLoop: { p99Ms: 350, maxMs: 1100 }
+  });
+  assert.equal(result.severity, "event-loop");
+  assert.match(result.explanation, /Node.js/);
+});
+
+test("/speed diagnose identifies slow outgoing Zalo send API", () => {
+  const result = command._test.buildLatencyDiagnosis({
+    delivery: { count: 8, p95Ms: 90 },
+    firstStart: { count: 8, p95Ms: 120 },
+    firstComplete: { count: 8, p95Ms: 4200 },
+    sendMessage: { count: 8, p95Ms: 3900 },
+    eventLoop: { p99Ms: 30, maxMs: 55 }
+  });
+  assert.equal(result.severity, "zalo-send");
+  assert.match(result.cause, /sendMessage/);
+});
+
+test("/speed diagnose identifies internal command/listener pipeline delay", () => {
+  const result = command._test.buildLatencyDiagnosis({
+    delivery: { count: 8, p95Ms: 100 },
+    firstStart: { count: 8, p95Ms: 2800 },
+    firstComplete: { count: 8, p95Ms: 3000 },
+    sendMessage: { count: 8, p95Ms: 150 },
+    eventLoop: { p99Ms: 35, maxMs: 80 }
+  });
+  assert.equal(result.severity, "bot-pipeline");
+  assert.match(result.explanation, /phân quyền|handler/);
+});
+
+test("/speed diagnose reports insufficient samples and healthy recent samples accurately", () => {
+  const insufficient = command._test.buildLatencyDiagnosis({
+    firstStart: { count: 1, p95Ms: 10 }
+  });
+  assert.equal(insufficient.severity, "unknown");
+  assert.match(insufficient.cause, /Chưa đủ mẫu/);
+
+  const healthy = command._test.buildLatencyDiagnosis({
+    delivery: { count: 8, p95Ms: 70 },
+    firstStart: { count: 8, p95Ms: 90 },
+    firstComplete: { count: 8, p95Ms: 250 },
+    sendMessage: { count: 8, p95Ms: 150 },
+    eventLoop: { p99Ms: 25, maxMs: 45 }
+  });
+  assert.equal(healthy.severity, "healthy");
+  assert.match(healthy.lines.join("\\n"), /Chưa thấy nghẽn lớn/);
+  assert.ok(healthy.lines.join("\\n").length <= command._test.MAX_SPEED_REPORT_CHARS);
+});
+
+test("/speed diagnose sends one compact response through the wrapped Zalo API", async () => {
+  let sent = null;
+  let calls = 0;
+  const result = await command.run({
+    args: ["diagnose"],
+    api: { sendMessage: async (...args) => { calls++; sent = args; return { ok: true }; } },
+    event: { threadId: "diagnose-thread", type: 1 }
+  });
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls, 1);
+  assert.equal(sent[1], "diagnose-thread");
+  assert.equal(sent[2], 1);
+  assert.match(sent[0].msg, /SPEED DIAGNOSIS/);
+});
