@@ -135,5 +135,6 @@ module.exports = {
     extractThumbnail,
     processVideo,
     processAudio,
-    convertMp3ToAac
+    convertMp3ToAac,
+    _test: { supportsDirectAac: true }
 };
