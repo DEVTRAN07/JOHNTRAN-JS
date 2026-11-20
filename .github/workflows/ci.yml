@@ -31,6 +31,10 @@ jobs:
         run: |
           cargo test --manifest-path rust/message-cache/Cargo.toml
           npm run build:message-cache
+      - name: Build Rust sticker N-API addon
+        run: |
+          npm run build:native
+          node -e "const addon = require('./native/sticker-rs/sticker_rs.node'); if (typeof addon.composeStaticSticker !== 'function') throw new Error('Rust sticker addon export missing')"
       - name: Build Rust text colorizer used by live message path
         run: |
           cargo test --manifest-path native/text-style-rs/Cargo.toml

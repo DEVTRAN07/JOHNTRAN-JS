@@ -1,23 +1,14 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
-const { execFileSync, spawnSync } = require("child_process");
+const { spawnSync } = require("child_process");
 
 const NATIVE_DIR = path.resolve(__dirname);
+// Only ship the audited production addon. canvas-rs and ffmpeg-rs remain
+// prototypes until their build/runtime contracts pass the same CI gate.
 const CRATES = [
   { name: "sticker-rs", addon: "sticker_rs.node" },
-  { name: "canvas-rs", addon: "canvas_rs.node" },
-  { name: "ffmpeg-rs", addon: "ffmpeg_rs.node" },
 ];
-
-function which(cmd) {
-  try {
-    execFileSync(cmd, ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, { stdio: "inherit", ...opts });
@@ -41,24 +32,17 @@ function main() {
     const crateDir = path.join(NATIVE_DIR, crate.name);
     const addonPath = path.join(crateDir, crate.addon);
     const targetDir = path.join(NATIVE_DIR, "target", "release");
-    const libName = "lib" + crate.name.replace(/-/g, "_") + "." + libExt();
+    const stem = crate.name.replace(/-/g, "_");
+    const libName = (process.platform === "win32" ? "" : "lib") + stem + "." + libExt();
     const libPath = path.join(targetDir, libName);
-    let built = false;
-    if (which("napi")) {
-      try {
-        run("napi", ["build", "--release"], { cwd: crateDir });
-        built = true;
-      } catch (err) {
-        console.warn("napi build failed for " + crate.name + ": " + err.message + "; falling back to cargo artifact copy");
-      }
+    if (!fs.existsSync(libPath)) {
+      throw new Error("expected native library not found: " + libPath);
     }
-    if (!built) {
-      if (!fs.existsSync(libPath)) {
-        throw new Error("expected native library not found: " + libPath);
-      }
-      fs.copyFileSync(libPath, addonPath);
-      console.log("copied " + libPath + " -> " + addonPath);
-    }
+    // A napi-rs cdylib exports the Node-API registration symbol directly.
+    // Copying the platform library to .node avoids requiring a second
+    // platform-detection/build step from the napi CLI.
+    fs.copyFileSync(libPath, addonPath);
+    console.log("copied " + libPath + " -> " + addonPath);
   }
   // The text-style N-API module is a standalone workspace. Building it alone
   // avoids resolving optional image/audio crates in the legacy native workspace.

@@ -360,6 +360,58 @@ function makeTempName(prefix, extension) {
     crypto.randomBytes(4).toString("hex") + extension);
 }
 
+let rustStickerAddonChecked = false;
+let rustStickerAddon = null;
+
+function getRustStickerAddon() {
+  if (rustStickerAddonChecked) return rustStickerAddon;
+  rustStickerAddonChecked = true;
+
+  const addonPath = path.join(__dirname, "..", "native", "sticker-rs", "sticker_rs.node");
+  try {
+    rustStickerAddon = require(addonPath);
+  } catch (error) {
+    // Development installs without Rust artifacts keep the existing Canvas /
+    // FFmpeg fallbacks. The production CI builds and verifies this addon.
+    console.warn("[stk] Rust native compositor unavailable; using fallback renderer: " +
+      String(error && error.message || error).slice(0, 180));
+    rustStickerAddon = null;
+  }
+  return rustStickerAddon;
+}
+
+async function createStaticRust(sourceBuffer, decorationBuffer) {
+  const addon = getRustStickerAddon();
+  if (typeof addon?.composeStaticSticker !== "function") return null;
+
+  const result = await addon.composeStaticSticker({
+    source: sourceBuffer,
+    overlay: decorationBuffer,
+    size: CANVAS_SIZE,
+    avatarSize: AVATAR_SIZE,
+    offset: OFFSET,
+    quality: 68
+  });
+  const buffer = Buffer.isBuffer(result?.buffer)
+    ? result.buffer
+    : Buffer.from(result?.buffer || []);
+  if (!buffer.length || buffer.length > MAX_OUTPUT_BYTES) return null;
+
+  fs.mkdirSync(TMP_DIR, { recursive: true });
+  const outputPath = makeTempName("stk_dis_rust", ".webp");
+  await fs.promises.writeFile(outputPath, buffer);
+  return {
+    path: outputPath,
+    buffer,
+    width: Number(result.width) || CANVAS_SIZE,
+    height: Number(result.height) || CANVAS_SIZE,
+    size: buffer.length,
+    animated: false,
+    format: "webp",
+    renderer: "rust-native"
+  };
+}
+
 function getReplyQuote(event) {
   return event?.data?.quote || event?.data?.dQuote || event?.quote || null;
 }
@@ -385,23 +437,18 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
   // Keep the normal 288px quality first. If complex media still exceeds 512 KB,
   // progressively lower FPS, duration and canvas dimensions before falling
   // back to a small first-frame WebP. The final fallback always remains usable.
+  // Keep bounded fallback work. The previous seven animated and five static
+  // attempts could spawn several sequential FFmpeg encodes for one request.
+  // Four profiles retain a final first-frame safety fallback for animations.
   const profiles = animated ? [
     { size: 288, fps: 10, quality: 38, duration: 5 },
-    { size: 288, fps: 7, quality: 26, duration: 5 },
-    { size: 256, fps: 6, quality: 22, duration: 4 },
+    { size: 256, fps: 7, quality: 26, duration: 5 },
     { size: 224, fps: 5, quality: 18, duration: 3 },
-    { size: 192, fps: 4, quality: 12, duration: 2 },
-    { size: 192, fps: 1, quality: 10, duration: 1, firstFrameOnly: true },
-    // Final safety profile: a tiny static WebP remains sendable even when the
-    // original animation is unusually noisy or contains many full-frame changes.
     { size: 160, fps: 1, quality: 5, duration: 1, firstFrameOnly: true }
   ] : [
     { size: 288, fps: 1, quality: 38, duration: 1 },
     { size: 256, fps: 1, quality: 24, duration: 1 },
-    { size: 224, fps: 1, quality: 16, duration: 1 },
     { size: 192, fps: 1, quality: 10, duration: 1 },
-    // Last-resort static profile for high-detail photos that still exceed
-    // Zalo's 512 KB sticker transport limit at the normal 192px fallback.
     { size: 160, fps: 1, quality: 5, duration: 1 }
   ];
 
@@ -888,9 +935,20 @@ async function processDiscordSticker({ api, event, mediaUrl, decorationId, resul
       /\.png$/i.test(path.extname(decorationPath)) &&
       !isAnimatedBuffer(frameBuffer, path.extname(decorationPath));
 
-    currentStage = staticFastPath ? "canvas-static" : "ffmpeg";
+    currentStage = staticFastPath ? "rust-static" : "ffmpeg";
     const output = await measureStage("render", async () => {
       if (staticFastPath) {
+        try {
+          const rustOutput = await createStaticRust(source.buffer, frameBuffer);
+          if (rustOutput) {
+            console.info("[stk] renderer=rust-native-static");
+            return rustOutput;
+          }
+        } catch (error) {
+          console.warn("[stk] Rust static compositor failed; trying Canvas fallback: " +
+            String(error && error.message || error).slice(0, 240));
+        }
+
         try {
           const fastOutput = await createStaticPng(source.buffer, frameBuffer);
           if (fastOutput) {
