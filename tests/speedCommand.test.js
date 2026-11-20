@@ -301,7 +301,7 @@ test("/speed diagnose identifies delayed Zalo/WebSocket delivery before bot rece
     eventLoop: { p99Ms: 25, maxMs: 40 }
   });
   assert.equal(result.severity, "upstream");
-  assert.match(result.lines.join("\\n"), /Zalo\\/WebSocket/);
+  assert.match(result.lines.join("\n"), /Zalo\/WebSocket/);
 });
 
 test("/speed diagnose identifies event-loop stalls", () => {
@@ -355,8 +355,8 @@ test("/speed diagnose reports insufficient samples and healthy recent samples ac
     eventLoop: { p99Ms: 25, maxMs: 45 }
   });
   assert.equal(healthy.severity, "healthy");
-  assert.match(healthy.lines.join("\\n"), /Chưa thấy nghẽn lớn/);
-  assert.ok(healthy.lines.join("\\n").length <= command._test.MAX_SPEED_REPORT_CHARS);
+  assert.match(healthy.lines.join("\n"), /Chưa thấy nghẽn lớn/);
+  assert.ok(healthy.lines.join("\n").length <= command._test.MAX_SPEED_REPORT_CHARS);
 });
 
 test("/speed diagnose sends one compact response through the wrapped Zalo API", async () => {
