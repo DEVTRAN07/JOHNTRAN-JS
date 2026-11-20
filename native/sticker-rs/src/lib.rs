@@ -200,7 +200,7 @@ pub fn encode_gif(options: EncodeOptions) -> Result<EncodeResult> {
         .write_to(&mut cursor, ImageFormat::Gif)
         .map_err(|e| Error::new(Status::GenericFailure, format!("GIF encode failed: {e}")))?;
     let encoded = cursor.into_inner();
-    let size = encoded.len() as u64;
+    let size = encoded.len() as u32;
 
     Ok(EncodeResult {
         buffer: Buffer::from(encoded),
