@@ -234,7 +234,7 @@ npm run build:native
 npm start
 ```
 
-Build tạo native/sticker-rs/sticker_rs.node. CI cũng kiểm tra build và export của addon. Nếu không có file native, bot tự quay về renderer cũ; không cần cài Rust để chạy các lệnh thông thường.
+Build tạo native/sticker-rs/sticker_rs.node. CI build addon rồi nạp và kiểm thử trực tiếp trong Node.js (N-API symbols cần tiến trình Node host). Nếu không có file native, bot tự quay về renderer cũ; không cần cài Rust để chạy các lệnh thông thường.
 
 **SCL:** nguồn SoundCloud HLS AAC mặc định được stream-copy sang AAC/ADTS, tránh mã hoá AAC → MP3 → AAC. Khi người dùng chọn chất lượng 128/320, FFmpeg mã hoá AAC trực tiếp đúng một lần.
 
