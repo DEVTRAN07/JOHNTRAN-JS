@@ -444,7 +444,7 @@ module.exports.run = async function ({ api, event, reply, args = [] } = {}) {
       sendMessage: safeRead(() => metrics.getZaloApiLatencyStats(20).find(item => item.command === "sendMessage"), null),
       eventLoop
     });
-    return api.sendMessage({ msg: diagnosis.lines.join("\\n") }, event.threadId, event.type);
+    return api.sendMessage({ msg: diagnosis.lines.join("\n") }, event.threadId, event.type);
   }
   if (action === "log" || action === "error" || action === "trace") {
     const code = normalizeErrorCode(args?.[1]);
