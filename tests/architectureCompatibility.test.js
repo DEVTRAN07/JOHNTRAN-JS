@@ -46,3 +46,7 @@ test("legacy music paths point to the v5 application music service", () => {
 test("legacy Anti toggle path points to the v5 application moderation service", () => {
   assert.equal(require("../core/runtime/antiToggle"), require("../src/application/moderation/antiToggle"));
 });
+
+test("legacy requester greeting path points to the v5 user domain policy", () => {
+  assert.equal(require("../core/runtime/requesterGreeting"), require("../src/domain/users/requesterGreeting"));
+});

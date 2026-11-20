@@ -27,6 +27,8 @@ jobs:
         run: |
           node --test --test-force-exit \
             tests/domainState.test.js \
+            tests/userPolicyDomain.test.js \
+            tests/requesterGreeting.test.js \
             tests/anti-toggle.test.js \
             tests/antiFeatureCommands.test.js \
             tests/storageSchema.test.js \

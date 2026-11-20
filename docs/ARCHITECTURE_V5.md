@@ -23,6 +23,7 @@ src/
     moderation/antiToggle.js     # Điều phối quyền, lưu trạng thái và thông báo Anti
   domain/
     groups/botState.js           # Chính sách bật/tắt bot theo nhóm, hàm thuần
+    users/requesterGreeting.js  # Phân quyền hiển thị và lời chào, injectable policy
     games/engines/               # Luật chơi thuần, không Zalo/I/O
     moderation/protectionState.js# Schema/trạng thái Anti, hàm thuần
     README.md                    # Quy ước cho domain service mới
@@ -45,7 +46,7 @@ tests/                            # Test nghiệp vụ, tương thích và hiệ
 Zalo WebSocket
   -> core/listen.js
   -> RAM cache nhóm + phân loại message
-  -> domain.groups.botState (policy thuần, không I/O)
+  -> domain.groups.botState + domain.users.requesterGreeting (policy thuần)
   -> domain.games.engines (luật chơi thuần)
   -> application.games.services (session/timer/state của từng trò chơi)
   -> application.media.music (provider, cache, FFmpeg và upload)

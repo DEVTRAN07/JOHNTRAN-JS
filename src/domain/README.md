@@ -4,6 +4,7 @@ Domain chứa quy tắc nghiệp vụ thuần, không biết về Zalo SDK, HTTP
 
 ## Đã chuyển
 - groups/botState.js: xác định trạng thái bật/tắt, ngoại lệ /bot on và /bot status, tạo snapshot trạng thái nhóm.
+- users/requesterGreeting.js: xác định chủ bot/admin/support và câu chào; hỗ trợ truyền config/users tường minh để test không cần khởi tạo bot.
 - moderation/protectionState.js: danh sách feature Anti, đọc trạng thái boolean nghiêm ngặt và cập nhật một flag mà không mất các thiết lập khác.
 
 ## Miền tiếp theo
