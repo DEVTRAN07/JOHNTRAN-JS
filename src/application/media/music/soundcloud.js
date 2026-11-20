@@ -826,6 +826,7 @@ module.exports = {
     pickTranscoding,
     extractResolvedStreamUrl,
     CLIENT_ID_SCRIPT_LIMIT,
-    CLIENT_ID_SCRIPT_TIMEOUT_MS
+    CLIENT_ID_SCRIPT_TIMEOUT_MS,
+    CLIENT_ID_SCRIPT_BATCH_SIZE
   }
 };
