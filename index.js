@@ -1,4 +1,5 @@
 const { spawn } = require("child_process");
+const path = require("path");
 const logger = require("./utils/logger");
 const semver = require("semver");
 const configSystem = require("./core/config");
@@ -74,6 +75,7 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
     let shuttingDown = false;
     let restartTimer = null;
     let restartHistory = [];
+    let updateProcess = null;
 
     function scheduleRestart(delayMs, reason) {
         if (shuttingDown || restartTimer) return false;
@@ -97,6 +99,36 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
         scheduleRestart(plan.delayMs, reason);
     }
 
+    function runUpdateAndRestart() {
+        if (shuttingDown || updateProcess) return;
+        logger.log("Bot đã dừng an toàn. Đang cập nhật mã nguồn từ GitHub main...", "info");
+        let updater;
+        try {
+            updater = spawn(process.execPath, [path.join(__dirname, "scripts", "update.js")], {
+                cwd: __dirname,
+                stdio: "inherit",
+                env: { ...process.env, JT_UPDATE_TRIGGER: "zalo-command" }
+            });
+        } catch (error) {
+            logger.log("Không thể chạy updater: " + (error.message || error), "error");
+            scheduleRestart(1000, "Không thể cập nhật; khởi động lại phiên bản hiện tại");
+            return;
+        }
+        updateProcess = updater;
+        updater.once("error", (error) => {
+            logger.log("Updater gặp lỗi: " + (error.message || error), "error");
+        });
+        updater.once("close", (code) => {
+            if (updateProcess === updater) updateProcess = null;
+            if (shuttingDown) return;
+            if (code === 0) {
+                scheduleRestart(250, "Đã kiểm tra/cập nhật GitHub xong");
+            } else {
+                scheduleRestart(1000, "Cập nhật không hoàn tất; khởi động lại phiên bản hiện tại");
+            }
+        });
+    }
+
     function shutdown(signal) {
         if (shuttingDown) return;
         shuttingDown = true;
@@ -106,6 +138,9 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
         }
         logger.log("Đang dừng bot con...", "warn");
 
+        if (updateProcess && !updateProcess.killed) {
+            try { updateProcess.kill("SIGTERM"); } catch {}
+        }
         if (!child) return process.exit(0);
 
         const currentChild = child;
@@ -132,14 +167,26 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
         try {
             currentChild = spawn(process.execPath, ["JohnTran.js"], {
                 cwd: __dirname,
-                stdio: "inherit",
-                env: { ...process.env, JT_PANEL_CHILD: "0" }
+                // IPC is reserved for trusted supervisor control messages such as /update.
+                stdio: ["inherit", "inherit", "inherit", "ipc"],
+                env: {
+                    ...process.env,
+                    JT_PANEL_CHILD: "0",
+                    JT_UPDATE_SUPERVISOR: "1"
+                }
             });
         } catch (error) {
             scheduleCrashRecovery(`Không thể tạo tiến trình bot con: ${error.message || error}`);
             return;
         }
         child = currentChild;
+        let updateRequested = false;
+        currentChild.on("message", (message) => {
+            if (message && message.type === "jt:update-request") {
+                updateRequested = true;
+                logger.log("Đã nhận yêu cầu cập nhật từ lệnh Zalo /update.", "info");
+            }
+        });
 
         currentChild.once("error", (error) => {
             // Lỗi spawn thường được theo sau bởi close; để close handler thống nhất
@@ -153,6 +200,11 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
 
             if (code === 0 && !signal) {
                 logger.log("Bot con đã thoát bình thường; supervisor không tự khởi động lại", "info");
+                return;
+            }
+
+            if (code === 3 && !signal && updateRequested) {
+                runUpdateAndRestart();
                 return;
             }
 
