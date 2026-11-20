@@ -218,29 +218,39 @@ function scriptUrlsFromHtml(html) {
     .replace(/\\\//g, "/")
     .replace(/&amp;/gi, "&");
   const urls = [];
-  // SoundCloud can expose bundles through script tags and modulepreload links.
-  const patterns = [
-    /<(?:script|link)\b[^>]*?\b(?:src|data-src|href)\s*=\s*(["'])(.*?)\1/gi,
-    /["']((?:https?:)?\/\/[^"']+\.m?js(?:[?#][^"']*)?)["']/gi
-  ];
-  for (const re of patterns) {
-    let match;
-    while ((match = re.exec(source)) !== null) {
-      const raw = String(match[2] || match[1] || "").trim();
-      if (!raw || !/\.m?js(?:[?#]|$)/i.test(raw)) continue;
-      try {
-        const url = new URL(raw, HOME_URL);
-        const host = url.hostname.toLowerCase();
-        if ((host === "soundcloud.com" || host.endsWith(".soundcloud.com") ||
-             host === "sndcdn.com" || host.endsWith(".sndcdn.com")) &&
-            /^https?:$/.test(url.protocol)) urls.push(url.toString());
-      } catch { /* bỏ URL script không hợp lệ */ }
-    }
+  const re = /<(?:script|link)\b[^>]*?\b(?:src|data-src|href)\s*=\s*(["'])(.*?)\1/gi;
+  let match;
+
+  while ((match = re.exec(source)) !== null) {
+    const raw = String(match[2] || "").trim();
+    if (!raw || !/\.m?js(?:[?#]|$)/i.test(raw)) continue;
+    try {
+      const url = new URL(raw, HOME_URL);
+      const host = url.hostname.toLowerCase();
+      if (host === "soundcloud.com" || host.endsWith(".soundcloud.com") ||
+          host === "sndcdn.com" || host.endsWith(".sndcdn.com")) {
+        urls.push(url.toString());
+      }
+    } catch { /* bỏ URL script không hợp lệ */ }
   }
-  return [...new Set(urls)].sort((a, b) => {
-    const score = (url) => /sndcdn\.com/i.test(url) ? 2 : /soundcloud\.com/i.test(url) ? 1 : 0;
-    return score(b) - score(a);
-  });
+
+  // SoundCloud usually places client_id in a late sndcdn asset bundle.
+  // Prefer the last asset bundle in document order, not the first scripts.
+  return [...new Set(urls)]
+    .map((url, index) => {
+      let priority = 0;
+      try {
+        const parsed = new URL(url);
+        const host = parsed.hostname.toLowerCase();
+        const assetBundle = /\/assets\//i.test(parsed.pathname) && /\.m?js$/i.test(parsed.pathname);
+        if ((host === "sndcdn.com" || host.endsWith(".sndcdn.com")) && assetBundle) priority = 3;
+        else if (host === "sndcdn.com" || host.endsWith(".sndcdn.com")) priority = 2;
+        else priority = 1;
+      } catch { /* URL đã được validate ở trên */ }
+      return { url, index, priority };
+    })
+    .sort((left, right) => right.priority - left.priority || right.index - left.index)
+    .map(item => item.url);
 }
 
 function extractClientId(source) {
@@ -263,34 +273,49 @@ function extractClientId(source) {
 
 // Resolve a rotating SoundCloud client_id from current web bundles in parallel.
 // The old serial scan could spend 25s × 25 scripts before a search failed.
-const CLIENT_ID_SCRIPT_LIMIT = 16;
-const CLIENT_ID_SCRIPT_TIMEOUT_MS = 6000;
+const CLIENT_ID_SCRIPT_LIMIT = 24;
+const CLIENT_ID_SCRIPT_TIMEOUT_MS = 5000;
 const CLIENT_ID_HOME_TIMEOUT_MS = 8000;
+const CLIENT_ID_SCRIPT_BATCH_SIZE = 4;
 
 async function discoverClientIdFromScripts(scriptUrls, request = pooledAxios.get) {
   const urls = [...new Set(Array.isArray(scriptUrls) ? scriptUrls : [])]
     .slice(0, CLIENT_ID_SCRIPT_LIMIT);
   if (!urls.length) return null;
+
   const controller = new AbortController();
-  const attempts = urls.map(async scriptUrl => {
-    const response = await request(scriptUrl, {
-      timeout: CLIENT_ID_SCRIPT_TIMEOUT_MS,
-      signal: controller.signal,
-      __retryLimit: 0,
-      responseType: "text",
-      transformResponse: [(body) => body],
-      headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }
-    });
-    const js = typeof response.data === "string"
-      ? response.data
-      : Buffer.from(response.data || []).toString("utf8");
-    const clientId = extractClientId(js) || extractClientId(scriptUrl);
-    if (!clientId) throw new Error("SoundCloud bundle không chứa client_id.");
-    return clientId;
-  });
+  const fetchClientId = async (scriptUrl) => {
+    try {
+      const response = await request(scriptUrl, {
+        timeout: CLIENT_ID_SCRIPT_TIMEOUT_MS,
+        signal: controller.signal,
+        __retryLimit: 0,
+        responseType: "text",
+        transformResponse: [(body) => body],
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Accept": "*/*",
+          "Range": "bytes=0-50000"
+        }
+      });
+      const js = typeof response.data === "string"
+        ? response.data
+        : Buffer.from(response.data || []).toString("utf8");
+      return extractClientId(js) || extractClientId(scriptUrl);
+    } catch {
+      return null;
+    }
+  };
+
   try {
-    return await Promise.any(attempts);
-  } catch {
+    // Fetch in small concurrent batches, but keep the newest bundles first.
+    // If several contain an ID, use the newest bundle's result.
+    for (let offset = 0; offset < urls.length; offset += CLIENT_ID_SCRIPT_BATCH_SIZE) {
+      const batch = urls.slice(offset, offset + CLIENT_ID_SCRIPT_BATCH_SIZE);
+      const results = await Promise.all(batch.map(fetchClientId));
+      const found = results.find(Boolean);
+      if (found) return found;
+    }
     return null;
   } finally {
     controller.abort();
