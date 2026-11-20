@@ -213,20 +213,29 @@ function isValidClientId(value) {
 }
 
 function scriptUrlsFromHtml(html) {
+  const source = String(html || "")
+    .replace(/\\u002[fF]/g, "/")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/gi, "&");
   const urls = [];
-  const re = /<script\b[^>]*?\b(?:src|data-src)\s*=\s*(["'])(.*?)\1/gi;
-  let match;
-  while ((match = re.exec(String(html || ""))) !== null) {
-    const src = String(match[2] || "").trim();
-    if (!src || !/\.m?js(?:[?#]|$)/i.test(src)) continue;
-    try {
-      const url = new URL(src, HOME_URL);
-      const host = url.hostname.toLowerCase();
-      if (host === "soundcloud.com" || host.endsWith(".soundcloud.com") ||
-          host === "sndcdn.com" || host.endsWith(".sndcdn.com")) {
-        urls.push(url.toString());
-      }
-    } catch { /* bỏ URL script không hợp lệ */ }
+  // SoundCloud can expose bundles through script tags and modulepreload links.
+  const patterns = [
+    /<(?:script|link)\b[^>]*?\b(?:src|data-src|href)\s*=\s*(["'])(.*?)\1/gi,
+    /["']((?:https?:)?\/\/[^"']+\.m?js(?:[?#][^"']*)?)["']/gi
+  ];
+  for (const re of patterns) {
+    let match;
+    while ((match = re.exec(source)) !== null) {
+      const raw = String(match[2] || match[1] || "").trim();
+      if (!raw || !/\.m?js(?:[?#]|$)/i.test(raw)) continue;
+      try {
+        const url = new URL(raw, HOME_URL);
+        const host = url.hostname.toLowerCase();
+        if ((host === "soundcloud.com" || host.endsWith(".soundcloud.com") ||
+             host === "sndcdn.com" || host.endsWith(".sndcdn.com")) &&
+            /^https?:$/.test(url.protocol)) urls.push(url.toString());
+      } catch { /* bỏ URL script không hợp lệ */ }
+    }
   }
   return [...new Set(urls)].sort((a, b) => {
     const score = (url) => /sndcdn\.com/i.test(url) ? 2 : /soundcloud\.com/i.test(url) ? 1 : 0;
@@ -315,7 +324,7 @@ async function discoverClientId() {
 
   if (discovering) return discovering;
   if (Date.now() < negativeUntil) {
-    const error = new Error("Dich vu SoundCloud tam thoi khong kha dung (khong lay duoc client_id), vui long thu lai sau hoac dat music.soundcloud_client_id.");
+    const error = new Error("SoundCloud đang tạm thời không cung cấp client_id. Bot sẽ tự thử lại sau; hãy kiểm tra kết nối tới soundcloud.com nếu lỗi tiếp diễn.");
     error.notAvailable = true;
     throw error;
   }
@@ -381,7 +390,7 @@ async function discoverClientId() {
         }
       } catch { /* bo qua */ }
       negativeUntil = Date.now() + CLIENT_ID_NEGATIVE_TTL;
-      const error = new Error("Khong tim thay client_id cua SoundCloud (trang web da thay doi cau truc). Thu dat music.soundcloud_client_id trong config.");
+      const error = new Error("Không tìm thấy client_id trong trang chủ hoặc bundle SoundCloud. Có thể SoundCloud đã đổi cấu trúc hoặc chặn truy cập từ mạng hiện tại.");
       error.notAvailable = true;
       throw error;
     } finally {
