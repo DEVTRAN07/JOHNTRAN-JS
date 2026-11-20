@@ -21,6 +21,7 @@ src/
     games/services/              # Điều phối phiên chơi, timer và state trong RAM
   domain/
     groups/botState.js           # Chính sách bật/tắt bot theo nhóm, hàm thuần
+    games/engines/               # Luật chơi thuần, không Zalo/I/O
     moderation/protectionState.js# Schema/trạng thái Anti, hàm thuần
     README.md                    # Quy ước cho domain service mới
   infrastructure/storage/
@@ -43,6 +44,7 @@ Zalo WebSocket
   -> core/listen.js
   -> RAM cache nhóm + phân loại message
   -> domain.groups.botState (policy thuần, không I/O)
+  -> domain.games.engines (luật chơi thuần)
   -> application.games.services (session/timer/state của từng trò chơi)
   -> command registry -> permission/cooldown -> dispatcher -> plugin.run -> Zalo API
   -> event registry -> event plugins + command.handleEvent

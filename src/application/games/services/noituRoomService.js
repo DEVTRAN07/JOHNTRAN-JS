@@ -1,7 +1,7 @@
 "use strict";
 
 const crypto = require("node:crypto");
-const engine = require("../../../../core/games/noituEngine");
+const engine = require("../../../domain/games/engines/noituEngine");
 
 const rooms = new Map();
 const groupRooms = new Map();

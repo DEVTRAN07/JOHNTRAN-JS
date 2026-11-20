@@ -1,7 +1,7 @@
 "use strict";
 
 const crypto = require("node:crypto");
-const engine = require("../../../../core/games/samEngine");
+const engine = require("../../../domain/games/engines/samEngine");
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;

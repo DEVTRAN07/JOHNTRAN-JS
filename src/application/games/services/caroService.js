@@ -1,6 +1,6 @@
 "use strict";
 
-const engine = require("../../../../core/games/caroEngine");
+const engine = require("../../../domain/games/engines/caroEngine");
 
 const MOVE_TIMEOUT_MS = 60 * 1000;
 const LOBBY_TIMEOUT_MS = 5 * 60 * 1000;

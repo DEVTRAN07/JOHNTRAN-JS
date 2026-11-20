@@ -1,6 +1,6 @@
 "use strict";
 
-const engine = require("../../../../core/games/noituEngine");
+const engine = require("../../../domain/games/engines/noituEngine");
 const sessions = new Map();
 
 const DURATION_MS = 60_000;

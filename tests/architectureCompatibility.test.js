@@ -16,6 +16,13 @@ test("legacy domain paths point to the new pure group and moderation modules",()
  assert.equal(require("../core/runtime/antiProtection"),require("../src/domain/moderation/protectionState"));
 });
 
+test("legacy game engine paths point to the v5 pure domain engines",()=>{
+ assert.equal(require("../core/games/caroEngine"),require("../src/domain/games/engines/caroEngine"));
+ assert.equal(require("../core/games/noituEngine"),require("../src/domain/games/engines/noituEngine"));
+ assert.equal(require("../core/games/samEngine"),require("../src/domain/games/engines/samEngine"));
+ assert.equal(require("../core/games/tlmnEngine"),require("../src/domain/games/engines/tlmnEngine"));
+});
+
 test("legacy game service paths point to the v5 application services",()=>{
  assert.equal(require("../core/runtime/services/games/caroService"),require("../src/application/games/services/caroService"));
  assert.equal(require("../core/runtime/services/games/ghepchuService"),require("../src/application/games/services/ghepchuService"));

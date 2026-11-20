@@ -33,6 +33,7 @@ jobs:
             tests/runtimeEventRegistry.test.js \
             tests/databaseDurability.test.js \
             tests/caroGame.test.js \
+            tests/noituEngine.test.js \
             tests/ghepchuService.test.js \
             tests/noituQuickGame.test.js \
             tests/noituRoomGame.test.js \
