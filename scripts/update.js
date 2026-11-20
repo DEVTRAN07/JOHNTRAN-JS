@@ -36,8 +36,9 @@ function parseAheadBehind(output) {
 }
 
 function hasDependencyChanges(files) {
-  return (Array.isArray(files) ? files : []).some(file =>
-    file === "package.json" || file === "package-lock.json");
+  // npm ci is required only when the dependency lock changes. package.json-only
+  // edits to scripts/metadata do not justify deleting and rebuilding node_modules.
+  return (Array.isArray(files) ? files : []).includes("package-lock.json");
 }
 
 function run(command, args, options = {}) {
@@ -127,7 +128,7 @@ function updateRepository() {
   const newSha = run("git", ["rev-parse", "HEAD"]);
 
   if (hasDependencyChanges(changedFiles)) {
-    console.log("[update] package manifest thay đổi — đang đồng bộ dependency bằng npm ci...");
+    console.log("[update] package-lock.json thay đổi — đang đồng bộ dependency bằng npm ci...");
     try {
       runNpm(["ci", "--no-audit", "--no-fund"]);
     } catch (installError) {

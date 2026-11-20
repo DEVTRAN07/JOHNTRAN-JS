@@ -26,5 +26,5 @@ test("parseAheadBehind reads git rev-list counts", () => {
 test("dependency changes are detected only for package manifests", () => {
   assert.equal(hasDependencyChanges(["core/listen.js"]), false);
   assert.equal(hasDependencyChanges(["package-lock.json"]), true);
-  assert.equal(hasDependencyChanges(["README.md", "package.json"]), true);
+  assert.equal(hasDependencyChanges(["README.md", "package.json"]), false);
 });
