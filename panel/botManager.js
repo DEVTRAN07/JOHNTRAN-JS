@@ -318,6 +318,7 @@ class BotInstance {
       JT_ACCOUNT_FILE: paths.accountFile,
       JT_QRCODE_PATH: paths.qrFile,
       JT_PANEL_CHILD: "1",
+      JT_UPDATE_SUPERVISOR: "0",
       JT_SUPABASE_SYNC: "1",
       JT_BRIDGE_PORT: String(this.bridgePort || 3901),
       // Token bảo vệ cầu nối panel↔bot: bot con dùng GIỐNG panel proxy.

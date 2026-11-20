@@ -15,7 +15,8 @@
     "verify:deployment": "node scripts/verify-deployment.js",
     "migrate:supabase": "node scripts/migrate-json-to-supabase.js",
     "check:stk-assets": "node scripts/check-stk-assets.js",
-    "build:message-cache": "node scripts/build-message-cache.js"
+    "build:message-cache": "node scripts/build-message-cache.js",
+    "update": "node scripts/update.js"
   },
   "keywords": [
     "zalo",
