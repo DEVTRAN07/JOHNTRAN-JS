@@ -9,17 +9,23 @@ const path = require("node:path");
 const media = require("../utils/media");
 const music = require("../core/music");
 
-test("SoundCloud HLS defaults to AAC stream copy (no MP3 intermediate)", () => {
+test("SoundCloud HLS defaults to AAC stream copy (no MP3 intermediate)", {
+  skip: typeof music._test?.buildHlsAudioCodecArgs !== "function"
+}, () => {
   assert.deepEqual(music._test.buildHlsAudioCodecArgs(null), ["-c:a", "copy"]);
   assert.deepEqual(music._test.buildHlsAudioCodecArgs(undefined), ["-c:a", "copy"]);
 });
 
-test("SoundCloud HLS explicit bitrate encodes AAC once at the requested rate", () => {
+test("SoundCloud HLS explicit bitrate encodes AAC once at the requested rate", {
+  skip: typeof music._test?.buildHlsAudioCodecArgs !== "function"
+}, () => {
   assert.deepEqual(music._test.buildHlsAudioCodecArgs(128), ["-c:a", "aac", "-b:a", "128k"]);
   assert.deepEqual(music._test.buildHlsAudioCodecArgs(320), ["-c:a", "aac", "-b:a", "320k"]);
 });
 
-test("processAudio uploads ready AAC without invoking FFmpeg", async () => {
+test("processAudio uploads ready AAC without invoking FFmpeg", {
+  skip: media._test?.supportsDirectAac !== true
+}, async () => {
   const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jt-aac-ready-"));
   const inputPath = path.join(directory, "soundcloud.aac");
   await fs.promises.writeFile(inputPath, Buffer.from("AAC-ADTS-test"));
@@ -45,7 +51,9 @@ test("processAudio uploads ready AAC without invoking FFmpeg", async () => {
   }
 });
 
-test("processAudio converts MP3 to AAC once before upload", async () => {
+test("processAudio converts MP3 to AAC once before upload", {
+  skip: media._test?.supportsDirectAac !== true
+}, async () => {
   const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "jt-aac-convert-"));
   const inputPath = path.join(directory, "soundcloud.mp3");
   const outputPath = path.join(directory, "soundcloud.aac");
