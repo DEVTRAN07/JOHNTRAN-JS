@@ -19,6 +19,7 @@ src/
     events/registry.js           # Index/dispatch event handlers
     events/threadQueue.js        # Queue theo nhóm khi cần thứ tự
     games/services/              # Điều phối phiên chơi, timer và state trong RAM
+    media/music/                 # Provider, cache, FFmpeg và pipeline nhạc
   domain/
     groups/botState.js           # Chính sách bật/tắt bot theo nhóm, hàm thuần
     games/engines/               # Luật chơi thuần, không Zalo/I/O
@@ -46,6 +47,7 @@ Zalo WebSocket
   -> domain.groups.botState (policy thuần, không I/O)
   -> domain.games.engines (luật chơi thuần)
   -> application.games.services (session/timer/state của từng trò chơi)
+  -> application.media.music (provider, cache, FFmpeg và upload)
   -> command registry -> permission/cooldown -> dispatcher -> plugin.run -> Zalo API
   -> event registry -> event plugins + command.handleEvent
 Ghi dữ liệu: RAM mirror -> worker thread -> file JSON tạm -> atomic rename
@@ -65,5 +67,6 @@ Thời gian cuối cùng vẫn phụ thuộc WebSocket/Zalo API và dịch vụ 
 
 ## Lộ trình
 - Giai đoạn 1: chuyển composition root, command/event dispatch và JSON storage vào src.
-- Giai đoạn 2: chuyển chính sách nhóm và cấu hình Anti sang domain; điều phối phiên chơi đã chuyển sang application.games.services, các engine luật chơi vẫn giữ nguyên trong core/games.
+- Giai đoạn 2: chính sách nhóm/Anti và engine game thuần đã chuyển vào domain; service phiên chơi đã chuyển vào application.games.services.
+- Giai đoạn 2.5: pipeline nhạc/provider đã chuyển vào application.media.music; core/music giữ adapter tương thích.
 - Giai đoạn 3: gỡ adapter cũ chỉ sau khi test tương thích và profiling xác nhận.

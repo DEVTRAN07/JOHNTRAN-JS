@@ -32,3 +32,13 @@ test("legacy game service paths point to the v5 application services",()=>{
  assert.equal(require("../core/runtime/services/games/samService"),require("../src/application/games/services/samService"));
  assert.equal(require("../core/runtime/services/games/tlmnService"),require("../src/application/games/services/tlmnService"));
 });
+
+test("legacy music paths point to the v5 application music service", () => {
+  assert.equal(require("../core/music/command"), require("../src/application/media/music/command"));
+  assert.equal(require("../core/music/extra"), require("../src/application/media/music/extra"));
+  assert.equal(require("../core/music/ffmpegPath"), require("../src/application/media/music/ffmpegPath"));
+  assert.equal(require("../core/music"), require("../src/application/media/music"));
+  assert.equal(require("../core/music/models"), require("../src/application/media/music/models"));
+  assert.equal(require("../core/music/soundcloud"), require("../src/application/media/music/soundcloud"));
+  assert.equal(require("../core/music/ui"), require("../src/application/media/music/ui"));
+});

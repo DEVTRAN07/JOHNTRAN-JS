@@ -40,7 +40,14 @@ jobs:
             tests/noituCommand.test.js \
             tests/runtimeIntegration.test.js \
             tests/samGame.test.js \
-            tests/tlmnGame.test.js
+            tests/tlmnGame.test.js \
+            tests/musicFfmpegPath.test.js \
+            tests/musicCommandAck.test.js \
+            tests/musicQuality.test.js \
+            tests/musicUi.test.js \
+            tests/soundcloudClientId.test.js \
+            tests/soundcloudDiscovery.test.js \
+            tests/soundcloudOfficialApi.test.js
       - name: Verify JSON writer in isolated worker process
         env:
           JT_JSON_WRITER_WORKER: "1"
