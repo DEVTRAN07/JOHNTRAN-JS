@@ -21,14 +21,19 @@ module.exports.config = {
 
 let requested = false;
 
+function isSupportedUpdateRuntime(env = process.env, ipcSend = process.send) {
+  const managed = env.JT_UPDATE_SUPERVISOR === "1" || env.JT_PANEL_CHILD === "1";
+  return managed && typeof ipcSend === "function";
+}
+
 module.exports.run = async ({ event, api, reply }) => {
   const { threadId, type } = event || {};
   if (requested) return reply.error("Đang có một yêu cầu cập nhật được xử lý.");
 
-  if (process.env.JT_UPDATE_SUPERVISOR !== "1" || typeof process.send !== "function") {
+  if (!isSupportedUpdateRuntime()) {
     return reply.error(
-      "Tự cập nhật qua Zalo cần chạy bot bằng npm start (supervisor thường). " +
-      "Panel bot hoặc chạy trực tiếp JohnTran.js chưa hỗ trợ lệnh này.");
+      "Không tìm thấy tiến trình giám sát để cập nhật an toàn. " +
+      "Hãy khởi động bằng npm start (hoặc dùng bot do Panel quản lý); không chạy trực tiếp JohnTran.js.");
   }
 
   if (!fs.existsSync(path.join(ROOT, ".git"))) {
@@ -49,7 +54,7 @@ module.exports.run = async ({ event, api, reply }) => {
   }
 
   return new Promise(resolve => {
-    process.send({ type: "jt:update-request" }, error => {
+    process.send({ type: "jt:update-request", botName: process.env.JT_BOT_NAME || "main" }, error => {
       if (error) {
         requested = false;
         api.sendMessage(
@@ -67,5 +72,5 @@ module.exports.run = async ({ event, api, reply }) => {
 };
 
 module.exports._test = {
-  isSupportedSupervisor: () => process.env.JT_UPDATE_SUPERVISOR === "1" && typeof process.send === "function"
+  isSupportedUpdateRuntime
 };
