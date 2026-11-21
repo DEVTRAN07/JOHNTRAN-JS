@@ -9,7 +9,7 @@ const { RAW_BASE_URL, ASSETS_DIR, MAX_FRAME_SIDE } = require("../core/stk/assets
 
 const MAX_FRAME_BYTES = 10 * 1024 * 1024;
 const MAX_MENU_BYTES = 8 * 1024 * 1024;
-const DEFAULT_CONCURRENCY = 8;
+const DEFAULT_CONCURRENCY = 4;
 const RETRIES = 3;
 
 function isPng(buffer) {
