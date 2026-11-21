@@ -19,7 +19,8 @@
     "update": "node scripts/update.js",
     "prestart": "node scripts/download-stk-assets.js",
     "assets:stk": "node scripts/download-stk-assets.js",
-    "prestart:prod": "node scripts/download-stk-assets.js"
+    "prestart:prod": "node scripts/download-stk-assets.js",
+    "predev": "node scripts/download-stk-assets.js"
   },
   "keywords": [
     "zalo",
