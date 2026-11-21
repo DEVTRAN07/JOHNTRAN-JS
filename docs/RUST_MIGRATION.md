@@ -198,10 +198,26 @@ latency improvement.
   single-quality encoder for the selected quality via the Node N-API integration
   test, full Node test suite and CI addon smoke test.
 
+## Stage 15 — SoundCloud client_id extraction
+
+- Rust crate: `native/domain-core-rs`.
+- Compatibility adapter: `src/application/media/music/soundcloud.js`.
+- Scope: scan each fetched bundle body and its URL in the legacy order, using
+  the same 32-character query, assignment, quoted-object and percent-encoded
+  patterns. Bundles are passed to Rust in batches after the existing parallel
+  HTTP fetch completes.
+- Node retains SoundCloud home-page and bundle HTTP requests, timeouts,
+  cancellation, OAuth, token/config/database/disk caches, stream resolution,
+  FFmpeg and audio downloads.
+- Rollback: set `JT_RUST_SOUNDCLOUD_PARSER=0`.
+- Verification: Rust domain-core unit tests, Node JS/Rust parity fixtures for
+  bundle/body priority, case handling, JSON, escaped delimiters and encoded
+  equals, plus CI N-API smoke test.
+
 ## Later migration order
 
-1. Continue auditing remaining pure command-validation, event payload and
-   formatting helpers; leave network calls and async event dispatch in JS.
+1. Continue auditing remaining pure media/text parsing and event-payload
+   helpers; keep HTTP, OAuth, FFmpeg, file access and async dispatch in JS.
 2. Media/image work: expand the existing Rust sticker path. Only activate
    canvas/FFmpeg Rust prototypes after platform builds, output parity and
    realistic performance tests pass.

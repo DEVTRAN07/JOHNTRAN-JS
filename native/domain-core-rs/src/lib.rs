@@ -1209,3 +1209,303 @@ mod native_rate_limiter_tests {
         assert_eq!(limiter.operations, operations);
     }
 }
+
+
+#[napi(object)]
+pub struct SoundCloudScriptSource {
+    pub script: Option<String>,
+    pub url: String,
+}
+
+fn replace_ascii_case_insensitive(source: &str, needle: &str, replacement: &str) -> String {
+    let bytes = source.as_bytes();
+    let needle_bytes = needle.as_bytes();
+    let mut output = String::with_capacity(source.len());
+    let mut cursor = 0usize;
+
+    while cursor < bytes.len() {
+        let end = cursor.saturating_add(needle_bytes.len());
+        let matches = end <= bytes.len()
+            && bytes[cursor..end].iter().zip(needle_bytes.iter())
+                .all(|(left, right)| left.eq_ignore_ascii_case(right));
+        if matches {
+            output.push_str(replacement);
+            cursor = end;
+        } else {
+            let character = source[cursor..].chars().next().unwrap_or('\0');
+            output.push(character);
+            cursor += character.len_utf8().max(1);
+        }
+    }
+    output
+}
+
+fn normalize_soundcloud_source(source: &str) -> String {
+    let escaped_ampersands = replace_ascii_case_insensitive(source, "\\u0026", "&");
+    let escaped_equals = replace_ascii_case_insensitive(&escaped_ampersands, "\\x3d", "=");
+    replace_ascii_case_insensitive(&escaped_equals, "&amp;", "&")
+}
+
+fn starts_with_ascii_case_insensitive_at(source: &str, position: usize, needle: &str) -> bool {
+    let bytes = source.as_bytes();
+    let needle_bytes = needle.as_bytes();
+    let end = position.saturating_add(needle_bytes.len());
+    end <= bytes.len()
+        && bytes[position..end].iter().zip(needle_bytes.iter())
+            .all(|(left, right)| left.eq_ignore_ascii_case(right))
+}
+
+fn find_ascii_case_insensitive_from(source: &str, needle: &str, start: usize) -> Option<usize> {
+    source.char_indices()
+        .filter(|(position, _)| *position >= start)
+        .find_map(|(position, _)| {
+            starts_with_ascii_case_insensitive_at(source, position, needle)
+                .then_some(position)
+        })
+}
+
+fn skip_js_whitespace(source: &str, mut position: usize) -> usize {
+    while position < source.len() {
+        let character = match source[position..].chars().next() {
+            Some(character) => character,
+            None => break,
+        };
+        if !is_js_whitespace(character) {
+            break;
+        }
+        position += character.len_utf8();
+    }
+    position
+}
+
+fn read_client_id_at(source: &str, position: usize) -> Option<String> {
+    let bytes = source.as_bytes();
+    let end = position.checked_add(32)?;
+    let candidate = bytes.get(position..end)?;
+    if !candidate.iter().all(|byte| byte.is_ascii_alphanumeric()) {
+        return None;
+    }
+    String::from_utf8(candidate.to_vec()).ok()
+}
+
+fn extract_soundcloud_client_id_from_normalized(source: &str) -> Option<String> {
+    let bytes = source.as_bytes();
+
+    // Regex 1: [?&]client_id=([A-Za-z0-9]{32})
+    let mut cursor = 0usize;
+    while let Some(absolute) = find_ascii_case_insensitive_from(source, "client_id", cursor) {
+        // Use an ASCII-insensitive scan for mixed-case spellings.
+        if starts_with_ascii_case_insensitive_at(source, absolute, "client_id") &&
+            absolute > 0 &&
+            matches!(bytes[absolute - 1], b'?' | b'&')
+        {
+            let value_start = absolute + "client_id=".len();
+            if bytes.get(absolute + "client_id".len()) == Some(&b'=') {
+                if let Some(value) = read_client_id_at(source, value_start) {
+                    return Some(value);
+                }
+            }
+        }
+        cursor = absolute.saturating_add(1);
+        if cursor >= source.len() {
+            break;
+        }
+    }
+
+    // Regex 2: (client_id|clientId)\s*[=:]\s*["']?([A-Za-z0-9]{32})
+    for (position, _) in source.char_indices() {
+        let key_len = if starts_with_ascii_case_insensitive_at(source, position, "client_id") {
+            9
+        } else if starts_with_ascii_case_insensitive_at(source, position, "clientId") {
+            8
+        } else {
+            continue;
+        };
+        let mut value_position = skip_js_whitespace(source, position + key_len);
+        if !matches!(bytes.get(value_position), Some(b'=') | Some(b':')) {
+            continue;
+        }
+        value_position += 1;
+        value_position = skip_js_whitespace(source, value_position);
+        if matches!(bytes.get(value_position), Some(b'\'') | Some(b'"')) {
+            value_position += 1;
+        }
+        if let Some(value) = read_client_id_at(source, value_position) {
+            return Some(value);
+        }
+    }
+
+    // Regex 3: quoted object key, colon, quoted 32-character value.
+    for (position, _) in source.char_indices() {
+        match bytes.get(position) {
+            Some(b'\'') | Some(b'"') => {}
+            _ => continue,
+        }
+        let key_position = position + 1;
+        let key_len = if starts_with_ascii_case_insensitive_at(source, key_position, "client_id") {
+            9usize
+        } else if starts_with_ascii_case_insensitive_at(source, key_position, "clientId") {
+            8usize
+        } else {
+            continue;
+        };
+        let closing_key_quote = key_position + key_len;
+        if !matches!(bytes.get(closing_key_quote), Some(b'\'') | Some(b'"')) {
+            continue;
+        }
+        let mut value_position = skip_js_whitespace(source, closing_key_quote + 1);
+        if bytes.get(value_position) != Some(&b':') {
+            continue;
+        }
+        value_position = skip_js_whitespace(source, value_position + 1);
+        if !matches!(bytes.get(value_position), Some(b'\'') | Some(b'"')) {
+            continue;
+        }
+        value_position += 1;
+        if let Some(value) = read_client_id_at(source, value_position) {
+            if matches!(bytes.get(value_position + 32), Some(b'\'') | Some(b'"')) {
+                return Some(value);
+            }
+        }
+    }
+
+    // Regex 4: client_id%3[dD]([A-Za-z0-9]{32})
+    let mut cursor = 0usize;
+    while cursor < source.len() {
+        let position = match find_ascii_case_insensitive_from(source, "client_id", cursor) {
+            Some(position) => position,
+            None => break,
+        };
+        let delimiter = position + "client_id".len();
+        if starts_with_ascii_case_insensitive_at(source, delimiter, "%3d") {
+            if let Some(value) = read_client_id_at(source, delimiter + 3) {
+                return Some(value);
+            }
+        }
+        cursor = position + 1;
+    }
+
+    None
+}
+
+fn extract_soundcloud_client_id(source: &str) -> Option<String> {
+    let normalized = normalize_soundcloud_source(source);
+    extract_soundcloud_client_id_from_normalized(&normalized)
+}
+
+#[napi]
+pub fn soundcloud_extract_client_id(
+    sources: Vec<SoundCloudScriptSource>,
+) -> Option<String> {
+    // Preserve the JS adapter's order: each bundle's body is checked first,
+    // followed by that bundle URL, before moving to the next bundle.
+    for source in sources {
+        if let Some(script) = source.script {
+            if let Some(client_id) = extract_soundcloud_client_id(&script) {
+                return Some(client_id);
+            }
+        }
+        if let Some(client_id) = extract_soundcloud_client_id(&source.url) {
+            return Some(client_id);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod soundcloud_client_id_tests {
+    use super::*;
+
+    fn id(value: &str) -> String {
+        value.to_string()
+    }
+
+    #[test]
+    fn parser_matches_query_assignment_object_and_percent_encoded_patterns() {
+        let first = "0123456789abcdef0123456789abcdef";
+        let second = "abcdef0123456789abcdef0123456789";
+        assert_eq!(
+            extract_soundcloud_client_id(&format!("https://api.soundcloud.com/search?client_id={first}")),
+            Some(id(first))
+        );
+        assert_eq!(
+            extract_soundcloud_client_id(&format!("clientId = \"{second}\"")),
+            Some(id(second))
+        );
+        assert_eq!(
+            extract_soundcloud_client_id(&format!("{{\"client_id\":\"{second}\"}}")),
+            Some(id(second))
+        );
+        assert_eq!(
+            extract_soundcloud_client_id(&format!("client_id%3d{first}")),
+            Some(id(first))
+        );
+    }
+
+    #[test]
+    fn quoted_json_pattern_keeps_legacy_independent_quote_matching() {
+        let value = "0123456789abcdef0123456789abcdef";
+        let source = format!("'client_id\":\"{value}'");
+        assert_eq!(
+            extract_soundcloud_client_id(&source),
+            Some(id(value))
+        );
+    }
+
+    #[test]
+    fn parser_decodes_the_same_escaped_ampersand_equals_and_html_entity_inputs() {
+        let value = "0123456789abcdef0123456789abcdef";
+        assert_eq!(
+            extract_soundcloud_client_id(&format!("x=1\\u0026client_id\\x3d{value}")),
+            Some(id(value))
+        );
+        assert_eq!(
+            extract_soundcloud_client_id(&format!("x=1&amp;client_id={value}")),
+            Some(id(value))
+        );
+    }
+
+    #[test]
+    fn pattern_priority_matches_javascript_regex_order() {
+        let query_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let assignment_id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let source = format!(
+            "client_id = '{assignment_id}' later ?client_id={query_id}"
+        );
+        assert_eq!(
+            extract_soundcloud_client_id(&source),
+            Some(id(query_id)),
+            "the query-parameter regex is tried before the assignment regex"
+        );
+    }
+
+    #[test]
+    fn batch_parser_preserves_per_bundle_body_before_url_and_bundle_order() {
+        let first_body = "cccccccccccccccccccccccccccccccc";
+        let first_url = "dddddddddddddddddddddddddddddddd";
+        let second_body = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        let sources = vec![
+            SoundCloudScriptSource {
+                script: Some(format!("client_id='{first_body}'")),
+                url: format!("https://cdn.example/script.js?client_id={first_url}"),
+            },
+            SoundCloudScriptSource {
+                script: Some(format!("client_id='{second_body}'")),
+                url: "https://cdn.example/other.js".to_string(),
+            },
+        ];
+        assert_eq!(
+            soundcloud_extract_client_id(sources),
+            Some(id(first_body))
+        );
+    }
+
+    #[test]
+    fn parser_rejects_short_and_non_alphanumeric_values() {
+        assert_eq!(extract_soundcloud_client_id("client_id=short"), None);
+        assert_eq!(
+            extract_soundcloud_client_id("client_id=0123456789abcdef0123456789abcde!"),
+            None
+        );
+    }
+}

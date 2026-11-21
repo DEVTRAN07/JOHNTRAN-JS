@@ -115,6 +115,44 @@ function tryPermissionPolicyOperation(operation, args = []) {
 
 let restartPolicyLastError = null;
 
+let soundCloudParserLastError = null;
+
+function trySoundCloudExtractClientId(sources = []) {
+  if (process.env.JT_RUST_SOUNDCLOUD_PARSER === "0" || !domainCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const parser = domainCoreNative.mod.soundcloud_extract_client_id ||
+    domainCoreNative.mod.soundcloudExtractClientId;
+  if (typeof parser !== "function") {
+    soundCloudParserLastError = "Rust SoundCloud client_id parser export is missing";
+    return { used: false, value: null };
+  }
+  try {
+    const value = parser(Array.isArray(sources) ? sources : []);
+    soundCloudParserLastError = null;
+    return { used: true, value: value || null };
+  } catch (error) {
+    soundCloudParserLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function getSoundCloudParserDiagnostics() {
+  const parser = domainCoreNative.ok
+    ? domainCoreNative.mod.soundcloud_extract_client_id ||
+      domainCoreNative.mod.soundcloudExtractClientId
+    : null;
+  const enabled = process.env.JT_RUST_SOUNDCLOUD_PARSER !== "0";
+  return {
+    loaded: domainCoreNative.ok,
+    enabled,
+    active: enabled && typeof parser === "function",
+    exports: domainCoreNative.ok ? Object.keys(domainCoreNative.mod || {}) : [],
+    lastError: soundCloudParserLastError,
+    loadError: domainCoreNative.ok ? null : String(domainCoreNative.err?.message || domainCoreNative.err)
+  };
+}
+
 function tryRestartPlan(args = []) {
   if (process.env.JT_RUST_RESTART_POLICY === "0" || !domainCoreNative.ok) {
     return { used: false, value: null };
@@ -791,6 +829,8 @@ const nativeApi = {
   getPermissionPolicyDiagnostics,
   tryRestartPlan,
   getRestartPolicyDiagnostics,
+  trySoundCloudExtractClientId,
+  getSoundCloudParserDiagnostics,
   tryRequestBoundedInteger,
   tryResolveHttpRequestPolicy,
   getHttpRequestPolicyDiagnostics,

@@ -3,6 +3,7 @@ const path = require("path");
 const { pooledAxios } = require("../../../../core/http/pooledAxios");
 const { createTrack } = require("./models");
 const db = require("../../../../utils/db");
+const nativeCore = require("../../../../native");
 
 const SOURCE = "SoundCloud";
 // Official API is preferred when OAuth credentials are configured.
@@ -253,7 +254,7 @@ function scriptUrlsFromHtml(html) {
     .map(item => item.url);
 }
 
-function extractClientId(source) {
+function extractClientIdFallback(source) {
   const text = String(source || "")
     .replace(/\\u0026/gi, "&")
     .replace(/\\x3d/gi, "=")
@@ -271,6 +272,33 @@ function extractClientId(source) {
   return null;
 }
 
+function normalizeClientIdSources(sources) {
+  return (Array.isArray(sources) ? sources : []).map(source => ({
+    script: typeof source?.script === "string" ? source.script : null,
+    url: String(source?.url || "")
+  }));
+}
+
+function extractClientIdFromSources(sources) {
+  const normalized = normalizeClientIdSources(sources);
+  const nativeResult = nativeCore.trySoundCloudExtractClientId(normalized);
+  if (nativeResult.used && nativeResult.value) return String(nativeResult.value);
+
+  // Keep the previous JS parser as fallback for older native binaries and
+  // for any future bundle spelling not yet supported by the Rust scanner.
+  for (const source of normalized) {
+    const fromScript = source.script ? extractClientIdFallback(source.script) : null;
+    if (fromScript) return fromScript;
+    const fromUrl = extractClientIdFallback(source.url);
+    if (fromUrl) return fromUrl;
+  }
+  return null;
+}
+
+function extractClientId(source) {
+  return extractClientIdFromSources([{ script: String(source || ""), url: "" }]);
+}
+
 // Resolve a rotating SoundCloud client_id from current web bundles in parallel.
 // The old serial scan could spend 25s × 25 scripts before a search failed.
 const CLIENT_ID_SCRIPT_LIMIT = 24;
@@ -284,7 +312,7 @@ async function discoverClientIdFromScripts(scriptUrls, request = pooledAxios.get
   if (!urls.length) return null;
 
   const controller = new AbortController();
-  const fetchClientId = async (scriptUrl) => {
+  const fetchClientScript = async (scriptUrl) => {
     try {
       const response = await request(scriptUrl, {
         timeout: CLIENT_ID_SCRIPT_TIMEOUT_MS,
@@ -301,7 +329,7 @@ async function discoverClientIdFromScripts(scriptUrls, request = pooledAxios.get
       const js = typeof response.data === "string"
         ? response.data
         : Buffer.from(response.data || []).toString("utf8");
-      return extractClientId(js) || extractClientId(scriptUrl);
+      return { script: js, url: scriptUrl };
     } catch {
       return null;
     }
@@ -312,8 +340,8 @@ async function discoverClientIdFromScripts(scriptUrls, request = pooledAxios.get
     // If several contain an ID, use the newest bundle's result.
     for (let offset = 0; offset < urls.length; offset += CLIENT_ID_SCRIPT_BATCH_SIZE) {
       const batch = urls.slice(offset, offset + CLIENT_ID_SCRIPT_BATCH_SIZE);
-      const results = await Promise.all(batch.map(fetchClientId));
-      const found = results.find(Boolean);
+      const results = await Promise.all(batch.map(fetchClientScript));
+      const found = extractClientIdFromSources(results.filter(Boolean));
       if (found) return found;
     }
     return null;
@@ -805,6 +833,8 @@ module.exports = {
     isValidClientId,
     scriptUrlsFromHtml,
     extractClientId,
+    extractClientIdFallback,
+    extractClientIdFromSources,
     getTranscodingCandidates,
     getOfficialTranscodingCandidates,
     selectResolveCandidates,
