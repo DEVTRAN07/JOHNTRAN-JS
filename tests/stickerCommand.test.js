@@ -48,10 +48,10 @@ test("the replacement Discord catalog contains all 200 ordered entries", () => {
 });
 
 test("the 200 frame catalog is stored under src/assets/stk rather than the runtime cache", () => {
-  assert.ok(
-    service.DECOR_DIR.replace(/\\\\/g, "/").endsWith("/src/assets/stk"),
-    "frame assets must be resolved from the source asset folder"
-  );
+  assert.equal(path.basename(service.DECOR_DIR), "stk");
+  assert.equal(path.basename(path.dirname(service.DECOR_DIR)), "assets");
+  assert.equal(path.basename(path.dirname(path.dirname(service.DECOR_DIR))), "src",
+    "frame assets must be resolved from the source asset folder");
 });
 
 test("the renderer uses the Python layout dimensions and offset", () => {
