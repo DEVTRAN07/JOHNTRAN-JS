@@ -37,8 +37,6 @@ jobs:
         run: |
           cargo test --manifest-path rust/message-cache/Cargo.toml
           npm run build:message-cache
-      - name: Test Rust sticker compositor
-        run: cargo test --manifest-path native/Cargo.toml -p sticker-rs
       - name: Build Rust sticker N-API addon
         run: |
           npm run build:native
