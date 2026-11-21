@@ -522,11 +522,11 @@ function isObsoleteMenuOpeningAcknowledgement(message) {
   // leaving the actual menu title/card untouched.
   let normalized;
   try {
-    normalized = text.normalize("NFKC").replace(/\\s+/gu, " ").trim();
+    normalized = text.normalize("NFKC").replace(/\s+/gu, " ").trim();
   } catch {
     normalized = text.trim();
   }
-  return /⏳\\s*đang mở danh mục lệnh/iu.test(normalized);
+  return /⏳\s*đang mở danh mục lệnh/iu.test(normalized);
 }
 
 const guardedSendMessageApis = new WeakSet();
