@@ -30,7 +30,8 @@ __pycache__/
 # Runtime-generated caches and temporary artifacts
 # STK frames are hydrated into src/assets/stk from a pinned source commit.
 # Keep generated 200-frame assets local so /update can fast-forward without dirty-tree conflicts.
-src/assets/stk/
+src/assets/stk/*
+!src/assets/stk/README.md
 core/assets/cache/
 assets/cache/media/
 assets/cache/sticker/
