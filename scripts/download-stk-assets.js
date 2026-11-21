@@ -245,6 +245,7 @@ async function downloadAllAssets(options = {}) {
   const result = {
     directory,
     total: manifestItems.length,
+    available: manifestItems.filter(item => !item.missing).length,
     downloaded,
     skipped,
     totalBytes,
@@ -253,7 +254,7 @@ async function downloadAllAssets(options = {}) {
     menuMissing
   };
   logger.info?.(
-    "[stk-assets] " + result.total + "/"+ result.total +
+    "[stk-assets] " + result.available + "/" + result.total +
     " frames local; downloaded=" + downloaded +
     ", reused=" + skipped +
     ", size=" + (totalBytes / 1048576).toFixed(1) + "MB" +
