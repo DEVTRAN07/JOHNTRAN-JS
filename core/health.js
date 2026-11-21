@@ -7,7 +7,13 @@ const { monitorEventLoopDelay } = require("node:perf_hooks");
 // Observe Node event-loop pressure so CPU-bound work and blocking callbacks
 // can be distinguished from Zalo/HTTP network latency in protected metrics.
 const eventLoopHistogram = monitorEventLoopDelay({ resolution: 20 });
-eventLoopHistogram.enable();
+let eventLoopMonitorEnabled = false;
+
+function enableEventLoopMonitor() {
+  if (eventLoopMonitorEnabled) return;
+  eventLoopHistogram.enable();
+  eventLoopMonitorEnabled = true;
+}
 
 const START_TIME = Date.now();
 
@@ -44,6 +50,9 @@ function healthPayload() {
 }
 
 function getEventLoopMetrics(options = {}) {
+  // Detailed event-loop sampling is only needed when metrics are queried.
+  // Keep the normal bot hot path free from a permanently enabled histogram.
+  enableEventLoopMonitor();
   const toMs = value => Number.isFinite(value) ? Number((value / 1e6).toFixed(2)) : 0;
   const snapshot = {
     minMs: toMs(eventLoopHistogram.min),
