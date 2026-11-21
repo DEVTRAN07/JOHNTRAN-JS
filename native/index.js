@@ -19,8 +19,77 @@ const stickerNative = tryLoad("sticker-rs", "sticker_rs.node");
 const canvasNative = tryLoad("canvas-rs", "canvas_rs.node");
 const ffmpegNative = tryLoad("ffmpeg-rs", "ffmpeg_rs.node");
 const textStyleNative = tryLoad("text-style-rs", "text_style_rs.node");
+const commandParserNative = tryLoad("command-core-rs", "command_core_rs.node");
 
 let textStyleLastError = null;
+
+
+function parseCommandFallback(messageText, prefix) {
+  if (
+    typeof messageText !== "string" ||
+    typeof prefix !== "string" ||
+    prefix.length === 0 ||
+    !messageText.startsWith(prefix)
+  ) {
+    return { matched: false, command: "", args: [] };
+  }
+
+  const remainder = messageText.slice(prefix.length).trim();
+  if (!remainder) return { matched: true, command: "", args: [] };
+
+  const parts = remainder.split(/\s+/);
+  return {
+    matched: true,
+    command: String(parts.shift() || "").toLowerCase(),
+    args: parts
+  };
+}
+
+let commandParserLastError = null;
+
+function parseCommand(messageText, prefix) {
+  const fallback = () => parseCommandFallback(messageText, prefix);
+  if (process.env.JT_RUST_COMMAND_PARSER === "0" || !commandParserNative.ok) return fallback();
+
+  const parser = commandParserNative.mod.parse_command || commandParserNative.mod.parseCommand;
+  if (typeof parser !== "function") {
+    commandParserLastError = "Rust command parser export is missing";
+    return fallback();
+  }
+
+  try {
+    const parsed = parser(messageText, prefix);
+    if (!parsed || typeof parsed.matched !== "boolean" ||
+        typeof parsed.command !== "string" || !Array.isArray(parsed.args)) {
+      throw new Error("Rust command parser returned an invalid result");
+    }
+    commandParserLastError = null;
+    return {
+      matched: parsed.matched,
+      command: parsed.command,
+      args: parsed.args.map(value => String(value))
+    };
+  } catch (error) {
+    commandParserLastError = String(error?.stack || error?.message || error);
+    return fallback();
+  }
+}
+
+function getCommandParserDiagnostics() {
+  const parser = commandParserNative.ok
+    ? commandParserNative.mod.parse_command || commandParserNative.mod.parseCommand
+    : null;
+  const enabled = process.env.JT_RUST_COMMAND_PARSER !== "0";
+  return {
+    loaded: commandParserNative.ok,
+    enabled,
+    active: enabled && typeof parser === "function",
+    exports: commandParserNative.ok ? Object.keys(commandParserNative.mod || {}) : [],
+    loadError: commandParserNative.ok ? null : String(commandParserNative.err?.message || commandParserNative.err),
+    lastError: commandParserLastError
+  };
+}
+
 
 function randomColorStyles(text, colors, excludedRanges = []) {
   if (!textStyleNative.ok) return null;
@@ -158,17 +227,22 @@ const nativeApi = {
   encode: wrap({ name: "encode", native: ffmpegNative, fallback: (o) => jsEncode(o.input, o.output) }),
   randomColorStyles,
   getTextStyleDiagnostics,
+  parseCommand,
+  getCommandParserDiagnostics,
+  __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,
     canvas: canvasNative.ok,
     ffmpeg: ffmpegNative.ok,
     textStyle: textStyleNative.ok,
+    commandParser: commandParserNative.ok,
   },
   loadErrors: {
     sticker: stickerNative.ok ? null : String(stickerNative.err && stickerNative.err.message),
     canvas: canvasNative.ok ? null : String(canvasNative.err && canvasNative.err.message),
     ffmpeg: ffmpegNative.ok ? null : String(ffmpegNative.err && ffmpegNative.err.message),
     textStyle: textStyleNative.ok ? null : String(textStyleNative.err && textStyleNative.err.message),
+    commandParser: commandParserNative.ok ? null : String(commandParserNative.err && commandParserNative.err.message),
   },
 };
 

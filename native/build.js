@@ -8,6 +8,7 @@ const NATIVE_DIR = path.resolve(__dirname);
 // prototypes until their build/runtime contracts pass the same CI gate.
 const CRATES = [
   { name: "sticker-rs", addon: "sticker_rs.node" },
+  { name: "command-core-rs", addon: "command_core_rs.node" },
 ];
 
 function run(cmd, args, opts = {}) {

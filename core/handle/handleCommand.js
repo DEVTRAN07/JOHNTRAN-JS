@@ -3,6 +3,7 @@ const { wrapForThread } = require("../runtime/adapters/zalo");
 const metrics = require("../metrics");
 const fs = require("fs");
 const { performance } = require("node:perf_hooks");
+const { parseCommand } = require("../../native");
 
 const Users = require("../runtime/services/userService");
 const Threads = require("../runtime/services/threadService");
@@ -49,11 +50,12 @@ function trackPipelineStage(stage, startedAt) {
   }
 }
 
-async function runCommandPipeline(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
+async function runCommandPipeline(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null, parsedCommand = null) {
   const config = global.config;
 
   if (!messageText || typeof messageText !== "string") return;
-  if (!messageText.startsWith(prefix)) return;
+  const parsed = parsedCommand || parseCommand(messageText, prefix);
+  if (!parsed?.matched) return;
 
   const threadId = event?.threadId;
   const type = event?.type;
@@ -64,8 +66,8 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
     return;
   }
 
-  const args = messageText.slice(prefix.length).trim().split(/\s+/);
-  const commandName = args.shift()?.toLowerCase();
+  const args = Array.isArray(parsed.args) ? parsed.args.slice() : [];
+  const commandName = String(parsed.command || "");
   if (!commandName) return;
 
   const wrappedApi = wrapForThread(api, threadId, type, commandName, event);
@@ -266,15 +268,14 @@ async function runCommandPipeline(messageText, event = null, api = null, threadI
 
 async function handleCommand(messageText, event = null, api = null, threadInfo = null, prefix = null, threadData = null) {
   const startedAt = performance.now();
-  const isCommandMessage = typeof messageText === "string" &&
-    typeof prefix === "string" && prefix.length > 0 &&
-    messageText.startsWith(prefix);
+  const parsedCommand = parseCommand(messageText, prefix);
+  const isCommandMessage = parsedCommand.matched === true;
   const commandName = isCommandMessage
-    ? String(messageText.slice(prefix.length).trim().split(/\s+/, 1)[0] || "unknown").toLowerCase()
+    ? String(parsedCommand.command || "unknown")
     : "";
 
   try {
-    return await runCommandPipeline(messageText, event, api, threadInfo, prefix, threadData);
+    return await runCommandPipeline(messageText, event, api, threadInfo, prefix, threadData, parsedCommand);
   } catch (error) {
     // Failures before command.run() are still command failures and must appear
     // in metrics. Keep them flowing to the listener's existing error handler.

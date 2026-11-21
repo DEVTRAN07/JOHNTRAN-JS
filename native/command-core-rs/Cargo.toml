@@ -1,0 +1,17 @@
+[package]
+name = "command-core-rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Pure command-token parsing for JOHNTRAN, exposed to Node.js through N-API"
+
+[lib]
+name = "command_core_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { workspace = true, features = ["derive"] }
+napi-derive = { workspace = true }
+
+[build-dependencies]
+napi-build = "2"

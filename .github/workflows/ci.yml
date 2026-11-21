@@ -27,6 +27,8 @@ jobs:
       - run: npm ci
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+      - name: Test Rust command parser
+        run: cargo test --manifest-path native/Cargo.toml -p command-core-rs
       - name: Compile and test Rust message-cache sidecar
         run: |
           cargo test --manifest-path rust/message-cache/Cargo.toml
@@ -35,6 +37,7 @@ jobs:
         run: |
           npm run build:native
           node -e "const addon = require('./native/sticker-rs/sticker_rs.node'); if (typeof addon.composeStaticSticker !== 'function') throw new Error('Rust sticker addon export missing')"
+          node -e "const native = require('./native'); if (!native.nativeAvailable.commandParser) throw new Error('Rust command parser addon was not loaded'); const parsed = native.parseCommand('/scl  Sơn Tùng', '/'); if (parsed.command !== 'scl' || parsed.args.join('|') !== 'Sơn|Tùng') throw new Error('Rust command parser smoke test failed')"
       - name: Build Rust text colorizer used by live message path
         run: |
           cargo test --manifest-path native/text-style-rs/Cargo.toml
