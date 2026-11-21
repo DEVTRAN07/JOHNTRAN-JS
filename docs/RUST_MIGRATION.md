@@ -121,10 +121,26 @@ latency improvement.
 - Verification: Rust unit tests, JavaScript/Rust parity fixtures and CI
   N-API smoke test.
 
+## Stage 9 — command role and group permission policy
+
+- Rust crate: `native/domain-core-rs`.
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `core/runtime/middleware/permissions.js`.
+- Scope: role-level admin/support denial, ordered group restrictions
+  (admin-only > support-only > group-admin-only), and three-state group-admin
+  resolution. JavaScript retains the existing Zalo group-info lookup, cache,
+  async Promise boundary, and command-pipeline response objects.
+- The adapter preserves strict `isGroup === false`, the existing truthiness
+  checks, and the legacy loose creator-ID comparison before passing primitive
+  policy inputs to Rust.
+- Rollback: set `JT_RUST_PERMISSION_POLICY=0`.
+- Verification: Rust unit tests, JS/Rust decision parity, synchronous fast-path
+  and asynchronous live-admin-check tests, and CI N-API smoke test.
+
 ## Later migration order
 
-1. Audit the remaining pure command validation and policy modules folder by
-   folder, keeping JS compatibility adapters and contract parity tests.
+1. Continue auditing pure command validation, restart and HTTP policy helpers;
+   keep Zalo SDK calls, file access and timers in the orchestration adapter.
 2. Media/image work: expand the existing Rust sticker path. Only activate
    canvas/FFmpeg Rust prototypes after platform builds, output parity and
    realistic performance tests pass.

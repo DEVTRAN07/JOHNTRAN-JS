@@ -479,3 +479,138 @@ mod anti_protection_tests {
         assert!(entries.iter().all(|entry| !entry.enabled));
     }
 }
+
+
+fn permission_check_command_role_inner(
+    requires_admin: bool,
+    requires_admin_or_support: bool,
+    is_bot_admin: bool,
+    is_support: bool,
+) -> bool {
+    (requires_admin && !is_bot_admin)
+        || (requires_admin_or_support && !is_bot_admin && !is_support)
+}
+
+fn permission_evaluate_group_inner(
+    is_private_message: bool,
+    admin_only: bool,
+    support_only: bool,
+    box_only: bool,
+    is_bot_admin: bool,
+    is_support: bool,
+    is_group_admin: bool,
+) -> i32 {
+    if is_private_message {
+        return 0;
+    }
+    if admin_only && !is_bot_admin {
+        return 1;
+    }
+    if support_only && !is_support && !is_bot_admin {
+        return 2;
+    }
+    if box_only && !is_group_admin && !is_bot_admin {
+        return 3;
+    }
+    0
+}
+
+fn permission_resolve_group_admin_state_inner(
+    group_info_present: bool,
+    has_user_id: bool,
+    creator_matches: bool,
+    admin_list_matches: bool,
+) -> i32 {
+    if !group_info_present {
+        return -1;
+    }
+    if has_user_id && (creator_matches || admin_list_matches) {
+        1
+    } else {
+        0
+    }
+}
+
+#[napi]
+pub fn permission_check_command_role(
+    requires_admin: bool,
+    requires_admin_or_support: bool,
+    is_bot_admin: bool,
+    is_support: bool,
+) -> bool {
+    permission_check_command_role_inner(
+        requires_admin,
+        requires_admin_or_support,
+        is_bot_admin,
+        is_support,
+    )
+}
+
+#[napi]
+pub fn permission_evaluate_group(
+    is_private_message: bool,
+    admin_only: bool,
+    support_only: bool,
+    box_only: bool,
+    is_bot_admin: bool,
+    is_support: bool,
+    is_group_admin: bool,
+) -> i32 {
+    permission_evaluate_group_inner(
+        is_private_message,
+        admin_only,
+        support_only,
+        box_only,
+        is_bot_admin,
+        is_support,
+        is_group_admin,
+    )
+}
+
+#[napi]
+pub fn permission_resolve_group_admin_state(
+    group_info_present: bool,
+    has_user_id: bool,
+    creator_matches: bool,
+    admin_list_matches: bool,
+) -> i32 {
+    permission_resolve_group_admin_state_inner(
+        group_info_present,
+        has_user_id,
+        creator_matches,
+        admin_list_matches,
+    )
+}
+
+#[cfg(test)]
+mod permission_policy_tests {
+    use super::*;
+
+    #[test]
+    fn command_role_gate_preserves_admin_and_support_levels() {
+        assert!(permission_check_command_role_inner(true, false, false, false));
+        assert!(!permission_check_command_role_inner(true, false, true, false));
+        assert!(permission_check_command_role_inner(false, true, false, false));
+        assert!(!permission_check_command_role_inner(false, true, false, true));
+        assert!(!permission_check_command_role_inner(false, false, false, false));
+    }
+
+    #[test]
+    fn group_permission_order_is_private_then_admin_then_support_then_box() {
+        assert_eq!(permission_evaluate_group_inner(true, true, true, true, false, false, false), 0);
+        assert_eq!(permission_evaluate_group_inner(false, true, true, true, false, false, false), 1);
+        assert_eq!(permission_evaluate_group_inner(false, false, true, true, false, false, false), 2);
+        assert_eq!(permission_evaluate_group_inner(false, false, false, true, false, false, false), 3);
+        assert_eq!(permission_evaluate_group_inner(false, true, true, true, true, true, false), 0);
+        assert_eq!(permission_evaluate_group_inner(false, false, false, true, false, false, true), 0);
+    }
+
+    #[test]
+    fn group_admin_resolution_keeps_unknown_false_and_true_as_distinct_states() {
+        assert_eq!(permission_resolve_group_admin_state_inner(false, true, true, true), -1);
+        assert_eq!(permission_resolve_group_admin_state_inner(true, false, true, true), 0);
+        assert_eq!(permission_resolve_group_admin_state_inner(true, true, false, false), 0);
+        assert_eq!(permission_resolve_group_admin_state_inner(true, true, true, false), 1);
+        assert_eq!(permission_resolve_group_admin_state_inner(true, true, false, true), 1);
+    }
+}

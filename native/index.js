@@ -91,6 +91,50 @@ function tryAntiProtectionOperation(operation, args = []) {
   }
 }
 
+let permissionPolicyLastError = null;
+
+function tryPermissionPolicyOperation(operation, args = []) {
+  if (process.env.JT_RUST_PERMISSION_POLICY === "0" || !domainCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  const fn = domainCoreNative.mod[operation] || domainCoreNative.mod[camelName];
+  if (typeof fn !== "function") {
+    permissionPolicyLastError = "Rust permission-policy export is missing: " + operation;
+    return { used: false, value: null };
+  }
+  try {
+    const value = fn(...args);
+    permissionPolicyLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    permissionPolicyLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function getPermissionPolicyDiagnostics() {
+  const required = [
+    "permission_check_command_role",
+    "permission_evaluate_group",
+    "permission_resolve_group_admin_state"
+  ];
+  const complete = required.every(operation => {
+    const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    return typeof domainCoreNative.mod?.[operation] === "function" ||
+      typeof domainCoreNative.mod?.[camelName] === "function";
+  });
+  const enabled = process.env.JT_RUST_PERMISSION_POLICY !== "0";
+  return {
+    loaded: domainCoreNative.ok,
+    enabled,
+    active: enabled && domainCoreNative.ok && complete,
+    exports: domainCoreNative.ok ? Object.keys(domainCoreNative.mod || {}) : [],
+    lastError: permissionPolicyLastError,
+    loadError: domainCoreNative.ok ? null : String(domainCoreNative.err?.message || domainCoreNative.err)
+  };
+}
+
 function getAntiProtectionDiagnostics() {
   const required = [
     "anti_is_supported_feature",
@@ -633,6 +677,8 @@ const nativeApi = {
   getRequesterGreetingDiagnostics,
   tryAntiProtectionOperation,
   getAntiProtectionDiagnostics,
+  tryPermissionPolicyOperation,
+  getPermissionPolicyDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,
