@@ -615,7 +615,7 @@ module.exports = {
   parseCardCode, compareCards, sortHand, shuffleDeck, dealCards,
   normalizeText, parseRank, parseRankSequence, parsePlayText,
   analyzeCombo, COMBO_LABEL, canBeat, validatePlay, removeCards,
-  WHITE_HAND_PRIORITY, WHITE_HAND_LABEL, detectWhiteHand, compareWhiteHands,
+  WHITE_HAND_PRIORITY, WHITE_HAND_LABEL, detectWhiteHand, whiteHandHighCard, whiteHandCompareCards, compareWhiteHands,
   rankLabel, cardLabel, formatCards,
   getNativeDiagnostics: nativeCore.getTlmnEngineDiagnostics,
   __test: { createDeckFallback, normalizeTextFallback, cardCodeFallback,
