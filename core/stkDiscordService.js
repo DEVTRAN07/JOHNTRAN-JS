@@ -589,6 +589,9 @@ async function createStaticPng(sourceBuffer, decorationBufferOrPath) {
 
   const canvas = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
   const context = canvas.getContext("2d");
+  // High-quality resampling avoids soft avatar details and blurred frame edges.
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
   context.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
   // Match the Discord crop: cover the 240px avatar slot and clip it to a circle.
