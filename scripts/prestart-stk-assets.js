@@ -1,12 +1,24 @@
 "use strict";
 
-const { downloadAllAssets } = require("./download-stk-assets");
+const { spawn } = require("node:child_process");
+const path = require("node:path");
 
-downloadAllAssets().then(result => {
-  if (result.missing > 0 || result.menuMissing) {
-    console.warn("[stk-assets] Một số khung chưa tải được; bot vẫn khởi động và sẽ thử tải khung được yêu cầu.");
-  }
-}).catch(error => {
-  // Asset prewarming is best-effort: a GitHub outage must not stop the Zalo bot.
-  console.warn("[stk-assets] Không thể tải trước toàn bộ khung; bot vẫn tiếp tục:", error?.message || error);
-});
+const root = path.resolve(__dirname, "..");
+const downloader = path.join(__dirname, "download-stk-assets.js");
+
+try {
+  const child = spawn(process.execPath, [downloader], {
+    cwd: root,
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    env: process.env
+  });
+  child.once("error", error => {
+    console.warn("[stk-assets] Không khởi chạy được tiến trình tải nền:", error?.message || error);
+  });
+  child.unref();
+} catch (error) {
+  // Asset prewarming is best-effort and must never delay or block bot startup.
+  console.warn("[stk-assets] Bỏ qua tải trước tài nguyên:", error?.message || error);
+}
