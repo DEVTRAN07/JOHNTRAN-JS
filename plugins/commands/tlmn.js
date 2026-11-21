@@ -14,6 +14,17 @@ const { sendGameGuideOnce } = require("../../core/games/gameGuideDelivery");
 const { sendStyledRawMessage } = require("../../core/message");
 const { extractPlainText, safePrimitiveString } = require("../../core/runtime/plainText");
 
+function safeEventName(event, fallback = "Người chơi") {
+  return safePrimitiveString(event?.data?.dName) ||
+    safePrimitiveString(event?.data?.name) ||
+    fallback;
+}
+
+function safeCommandPrefix(fallback = "!") {
+  const prefix = global.config?.prefix;
+  return typeof prefix === "string" && prefix.length > 0 ? prefix : fallback;
+}
+
 const DEFAULT_COINS = 100000;
 const MIN_BET = 1000;
 const MAX_BET = 10000000;
@@ -1123,8 +1134,8 @@ function chooseQuickMove(room, uid) {
 
 async function sendMoveHint(context) {
   const { api, event } = context;
-  const uid = String(event?.data?.uidFrom || "");
-  const room = game.get(String(event?.threadId || ""));
+  const uid = safePrimitiveString(event?.data?.uidFrom);
+  const room = game.get(safePrimitiveString(event?.threadId));
   if (!room || room.status !== "playing" || !room.activeUids.includes(uid)) return false;
   if (room.turnUid !== uid) {
     await sendMoveError(api, event, uid, "NOT_TURN", "⏳ Chưa đến lượt bạn.");
@@ -1390,9 +1401,9 @@ async function hasSavedRoom(Threads, threadId) {
 
 async function createAiPractice(context) {
   const { api, event, Threads } = context;
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
-  const name = event?.data?.dName || event?.data?.name || "Admin";
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
+  const name = safeEventName(event, "Admin");
 
   if (event?.type !== ThreadType.Group) {
     return sendText(api, event, "⚠️ Hãy dùng !tlmn ai trong nhóm để mở bàn luyện tập.");
@@ -1471,9 +1482,9 @@ function scheduleLobbyCleanup(context, room, timeoutMs) {
 }
 
 async function createOrJoin({ api, event, Users, Threads }) {
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
-  const name = event?.data?.dName || event?.data?.name || "Người chơi";
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
+  const name = safeEventName(event);
   if (event?.type !== ThreadType.Group) return sendText(api, event, "⚠️ Game Tiến Lên chỉ mở trong nhóm.");
   if (!isEnabled(Threads, threadId)) return sendText(api, event, "🚫 Game Tiến Lên đã tắt trong nhóm này.");
   const existing = game.get(threadId);
@@ -1514,15 +1525,15 @@ async function createOrJoin({ api, event, Users, Threads }) {
 }
 
 async function joinRoom({ api, event, Users, Threads }, code) {
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   if (event?.type !== ThreadType.Group) return sendText(api, event, "⚠️ Hãy tham gia bàn trong nhóm đã mở bàn.");
   if (!isEnabled(Threads, threadId)) return sendText(api, event, "🚫 Game Tiến Lên đã tắt trong nhóm này.");
   const conflict = gameConflict(threadId);
   if (conflict) return sendText(api, event, "⚠️ Nhóm đang chơi game " + conflict + ".");
   const result = game.join(threadId, code, {
     uid,
-    name: event?.data?.dName || event?.data?.name || "Người chơi"
+    name: safeEventName(event)
   });
   if (!result.ok) {
     const messages = {
@@ -1673,8 +1684,8 @@ function scheduleStartCountdown(api, event, Users, Threads, room) {
 }
 
 async function startRoom({ api, event, Users, Threads }) {
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   const state = game.get(threadId);
   if (!state || state.status !== "waiting") return sendText(api, event, "⚠️ Không có bàn đang chờ trong nhóm.");
   if (state.ownerId !== uid) return sendText(api, event, "⛔ Chỉ chủ phòng mới được bắt đầu.");
@@ -1723,8 +1734,8 @@ async function startRoom({ api, event, Users, Threads }) {
 }
 async function doPlay(context, input) {
   const { api, event, Users, Threads } = context;
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   const state = game.get(threadId);
   if (!state || state.status !== "playing") return false;
 
@@ -1784,8 +1795,8 @@ async function doPlay(context, input) {
 
 async function doPass(context) {
   const { api, event, Threads } = context;
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   const beforePass = game.serialize(game.get(threadId));
   const result = game.pass(threadId, uid);
   if (!result.ok) {
@@ -1809,7 +1820,7 @@ async function doPass(context) {
   if (passer) await sendPrivateHand(api, result.state, passer, result.state.hands[uid] || [], false);
   const next = result.state.players.find(item => item.uid === result.state.turnUid);
   await sendGroupRoom(api, event, result.room,
-    "↪️ " + (event?.data?.dName || event?.data?.name || "Người chơi") + " đã bỏ lượt" +
+    "↪️ " + (safeEventName(event)) + " đã bỏ lượt" +
     (result.roundCleared ? " • Vòng mới bắt đầu." : "."));
   if (next) {
     await sendPrivateHand(api, result.state, next, result.state.hands[next.uid] || [], true);
@@ -1822,8 +1833,8 @@ async function doPass(context) {
  
 async function doLeave(context) {
   const { api, event, Users, Threads } = context;
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   const state = game.get(threadId);
   if (!state) return sendText(api, event, "⚠️ Bạn chưa ở trong bàn Tiến Lên.");
   if (Number(state.startCountdownAt) > 0) {
@@ -1870,8 +1881,8 @@ async function doLeave(context) {
 
 async function runCommand(context) {
   const { args = [], api, event, Users, Threads } = context;
-  const uid = String(event?.data?.uidFrom || "");
-  const threadId = String(event?.threadId || "");
+  const uid = safePrimitiveString(event?.data?.uidFrom);
+  const threadId = safePrimitiveString(event?.threadId);
   const prefix = global.config?.prefix || "!";
   const action = String(args[0] || "help").toLowerCase();
   const rest = args.slice(1).map(value => String(value));
@@ -2008,7 +2019,8 @@ async function runCommand(context) {
     ].join("\n"));
   }
   if (action === "pay" || action === "nap") {
-    const eventId = String(event?.data?.msgId || event?.data?.cliMsgId || crypto.randomUUID());
+    const eventId = safePrimitiveString(event?.data?.msgId) ||
+      safePrimitiveString(event?.data?.cliMsgId) || crypto.randomUUID();
     const transferId = uid + ":" + eventId;
     const target = firstMention(event?.data || {});
     const amount = parseAmount(rest[rest.length - 1]);
@@ -2075,7 +2087,7 @@ async function handleIncoming(context = {}) {
   const { api, event, isSelf, Threads } = context;
   if ((isSelf || event?.isSelf) && global.config?.allow_self_command !== true) return false;
   const content = extractPlainText(event?.data?.content);
-  const prefix = String(global.config?.prefix || "!");
+  const prefix = safeCommandPrefix("!");
   if (!content || content.startsWith(prefix) || event?.type !== ThreadType.Group) return false;
   const lower = engine.normalizeText(content);
   const threadId = safePrimitiveString(event?.threadId);
@@ -2150,7 +2162,7 @@ function shouldQueueIncoming(context = {}) {
 
   const content = extractPlainText(event?.data?.content);
   if (!content) return false;
-  const prefix = String(global.config?.prefix || "!");
+  const prefix = safeCommandPrefix("!");
   if (content.startsWith(prefix)) return false;
 
   // Zalo SDK may supply structured/null-prototype objects for identifiers.
@@ -2320,7 +2332,7 @@ module.exports.onLoad = async function ({ api, Users, Threads } = {}) {
 };
 
 module.exports._test = {
-  parseAmount, formatMoney, normalizeWallet, tierForCoins,
+  parseAmount, formatMoney, normalizeWallet, safeEventName, safeCommandPrefix,
   isAiUid, privateDestination, gameGuide, help, sendPrivateGameGuide, distributeHands,
   sendPrivateHand, chooseAiMove, chooseQuickMove,
   shouldSendMoveError, sendMoveHint, scheduleAiTurn, tableCaption, buildTurnMentionCaption, recallTargets, reserveRoomWallets, refundRoomWallets,
