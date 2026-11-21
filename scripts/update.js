@@ -36,9 +36,51 @@ function parseAheadBehind(output) {
 }
 
 function hasDependencyChanges(files) {
-  // npm ci is required only when the dependency lock changes. package.json-only
-  // edits to scripts/metadata do not justify deleting and rebuilding node_modules.
-  return (Array.isArray(files) ? files : []).includes("package-lock.json");
+  return (Array.isArray(files) ? files : []).some(file =>
+    file === "package.json" || file === "package-lock.json"
+  );
+}
+
+function parsePorcelainPath(entry) {
+  const value = String(entry || "").slice(3).trim();
+  const renameIndex = value.lastIndexOf(" -> ");
+  const selected = renameIndex >= 0 ? value.slice(renameIndex + 4) : value;
+  return selected.replace(/^"(.*)"$/, "$1");
+}
+
+function preserveLocalConfigOverride(dirtyOutput) {
+  const entries = String(dirtyOutput || "").split(/\\r?\\n/).filter(Boolean);
+  if (!entries.length) return null;
+
+  const paths = entries.map(parsePorcelainPath);
+  const unsupported = paths.filter(file => file !== "config.yml");
+  if (unsupported.length) {
+    const shown = entries.slice(0, 8);
+    throw new Error(
+      "Có thay đổi local ngoài config.yml. Updater không tự ghi đè các file này:\\n" +
+      shown.join("\\n") +
+      (entries.length > shown.length ? "\\n… còn file khác" : "")
+    );
+  }
+
+  const configPath = path.join(ROOT, "config.yml");
+  if (!fs.existsSync(configPath)) {
+    throw new Error("config.yml đang có thay đổi nhưng file không tồn tại để sao lưu an toàn.");
+  }
+
+  const backup = fs.readFileSync(configPath);
+  run("git", ["reset", "HEAD", "--", "config.yml"]);
+  run("git", ["checkout", "--", "config.yml"]);
+  const remaining = run("git", ["status", "--porcelain", "--untracked-files=normal"]);
+  if (remaining) {
+    throw new Error("Không thể làm sạch tạm config.yml để cập nhật an toàn: " + remaining);
+  }
+  return { path: configPath, content: backup };
+}
+
+function restoreLocalConfigOverride(backup) {
+  if (!backup) return;
+  fs.writeFileSync(backup.path, backup.content);
 }
 
 function run(command, args, options = {}) {
@@ -91,80 +133,78 @@ function ensureRepository() {
     throw new Error("Remote origin không trỏ tới " + TARGET_REPOSITORY + "; đã dừng để tránh cập nhật nhầm repository.");
   }
   const dirty = run("git", ["status", "--porcelain", "--untracked-files=normal"]);
-  if (dirty) {
-    const entries = dirty.split(/\r?\n/).filter(Boolean);
-    const paths = entries.slice(0, 8);
-    throw new Error(
-      "Có thay đổi local chưa commit. Updater giữ nguyên các file và không ghi đè:\n" +
-      paths.join("\n") +
-      (entries.length > paths.length ? "\n… còn file khác" : ""));
-  }
+  return preserveLocalConfigOverride(dirty);
 }
 
 function updateRepository() {
-  ensureRepository();
-  console.log("[update] Đang kiểm tra origin/main...");
-  run("git", ["fetch", "--prune", "origin", "+refs/heads/" + TARGET_BRANCH + ":refs/remotes/origin/" + TARGET_BRANCH]);
-
-  const oldSha = run("git", ["rev-parse", "HEAD"]);
-  const remoteSha = run("git", ["rev-parse", "refs/remotes/origin/" + TARGET_BRANCH]);
-  const status = parseAheadBehind(
-    run("git", ["rev-list", "--left-right", "--count", "HEAD...origin/" + TARGET_BRANCH]));
-
-  if (status.ahead > 0) {
-    throw new Error(
-      "Nhánh local có " + status.ahead +
-      " commit chưa có trên origin/main. Updater không reset hoặc ghi đè commit local.");
-  }
-  if (status.behind === 0) {
-    console.log("[update] Máy đã ở bản mới nhất: " + oldSha.slice(0, 12));
-    return { updated: false, oldSha, newSha: oldSha, changedFiles: [] };
-  }
-
-  const changedFiles = run("git", ["diff", "--name-only", oldSha + ".." + remoteSha])
-    .split(/\r?\n/).map(value => value.trim()).filter(Boolean);
-  console.log("[update] Có " + status.behind + " commit mới, " + changedFiles.length + " file thay đổi.");
-  run("git", ["merge", "--ff-only", "origin/" + TARGET_BRANCH]);
-  const newSha = run("git", ["rev-parse", "HEAD"]);
-
-  if (hasDependencyChanges(changedFiles)) {
-    console.log("[update] package-lock.json thay đổi — đang đồng bộ dependency bằng npm ci...");
-    try {
-      runNpm(["ci", "--no-audit", "--no-fund"]);
-    } catch (installError) {
-      console.error("[update] npm ci lỗi. Đang rollback mã nguồn về " + oldSha.slice(0, 12) + "...");
-      try {
-        run("git", ["reset", "--hard", oldSha]);
-      } catch (rollbackError) {
-        throw new Error("npm ci thất bại và rollback mã nguồn cũng lỗi: " + rollbackError.message);
-      }
+  const localConfigBackup = ensureRepository();
+  try {
+  
+    console.log("[update] Đang kiểm tra origin/main...");
+    run("git", ["fetch", "--prune", "origin", "+refs/heads/" + TARGET_BRANCH + ":refs/remotes/origin/" + TARGET_BRANCH]);
+  
+    const oldSha = run("git", ["rev-parse", "HEAD"]);
+    const remoteSha = run("git", ["rev-parse", "refs/remotes/origin/" + TARGET_BRANCH]);
+    const status = parseAheadBehind(
+      run("git", ["rev-list", "--left-right", "--count", "HEAD...origin/" + TARGET_BRANCH]));
+  
+    if (status.ahead > 0) {
+      throw new Error(
+        "Nhánh local có " + status.ahead +
+        " commit chưa có trên origin/main. Updater không reset hoặc ghi đè commit local.");
+    }
+    if (status.behind === 0) {
+      console.log("[update] Máy đã ở bản mới nhất: " + oldSha.slice(0, 12));
+      return { updated: false, oldSha, newSha: oldSha, changedFiles: [] };
+    }
+  
+    const changedFiles = run("git", ["diff", "--name-only", oldSha + ".." + remoteSha])
+      .split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+    console.log("[update] Có " + status.behind + " commit mới, " + changedFiles.length + " file thay đổi.");
+    run("git", ["merge", "--ff-only", "origin/" + TARGET_BRANCH]);
+    const newSha = run("git", ["rev-parse", "HEAD"]);
+  
+    if (hasDependencyChanges(changedFiles)) {
+      console.log("[update] package-lock.json thay đổi — đang đồng bộ dependency bằng npm ci...");
       try {
         runNpm(["ci", "--no-audit", "--no-fund"]);
-      } catch (restoreError) {
-        console.error("[update] Không khôi phục được node_modules cũ: " + restoreError.message);
+      } catch (installError) {
+        console.error("[update] npm ci lỗi. Đang rollback mã nguồn về " + oldSha.slice(0, 12) + "...");
+        try {
+          run("git", ["reset", "--hard", oldSha]);
+        } catch (rollbackError) {
+          throw new Error("npm ci thất bại và rollback mã nguồn cũng lỗi: " + rollbackError.message);
+        }
+        try {
+          runNpm(["ci", "--no-audit", "--no-fund"]);
+        } catch (restoreError) {
+          console.error("[update] Không khôi phục được node_modules cũ: " + restoreError.message);
+        }
+        throw new Error("Đã rollback mã nguồn do npm ci thất bại: " + installError.message);
       }
-      throw new Error("Đã rollback mã nguồn do npm ci thất bại: " + installError.message);
     }
-  }
-
-  const stickerRustChanged = changedFiles.some(file => file.startsWith("native/sticker-rs/"));
-  if (stickerRustChanged) {
-    const cargo = spawnSync("cargo", ["--version"], { cwd: ROOT, stdio: "ignore" });
-    const napiCli = path.join(ROOT, "node_modules", ".bin", process.platform === "win32" ? "napi.cmd" : "napi");
-    if (cargo.status === 0 && fs.existsSync(napiCli)) {
-      try {
-        console.log("[update] Đang build sticker Rust addon cho hệ điều hành/kiến trúc hiện tại...");
-        runNpm(["run", "build:native"]);
-      } catch (error) {
-        console.warn("[update] Không build được Rust addon; bot sẽ dùng Canvas/FFmpeg fallback:", error.message);
+  
+    const stickerRustChanged = changedFiles.some(file => file.startsWith("native/sticker-rs/"));
+    if (stickerRustChanged) {
+      const cargo = spawnSync("cargo", ["--version"], { cwd: ROOT, stdio: "ignore" });
+      const napiCli = path.join(ROOT, "node_modules", ".bin", process.platform === "win32" ? "napi.cmd" : "napi");
+      if (cargo.status === 0 && fs.existsSync(napiCli)) {
+        try {
+          console.log("[update] Đang build sticker Rust addon cho hệ điều hành/kiến trúc hiện tại...");
+          runNpm(["run", "build:native"]);
+        } catch (error) {
+          console.warn("[update] Không build được Rust addon; bot sẽ dùng Canvas/FFmpeg fallback:", error.message);
+        }
+      } else {
+        console.log("[update] Bỏ qua Rust addon (thiếu Cargo hoặc N-API CLI); fallback JS vẫn được giữ.");
       }
-    } else {
-      console.log("[update] Bỏ qua Rust addon (thiếu Cargo hoặc N-API CLI); fallback JS vẫn được giữ.");
     }
+  
+    console.log("[update] Cập nhật thành công: " + oldSha.slice(0, 12) + " → " + newSha.slice(0, 12));
+    return { updated: true, oldSha, newSha, changedFiles };
+  } finally {
+    restoreLocalConfigOverride(localConfigBackup);
   }
-
-  console.log("[update] Cập nhật thành công: " + oldSha.slice(0, 12) + " → " + newSha.slice(0, 12));
-  return { updated: true, oldSha, newSha, changedFiles };
 }
 
 function main() {
@@ -179,4 +219,13 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { normalizeRemote, isTargetRemote, parseAheadBehind, hasDependencyChanges, updateRepository };
+module.exports = {
+  normalizeRemote,
+  isTargetRemote,
+  parseAheadBehind,
+  hasDependencyChanges,
+  parsePorcelainPath,
+  preserveLocalConfigOverride,
+  restoreLocalConfigOverride,
+  updateRepository
+};
