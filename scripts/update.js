@@ -48,10 +48,8 @@ function parsePorcelainPath(entry) {
   return selected.replace(/^"(.*)"$/, "$1");
 }
 
-function preserveLocalConfigOverride(dirtyOutput) {
+function validateLocalChanges(dirtyOutput) {
   const entries = String(dirtyOutput || "").split(/\\r?\\n/).filter(Boolean);
-  if (!entries.length) return null;
-
   const paths = entries.map(parsePorcelainPath);
   const unsupported = paths.filter(file => file !== "config.yml");
   if (unsupported.length) {
@@ -62,6 +60,12 @@ function preserveLocalConfigOverride(dirtyOutput) {
       (entries.length > shown.length ? "\\n… còn file khác" : "")
     );
   }
+  return { entries, paths, hasConfigOverride: paths.includes("config.yml") };
+}
+
+function preserveLocalConfigOverride(dirtyOutput) {
+  const { entries, hasConfigOverride } = validateLocalChanges(dirtyOutput);
+  if (!entries.length || !hasConfigOverride) return null;
 
   const configPath = path.join(ROOT, "config.yml");
   if (!fs.existsSync(configPath)) {
@@ -69,13 +73,19 @@ function preserveLocalConfigOverride(dirtyOutput) {
   }
 
   const backup = fs.readFileSync(configPath);
-  run("git", ["reset", "HEAD", "--", "config.yml"]);
-  run("git", ["checkout", "--", "config.yml"]);
-  const remaining = run("git", ["status", "--porcelain", "--untracked-files=normal"]);
-  if (remaining) {
-    throw new Error("Không thể làm sạch tạm config.yml để cập nhật an toàn: " + remaining);
+  try {
+    run("git", ["reset", "HEAD", "--", "config.yml"]);
+    run("git", ["checkout", "--", "config.yml"]);
+    const remaining = run("git", ["status", "--porcelain", "--untracked-files=normal"]);
+    if (remaining) {
+      throw new Error("Không thể làm sạch tạm config.yml để cập nhật an toàn: " + remaining);
+    }
+    return { path: configPath, content: backup };
+  } catch (error) {
+    // Never lose the user's local settings if preparing a clean worktree fails.
+    fs.writeFileSync(configPath, backup);
+    throw error;
   }
-  return { path: configPath, content: backup };
 }
 
 function restoreLocalConfigOverride(backup) {
@@ -225,6 +235,7 @@ module.exports = {
   parseAheadBehind,
   hasDependencyChanges,
   parsePorcelainPath,
+  validateLocalChanges,
   preserveLocalConfigOverride,
   restoreLocalConfigOverride,
   updateRepository
