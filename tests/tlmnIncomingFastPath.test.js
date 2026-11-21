@@ -208,3 +208,30 @@ test("TLMN safely ignores non-primitive Zalo sender identifiers", async () => {
     assert.equal(await command.handleIncoming(context), false);
   });
 });
+
+
+test("TLMN fast path does not coerce an invalid configured prefix", () => {
+  global.config = { prefix: Object.create(null) };
+  const context = {
+    isSelf: false,
+    Threads: { getCachedData: () => ({ data: { tlmn_enabled: true } }) },
+    event: {
+      type: ThreadType.Group,
+      threadId: "tlmn-invalid-prefix",
+      data: { uidFrom: "player-1", content: "go" }
+    }
+  };
+
+  assert.doesNotThrow(() => command._test.shouldQueueIncoming(context));
+  assert.equal(command._test.shouldQueueIncoming(context), true);
+});
+
+test("TLMN converts malformed sender display names to a safe fallback", () => {
+  const malformedName = Object.create(null);
+  assert.equal(command._test.safeEventName({
+    data: { dName: malformedName, name: malformedName }
+  }, "Người chơi"), "Người chơi");
+  assert.equal(command._test.safeEventName({
+    data: { dName: "  Wuang  " }
+  }), "Wuang");
+});
