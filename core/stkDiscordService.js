@@ -8,7 +8,7 @@ const stickerService = require("./stickerService");
 const catalog = require("./data/stkDiscord200.json");
 const { FFMPEG_THREADS } = require("./mediaResourceLimits");
 
-const { RAW_BASE_URL: BUNDLED_RAW_BASE_URL, ASSETS_DIR } = require("../src/application/stk/assets");
+const { RAW_BASE_URL: BUNDLED_RAW_BASE_URL, ASSETS_DIR } = require("./stk/assets");
 const RAW_BASE_URL = String(process.env.STK_DISCORD_RAW_BASE_URL || BUNDLED_RAW_BASE_URL).replace(/\\/+$/, "");
 const DEFAULT_CACHE_ROOT = process.env.JT_PERSISTENT_DIR || path.join(__dirname, "..", "cache");
 const DECOR_DIR = path.resolve(process.env.STK_DISCORD_CACHE_DIR || ASSETS_DIR);
