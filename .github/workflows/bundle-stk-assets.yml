@@ -1,0 +1,57 @@
+name: Bundle STK avatar frames
+
+on:
+  push:
+    branches:
+      - fix/remove-menu-opening-ack
+    paths:
+      - ".github/workflows/bundle-stk-assets.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bundle-stk-assets-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  download-and-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download all STK source frames
+        run: npm run assets:stk
+
+      - name: Verify all local assets
+        run: npm run check:stk-assets
+
+      - name: Commit bundled assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f src/assets/stk
+          if git diff --cached --quiet; then
+            echo "No STK asset changes to commit."
+            exit 0
+          fi
+          git commit -m "assets(stk): bundle all 200 Discord avatar frames"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${BRANCH_NAME}"
