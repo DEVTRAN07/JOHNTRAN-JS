@@ -114,7 +114,7 @@ async function safeReaction(api, event, icon) {
       }
     );
   } catch {
-    // Reaction is only a progress indicator; it must not cancel sticker work.
+    // Reactions are optional UI feedback and must not cancel sticker work.
   }
 }
 
@@ -227,9 +227,6 @@ module.exports.run = async function ({ api, event, args }) {
 
   const quotedUrl = getQuotedMediaUrl(event);
   const uid = getAuthorId(event);
-  const tag = "@" + String(
-    event?.data?.dName || event?.data?.senderName || event?.senderName || "Bạn"
-  ).slice(0, 32);
   const mentions = uid ? [{ uid, pos: 0, len: tag.length }] : [];
 
   // For avatar-based commands, check the short-lived UID cache before
