@@ -4,6 +4,7 @@ resolver = "2"
 members = [
   "sticker-rs",
   "command-core-rs",
+  "game-core-rs",
 ]
 # canvas-rs and ffmpeg-rs remain isolated prototypes until their API/ABI
 # contracts and platform builds are verified. Do not compile them into the

@@ -23,16 +23,34 @@ native binary can still run.
 This small parsing operation is a safe first migration seam. It is not expected
 to materially change end-to-end reply latency.
 
+## Stage 2 — Caro domain engine
+
+- Rust crate: `native/game-core-rs`.
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `src/domain/games/engines/caroEngine.js`.
+- Scope: winning-line evaluation, move evaluation and AI move selection for the
+  existing 16×16 Caro rules. The JavaScript facade still owns and mutates the
+  session board so existing command/service APIs remain unchanged.
+- Rollback: set `JT_RUST_CARO_ENGINE=0` to force the JavaScript implementation.
+- Verification: Rust unit tests, JavaScript native/fallback parity fixtures and
+  a CI N-API smoke test.
+
+This is an architectural migration of deterministic domain logic. The Caro
+board workload is small, so it is not presented as a guaranteed end-to-end
+latency improvement.
+
 ## Later migration order
 
-1. Pure CPU helpers: normalize payloads, validate values and deterministic
-   formatting. Keep JS parity fixtures for each operation.
-2. Media/image work: expand the existing Rust sticker path. Only activate
+1. Continue pure domain engines one module at a time (Nối Từ, Sâm and Tiến Lên),
+   keeping JavaScript state/service contracts stable and parity-tested.
+2. Migrate remaining pure CPU helpers: normalize payloads, validate values and
+   deterministic formatting. Keep JS parity fixtures for each operation.
+3. Media/image work: expand the existing Rust sticker path. Only activate
    canvas/FFmpeg Rust prototypes after platform builds, output parity and
    realistic performance tests pass.
-3. Stateful hot paths: consider cache, deduplication and queue internals only
+4. Stateful hot paths: consider cache, deduplication and queue internals only
    when profiling shows measurable JavaScript CPU or event-loop pressure.
-4. Zalo protocol/session: keep the current SDK in Node unless a Rust replacement
+5. Zalo protocol/session: keep the current SDK in Node unless a Rust replacement
    proves login, reconnect, event-ordering, rate-limit and send behaviour parity.
 
 ## Build and rollback

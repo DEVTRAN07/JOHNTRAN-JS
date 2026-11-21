@@ -1,0 +1,17 @@
+[package]
+name = "game-core-rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Rust domain game engines for JOHNTRAN"
+
+[lib]
+name = "game_core_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { workspace = true }
+napi-derive = { workspace = true }
+
+[build-dependencies]
+napi-build = "2"

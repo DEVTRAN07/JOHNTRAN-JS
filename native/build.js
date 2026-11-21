@@ -9,6 +9,7 @@ const NATIVE_DIR = path.resolve(__dirname);
 const CRATES = [
   { name: "sticker-rs", addon: "sticker_rs.node" },
   { name: "command-core-rs", addon: "command_core_rs.node" },
+  { name: "game-core-rs", addon: "game_core_rs.node" },
 ];
 
 function run(cmd, args, opts = {}) {

@@ -20,6 +20,7 @@ const canvasNative = tryLoad("canvas-rs", "canvas_rs.node");
 const ffmpegNative = tryLoad("ffmpeg-rs", "ffmpeg_rs.node");
 const textStyleNative = tryLoad("text-style-rs", "text_style_rs.node");
 const commandParserNative = tryLoad("command-core-rs", "command_core_rs.node");
+const gameCoreNative = tryLoad("game-core-rs", "game_core_rs.node");
 
 let textStyleLastError = null;
 
@@ -90,6 +91,59 @@ function getCommandParserDiagnostics() {
   };
 }
 
+
+let gameCoreLastError = null;
+
+function runCaroNative(exportNames, args) {
+  if (process.env.JT_RUST_CARO_ENGINE === "0" || !gameCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const names = Array.isArray(exportNames) ? exportNames : [exportNames];
+  const fn = names.map(name => gameCoreNative.mod[name]).find(value => typeof value === "function");
+  if (typeof fn !== "function") {
+    gameCoreLastError = "Rust game core export is missing: " + names.join("/");
+    return { used: false, value: null };
+  }
+  try {
+    const value = fn(...args);
+    gameCoreLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    gameCoreLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function tryCaroCheckWinner(board, cellIndex, symbol) {
+  return runCaroNative(["caro_check_winner", "caroCheckWinner"], [board, cellIndex, symbol]);
+}
+
+function tryCaroEvaluateMove(board, cellIndex, symbol) {
+  return runCaroNative(["caro_evaluate_move", "caroEvaluateMove"], [board, cellIndex, symbol]);
+}
+
+function tryCaroChooseAiMove(board, aiSymbol) {
+  return runCaroNative(["caro_choose_ai_move", "caroChooseAiMove"], [board, aiSymbol]);
+}
+
+function getGameCoreDiagnostics() {
+  const exports = gameCoreNative.ok ? Object.keys(gameCoreNative.mod || {}) : [];
+  const required = [
+    ["caro_check_winner", "caroCheckWinner"],
+    ["caro_evaluate_move", "caroEvaluateMove"],
+    ["caro_choose_ai_move", "caroChooseAiMove"]
+  ];
+  const complete = required.every(names => names.some(name => typeof gameCoreNative.mod?.[name] === "function"));
+  const enabled = process.env.JT_RUST_CARO_ENGINE !== "0";
+  return {
+    loaded: gameCoreNative.ok,
+    enabled,
+    active: enabled && gameCoreNative.ok && complete,
+    exports,
+    loadError: gameCoreNative.ok ? null : String(gameCoreNative.err?.message || gameCoreNative.err),
+    lastError: gameCoreLastError
+  };
+}
 
 function randomColorStyles(text, colors, excludedRanges = []) {
   if (!textStyleNative.ok) return null;
@@ -270,6 +324,10 @@ const nativeApi = {
   getStickerDiagnostics,
   parseCommand,
   getCommandParserDiagnostics,
+  tryCaroCheckWinner,
+  tryCaroEvaluateMove,
+  tryCaroChooseAiMove,
+  getGameCoreDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,
@@ -277,6 +335,7 @@ const nativeApi = {
     ffmpeg: ffmpegNative.ok,
     textStyle: textStyleNative.ok,
     commandParser: commandParserNative.ok,
+    gameCore: gameCoreNative.ok,
   },
   loadErrors: {
     sticker: stickerNative.ok ? null : String(stickerNative.err && stickerNative.err.message),
@@ -284,6 +343,7 @@ const nativeApi = {
     ffmpeg: ffmpegNative.ok ? null : String(ffmpegNative.err && ffmpegNative.err.message),
     textStyle: textStyleNative.ok ? null : String(textStyleNative.err && textStyleNative.err.message),
     commandParser: commandParserNative.ok ? null : String(commandParserNative.err && commandParserNative.err.message),
+    gameCore: gameCoreNative.ok ? null : String(gameCoreNative.err && gameCoreNative.err.message),
   },
 };
 

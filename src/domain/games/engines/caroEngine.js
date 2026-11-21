@@ -1,5 +1,7 @@
 "use strict";
 
+const nativeCore = require("../../../../native");
+
 const BOARD_SIZE = 16;
 const CELL_COUNT = BOARD_SIZE * BOARD_SIZE;
 const WIN_LENGTH = 5;
@@ -13,7 +15,7 @@ function inside(row, col) {
   return row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE;
 }
 
-function checkWinner(board, cellIndex, symbol) {
+function checkWinnerFallback(board, cellIndex, symbol) {
   if (!Array.isArray(board) || board.length !== CELL_COUNT) return false;
   if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= CELL_COUNT) return false;
   const row = Math.floor(cellIndex / BOARD_SIZE);
@@ -35,6 +37,23 @@ function checkWinner(board, cellIndex, symbol) {
   return false;
 }
 
+function isRustBoard(board) {
+  return Array.isArray(board) &&
+    board.length === CELL_COUNT &&
+    board.every(value => value === null || value === "X" || value === "O");
+}
+
+function checkWinner(board, cellIndex, symbol) {
+  if (isRustBoard(board) &&
+      Number.isInteger(cellIndex) &&
+      cellIndex >= 0 && cellIndex < CELL_COUNT &&
+      (symbol === "X" || symbol === "O")) {
+    const nativeResult = nativeCore.tryCaroCheckWinner(board, cellIndex, symbol);
+    if (nativeResult.used) return Boolean(nativeResult.value);
+  }
+  return checkWinnerFallback(board, cellIndex, symbol);
+}
+
 function placeMove(board, cellNumber, symbol) {
   if (!Array.isArray(board) || board.length !== CELL_COUNT) {
     return { ok: false, code: "INVALID_BOARD" };
@@ -49,6 +68,17 @@ function placeMove(board, cellNumber, symbol) {
 
   const index = cell - 1;
   if (board[index] !== null) return { ok: false, code: "OCCUPIED" };
+
+  if (isRustBoard(board)) {
+    const nativeResult = nativeCore.tryCaroEvaluateMove(board, index, symbol);
+    if (nativeResult.used &&
+        nativeResult.value &&
+        typeof nativeResult.value.won === "boolean" &&
+        typeof nativeResult.value.draw === "boolean") {
+      board[index] = symbol;
+      return { ok: true, cell, index, symbol, won: nativeResult.value.won, draw: nativeResult.value.draw };
+    }
+  }
 
   board[index] = symbol;
   const won = checkWinner(board, index, symbol);
@@ -88,7 +118,7 @@ function buildWindows() {
 
 const WINDOWS = buildWindows();
 
-function chooseAiMove(board, aiSymbol = "O") {
+function chooseAiMoveFallback(board, aiSymbol = "O") {
   if (!Array.isArray(board) || board.length !== CELL_COUNT) return null;
   if (aiSymbol !== "X" && aiSymbol !== "O") return null;
   const opponent = aiSymbol === "X" ? "O" : "X";
@@ -146,6 +176,16 @@ function chooseAiMove(board, aiSymbol = "O") {
   return bestIndex === null ? null : bestIndex + 1;
 }
 
+function chooseAiMove(board, aiSymbol = "O") {
+  if (isRustBoard(board) && (aiSymbol === "X" || aiSymbol === "O")) {
+    const nativeResult = nativeCore.tryCaroChooseAiMove(board, aiSymbol);
+    if (nativeResult.used) {
+      return nativeResult.value == null ? null : Number(nativeResult.value);
+    }
+  }
+  return chooseAiMoveFallback(board, aiSymbol);
+}
+
 module.exports = {
   BOARD_SIZE,
   CELL_COUNT,
@@ -153,5 +193,7 @@ module.exports = {
   createBoard,
   checkWinner,
   placeMove,
-  chooseAiMove
+  chooseAiMove,
+  getNativeDiagnostics: nativeCore.getGameCoreDiagnostics,
+  __test: { checkWinnerFallback, chooseAiMoveFallback }
 };
