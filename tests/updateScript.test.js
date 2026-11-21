@@ -43,7 +43,7 @@ test("local config.yml changes are recognized and can be preserved without permi
   assert.deepEqual(configOnly.paths, ["config.yml"]);
 
   assert.throws(
-    () => validateLocalChanges(" M config.yml\\n M core/listen.js"),
-    /ngoài config\\.yml/
+    () => validateLocalChanges(" M config.yml\n M core/listen.js"),
+    /ngoài config\.yml/
   );
 });
