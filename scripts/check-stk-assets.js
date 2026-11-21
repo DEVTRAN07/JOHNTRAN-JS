@@ -14,17 +14,19 @@ const catalogValid = Boolean(stk.catalog &&
     item.file.endsWith(".png")
   ));
 
-console.log("STK Discord remote asset check");
-console.log("Nguồn raw GitHub: " + stk.RAW_BASE_URL);
-console.log("Cache cục bộ: " + status.directory);
-console.log("Menu đã cache: " + (status.menu.exists ? "YES" : "NO"));
-console.log("Khung đã cache: " + status.available + "/" + status.total);
-console.log("Khung chưa cache: " + status.missingCount);
+console.log("STK Discord local asset check");
+console.log("Nguồn ghim: " + stk.RAW_BASE_URL);
+console.log("Thư mục src: " + status.directory);
+console.log("Menu local: " + (status.menu.exists ? "YES" : "NO"));
+console.log("Khung local: " + status.available + "/" + status.total);
+console.log("Khung còn thiếu: " + status.missingCount);
 
 if (!catalogValid) {
   console.error("FAIL: catalog STK phải có đủ 200 ID liên tục và tên file hợp lệ.");
   process.exitCode = 1;
+} else if (status.available !== 200 || !status.menu.exists) {
+  console.error("FAIL: thiếu tài nguyên local. Chạy: npm run assets:stk");
+  process.exitCode = 1;
 } else {
-  console.log("PASS: catalog hợp lệ; bot sẽ tải menu/khung theo nhu cầu từ raw GitHub.");
-  console.log("Không cần chép 200 ảnh vào repository JOHNTRAN-JS.");
+  console.log("PASS: đủ 200 khung và menu đã có trong src/assets/stk.");
 }
