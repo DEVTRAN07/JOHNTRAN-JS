@@ -66,6 +66,6 @@ test("resolveThreadType ignores non-primitive SDK values without coercion", () =
 
   assert.equal(resolveThreadType({ type: nullPrototypeType }, "message", ThreadType), ThreadType.Group);
   assert.equal(resolveThreadType({ type: hostileType }, "message", ThreadType), ThreadType.Group);
-  assert.equal(resolveThreadType({ type: "0" }, "message", ThreadType), 0);
+  assert.equal(resolveThreadType({ type: "0" }, "message", ThreadType), "0");
   assert.equal(resolveThreadType({ type: 2 }, "message", ThreadType), 2);
 });
