@@ -497,7 +497,7 @@ async function createWebp(sourcePath, sourceBuffer, sourceExtension, decorationP
       "-compression_level", "6",
       "-preset", "picture",
       "-threads", String(FFMPEG_THREADS),
-      "-pix_fmt", "yuva420p",
+      " -pix_fmt", "bgra",
       "-loop", "0",
       outputPath
     );
