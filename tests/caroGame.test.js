@@ -620,3 +620,20 @@ test("Caro reads text title from structured message payloads", async () => {
     assert.equal(await caroCommand.handleIncoming(context), false);
   });
 });
+
+test("Caro safely ignores non-primitive Zalo sender identifiers", async () => {
+  const invalidUid = Object.create(null);
+  const context = {
+    isSelf: false,
+    Threads: {},
+    event: {
+      type: 1,
+      threadId: "caro-object-sender-id",
+      data: { uidFrom: invalidUid, content: "1" }
+    }
+  };
+
+  await assert.doesNotReject(async () => {
+    assert.equal(await caroCommand.handleIncoming(context), false);
+  });
+});
