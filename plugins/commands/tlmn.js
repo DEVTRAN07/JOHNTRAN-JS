@@ -2153,9 +2153,11 @@ function shouldQueueIncoming(context = {}) {
   const prefix = String(global.config?.prefix || "!");
   if (content.startsWith(prefix)) return false;
 
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
-  if (!threadId) return false;
+  // Zalo SDK may supply structured/null-prototype objects for identifiers.
+  // Reject those payloads without invoking String(), valueOf() or custom coercion.
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
+  if (!threadId || !uid) return false;
 
   const room = game.get(threadId);
   // Most idle-group messages are ordinary chat. Avoid accent folding and
