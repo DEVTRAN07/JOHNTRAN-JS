@@ -344,3 +344,24 @@ test("control-plane pending capacity is isolated from a saturated media queue", 
   assert.equal(values.length, GLOBAL_MAX_PENDING + 1);
   assert.equal(stats().global.mediaPending, 0);
 });
+
+test("CPU-heavy built-in lanes cannot have their safe concurrency caps overridden", async () => {
+  const { DEFAULT_LANES } = require("../core/jobQueue");
+  const laneNames = [
+    "sticker", "image", "gif", "video", "download",
+    "music-audio", "canvas", "media"
+  ];
+
+  for (const laneName of laneNames) {
+    const expected = DEFAULT_LANES[laneName].concurrency;
+    const result = await enqueue(laneName, async () => laneName, {
+      concurrency: expected + 10
+    });
+    assert.equal(result, laneName);
+    assert.equal(
+      stats()[laneName].concurrency,
+      expected,
+      laneName + " must not exceed its CPU-aware default"
+    );
+  }
+});
