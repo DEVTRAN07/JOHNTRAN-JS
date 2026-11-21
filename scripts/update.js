@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const updateReport = require("../core/runtime/updateReport");
 
 const ROOT = path.resolve(__dirname, "..");
 const TARGET_BRANCH = "main";
@@ -221,11 +222,64 @@ function updateRepository() {
   }
 }
 
-function main() {
+function readPackageVersion() {
   try {
-    updateRepository();
+    const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+    return String(packageJson.version || "unknown");
+  } catch {
+    return "unknown";
+  }
+}
+
+function readCurrentCommit() {
+  try {
+    return run("git", ["rev-parse", "HEAD"]);
+  } catch {
+    return "";
+  }
+}
+
+function main() {
+  const oldVersion = readPackageVersion();
+  const initialSha = readCurrentCommit();
+
+  try {
+    const result = updateRepository();
+    const newVersion = readPackageVersion();
+    const newSha = result.newSha || readCurrentCommit();
+    const report = updateReport.completeUpdate(ROOT, {
+      status: "success",
+      updated: result.updated,
+      oldVersion,
+      newVersion,
+      oldSha: result.oldSha || initialSha,
+      newSha,
+      changedFiles: result.changedFiles?.length || 0
+    });
+
+    console.log(
+      report
+        ? "[update] Hoàn tất: v" + oldVersion + " → v" + newVersion +
+          " | commit " + String(report.newSha || "").slice(0, 12)
+        : "[update] Hoàn tất; không có yêu cầu thông báo Zalo đang chờ."
+    );
     process.exitCode = 0;
   } catch (error) {
+    const newVersion = readPackageVersion();
+    const newSha = readCurrentCommit();
+    try {
+      updateReport.completeUpdate(ROOT, {
+        status: "failed",
+        updated: false,
+        oldVersion,
+        newVersion,
+        oldSha: initialSha,
+        newSha,
+        error: error?.message || error
+      });
+    } catch (reportError) {
+      console.error("[update] Không lưu được kết quả để gửi về Zalo:", reportError.message || reportError);
+    }
     console.error("[update] ERROR:", error.message || error);
     process.exitCode = 1;
   }
