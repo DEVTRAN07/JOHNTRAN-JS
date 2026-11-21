@@ -80,6 +80,18 @@ latency improvement.
 - Verification: Rust unit tests, N-API smoke test, full JavaScript/native
   parity fixtures, and the existing TLMN service/command integration suite.
 
+## Stage 6 — group bot state policy
+
+- Rust crate: `native/domain-core-rs`.
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `src/domain/groups/botState.js`.
+- Scope: strict boolean group-enabled policy, `/bot on` and `/bot status`
+  exceptions, prefixed control-message parsing, group-state flag mapping and
+  ordered snapshots. Zalo group records and object merging remain in JavaScript.
+- Rollback: set `JT_RUST_GROUP_STATE=0` to force the JavaScript implementation.
+- Verification: Rust unit tests, JavaScript/Rust parity fixtures and CI
+  N-API smoke test.
+
 ## Later migration order
 
 1. Migrate remaining pure CPU helpers and parsers one folder at a time, keeping

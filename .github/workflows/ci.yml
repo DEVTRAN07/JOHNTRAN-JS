@@ -31,6 +31,8 @@ jobs:
         run: cargo test --manifest-path native/Cargo.toml -p command-core-rs
       - name: Test Rust game-domain engine
         run: cargo test --manifest-path native/Cargo.toml -p game-core-rs
+      - name: Test Rust domain policies
+        run: cargo test --manifest-path native/Cargo.toml -p domain-core-rs
       - name: Compile and test Rust message-cache sidecar
         run: |
           cargo test --manifest-path rust/message-cache/Cargo.toml
@@ -53,6 +55,8 @@ jobs:
         run: node -e 'const native = require("./native"); if (!native.getSamEngineDiagnostics().active) throw new Error("Rust Sâm functions were not activated"); const deck = native.trySamOperation("sam_create_deck", []).value; if (!Array.isArray(deck) || deck.length !== 52) throw new Error("Rust Sâm deck generation failed"); const combo = native.trySamOperation("sam_analyze_combo", [[{rank:3,suit:"b",id:"3b"},{rank:3,suit:"r",id:"3r"}]]).value; if (!combo || (combo.comboType || combo.combo_type) !== "pair") throw new Error("Rust Sâm combo analysis failed")'
       - name: Smoke test Rust Tiến Lên rules
         run: node -e 'const native = require("./native"); if (!native.getTlmnEngineDiagnostics().active) throw new Error("Rust Tiến Lên functions were not activated"); const deck = native.tryTlmnOperation("tlmn_create_deck", []).value; if (!Array.isArray(deck) || deck.length !== 52) throw new Error("Rust Tiến Lên deck generation failed"); const cards = [3,4,5].flatMap(rank => [{rank,suit:"b",id:String(rank)+"b"},{rank,suit:"c",id:String(rank)+"c"}]); const combo = native.tryTlmnOperation("tlmn_analyze_combo", [cards]).value; if (!combo || (combo.comboType || combo.combo_type) !== "pairRun" || combo.length !== 3) throw new Error("Rust Tiến Lên pair-run analysis failed")'
+      - name: Smoke test Rust group-state domain engine
+        run: node -e 'const native = require("./native"); if (!native.getGroupStateDiagnostics().active) throw new Error("Rust domain-core addon was not activated"); if (!native.tryGroupStateOperation("group_is_allowed_control", [" BOT ", "STATUS"]).value) throw new Error("Group control policy failed"); const flags = native.tryGroupStateOperation("group_enabled_flags", [["g1"], ["g1", "g2"]]).value; if (String(flags) !== "true,false") throw new Error("Group enabled flags failed")'
       # Keep the broad legacy suite lightweight; the real JSON writer is
       # exercised in its own isolated, bounded test process below.
       - name: Run Node test suite without per-test JSON workers

@@ -21,8 +21,56 @@ const ffmpegNative = tryLoad("ffmpeg-rs", "ffmpeg_rs.node");
 const textStyleNative = tryLoad("text-style-rs", "text_style_rs.node");
 const commandParserNative = tryLoad("command-core-rs", "command_core_rs.node");
 const gameCoreNative = tryLoad("game-core-rs", "game_core_rs.node");
+const domainCoreNative = tryLoad("domain-core-rs", "domain_core_rs.node");
 let noituEngineLastError = null;
 let tlmnEngineLastError = null;
+
+let groupStateLastError = null;
+
+function tryGroupStateOperation(operation, args = []) {
+  if (process.env.JT_RUST_GROUP_STATE === "0" || !domainCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  const fn = domainCoreNative.mod[operation] || domainCoreNative.mod[camelName];
+  if (typeof fn !== "function") {
+    groupStateLastError = "Rust group-state export is missing: " + operation;
+    return { used: false, value: null };
+  }
+  try {
+    const value = fn(...args);
+    groupStateLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    groupStateLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function getGroupStateDiagnostics() {
+  const required = [
+    "group_is_enabled",
+    "group_is_allowed_control",
+    "group_is_allowed_control_message",
+    "group_can_run_command",
+    "group_enabled_flags",
+    "group_state_snapshot"
+  ];
+  const complete = required.every(operation => {
+    const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    return typeof domainCoreNative.mod?.[operation] === "function" ||
+      typeof domainCoreNative.mod?.[camelName] === "function";
+  });
+  const enabled = process.env.JT_RUST_GROUP_STATE !== "0";
+  return {
+    loaded: domainCoreNative.ok,
+    enabled,
+    active: enabled && domainCoreNative.ok && complete,
+    exports: domainCoreNative.ok ? Object.keys(domainCoreNative.mod || {}) : [],
+    lastError: groupStateLastError,
+    loadError: domainCoreNative.ok ? null : String(domainCoreNative.err?.message || domainCoreNative.err)
+  };
+}
 
 function tryTlmnOperation(operation, args = []) {
   if (process.env.JT_RUST_TLMN_ENGINE === "0" || !gameCoreNative.ok) {
@@ -486,6 +534,8 @@ const nativeApi = {
   getSamEngineDiagnostics,
   tryTlmnOperation,
   getTlmnEngineDiagnostics,
+  tryGroupStateOperation,
+  getGroupStateDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,
@@ -494,6 +544,7 @@ const nativeApi = {
     textStyle: textStyleNative.ok,
     commandParser: commandParserNative.ok,
     gameCore: gameCoreNative.ok,
+    domainCore: domainCoreNative.ok,
   },
   loadErrors: {
     sticker: stickerNative.ok ? null : String(stickerNative.err && stickerNative.err.message),
@@ -502,6 +553,7 @@ const nativeApi = {
     textStyle: textStyleNative.ok ? null : String(textStyleNative.err && textStyleNative.err.message),
     commandParser: commandParserNative.ok ? null : String(commandParserNative.err && commandParserNative.err.message),
     gameCore: gameCoreNative.ok ? null : String(gameCoreNative.err && gameCoreNative.err.message),
+    domainCore: domainCoreNative.ok ? null : String(domainCoreNative.err && domainCoreNative.err.message),
   },
 };
 

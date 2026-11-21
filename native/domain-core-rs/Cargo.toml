@@ -1,0 +1,17 @@
+[package]
+name = "domain-core-rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Pure domain policies for JOHNTRAN"
+
+[lib]
+name = "domain_core_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { workspace = true }
+napi-derive = { workspace = true }
+
+[build-dependencies]
+napi-build = "2"
