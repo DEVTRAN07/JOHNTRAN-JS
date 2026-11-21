@@ -12,7 +12,7 @@ const { firstMention, withRequesterMention } = require("../../core/mentions");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const { sendGameGuideOnce } = require("../../core/games/gameGuideDelivery");
 const { sendStyledRawMessage } = require("../../core/message");
-const { extractPlainText } = require("../../core/runtime/plainText");
+const { extractPlainText, safePrimitiveString } = require("../../core/runtime/plainText");
 
 const DEFAULT_COINS = 100000;
 const MIN_BET = 1000;
@@ -2078,7 +2078,9 @@ async function handleIncoming(context = {}) {
   const prefix = String(global.config?.prefix || "!");
   if (!content || content.startsWith(prefix) || event?.type !== ThreadType.Group) return false;
   const lower = engine.normalizeText(content);
-  const threadId = String(event?.threadId || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
+  if (!threadId || !uid) return false;
   const room = game.get(threadId);
   if (!isEnabled(Threads, threadId)) return false;
   if (room?.cancelPending) {
@@ -2108,13 +2110,12 @@ async function handleIncoming(context = {}) {
     await doLeave(context);
     return true;
   }
-  if (room.status === "playing" && room.activeUids.includes(String(event?.data?.uidFrom || ""))) {
+  if (room.status === "playing" && room.activeUids.includes(uid)) {
     if (["goi y", "goiy", "hint", "suggest"].includes(lower)) {
       await sendMoveHint(context);
       return true;
     }
     if (["auto", "danh nhanh", "ra nhanh", "tu dong"].includes(lower)) {
-      const uid = String(event?.data?.uidFrom || "");
       if (room.turnUid !== uid) {
         await sendMoveError(api, event, uid, "NOT_TURN", "⏳ Chưa đến lượt bạn.");
         return true;
