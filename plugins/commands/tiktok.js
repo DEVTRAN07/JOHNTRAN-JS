@@ -136,8 +136,6 @@ module.exports.run = async function ({ api, event, args }) {
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_tk_"));
   try {
-    await api.sendMessage({ msg: "⏳ Đang lấy thông tin TikTok...", plain: true }, threadId, type);
-
     const info = await enqueue("download", () => getVideoInfo(url), {
       key: `tiktok-info|${urlCacheKey(url)}`,
       label: "Lấy metadata TikTok"
