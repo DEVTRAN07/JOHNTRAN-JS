@@ -511,6 +511,14 @@ function sendStyledRawMessage(api, message, threadId, type) {
   return api.sendMessage(outgoing, threadId, type);
 }
 
+function isObsoleteMenuOpeningAcknowledgement(message) {
+  const text = typeof message === "string"
+    ? message
+    : message && typeof message === "object" ? message.msg : null;
+  if (typeof text !== "string") return false;
+  return /^⏳\\s*Đang mở danh mục lệnh(?:\\.{3}|…)?$/iu.test(text.trim());
+}
+
 function wrapApi(api, threadId, type, commandName, event = null) {
   if (!api) return api;
   const wrapped = Object.create(api);
@@ -545,6 +553,10 @@ function wrapApi(api, threadId, type, commandName, event = null) {
       ? { ...rawContent }
       : rawContent;
     if (content && typeof content === "object" && content.plain) delete content.plain;
+
+    // Suppress the obsolete menu-opening text globally. The real menu card is
+    // sent separately and must remain unaffected by this compatibility guard.
+    if (isObsoleteMenuOpeningAcknowledgement(content)) return null;
 
     // Keep the image caption as text below the Canvas in the same Zalo
     // message. The SDK serializes these styles into textProperties for desc.
