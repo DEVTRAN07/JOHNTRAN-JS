@@ -17,6 +17,7 @@ const db = require("../../utils/db");
 const stats = require("../../core/stats");
 const schedule = require("node-schedule");
 const { cleanOldMessages, getMessageCache } = require("../../utils/index");
+const updateReport = require("../../core/runtime/updateReport");
 
 const loginMod = login;
 
@@ -255,6 +256,31 @@ try {
 }
 
 listener(api);
+
+// /update runs in the supervisor, so its completion notice is persisted across
+// the process restart and delivered only by the bot instance that requested it.
+async function sendPendingUpdateReport() {
+  const botName = process.env.JT_BOT_NAME || "main";
+  const report = updateReport.readPendingResult(ROOT, botName);
+  if (!report) return;
+
+  try {
+    await api.sendMessage(
+      { msg: updateReport.formatUpdateReport(report) },
+      report.threadId,
+      report.threadType
+    );
+    updateReport.clearPendingResult(ROOT, report.id);
+    logger.log("Đã gửi kết quả cập nhật về cuộc trò chuyện đã yêu cầu /update.", "info");
+  } catch (error) {
+    // Keep the result file so a later restart can retry rather than losing it.
+    logger.log("Chưa gửi được báo cáo /update về Zalo: " + (error?.message || error), "warn");
+  }
+}
+const updateReportTimer = setTimeout(() => {
+  void sendPendingUpdateReport();
+}, 1800);
+updateReportTimer.unref?.();
 
 // Warm/refresh Panel statistics only after the bot can already receive messages.
 // This bulk task reads up to 50 group details and must never race initial command
