@@ -69,6 +69,50 @@ function tryRequesterOperation(operation, args = []) {
   }
 }
 
+let antiProtectionLastError = null;
+
+function tryAntiProtectionOperation(operation, args = []) {
+  if (process.env.JT_RUST_ANTI_PROTECTION === "0" || !domainCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  const fn = domainCoreNative.mod[operation] || domainCoreNative.mod[camelName];
+  if (typeof fn !== "function") {
+    antiProtectionLastError = "Rust Anti-protection export is missing: " + operation;
+    return { used: false, value: null };
+  }
+  try {
+    const value = fn(...args);
+    antiProtectionLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    antiProtectionLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function getAntiProtectionDiagnostics() {
+  const required = [
+    "anti_is_supported_feature",
+    "anti_protection_keys",
+    "anti_protection_state"
+  ];
+  const complete = required.every(operation => {
+    const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    return typeof domainCoreNative.mod?.[operation] === "function" ||
+      typeof domainCoreNative.mod?.[camelName] === "function";
+  });
+  const enabled = process.env.JT_RUST_ANTI_PROTECTION !== "0";
+  return {
+    loaded: domainCoreNative.ok,
+    enabled,
+    active: enabled && domainCoreNative.ok && complete,
+    exports: domainCoreNative.ok ? Object.keys(domainCoreNative.mod || {}) : [],
+    lastError: antiProtectionLastError,
+    loadError: domainCoreNative.ok ? null : String(domainCoreNative.err?.message || domainCoreNative.err)
+  };
+}
+
 function getRequesterGreetingDiagnostics() {
   const required = [
     "requester_normalize_uid",
@@ -587,6 +631,8 @@ const nativeApi = {
   getGroupStateDiagnostics,
   tryRequesterOperation,
   getRequesterGreetingDiagnostics,
+  tryAntiProtectionOperation,
+  getAntiProtectionDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,

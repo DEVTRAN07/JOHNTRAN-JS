@@ -380,3 +380,102 @@ mod requester_tests {
         assert!(!requester_includes_uid_inner(&vec![], "123"));
     }
 }
+
+
+const ANTI_PROTECTION_KEYS_RUST: [&str; 21] = [
+    "anti_nude",
+    "anti_undo",
+    "anti_danger_link",
+    "anti_sticker_spam",
+    "anti_link",
+    "anti_spam",
+    "anti_card",
+    "anti_doodle",
+    "anti_file",
+    "anti_gif",
+    "anti_join",
+    "anti_location",
+    "anti_other",
+    "anti_photo",
+    "anti_qr",
+    "anti_reaction",
+    "anti_sticker",
+    "anti_taghide",
+    "anti_video",
+    "anti_voice",
+    "anti_word",
+];
+
+#[napi(object)]
+pub struct AntiProtectionEntry {
+    pub key: String,
+    pub enabled: bool,
+}
+
+fn anti_is_supported_feature_inner(feature: &str) -> bool {
+    ANTI_PROTECTION_KEYS_RUST.contains(&feature)
+}
+
+fn anti_protection_state_inner(values: Vec<bool>) -> Vec<AntiProtectionEntry> {
+    ANTI_PROTECTION_KEYS_RUST
+        .iter()
+        .enumerate()
+        .map(|(index, key)| AntiProtectionEntry {
+            key: (*key).to_string(),
+            enabled: values.get(index).copied().unwrap_or(false),
+        })
+        .collect()
+}
+
+#[napi]
+pub fn anti_is_supported_feature(feature: String) -> bool {
+    anti_is_supported_feature_inner(&feature)
+}
+
+#[napi]
+pub fn anti_protection_keys() -> Vec<String> {
+    ANTI_PROTECTION_KEYS_RUST.iter().map(|key| (*key).to_string()).collect()
+}
+
+#[napi]
+pub fn anti_protection_state(values: Vec<bool>) -> Vec<AntiProtectionEntry> {
+    anti_protection_state_inner(values)
+}
+
+#[cfg(test)]
+mod anti_protection_tests {
+    use super::*;
+
+    #[test]
+    fn supported_feature_registry_has_all_twenty_one_flags_in_legacy_order() {
+        assert_eq!(ANTI_PROTECTION_KEYS_RUST.len(), 21);
+        assert!(anti_is_supported_feature_inner("anti_nude"));
+        assert!(anti_is_supported_feature_inner("anti_undo"));
+        assert!(anti_is_supported_feature_inner("anti_qr"));
+        assert!(anti_is_supported_feature_inner("anti_word"));
+        assert!(!anti_is_supported_feature_inner("anti_unknown"));
+        assert!(!anti_is_supported_feature_inner("ANTI_LINK"));
+    }
+
+    #[test]
+    fn strict_state_mapping_preserves_key_order_and_defaults_missing_values_to_off() {
+        let entries = anti_protection_state_inner(vec![true, false, true]);
+        assert_eq!(entries.len(), 21);
+        assert_eq!(entries[0].key, "anti_nude");
+        assert!(entries[0].enabled);
+        assert_eq!(entries[1].key, "anti_undo");
+        assert!(!entries[1].enabled);
+        assert_eq!(entries[2].key, "anti_danger_link");
+        assert!(entries[2].enabled);
+        assert_eq!(entries[20].key, "anti_word");
+        assert!(!entries[20].enabled);
+    }
+
+    #[test]
+    fn state_mapping_ignores_extra_input_values() {
+        let values = vec![false; 25];
+        let entries = anti_protection_state_inner(values);
+        assert_eq!(entries.len(), ANTI_PROTECTION_KEYS_RUST.len());
+        assert!(entries.iter().all(|entry| !entry.enabled));
+    }
+}

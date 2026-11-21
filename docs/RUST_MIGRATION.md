@@ -108,10 +108,23 @@ latency improvement.
 - Verification: Rust unit tests, full JavaScript/Rust parity fixtures and a
   CI N-API smoke test.
 
+## Stage 8 — Anti-protection settings policy
+
+- Rust crate: `native/domain-core-rs`.
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `src/domain/moderation/protectionState.js` (legacy
+  import remains available at `core/runtime/antiProtection.js`).
+- Scope: the ordered 21-key Anti registry, feature-key validation and strict
+  boolean state mapping. JavaScript retains the existing error messages,
+  input-type checks and in-place update of the caller's group data object.
+- Rollback: set `JT_RUST_ANTI_PROTECTION=0`.
+- Verification: Rust unit tests, JavaScript/Rust parity fixtures and CI
+  N-API smoke test.
+
 ## Later migration order
 
-1. Migrate the remaining moderation protection-state policy, then audit pure
-   command validation/helpers folder by folder with JS contract parity tests.
+1. Audit the remaining pure command validation and policy modules folder by
+   folder, keeping JS compatibility adapters and contract parity tests.
 2. Media/image work: expand the existing Rust sticker path. Only activate
    canvas/FFmpeg Rust prototypes after platform builds, output parity and
    realistic performance tests pass.
