@@ -519,8 +519,44 @@ function isObsoleteMenuOpeningAcknowledgement(message) {
   return /^⏳\s*Đang mở danh mục lệnh(?:\.{3}|…)?$/iu.test(text.trim());
 }
 
+const guardedSendMessageApis = new WeakSet();
+
+function installGlobalSendMessageGuard(api) {
+  if (!api || (typeof api !== "object" && typeof api !== "function")) return false;
+  if (guardedSendMessageApis.has(api)) return true;
+
+  let originalSendMessage;
+  try {
+    // Resolve the SDK's lazy accessor before installing an own-property guard.
+    originalSendMessage = api.sendMessage;
+  } catch {
+    return false;
+  }
+  if (typeof originalSendMessage !== "function") return false;
+
+  try {
+    Object.defineProperty(api, "sendMessage", {
+      value: function guardedZaloSendMessage(message, ...args) {
+        if (isObsoleteMenuOpeningAcknowledgement(message)) return Promise.resolve(null);
+        return Reflect.apply(originalSendMessage, api, [message, ...args]);
+      },
+      writable: true,
+      enumerable: true,
+      configurable: true
+    });
+    guardedSendMessageApis.add(api);
+    return true;
+  } catch (error) {
+    logger.log("Không cài được bộ lọc tin nhắn menu cũ trên Zalo API: " + (error?.message || error), "warn");
+    return false;
+  }
+}
+
 function wrapApi(api, threadId, type, commandName, event = null) {
   if (!api) return api;
+  // Keep this fallback for tests, auxiliary callers and API instances created
+  // outside the main application bootstrap.
+  installGlobalSendMessageGuard(api);
   const wrapped = Object.create(api);
   let reply = null;
   const markResponseStarted = () => {
@@ -652,6 +688,7 @@ function wrapApi(api, threadId, type, commandName, event = null) {
 module.exports = {
   Reply,
   wrapApi,
+  installGlobalSendMessageGuard,
   sendStyledRawMessage,
   DEFAULT_AUTO_RECALL_MS,
   isRecallCountdownEnabled,
