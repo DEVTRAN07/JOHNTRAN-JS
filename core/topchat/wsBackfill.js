@@ -19,6 +19,13 @@ function vietnamDayStartMs(dateKey) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function accumulateHistoryImport(state, result) {
+  if (!state || state.active !== true || !result || typeof result !== "object") return false;
+  state.importedMessages = Math.max(0, Number(state.importedMessages) || 0) +
+    Math.max(0, Number(result.messages) || 0);
+  return true;
+}
+
 function isHistoryCoverageComplete(reason) {
   // An empty response or missing timestamps does not prove that today's
   // history was fully scanned; Zalo may have returned an unusable page.
@@ -112,5 +119,6 @@ module.exports = {
   vietnamDayStartMs,
   inspectGroupHistoryPage,
   historyGroupIds,
+  accumulateHistoryImport,
   isHistoryCoverageComplete
 };
