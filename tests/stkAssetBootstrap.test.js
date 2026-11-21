@@ -67,18 +67,24 @@ test("STK bootstrap stores all requested frames under src asset directory and re
   assert.equal(calls.length, 2, "complete local assets must not touch GitHub again");
 });
 
-test("STK bootstrap rejects a non-PNG payload rather than caching a broken frame", async t => {
+test("STK bootstrap reports a bad frame and keeps processing instead of aborting all downloads", async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "jt-stk-bootstrap-invalid-"));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
-  await assert.rejects(
-    downloadAllAssets({
-      directory,
-      items: [{ id: 1, file: "1_bad.png" }],
-      includeMenu: false,
-      fetchImpl: async () => response(Buffer.from("not a png")),
-      logger: {}
-    }),
-    /không phải PNG hợp lệ/
-  );
+  const result = await downloadAllAssets({
+    directory,
+    items: [{ id: 1, file: "1_bad.png" }, { id: 2, file: "2_good.png" }],
+    includeMenu: false,
+    fetchImpl: async url => url.endsWith("2_good.png")
+      ? response(PNG)
+      : response(Buffer.from("not a png")),
+    logger: {}
+  });
+  assert.equal(result.total, 2);
+  assert.equal(result.available, 1);
+  assert.equal(result.missing, 1);
+  const manifest = JSON.parse(await fs.readFile(path.join(directory, "assets-manifest.json"), "utf8"));
+  assert.equal(manifest.items.find(item => item.id === 1).missing, true);
+  assert.equal(manifest.items.find(item => item.id === 2).missing, undefined);
   await assert.rejects(fs.access(path.join(directory, "1_bad.png")));
+  assert.deepEqual(await fs.readFile(path.join(directory, "2_good.png")), PNG);
 });
