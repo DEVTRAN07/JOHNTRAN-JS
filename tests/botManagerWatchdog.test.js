@@ -29,6 +29,32 @@ function createHarness(name, options = {}) {
   return { bot, children };
 }
 
+test("Panel update IPC is forwarded once and does not count as a bot crash", async () => {
+  const name = "__test_panel_update_ipc__";
+  const requests = [];
+  const { bot, children } = createHarness(name, {
+    onUpdateRequest: ({ botName }) => requests.push(botName)
+  });
+
+  try {
+    bot.start();
+    const message = { type: "jt:update-request", botName: name };
+    children[0].emit("message", message);
+    children[0].emit("message", message);
+    await sleep(0);
+    children[0].emit("close", 3, null);
+    await sleep(0);
+
+    assert.deepEqual(requests, [name], "duplicate update IPC messages must be ignored");
+    assert.equal(bot.restarts, 0, "an intentional update exit is not a crash");
+    assert.equal(bot.restartTimer, null, "watchdog must not relaunch the old bot during update");
+    assert.equal(bot.status, "stopped");
+  } finally {
+    await bot.stop();
+    cleanup(name);
+  }
+});
+
 test("child bridge-ready IPC updates the managed bot to the actual local port", async () => {
   const name = "__test_bridge_ready_ipc__";
   const { bot, children } = createHarness(name);
