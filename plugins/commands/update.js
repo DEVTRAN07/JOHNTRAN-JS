@@ -54,8 +54,9 @@ module.exports.run = async ({ event, api, reply }) => {
     return reply.error("Không gửi được thông báo cập nhật: " + (error?.message || error));
   }
 
+  let updateRequest;
   try {
-    updateReport.writeUpdateRequest(ROOT, {
+    updateRequest = updateReport.writeUpdateRequest(ROOT, {
       botName: process.env.JT_BOT_NAME || "main",
       threadId,
       threadType: type
@@ -69,6 +70,7 @@ module.exports.run = async ({ event, api, reply }) => {
     process.send({ type: "jt:update-request", botName: process.env.JT_BOT_NAME || "main" }, error => {
       if (error) {
         requested = false;
+        updateReport.clearUpdateRequest(ROOT, updateRequest.id);
         api.sendMessage(
           "❌ Không thể gửi yêu cầu cập nhật tới tiến trình giám sát: " + (error.message || error),
           threadId,
