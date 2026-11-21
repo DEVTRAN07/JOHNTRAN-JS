@@ -8,6 +8,7 @@ Domain chứa quy tắc nghiệp vụ thuần, không biết về Zalo SDK, HTTP
 - moderation/protectionState.js: danh sách feature Anti, đọc trạng thái boolean nghiêm ngặt và cập nhật một flag mà không mất các thiết lập khác. Schema 21 cờ và ánh xạ trạng thái chạy Rust qua N-API; setter JS giữ nguyên kiểm tra lỗi và mutation.
 - core/runtime/middleware/permissions.js: phần policy role và quyền nhóm được xử lý bằng Rust; lookup group-admin bất đồng bộ qua Zalo vẫn do JS điều phối.
 - core/runtime/restartPolicy.js: tính rolling-window, cooldown và exponential backoff chạy Rust; supervisor vẫn đặt timer và restart process bằng JS.
+- core/http/requestPolicy.js: tính giới hạn timeout/retry/delay chạy Rust; đọc cấu hình, request, DNS và retry thực tế vẫn do JS điều phối.
 
 ## Miền tiếp theo
 - games/engines/: caroEngine, noituEngine, samEngine và tlmnEngine là luật chơi thuần, không phụ thuộc Zalo, file hay network.

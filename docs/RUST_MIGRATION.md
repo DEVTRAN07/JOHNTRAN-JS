@@ -149,10 +149,23 @@ latency improvement.
 - Verification: Rust unit tests, JavaScript/Rust plan parity fixtures and CI
   N-API smoke test.
 
+## Stage 12 — shared HTTP request policy
+
+- Rust crate: `native/domain-core-rs`.
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `core/http/requestPolicy.js`.
+- Scope: bounded integer clamping and the combined timeout/retry/delay policy
+  calculation. JavaScript retains env/config property reads and `Number()`
+  coercion order; HTTP transport, DNS, privacy checks, retries, waits and Zalo
+  network operations remain in Node.
+- Rollback: set `JT_RUST_HTTP_REQUEST_POLICY=0`.
+- Verification: Rust unit tests, JS/Rust parity for config/env edge values,
+  property-getter and `valueOf()` evaluation order, and CI N-API smoke test.
+
 ## Later migration order
 
-1. Continue auditing remaining command-validation and HTTP request policy
-   helpers; leave all network calls and process/timer orchestration in JS.
+1. Continue auditing remaining pure command-validation and parsing helpers;
+   leave all network calls and process/timer orchestration in JS.
 2. Media/image work: expand the existing Rust sticker path. Only activate
    canvas/FFmpeg Rust prototypes after platform builds, output parity and
    realistic performance tests pass.

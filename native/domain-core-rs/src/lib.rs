@@ -728,3 +728,182 @@ mod restart_policy_tests {
         assert!(!plan.cooldown);
     }
 }
+
+
+#[napi(object)]
+pub struct HttpRequestPolicyNative {
+    pub timeout_ms: f64,
+    pub retries: f64,
+    pub delay_ms: f64,
+    pub max_delay_ms: f64,
+}
+
+fn request_bounded_integer_inner(
+    parsed: f64,
+    valid: bool,
+    min: f64,
+    max: f64,
+    fallback: f64,
+) -> f64 {
+    if !valid {
+        return fallback;
+    }
+    min.max(max.min(parsed))
+}
+
+fn request_policy_inner(
+    configured_timeout: f64,
+    configured_timeout_valid: bool,
+    environment_timeout: f64,
+    environment_timeout_valid: bool,
+    configured_retries: f64,
+    configured_retries_valid: bool,
+    environment_retries: f64,
+    environment_retries_valid: bool,
+    environment_delay: f64,
+    environment_delay_valid: bool,
+    configured_delay: f64,
+    configured_delay_valid: bool,
+) -> HttpRequestPolicyNative {
+    let configured_timeout = request_bounded_integer_inner(
+        configured_timeout, configured_timeout_valid, 1000.0, 15000.0, 8000.0
+    );
+    let timeout_ms = request_bounded_integer_inner(
+        environment_timeout, environment_timeout_valid, 1000.0, 15000.0, configured_timeout
+    );
+
+    let configured_retries = request_bounded_integer_inner(
+        configured_retries, configured_retries_valid, 0.0, 1.0, 0.0
+    );
+    let retries = request_bounded_integer_inner(
+        environment_retries, environment_retries_valid, 0.0, 1.0, configured_retries
+    );
+
+    let configured_delay = request_bounded_integer_inner(
+        configured_delay, configured_delay_valid, 50.0, 1000.0, 250.0
+    );
+    let delay_ms = request_bounded_integer_inner(
+        environment_delay, environment_delay_valid, 50.0, 1000.0, configured_delay
+    );
+
+    HttpRequestPolicyNative {
+        timeout_ms,
+        retries,
+        delay_ms,
+        max_delay_ms: 1500.0_f64.min(delay_ms.max(delay_ms * 2.0)),
+    }
+}
+
+#[napi]
+pub fn request_bounded_integer(
+    parsed: f64,
+    valid: bool,
+    min: f64,
+    max: f64,
+    fallback: f64,
+) -> f64 {
+    request_bounded_integer_inner(parsed, valid, min, max, fallback)
+}
+
+#[napi]
+pub fn resolve_http_request_policy(
+    configured_timeout: f64,
+    configured_timeout_valid: bool,
+    environment_timeout: f64,
+    environment_timeout_valid: bool,
+    configured_retries: f64,
+    configured_retries_valid: bool,
+    environment_retries: f64,
+    environment_retries_valid: bool,
+    environment_delay: f64,
+    environment_delay_valid: bool,
+    configured_delay: f64,
+    configured_delay_valid: bool,
+) -> HttpRequestPolicyNative {
+    request_policy_inner(
+        configured_timeout,
+        configured_timeout_valid,
+        environment_timeout,
+        environment_timeout_valid,
+        configured_retries,
+        configured_retries_valid,
+        environment_retries,
+        environment_retries_valid,
+        environment_delay,
+        environment_delay_valid,
+        configured_delay,
+        configured_delay_valid,
+    )
+}
+
+#[cfg(test)]
+mod http_request_policy_tests {
+    use super::*;
+
+    #[test]
+    fn request_policy_uses_legacy_defaults_and_clamps_all_ranges() {
+        let policy = request_policy_inner(
+            0.0, false,
+            0.0, false,
+            0.0, false,
+            0.0, false,
+            0.0, false,
+            0.0, false,
+        );
+        assert_eq!(policy.timeout_ms, 8000.0);
+        assert_eq!(policy.retries, 0.0);
+        assert_eq!(policy.delay_ms, 250.0);
+        assert_eq!(policy.max_delay_ms, 500.0);
+
+        let configured = request_policy_inner(
+            60000.0, true,
+            0.0, false,
+            3.0, true,
+            0.0, false,
+            0.0, false,
+            2500.0, true,
+        );
+        assert_eq!(configured.timeout_ms, 15000.0);
+        assert_eq!(configured.retries, 1.0);
+        assert_eq!(configured.delay_ms, 1000.0);
+        assert_eq!(configured.max_delay_ms, 1500.0);
+    }
+
+    #[test]
+    fn valid_environment_values_override_configured_values() {
+        let policy = request_policy_inner(
+            4000.0, true,
+            5000.0, true,
+            1.0, true,
+            0.0, true,
+            120.0, true,
+            800.0, true,
+        );
+        assert_eq!(policy.timeout_ms, 5000.0);
+        assert_eq!(policy.retries, 0.0);
+        assert_eq!(policy.delay_ms, 120.0);
+        assert_eq!(policy.max_delay_ms, 240.0);
+    }
+
+    #[test]
+    fn invalid_environment_values_fall_back_to_configured_values() {
+        let policy = request_policy_inner(
+            5000.0, true,
+            0.0, false,
+            1.0, true,
+            2.0, false,
+            200.0, true,
+            0.0, false,
+        );
+        assert_eq!(policy.timeout_ms, 5000.0);
+        assert_eq!(policy.retries, 1.0);
+        assert_eq!(policy.delay_ms, 200.0);
+    }
+
+    #[test]
+    fn bounded_integer_preserves_fractional_bounds_and_fallback() {
+        assert_eq!(request_bounded_integer_inner(2.5, true, 0.5, 2.0, 7.0), 2.0);
+        assert_eq!(request_bounded_integer_inner(0.1, true, 0.5, 2.0, 7.0), 0.5);
+        assert_eq!(request_bounded_integer_inner(1.0, false, 0.5, 2.0, 7.0), 7.0);
+    }
+}

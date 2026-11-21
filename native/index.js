@@ -134,6 +134,66 @@ function tryRestartPlan(args = []) {
   }
 }
 
+let httpRequestPolicyLastError = null;
+
+function tryRequestBoundedInteger(args = []) {
+  if (process.env.JT_RUST_HTTP_REQUEST_POLICY === "0" || !domainCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const fn = domainCoreNative.mod.request_bounded_integer ||
+    domainCoreNative.mod.requestBoundedInteger;
+  if (typeof fn !== "function") {
+    httpRequestPolicyLastError = "Rust request_bounded_integer export is missing";
+    return { used: false, value: null };
+  }
+  try {
+    const value = fn(...args);
+    httpRequestPolicyLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    httpRequestPolicyLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function tryResolveHttpRequestPolicy(args = []) {
+  if (process.env.JT_RUST_HTTP_REQUEST_POLICY === "0" || !domainCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const fn = domainCoreNative.mod.resolve_http_request_policy ||
+    domainCoreNative.mod.resolveHttpRequestPolicy;
+  if (typeof fn !== "function") {
+    httpRequestPolicyLastError = "Rust resolve_http_request_policy export is missing";
+    return { used: false, value: null };
+  }
+  try {
+    const value = fn(...args);
+    httpRequestPolicyLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    httpRequestPolicyLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function getHttpRequestPolicyDiagnostics() {
+  const bounded = domainCoreNative.ok
+    ? domainCoreNative.mod.request_bounded_integer || domainCoreNative.mod.requestBoundedInteger
+    : null;
+  const resolver = domainCoreNative.ok
+    ? domainCoreNative.mod.resolve_http_request_policy || domainCoreNative.mod.resolveHttpRequestPolicy
+    : null;
+  const enabled = process.env.JT_RUST_HTTP_REQUEST_POLICY !== "0";
+  return {
+    loaded: domainCoreNative.ok,
+    enabled,
+    active: enabled && typeof bounded === "function" && typeof resolver === "function",
+    exports: domainCoreNative.ok ? Object.keys(domainCoreNative.mod || {}) : [],
+    lastError: httpRequestPolicyLastError,
+    loadError: domainCoreNative.ok ? null : String(domainCoreNative.err?.message || domainCoreNative.err)
+  };
+}
+
 function getRestartPolicyDiagnostics() {
   const planner = domainCoreNative.ok
     ? domainCoreNative.mod.restart_plan || domainCoreNative.mod.restartPlan
@@ -717,6 +777,9 @@ const nativeApi = {
   getPermissionPolicyDiagnostics,
   tryRestartPlan,
   getRestartPolicyDiagnostics,
+  tryRequestBoundedInteger,
+  tryResolveHttpRequestPolicy,
+  getHttpRequestPolicyDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,
