@@ -46,6 +46,13 @@ test("the replacement Discord catalog contains all 200 ordered entries", () => {
   assert.equal(service.getDecoration(201), null);
 });
 
+test("the 200 frame catalog is stored under src/assets/stk rather than the runtime cache", () => {
+  assert.ok(
+    service.DECOR_DIR.replace(/\\\\/g, "/").endsWith("/src/assets/stk"),
+    "frame assets must be resolved from the source asset folder"
+  );
+});
+
 test("the renderer uses the Python layout dimensions and offset", () => {
   assert.equal(service.CANVAS_SIZE, 288);
   assert.equal(service.AVATAR_SIZE, 240);
