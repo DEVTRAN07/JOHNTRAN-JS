@@ -169,7 +169,7 @@ function updateRepository() {
         " commit chưa có trên origin/main. Updater không reset hoặc ghi đè commit local.");
     }
     if (status.behind === 0) {
-      console.log("[update] Máy đã ở bản mới nhất: " + oldSha.slice(0, 12));
+      console.log("[update] Máy đã ở bản mới nhất: " + oldSha.slice(0, 7));
       return { updated: false, oldSha, newSha: oldSha, changedFiles: [] };
     }
   
@@ -184,7 +184,7 @@ function updateRepository() {
       try {
         runNpm(["ci", "--no-audit", "--no-fund"]);
       } catch (installError) {
-        console.error("[update] npm ci lỗi. Đang rollback mã nguồn về " + oldSha.slice(0, 12) + "...");
+        console.error("[update] npm ci lỗi. Đang rollback mã nguồn về " + oldSha.slice(0, 7) + "...");
         try {
           run("git", ["reset", "--hard", oldSha]);
         } catch (rollbackError) {
@@ -215,19 +215,10 @@ function updateRepository() {
       }
     }
   
-    console.log("[update] Cập nhật thành công: " + oldSha.slice(0, 12) + " → " + newSha.slice(0, 12));
+    console.log("[update] Cập nhật thành công: " + oldSha.slice(0, 7) + " → " + newSha.slice(0, 7));
     return { updated: true, oldSha, newSha, changedFiles };
   } finally {
     restoreLocalConfigOverride(localConfigBackup);
-  }
-}
-
-function readPackageVersion() {
-  try {
-    const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
-    return String(packageJson.version || "unknown");
-  } catch {
-    return "unknown";
   }
 }
 
@@ -239,19 +230,20 @@ function readCurrentCommit() {
   }
 }
 
+function shortCommit(sha) {
+  const value = String(sha || "").trim();
+  return /^[a-f0-9]{7,40}$/i.test(value) ? value.slice(0, 7) : "unknown";
+}
+
 function main() {
-  const oldVersion = readPackageVersion();
   const initialSha = readCurrentCommit();
 
   try {
     const result = updateRepository();
-    const newVersion = readPackageVersion();
     const newSha = result.newSha || readCurrentCommit();
     const report = updateReport.completeUpdate(ROOT, {
       status: "success",
       updated: result.updated,
-      oldVersion,
-      newVersion,
       oldSha: result.oldSha || initialSha,
       newSha,
       changedFiles: result.changedFiles?.length || 0
@@ -259,20 +251,16 @@ function main() {
 
     console.log(
       report
-        ? "[update] Hoàn tất: v" + oldVersion + " → v" + newVersion +
-          " | commit " + String(report.newSha || "").slice(0, 12)
+        ? "[update] Hoàn tất, phiên bản commit: " + shortCommit(report.newSha)
         : "[update] Hoàn tất; không có yêu cầu thông báo Zalo đang chờ."
     );
     process.exitCode = 0;
   } catch (error) {
-    const newVersion = readPackageVersion();
     const newSha = readCurrentCommit();
     try {
       updateReport.completeUpdate(ROOT, {
         status: "failed",
         updated: false,
-        oldVersion,
-        newVersion,
         oldSha: initialSha,
         newSha,
         error: error?.message || error
