@@ -82,8 +82,6 @@ module.exports.run = async function ({ api, event }) {
   const videoPath = path.join(tmpDir, "in.mp4");
 
   try {
-    await api.sendMessage({ msg: "⏳ Đang trích audio...", plain: true }, threadId, type);
-
     // 1) Tải video về
     const { buffer: videoBuffer } = await queuedGetBuffer(videoUrl, { timeout: 120000, retries: 1 });
     fs.writeFileSync(videoPath, videoBuffer);
