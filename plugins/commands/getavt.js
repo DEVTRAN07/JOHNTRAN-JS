@@ -11,7 +11,6 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { fetchProfile } = require("../../core/zaloProfile");
-const { sendFastAcknowledgement } = require("../../core/runtime/fastAck");
 
 module.exports.config = {
   name: "getavt",
@@ -56,8 +55,6 @@ async function sendAvatarFromUrl(api, threadId, type, url) {
 
 // Lấy avatar của 1 uid → gửi
 async function getAvatar(api, threadId, type, uid) {
-  // Start acknowledgement before fetching profile or decoding/downloading avatar.
-  sendFastAcknowledgement(api, threadId, type, "⏳ Đang lấy ảnh đại diện...");
   const { user } = await fetchProfile(api, uid);
   if (!user) {
     await api.sendMessage({ msg: "❌ Người dùng không tồn tại.", plain: true, ttl: 60000 }, threadId, type);
