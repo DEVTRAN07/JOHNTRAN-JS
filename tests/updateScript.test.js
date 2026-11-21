@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { normalizeRemote, isTargetRemote, parseAheadBehind, hasDependencyChanges } = require("../scripts/update");
+const { normalizeRemote, isTargetRemote, parseAheadBehind, hasDependencyChanges, parsePorcelainPath, validateLocalChanges } = require("../scripts/update");
 
 test("normalizeRemote accepts HTTPS and SSH GitHub remotes", () => {
   assert.equal(normalizeRemote("https://github.com/DEVTRAN07/JOHNTRAN-JS.git"), "https://github.com/DEVTRAN07/JOHNTRAN-JS");
@@ -26,5 +26,24 @@ test("parseAheadBehind reads git rev-list counts", () => {
 test("dependency changes are detected only for package manifests", () => {
   assert.equal(hasDependencyChanges(["core/listen.js"]), false);
   assert.equal(hasDependencyChanges(["package-lock.json"]), true);
-  assert.equal(hasDependencyChanges(["README.md", "package.json"]), false);
+  assert.equal(hasDependencyChanges(["package.json"]), true);
+  assert.equal(hasDependencyChanges(["README.md"]), false);
+});
+
+
+test("local config.yml changes are recognized and can be preserved without permitting code edits", () => {
+  assert.equal(parsePorcelainPath(" M config.yml"), "config.yml");
+  assert.equal(parsePorcelainPath("R  old.yml -> config.yml"), "config.yml");
+
+  const clean = validateLocalChanges("");
+  assert.equal(clean.hasConfigOverride, false);
+
+  const configOnly = validateLocalChanges(" M config.yml");
+  assert.equal(configOnly.hasConfigOverride, true);
+  assert.deepEqual(configOnly.paths, ["config.yml"]);
+
+  assert.throws(
+    () => validateLocalChanges(" M config.yml\\n M core/listen.js"),
+    /ngoài config\\.yml/
+  );
 });
