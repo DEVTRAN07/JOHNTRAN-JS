@@ -204,6 +204,8 @@ class BotInstance {
     this.bridgePort = Number(options.bridgePort) || (name === "main" ? 3901 : 0);
     this.bridgeToken = options.bridgeToken || "";
     this.name = name;
+    this.onUpdateRequest = typeof options.onUpdateRequest === "function" ? options.onUpdateRequest : null;
+    this.updateRequested = false;
     this.autoRestart = options.autoRestart !== false;
     this.process = null;
     this.startedAt = null;
@@ -344,8 +346,27 @@ class BotInstance {
 
     this.process = child;
     this.startedAt = Date.now();
+    this.updateRequested = false;
 
     child.on?.("message", (message) => {
+      if (message?.type === "jt:update-request") {
+        if (this.updateRequested) return;
+        this.updateRequested = true;
+        this.pushLog("[update] Đã nhận yêu cầu cập nhật từ Zalo.");
+        if (this.onUpdateRequest) {
+          Promise.resolve()
+            .then(() => this.onUpdateRequest({ botName: this.name, bot: this, message }))
+            .catch((error) => {
+              this.pushLog("[update] Không thể bắt đầu updater: " + (error?.message || error));
+              logger.log("Không thể bắt đầu updater từ bot '" + this.name + "': " + (error?.message || error), "error", {
+                source: "bot-update-request", bot: this.name
+              });
+            });
+        } else {
+          this.pushLog("[update] Panel master chưa đăng ký xử lý yêu cầu cập nhật.");
+        }
+        return;
+      }
       if (!message || message.type !== "jt:panel-bridge-ready") return;
       const actualPort = Number(message.port);
       if (!Number.isInteger(actualPort) || actualPort < 1 || actualPort > 65535) return;
@@ -381,7 +402,9 @@ class BotInstance {
     child.once("close", (code, signal) => {
       if (this.process === child) this.process = null;
 
-      const wasStoppedByUser = this.stoppedByUser;
+      const updateExit = this.updateRequested && code === 3 && !signal;
+      this.updateRequested = false;
+      const wasStoppedByUser = this.stoppedByUser || updateExit;
       const exitLabel = signal ? `signal ${signal}` : `code ${code}`;
       const runtimeMs = this.startedAt ? Date.now() - this.startedAt : 0;
       this.lastExitAt = Date.now();
@@ -396,6 +419,7 @@ class BotInstance {
 
       // A manual Stop is not a crash and must not consume the crash budget.
       if (wasStoppedByUser) {
+        this.stoppedByUser = true;
         this.restarting = false;
         return;
       }
@@ -489,12 +513,23 @@ class BotInstance {
 class BotManager {
   constructor(options = {}) {
     this.bridgeToken = options.bridgeToken || "";
+    this.onUpdateRequest = typeof options.onUpdateRequest === "function" ? options.onUpdateRequest : null;
     this.bots = new Map();
     ensureDirs();
     const registry = readRegistry();
     for (const name of Object.keys(registry.bots || {})) {
-      this.bots.set(name, new BotInstance(name, { ...registry.bots[name], bridgeToken: this.bridgeToken }));
+      this.bots.set(name, new BotInstance(name, {
+        ...registry.bots[name],
+        bridgeToken: this.bridgeToken,
+        onUpdateRequest: this.onUpdateRequest
+      }));
     }
+  }
+
+  setUpdateHandler(handler) {
+    this.onUpdateRequest = typeof handler === "function" ? handler : null;
+    for (const bot of this.bots.values()) bot.onUpdateRequest = this.onUpdateRequest;
+    return this;
   }
 
   // Gọi từ panel/server.startPanel để đảm bảo cùng 1 token (proxy ↔ bot con).
@@ -548,7 +583,12 @@ class BotManager {
       const used = new Set([3901, ...[...this.bots.values()].map((b) => b.bridgePort).filter(Boolean)]);
       while (used.has(bridgePort)) bridgePort += 1;
     }
-    const bot = new BotInstance(name, { ...options, bridgePort, bridgeToken: this.bridgeToken });
+    const bot = new BotInstance(name, {
+      ...options,
+      bridgePort,
+      bridgeToken: this.bridgeToken,
+      onUpdateRequest: this.onUpdateRequest
+    });
     this.bots.set(name, bot);
     this.persist();
     return bot;
