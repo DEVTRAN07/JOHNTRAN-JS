@@ -709,7 +709,7 @@ async function setEnabled(Threads, threadId, enabled) {
   else await Threads.setData(threadId, data);
 }
 
-function gameGuide(prefix = global.config?.prefix || "!") {
+function gameGuide(prefix = safeCommandPrefix("!")) {
   return [
     "📘 HƯỚNG DẪN TIẾN LÊN MIỀN NAM",
     "",
@@ -1883,7 +1883,7 @@ async function runCommand(context) {
   const { args = [], api, event, Users, Threads } = context;
   const uid = safePrimitiveString(event?.data?.uidFrom);
   const threadId = safePrimitiveString(event?.threadId);
-  const prefix = global.config?.prefix || "!";
+  const prefix = safeCommandPrefix("!");
   const action = String(args[0] || "help").toLowerCase();
   const rest = args.slice(1).map(value => String(value));
   const activeRoom = game.get(threadId);
