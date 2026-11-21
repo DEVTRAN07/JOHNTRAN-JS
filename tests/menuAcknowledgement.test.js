@@ -90,3 +90,22 @@ test("raw Zalo API guard replaces the SDK lazy accessor without invoking its set
   assert.equal(await api.sendMessage({ msg: "Bình thường" }), true);
   assert.equal(sent.length, 1);
 });
+
+
+test("menu guard suppresses legacy acknowledgement even when text has a suffix", async () => {
+  const { wrapApi } = require("../core/message");
+  const sent = [];
+  const api = {
+    async sendMessage(payload) {
+      sent.push(payload);
+      return { ok: true };
+    }
+  };
+  const wrapped = wrapApi(api, "menu-suffix-thread", 2, "menu");
+
+  await wrapped.sendMessage({ msg: "⏳   Đang mở danh mục lệnh... vui lòng chờ" });
+  assert.equal(sent.length, 0, "extended legacy acknowledgement must be suppressed");
+
+  await wrapped.sendMessage({ msg: "📂 DANH MỤC LỆNH" });
+  assert.equal(sent.length, 1, "real menu output must still be sent");
+});
