@@ -18,7 +18,7 @@ class SlidingWindowLimiter {
 
     const NativeLimiter = nativeCore.NativeSlidingWindowLimiter;
     if (
-      process.env.JT_RUST_RATE_LIMITER !== "0" &&
+      process.env.JT_RUST_RATE_LIMITER === "1" &&
       typeof NativeLimiter === "function" &&
       typeof windowMs === "number" &&
       typeof max === "number" &&

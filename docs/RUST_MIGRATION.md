@@ -172,10 +172,15 @@ latency improvement.
   owns the limiter state so the command hot path crosses N-API once per check.
 - JS retains the original class API, command key stringification, a fallback
   implementation and snapshots for the existing `entries`/operation diagnostics.
-- Rollback: set `JT_RUST_RATE_LIMITER=0`.
+- **Default remains JavaScript.** The CI synthetic 100,000-operation benchmark
+  measured a 9.77 ms JS median versus 20.76 ms through N-API for Rust (about
+  2.1× slower on that runner). This is a local microbenchmark, not end-to-end
+  Zalo latency; it is enough to avoid enabling the native path by default.
+- Opt in to the Rust experiment with `JT_RUST_RATE_LIMITER=1`; set it to
+  `0` (or leave it unset) to use the faster measured JS path.
 - Verification: Rust unit tests, full JS/Rust state-and-decision parity,
-  cursor continuation when falling back to JS, existing rate-limit tests and CI
-  N-API smoke test.
+  cursor continuation when falling back to JS, CI N-API smoke test and a
+  three-trial JS/Rust throughput benchmark.
 
 ## Later migration order
 

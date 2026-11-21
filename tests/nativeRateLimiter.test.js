@@ -75,13 +75,24 @@ function runFixtures() {
   return result;
 }
 
-test("rate-limiter Rust class is available and active when the native addon is built", t => {
+test("Rust rate-limiter remains opt-in because the N-API path is slower in the CI microbenchmark", t => {
   const diagnostics = rateLimiter.getNativeDiagnostics();
   if (!diagnostics.loaded) {
     t.skip("native domain-core addon is not built in this environment");
     return;
   }
-  assert.equal(diagnostics.active, true, diagnostics.loadError || "Rust rate limiter class is inactive");
+  const previous = process.env.JT_RUST_RATE_LIMITER;
+  try {
+    delete process.env.JT_RUST_RATE_LIMITER;
+    assert.equal(rateLimiter.getNativeDiagnostics().active, false);
+    assert.equal(new SlidingWindowLimiter()._native, null);
+    process.env.JT_RUST_RATE_LIMITER = "1";
+    assert.equal(rateLimiter.getNativeDiagnostics().active, true);
+    assert.ok(new SlidingWindowLimiter()._native);
+  } finally {
+    if (previous === undefined) delete process.env.JT_RUST_RATE_LIMITER;
+    else process.env.JT_RUST_RATE_LIMITER = previous;
+  }
 });
 
 test("Rust sliding-window limiter preserves JS allow, capacity, prune, insertion-order and clear semantics", t => {
@@ -93,7 +104,7 @@ test("Rust sliding-window limiter preserves JS allow, capacity, prune, insertion
   try {
     process.env.JT_RUST_RATE_LIMITER = "0";
     const fallback = runFixtures();
-    delete process.env.JT_RUST_RATE_LIMITER;
+    process.env.JT_RUST_RATE_LIMITER = "1";
     const rust = runFixtures();
     assert.deepEqual(rust, fallback);
   } finally {
@@ -109,7 +120,7 @@ test("switching a native limiter to JS fallback resumes before the next prune ke
   }
   const previous = process.env.JT_RUST_RATE_LIMITER;
   try {
-    delete process.env.JT_RUST_RATE_LIMITER;
+    process.env.JT_RUST_RATE_LIMITER = "1";
     const limiter = new SlidingWindowLimiter({ windowMs: 1000, max: 1, maxKeys: 2000 });
     for (let index = 0; index < 400; index++) limiter.allow("cursor-" + index, 1000);
     limiter.prune(2001);

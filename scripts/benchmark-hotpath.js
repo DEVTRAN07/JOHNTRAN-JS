@@ -36,7 +36,7 @@ function benchmarkRateLimiter() {
   const trials = 3;
 
   function run(useRust) {
-    if (useRust) delete process.env.JT_RUST_RATE_LIMITER;
+    if (useRust) process.env.JT_RUST_RATE_LIMITER = "1";
     else process.env.JT_RUST_RATE_LIMITER = "0";
 
     const samples = [];

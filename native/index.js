@@ -180,7 +180,7 @@ function getRateLimiterDiagnostics() {
   const limiterClass = domainCoreNative.ok
     ? domainCoreNative.mod.NativeSlidingWindowLimiter
     : null;
-  const enabled = process.env.JT_RUST_RATE_LIMITER !== "0";
+  const enabled = process.env.JT_RUST_RATE_LIMITER === "1";
   return {
     loaded: domainCoreNative.ok,
     enabled,
