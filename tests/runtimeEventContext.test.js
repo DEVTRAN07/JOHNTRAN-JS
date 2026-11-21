@@ -54,3 +54,18 @@ test("createEventContext falls back to the original API if wrapping fails", () =
   assert.equal(context.api, api);
   assert.equal(context.reply, undefined);
 });
+
+
+test("resolveThreadType ignores non-primitive SDK values without coercion", () => {
+  const nullPrototypeType = Object.create(null);
+  const hostileType = {
+    [Symbol.toPrimitive]() {
+      throw new Error("Cannot convert object to primitive value");
+    }
+  };
+
+  assert.equal(resolveThreadType({ type: nullPrototypeType }, "message", ThreadType), ThreadType.Group);
+  assert.equal(resolveThreadType({ type: hostileType }, "message", ThreadType), ThreadType.Group);
+  assert.equal(resolveThreadType({ type: "0" }, "message", ThreadType), 0);
+  assert.equal(resolveThreadType({ type: 2 }, "message", ThreadType), 2);
+});
