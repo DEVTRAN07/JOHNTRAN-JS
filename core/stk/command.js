@@ -288,7 +288,6 @@ module.exports.run = async function ({ api, event, args }) {
     }, {
       key: jobKey,
       label: "STK Discord · #" + options.decorationId,
-      concurrency: 2,
       retries: 0
     });
   } catch (error) {
