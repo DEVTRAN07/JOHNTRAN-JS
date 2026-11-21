@@ -227,6 +227,9 @@ module.exports.run = async function ({ api, event, args }) {
 
   const quotedUrl = getQuotedMediaUrl(event);
   const uid = getAuthorId(event);
+  const tag = "@" + String(
+    event?.data?.dName || event?.data?.senderName || event?.senderName || "Bạn"
+  ).slice(0, 32);
   const mentions = uid ? [{ uid, pos: 0, len: tag.length }] : [];
 
   // For avatar-based commands, check the short-lived UID cache before
@@ -243,7 +246,7 @@ module.exports.run = async function ({ api, event, args }) {
     : null;
 
   // Queue work immediately; only the final sticker or an error is sent to chat.
-  // Cold requests warm both network inputs in parallel after acknowledgement.
+  // Warm the local frame and source media in parallel while the job enters the queue.
   const queuedAt = Date.now();
   const frameWarmPromise = avatarCacheHit
     ? Promise.resolve(null)
@@ -289,7 +292,7 @@ module.exports.run = async function ({ api, event, args }) {
       retries: 0
     });
   } catch (error) {
-    void safeSend(api, event, "❌ Không thể đưa STK vào hàng đợi: " +
+    void safeSend(api, event, tag + "\n❌ Không thể đưa STK vào hàng đợi: " +
       String(error?.message || error).slice(0, 280), mentions);
     void safeReaction(api, event, "😢");
     return false;
@@ -321,7 +324,7 @@ module.exports.run = async function ({ api, event, args }) {
     await safeSend(
       api,
       event,
-      "❌ Đã xảy ra lỗi khi tạo sticker Discord.\n" +
+      tag + "\n❌ Đã xảy ra lỗi khi tạo sticker Discord.\n" +
         "Mã lỗi: " + errorId + "\n" +
         "Giai đoạn: " + stage + "\n" + details,
       mentions
