@@ -540,43 +540,6 @@ mod tests {
     }
 
     #[test]
-    fn static_profiles_decode_and_composite_once_then_select_first_acceptable_quality() {
-        let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
-            64, 64, Rgba([30, 160, 220, 255])
-        ));
-        let overlay = DynamicImage::ImageRgba8(RgbaImage::new(64, 64));
-        let png = |image: &DynamicImage| {
-            let mut cursor = Cursor::new(Vec::new());
-            image.write_to(&mut cursor, ImageFormat::Png).unwrap();
-            cursor.into_inner()
-        };
-        let source_bytes = png(&source);
-        let overlay_bytes = png(&overlay);
-
-        let crisp = compose_static_profiles_result(
-            &source_bytes, &overlay_bytes, 64, 52, 6, vec![92, 88, 84, 80], u32::MAX
-        ).expect("high quality profile should encode");
-        assert_eq!(crisp.quality, 92);
-        assert_eq!(crisp.format, "webp");
-        assert_eq!((crisp.width, crisp.height), (64, 64));
-        assert!(crisp.size > 0);
-
-        let minimum = compose_static_profiles_result(
-            &source_bytes, &overlay_bytes, 64, 52, 6, vec![92, 88, 84, 80], 1
-        ).expect("smallest profile should still be returned for JS fallback");
-        assert_eq!(minimum.quality, 80);
-        assert!(minimum.size > 1);
-
-        let legacy = compose_static_result(
-            &source_bytes, &overlay_bytes, 64, 52, 6, 80
-        ).expect("legacy one-profile composer should encode");
-        let legacy_bytes: Vec<u8> = legacy.buffer.into();
-        let minimum_bytes: Vec<u8> = minimum.buffer.into();
-        assert_eq!(minimum_bytes, legacy_bytes,
-            "profile ladder must produce the same bytes as the legacy selected quality");
-    }
-
-    #[test]
     fn static_circle_composition_clips_the_composite_and_keeps_center_visible() {
         let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
             32, 32, Rgba([240, 30, 20, 255])

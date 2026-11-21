@@ -194,9 +194,9 @@ latency improvement.
 - The original `composeStaticSticker` and `composeStaticCircleSticker`
   exports remain available for compatibility.
 - Animated GIF/WebP/video still uses the existing FFmpeg pipeline.
-- Verification: Rust unit tests, byte-for-byte equivalence with the old
-  single-quality encoder for the selected quality, Node N-API integration test
-  and CI build/smoke test.
+- Verification: Rust release compilation, byte-for-byte equivalence with the old
+  single-quality encoder for the selected quality via the Node N-API integration
+  test, full Node test suite and CI addon smoke test.
 
 ## Later migration order
 
