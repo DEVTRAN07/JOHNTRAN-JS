@@ -92,10 +92,26 @@ latency improvement.
 - Verification: Rust unit tests, JavaScript/Rust parity fixtures and CI
   N-API smoke test.
 
+## Stage 7 — requester identity and greeting policy
+
+- Rust crate: `native/domain-core-rs`.
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `src/domain/users/requesterGreeting.js` (legacy
+  import remains available at `core/runtime/requesterGreeting.js`).
+- Scope: UID string normalization, ordered/deduplicated admin IDs, explicit
+  owner resolution, admin/support membership and owner > admin > support >
+  member role priority. The existing Vietnamese greeting and prompt strings
+  remain in the JavaScript adapter.
+- JavaScript retains String() coercion and truthy owner-field selection before
+  calling N-API so legacy config values preserve their behaviour.
+- Rollback: set `JT_RUST_REQUESTER_GREETING=0`.
+- Verification: Rust unit tests, full JavaScript/Rust parity fixtures and a
+  CI N-API smoke test.
+
 ## Later migration order
 
-1. Migrate remaining pure CPU helpers and parsers one folder at a time, keeping
-   JavaScript fallbacks and contract parity tests.
+1. Migrate the remaining moderation protection-state policy, then audit pure
+   command validation/helpers folder by folder with JS contract parity tests.
 2. Media/image work: expand the existing Rust sticker path. Only activate
    canvas/FFmpeg Rust prototypes after platform builds, output parity and
    realistic performance tests pass.

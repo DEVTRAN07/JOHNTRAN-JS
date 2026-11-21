@@ -47,6 +47,55 @@ function tryGroupStateOperation(operation, args = []) {
   }
 }
 
+let requesterGreetingLastError = null;
+
+function tryRequesterOperation(operation, args = []) {
+  if (process.env.JT_RUST_REQUESTER_GREETING === "0" || !domainCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  const fn = domainCoreNative.mod[operation] || domainCoreNative.mod[camelName];
+  if (typeof fn !== "function") {
+    requesterGreetingLastError = "Rust requester-greeting export is missing: " + operation;
+    return { used: false, value: null };
+  }
+  try {
+    const value = fn(...args);
+    requesterGreetingLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    requesterGreetingLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function getRequesterGreetingDiagnostics() {
+  const required = [
+    "requester_normalize_uid",
+    "requester_includes_uid",
+    "requester_get_admin_ids",
+    "requester_get_bot_owner_id",
+    "requester_is_bot_admin",
+    "requester_is_support_user",
+    "requester_is_bot_owner",
+    "requester_role"
+  ];
+  const complete = required.every(operation => {
+    const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    return typeof domainCoreNative.mod?.[operation] === "function" ||
+      typeof domainCoreNative.mod?.[camelName] === "function";
+  });
+  const enabled = process.env.JT_RUST_REQUESTER_GREETING !== "0";
+  return {
+    loaded: domainCoreNative.ok,
+    enabled,
+    active: enabled && domainCoreNative.ok && complete,
+    exports: domainCoreNative.ok ? Object.keys(domainCoreNative.mod || {}) : [],
+    lastError: requesterGreetingLastError,
+    loadError: domainCoreNative.ok ? null : String(domainCoreNative.err?.message || domainCoreNative.err)
+  };
+}
+
 function getGroupStateDiagnostics() {
   const required = [
     "group_is_enabled",
@@ -536,6 +585,8 @@ const nativeApi = {
   getTlmnEngineDiagnostics,
   tryGroupStateOperation,
   getGroupStateDiagnostics,
+  tryRequesterOperation,
+  getRequesterGreetingDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,
