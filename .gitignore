@@ -28,6 +28,7 @@ vscode/
 __pycache__/
 
 # Runtime-generated caches and temporary artifacts
+# STK Discord avatar frames are tracked in src/assets/stk.
 core/assets/cache/
 assets/cache/media/
 assets/cache/sticker/

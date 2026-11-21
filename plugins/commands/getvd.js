@@ -42,8 +42,6 @@ module.exports.run = async function ({ api, event }) {
   const filePath = path.join(tmpDir, `video_${Date.now()}.${ext}`);
 
   try {
-    await api.sendMessage({ msg: "⏳ Đang tải video gốc...", plain: true }, threadId, type);
-
     const { buffer } = await queuedGetBuffer(videoUrl, { timeout: 180000, retries: 1 });
     fs.writeFileSync(filePath, buffer);
 

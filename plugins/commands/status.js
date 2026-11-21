@@ -5,7 +5,6 @@ const stats = require("../../core/stats");
 const { collectDeviceMetrics } = require("../../core/runtime/deviceMetrics");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const { isEnabled: isGroupBotEnabled } = require("../../core/runtime/groupBotState");
-const { sendFastAcknowledgement } = require("../../core/runtime/fastAck");
 
 module.exports.config = {
   name: "status",
@@ -54,8 +53,6 @@ function formatUptime(seconds) {
 }
 
 module.exports.run = async function ({ api, event, Threads, threadData, reply }) {
-  // Avoid a silent wait while the bot profile and status Canvas are prepared.
-  sendFastAcknowledgement(api, event?.threadId, event?.type, "⏳ Đang kiểm tra trạng thái bot...");
   let imagePath;
   try {
     // getProfile returns the warm cache immediately; on a cold start or stale

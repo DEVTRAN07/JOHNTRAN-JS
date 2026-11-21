@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const command = require("../plugins/commands/stk");
 const service = require("../core/stkDiscordService");
 
@@ -44,6 +45,13 @@ test("the replacement Discord catalog contains all 200 ordered entries", () => {
   assert.equal(service.getDecoration(200).file, "200_timekeepers_clock.png");
   assert.equal(service.getDecoration(0), null);
   assert.equal(service.getDecoration(201), null);
+});
+
+test("the 200 frame catalog is stored under src/assets/stk rather than the runtime cache", () => {
+  assert.equal(path.basename(service.DECOR_DIR), "stk");
+  assert.equal(path.basename(path.dirname(service.DECOR_DIR)), "assets");
+  assert.equal(path.basename(path.dirname(path.dirname(service.DECOR_DIR))), "src",
+    "frame assets must be resolved from the source asset folder");
 });
 
 test("the renderer uses the Python layout dimensions and offset", () => {
@@ -110,10 +118,9 @@ test("/stk downloads the remote menu into cache and sends the cached file", asyn
   } finally {
     service.ensureMenuFile = originalEnsureMenu;
   }
-  assert.equal(sent.length, 2);
-  assert.match(sent[0].msg, /Đang tải danh sách 200 khung STK/);
-  assert.deepEqual(sent[1].attachments, ["/tmp/stk-discord-menu.jpg"]);
-  assert.match(sent[1].msg, /AVATAR DECORATION/);
+  assert.equal(sent.length, 1, "the command sends only the final menu, without a progress message");
+  assert.deepEqual(sent[0].attachments, ["/tmp/stk-discord-menu.jpg"]);
+  assert.match(sent[0].msg, /AVATAR DECORATION/);
 });
 
 
@@ -140,7 +147,9 @@ test("/stk N returns immediately and sends the final result after background pro
   const sent = [];
   const reactions = [];
   const originalProcess = service.processDiscordSticker;
+  const originalEnsureFrame = service.ensureDecorationFile;
   let completed = false;
+  service.ensureDecorationFile = async () => "/tmp/stk-local-frame.png";
   service.processDiscordSticker = async () => {
     await new Promise(resolve => setTimeout(resolve, 120));
     completed = true;
@@ -176,14 +185,15 @@ test("/stk N returns immediately and sends the final result after background pro
     assert.ok(elapsed < 900, "command dispatch must return in under one second without waiting for FFmpeg/upload");
     assert.equal(completed, false, "sticker job should still be processing in the background");
 
-    for (let i = 0; i < 30 && !completed; i += 1) {
+    for (let i = 0; i < 30 && (!completed || !reactions.includes("✅")); i += 1) {
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     assert.equal(completed, true);
-    assert.ok(sent.some(item => /Đã nhận yêu cầu tạo sticker/.test(item.msg || "")));
-    assert.ok(sent.some(item => /SUCCESS/.test(item.msg || "")));
+    assert.deepEqual(sent, [], "no transient acknowledgement or duplicate success text is sent");
+    assert.ok(reactions.includes("✅"), "the original command gets a lightweight success reaction");
   } finally {
     service.processDiscordSticker = originalProcess;
+    service.ensureDecorationFile = originalEnsureFrame;
   }
 });
 
@@ -195,6 +205,7 @@ test("/stk re-sends a recent avatar UID cache without looking up avatar or reloa
   const originalEnsureFrame = service.ensureDecorationFile;
   const originalProcess = service.processDiscordSticker;
   const cacheCalls = [];
+  const reactions = [];
   let profileLookups = 0;
   let frameLookups = 0;
 
@@ -227,6 +238,10 @@ test("/stk re-sends a recent avatar UID cache without looking up avatar or reloa
     async getAvatarUrlProfile() {
       profileLookups++;
       return null;
+    },
+    async addReaction(payload) {
+      reactions.push(payload.icon);
+      return { ok: true };
     }
   };
   const event = {
@@ -243,14 +258,15 @@ test("/stk re-sends a recent avatar UID cache without looking up avatar or reloa
   try {
     const result = await command.run({ api, event, args: ["18"] });
     assert.equal(result, true);
-    for (let i = 0; i < 40 && !sent.some(item => /SUCCESS/.test(item.msg || "")); i += 1) {
+    for (let i = 0; i < 40 && !reactions.includes("✅"); i += 1) {
       await new Promise(resolve => setTimeout(resolve, 10));
     }
     assert.equal(cacheCalls.length, 1);
     assert.equal(cacheCalls[0].identity, "cached-zalo-user");
     assert.equal(profileLookups, 0, "the profile API is skipped on a UID cache hit");
-    assert.equal(frameLookups, 0, "the Raw GitHub frame is not loaded on a UID cache hit");
-    assert.ok(sent.some(item => /SUCCESS/.test(item.msg || "")));
+    assert.equal(frameLookups, 0, "the bundled local frame is skipped on a UID cache hit");
+    assert.deepEqual(sent, [], "cache hits do not send transient or duplicate success messages");
+    assert.ok(reactions.includes("✅"));
   } finally {
     service.createIdentityResultCacheKey = originalKey;
     service.readStickerResultCache = originalRead;

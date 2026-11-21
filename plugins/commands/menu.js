@@ -6,7 +6,6 @@ const folders = require("../../core/runtime/folderMenu");
 const { renderCanvas } = require("../../core/canvas/workerRender");
 const { getRequesterProfile } = require("../../core/runtime/requesterProfile");
 const { getRequesterGreeting, getRequesterPrompt } = require("../../core/runtime/requesterGreeting");
-const { sendFastAcknowledgement } = require("../../core/runtime/fastAck");
 
 module.exports.config = {
   name: "menu",
@@ -38,8 +37,6 @@ module.exports.run = async function ({ api, event }) {
     return api.sendMessage({ msg: "📂 Danh mục đang được khởi tạo, vui lòng thử lại.\n💡 gõ next / prev để chuyển trang." }, event.threadId, event.type);
   }
 
-  // Start the first visible response before requester lookup and Canvas render.
-  sendFastAcknowledgement(api, event?.threadId, event?.type, "⏳ Đang mở danh mục lệnh...");
   let imagePath;
   try {
     // Profile/avatar is decorative; refresh it without adding a wait to menu.

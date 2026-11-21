@@ -96,7 +96,6 @@ module.exports.run = async ({ event, api }) => {
     return api.sendMessage("❌ Hiện chưa có ảnh để gửi.", threadId, type);
   }
 
-  await api.sendMessage({ msg: "⏳ Đang tìm và tải ảnh..." }, threadId, type);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_girl_"));
   try {
     const start = Math.floor(Math.random() * girlImages.length);

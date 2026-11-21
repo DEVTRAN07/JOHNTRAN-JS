@@ -16,7 +16,11 @@
     "migrate:supabase": "node scripts/migrate-json-to-supabase.js",
     "check:stk-assets": "node scripts/check-stk-assets.js",
     "build:message-cache": "node scripts/build-message-cache.js",
-    "update": "node scripts/update.js"
+    "update": "node scripts/update.js",
+    "prestart": "node scripts/prestart-stk-assets.js",
+    "assets:stk": "node scripts/download-stk-assets.js",
+    "prestart:prod": "node scripts/prestart-stk-assets.js",
+    "predev": "node scripts/prestart-stk-assets.js"
   },
   "keywords": [
     "zalo",

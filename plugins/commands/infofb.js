@@ -53,8 +53,6 @@ module.exports.run = async function ({ api, event, args, reply }) {
   const target = parseTarget(raw);
   if (!target || target.length < 1) return reply.error(`Không đọc được target từ: ${raw}`);
 
-  await api.sendMessage({ msg: "⏳ Đang lấy thông tin Facebook...", plain: true }, threadId, type);
-
   const { data: info, error, code } = await fetchSocial("facebook", target);
   if (!info) return reply.error(error || `Không lấy được hồ sơ ${target}`);
 

@@ -54,8 +54,6 @@ module.exports.run = async function ({ api, event, args, reply }) {
   const card = require("../../core/canvas/profileCard"); // lazy — canvas+jimp ~1.6s
   const { threadId, type, data } = event;
 
-  await api.sendMessage({ msg: "⏳ Đang tạo thẻ...", plain: true }, threadId, type);
-
   // ---- chọn uid: reply → uid → tag → chính mình ----
   let uid = null;
   const quote = data?.quote;
