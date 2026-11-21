@@ -34,12 +34,33 @@ pub struct CircleComposeOptions {
 }
 
 #[napi(object)]
+pub struct ComposeProfilesOptions {
+    pub source: Buffer,
+    pub overlay: Buffer,
+    pub size: Option<u32>,
+    pub avatar_size: Option<u32>,
+    pub offset: Option<u32>,
+    pub qualities: Option<Vec<u8>>,
+    pub max_output_bytes: Option<u32>,
+}
+
+#[napi(object)]
 pub struct EncodeResult {
     pub buffer: Buffer,
     pub format: String,
     pub width: u32,
     pub height: u32,
     pub size: u32,
+}
+
+#[napi(object)]
+pub struct ComposeProfilesResult {
+    pub buffer: Buffer,
+    pub format: String,
+    pub width: u32,
+    pub height: u32,
+    pub size: u32,
+    pub quality: u8,
 }
 
 fn load_image(buf: &[u8]) -> Result<DynamicImage> {
@@ -150,6 +171,67 @@ fn compose_static_result(
         width: size,
         height: size,
         size: encoded_size,
+    })
+}
+
+
+fn compose_static_profiles_result(
+    source_bytes: &[u8],
+    overlay_bytes: &[u8],
+    size: u32,
+    avatar_size: u32,
+    offset: u32,
+    qualities: Vec<u8>,
+    max_output_bytes: u32,
+) -> Result<ComposeProfilesResult> {
+    // Decode and composite exactly once. Only the final WebP encoding is
+    // repeated for each quality profile.
+    let source = load_image(source_bytes)?;
+    let overlay = load_image(overlay_bytes)?;
+    let size = size.clamp(64, 512);
+    let image = render_static_composition(&source, &overlay, size, avatar_size, offset);
+    let profiles = if qualities.is_empty() {
+        vec![92, 88, 84, 80]
+    } else {
+        qualities
+    };
+
+    let mut smallest: Option<(Vec<u8>, u8)> = None;
+    for quality in profiles {
+        let quality = quality.clamp(1, 100);
+        let encoded = encode_webp_bytes(&image, quality, false);
+        if encoded.len() <= max_output_bytes as usize {
+            let encoded_size = encoded.len() as u32;
+            return Ok(ComposeProfilesResult {
+                buffer: Buffer::from(encoded),
+                format: "webp".to_string(),
+                width: size,
+                height: size,
+                size: encoded_size,
+                quality,
+            });
+        }
+
+        let is_smaller = smallest
+            .as_ref()
+            .map(|(current, _)| encoded.len() < current.len())
+            .unwrap_or(true);
+        if is_smaller {
+            smallest = Some((encoded, quality));
+        }
+    }
+
+    let (encoded, quality) = smallest.ok_or_else(|| {
+        Error::new(Status::GenericFailure, "no WebP quality profile could be encoded")
+    })?;
+    let encoded_size = encoded.len() as u32;
+    Ok(ComposeProfilesResult {
+        buffer: Buffer::from(encoded),
+        format: "webp".to_string(),
+        width: size,
+        height: size,
+        size: encoded_size,
+        quality,
     })
 }
 
@@ -319,6 +401,56 @@ pub fn compose_static_sticker(options: ComposeOptions) -> AsyncTask<ComposeStati
     })
 }
 
+pub struct ComposeStaticProfilesTask {
+    source: Vec<u8>,
+    overlay: Vec<u8>,
+    size: u32,
+    avatar_size: u32,
+    offset: u32,
+    qualities: Vec<u8>,
+    max_output_bytes: u32,
+}
+
+#[napi]
+impl Task for ComposeStaticProfilesTask {
+    type Output = ComposeProfilesResult;
+    type JsValue = ComposeProfilesResult;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        compose_static_profiles_result(
+            &self.source,
+            &self.overlay,
+            self.size,
+            self.avatar_size,
+            self.offset,
+            self.qualities.clone(),
+            self.max_output_bytes,
+        )
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Composite one static avatar/frame pair once, then try a descending WebP
+/// quality ladder in the N-API worker pool. The Node event loop never performs
+/// image decoding, resizing or encoding for this operation.
+#[napi]
+pub fn compose_static_sticker_profiles(
+    options: ComposeProfilesOptions,
+) -> AsyncTask<ComposeStaticProfilesTask> {
+    AsyncTask::new(ComposeStaticProfilesTask {
+        source: options.source.to_vec(),
+        overlay: options.overlay.to_vec(),
+        size: options.size.unwrap_or(288),
+        avatar_size: options.avatar_size.unwrap_or(240),
+        offset: options.offset.unwrap_or(24),
+        qualities: options.qualities.unwrap_or_else(|| vec![92, 88, 84, 80]),
+        max_output_bytes: options.max_output_bytes.unwrap_or(480 * 1024),
+    })
+}
+
 pub struct ComposeStaticCircleTask {
     source: Vec<u8>,
     overlay: Vec<u8>,
@@ -406,6 +538,44 @@ mod tests {
         assert_eq!(width, 64);
         assert_eq!(height, 64);
     }
+
+    #[test]
+    fn static_profiles_decode_and_composite_once_then_select_first_acceptable_quality() {
+        let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            64, 64, Rgba([30, 160, 220, 255])
+        ));
+        let overlay = DynamicImage::ImageRgba8(RgbaImage::new(64, 64));
+        let png = |image: &DynamicImage| {
+            let mut cursor = Cursor::new(Vec::new());
+            image.write_to(&mut cursor, ImageFormat::Png).unwrap();
+            cursor.into_inner()
+        };
+        let source_bytes = png(&source);
+        let overlay_bytes = png(&overlay);
+
+        let crisp = compose_static_profiles_result(
+            &source_bytes, &overlay_bytes, 64, 52, 6, vec![92, 88, 84, 80], u32::MAX
+        ).expect("high quality profile should encode");
+        assert_eq!(crisp.quality, 92);
+        assert_eq!(crisp.format, "webp");
+        assert_eq!((crisp.width, crisp.height), (64, 64));
+        assert!(crisp.size > 0);
+
+        let minimum = compose_static_profiles_result(
+            &source_bytes, &overlay_bytes, 64, 52, 6, vec![92, 88, 84, 80], 1
+        ).expect("smallest profile should still be returned for JS fallback");
+        assert_eq!(minimum.quality, 80);
+        assert!(minimum.size > 1);
+
+        let legacy = compose_static_result(
+            &source_bytes, &overlay_bytes, 64, 52, 6, 80
+        ).expect("legacy one-profile composer should encode");
+        let legacy_bytes: Vec<u8> = legacy.buffer.into();
+        let minimum_bytes: Vec<u8> = minimum.buffer.into();
+        assert_eq!(minimum_bytes, legacy_bytes,
+            "profile ladder must produce the same bytes as the legacy selected quality");
+    }
+
     #[test]
     fn static_circle_composition_clips_the_composite_and_keeps_center_visible() {
         let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(

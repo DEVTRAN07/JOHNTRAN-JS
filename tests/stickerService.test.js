@@ -218,6 +218,56 @@ test("FFmpeg fallback composes a transparent decoration overlay over a still ima
 
 
 
+test("multi-quality Rust compositor preserves the legacy quality output with one N-API call", {
+  skip: !native.nativeAvailable.sticker
+}, async () => {
+  const addon = require("../native/sticker-rs/sticker_rs.node");
+  assert.equal(typeof addon.composeStaticStickerProfiles, "function");
+
+  const sourceCanvas = createCanvas(160, 160);
+  const sourceContext = sourceCanvas.getContext("2d");
+  const gradient = sourceContext.createLinearGradient(0, 0, 160, 160);
+  gradient.addColorStop(0, "#ff542e");
+  gradient.addColorStop(1, "#ffda63");
+  sourceContext.fillStyle = gradient;
+  sourceContext.fillRect(0, 0, 160, 160);
+
+  const frameCanvas = createCanvas(160, 160);
+  const frameContext = frameCanvas.getContext("2d");
+  frameContext.strokeStyle = "#9b72ff";
+  frameContext.lineWidth = 12;
+  frameContext.strokeRect(8, 8, 144, 144);
+
+  const source = sourceCanvas.toBuffer("image/png");
+  const overlay = frameCanvas.toBuffer("image/png");
+  const input = {
+    source,
+    overlay,
+    size: 288,
+    avatarSize: 240,
+    offset: 24
+  };
+
+  const profiles = await addon.composeStaticStickerProfiles({
+    ...input,
+    qualities: [92, 88, 84, 80],
+    maxOutputBytes: 1
+  });
+  assert.equal(profiles.quality, 80,
+    "when no quality fits the cap, retain the smallest quality profile");
+  assert.equal(profiles.format, "webp");
+  assert.equal(profiles.width, 288);
+  assert.equal(profiles.height, 288);
+  assert.ok(profiles.size > 1);
+
+  const legacy = await addon.composeStaticSticker({ ...input, quality: 80 });
+  assert.deepEqual(
+    Buffer.from(profiles.buffer),
+    Buffer.from(legacy.buffer),
+    "the combined Rust profile ladder must match the old single-quality output"
+  );
+});
+
 test("Rust uses the asynchronous static-image STK path when the addon is available", {
   skip: !native.nativeAvailable.sticker ||
     process.env.JT_RUST_STICKER_COMPOSITOR === "0"

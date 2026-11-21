@@ -384,29 +384,56 @@ async function createStaticRust(sourceBuffer, decorationBuffer) {
   const addon = getRustStickerAddon();
   if (typeof addon?.composeStaticSticker !== "function") return null;
 
-  // Prefer crisp output. Only lower quality when the Zalo payload cap requires it.
+  const qualities = [92, 88, 84, 80];
   let accepted = null;
-  for (const quality of [92, 88, 84, 80]) {
-    const result = await addon.composeStaticSticker({
+
+  if (typeof addon.composeStaticStickerProfiles === "function") {
+    // New native path: decode both inputs and composite once, then encode the
+    // quality ladder inside one async Rust task.
+    const result = await addon.composeStaticStickerProfiles({
       source: sourceBuffer,
       overlay: decorationBuffer,
       size: CANVAS_SIZE,
       avatarSize: AVATAR_SIZE,
       offset: OFFSET,
-      quality
+      qualities,
+      maxOutputBytes: MAX_OUTPUT_BYTES
     });
     const buffer = Buffer.isBuffer(result?.buffer)
       ? result.buffer
       : Buffer.from(result?.buffer || []);
-    if (!buffer.length) continue;
-    if (!accepted || buffer.length < accepted.buffer.length) {
-      accepted = { result, buffer, quality };
-    }
-    if (buffer.length <= MAX_OUTPUT_BYTES) {
-      accepted = { result, buffer, quality };
-      break;
+    if (!buffer.length || buffer.length > MAX_OUTPUT_BYTES) return null;
+    accepted = {
+      result,
+      buffer,
+      quality: Number(result.quality) || qualities[qualities.length - 1]
+    };
+  } else {
+    // Compatibility for an older addon already installed on a device. It
+    // preserves the legacy behavior until npm run build:native is executed.
+    for (const quality of qualities) {
+      const result = await addon.composeStaticSticker({
+        source: sourceBuffer,
+        overlay: decorationBuffer,
+        size: CANVAS_SIZE,
+        avatarSize: AVATAR_SIZE,
+        offset: OFFSET,
+        quality
+      });
+      const buffer = Buffer.isBuffer(result?.buffer)
+        ? result.buffer
+        : Buffer.from(result?.buffer || []);
+      if (!buffer.length) continue;
+      if (!accepted || buffer.length < accepted.buffer.length) {
+        accepted = { result, buffer, quality };
+      }
+      if (buffer.length <= MAX_OUTPUT_BYTES) {
+        accepted = { result, buffer, quality };
+        break;
+      }
     }
   }
+
   if (!accepted || accepted.buffer.length > MAX_OUTPUT_BYTES) return null;
 
   fs.mkdirSync(TMP_DIR, { recursive: true });

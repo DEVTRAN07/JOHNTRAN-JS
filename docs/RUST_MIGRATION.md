@@ -182,6 +182,22 @@ latency improvement.
   cursor continuation when falling back to JS, CI N-API smoke test and a
   three-trial JS/Rust throughput benchmark.
 
+## Stage 14 — one-pass static STK composition
+
+- Rust crate: `native/sticker-rs`.
+- Compatibility adapter: `core/stkDiscordService.js`.
+- Scope: decode the static avatar and Discord frame once, composite once, then
+  try the existing WebP quality ladder (92, 88, 84, 80) inside one asynchronous
+  N-API worker task. The first profile under the 480 KiB output budget is
+  selected; when none fits, the smallest profile is returned to the JS adapter
+  so its existing Canvas/FFmpeg fallback remains available.
+- The original `composeStaticSticker` and `composeStaticCircleSticker`
+  exports remain available for compatibility.
+- Animated GIF/WebP/video still uses the existing FFmpeg pipeline.
+- Verification: Rust unit tests, byte-for-byte equivalence with the old
+  single-quality encoder for the selected quality, Node N-API integration test
+  and CI build/smoke test.
+
 ## Later migration order
 
 1. Continue auditing remaining pure command-validation, event payload and

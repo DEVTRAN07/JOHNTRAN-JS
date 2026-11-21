@@ -37,10 +37,12 @@ jobs:
         run: |
           cargo test --manifest-path rust/message-cache/Cargo.toml
           npm run build:message-cache
+      - name: Test Rust sticker compositor
+        run: cargo test --manifest-path native/Cargo.toml -p sticker-rs
       - name: Build Rust sticker N-API addon
         run: |
           npm run build:native
-          node -e "const addon = require('./native/sticker-rs/sticker_rs.node'); if (typeof addon.composeStaticSticker !== 'function' || typeof addon.composeStaticCircleSticker !== 'function') throw new Error('Rust sticker addon export missing')"
+          node -e "const addon = require('./native/sticker-rs/sticker_rs.node'); if (typeof addon.composeStaticSticker !== 'function' || typeof addon.composeStaticStickerProfiles !== 'function' || typeof addon.composeStaticCircleSticker !== 'function') throw new Error('Rust sticker addon export missing')"
           node -e "const native = require('./native'); if (!native.nativeAvailable.commandParser) throw new Error('Rust command parser addon was not loaded'); const parsed = native.parseCommand('/scl  Sơn Tùng', '/'); if (parsed.command !== 'scl' || parsed.args.join('|') !== 'Sơn|Tùng') throw new Error('Rust command parser smoke test failed')"
       - name: Build Rust text colorizer used by live message path
         run: |
