@@ -40,7 +40,6 @@ module.exports.run = async ({ event, api }) => {
     return api.sendMessage("❌ Chưa có nguồn video.", threadId, type);
   }
 
-  await api.sendMessage({ msg: "⏳ Đang tìm và tải video..." }, threadId, type);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "jt_vdgirl_"));
   const filePath = path.join(tempDir, "gai.mp4");
 
