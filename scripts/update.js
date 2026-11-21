@@ -128,20 +128,24 @@ function ensureRepository() {
       "Thư mục hiện tại chưa phải Git clone (.git không tồn tại). " +
       "Hãy clone repository một lần; updater không thể cập nhật an toàn từ thư mục ZIP.");
   }
+
   const topLevel = path.resolve(run("git", ["rev-parse", "--show-toplevel"]));
   if (topLevel !== ROOT) {
     throw new Error("Thư mục Git root không trùng thư mục JOHNTRAN-JS hiện tại.");
   }
+
   const branch = run("git", ["branch", "--show-current"]);
   if (branch !== TARGET_BRANCH) {
     throw new Error(
       "Bot đang ở nhánh \"" + (branch || "detached HEAD") +
       "\". Updater chỉ cập nhật nhánh main và sẽ không tự chuyển nhánh.");
   }
+
   const remote = run("git", ["remote", "get-url", "origin"]);
   if (!isTargetRemote(remote)) {
     throw new Error("Remote origin không trỏ tới " + TARGET_REPOSITORY + "; đã dừng để tránh cập nhật nhầm repository.");
   }
+
   const dirty = run("git", ["status", "--porcelain", "--untracked-files=normal"]);
   return preserveLocalConfigOverride(dirty);
 }
