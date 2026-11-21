@@ -326,7 +326,7 @@ async function dispatchActiveGameMessage({ api, event, Users, Threads, isSelf = 
       if (consumed === true) return true;
     }
   } catch (error) {
-    logger.log(`Lỗi xử lý nước đánh Tiến Lên: ${error?.message || error}`, "error", {
+    logger.log(`Lỗi xử lý nước đánh Tiến Lên: ${error?.stack || error?.message || error}`, "error", {
       source: "listener-active-game-tlmn",
       groupId: event?.threadId
     });
