@@ -64,6 +64,14 @@ function readUpdateRequest(root = ROOT) {
   return readJson(getFiles(root).requestFile);
 }
 
+function clearUpdateRequest(root = ROOT, requestId = "") {
+  const filePath = getFiles(root).requestFile;
+  const current = readJson(filePath);
+  if (!current || !requestId || current.id !== requestId) return false;
+  fs.rmSync(filePath, { force: true });
+  return true;
+}
+
 function completeUpdate(root = ROOT, result = {}) {
   const files = getFiles(root);
   const request = readUpdateRequest(root);
@@ -146,6 +154,7 @@ module.exports = {
   getFiles,
   writeUpdateRequest,
   readUpdateRequest,
+  clearUpdateRequest,
   completeUpdate,
   readPendingResult,
   clearPendingResult,
