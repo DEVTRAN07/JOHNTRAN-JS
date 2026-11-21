@@ -81,8 +81,6 @@ function completeUpdate(root = ROOT, result = {}) {
     ...request,
     status: result.status === "success" ? "success" : "failed",
     updated: result.updated === true,
-    oldVersion: String(result.oldVersion || "unknown"),
-    newVersion: String(result.newVersion || result.oldVersion || "unknown"),
     oldSha: String(result.oldSha || ""),
     newSha: String(result.newSha || ""),
     changedFiles: Math.max(0, Number(result.changedFiles) || 0),
