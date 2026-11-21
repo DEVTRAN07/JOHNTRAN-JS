@@ -49,15 +49,15 @@ function parsePorcelainPath(entry) {
 }
 
 function validateLocalChanges(dirtyOutput) {
-  const entries = String(dirtyOutput || "").split(/\\r?\\n/).filter(Boolean);
+  const entries = String(dirtyOutput || "").split(/\r?\n/).filter(Boolean);
   const paths = entries.map(parsePorcelainPath);
   const unsupported = paths.filter(file => file !== "config.yml");
   if (unsupported.length) {
     const shown = entries.slice(0, 8);
     throw new Error(
-      "Có thay đổi local ngoài config.yml. Updater không tự ghi đè các file này:\\n" +
-      shown.join("\\n") +
-      (entries.length > shown.length ? "\\n… còn file khác" : "")
+      "Có thay đổi local ngoài config.yml. Updater không tự ghi đè các file này:\n" +
+      shown.join("\n") +
+      (entries.length > shown.length ? "\n… còn file khác" : "")
     );
   }
   return { entries, paths, hasConfigOverride: paths.includes("config.yml") };
