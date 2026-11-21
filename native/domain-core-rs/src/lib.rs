@@ -614,3 +614,117 @@ mod permission_policy_tests {
         assert_eq!(permission_resolve_group_admin_state_inner(true, true, false, true), 1);
     }
 }
+
+
+#[napi(object)]
+pub struct RestartPlanNative {
+    pub timestamps: Vec<f64>,
+    pub attempts: f64,
+    pub delay_ms: f64,
+    pub cooldown: bool,
+}
+
+fn restart_plan_inner(
+    history: Vec<f64>,
+    now: f64,
+    window_ms: f64,
+    max_attempts: f64,
+    base_delay_ms: f64,
+    max_delay_ms: f64,
+) -> RestartPlanNative {
+    let cutoff = now - window_ms;
+    let mut timestamps: Vec<f64> = history
+        .into_iter()
+        .filter(|timestamp| timestamp.is_finite() && *timestamp > cutoff && *timestamp <= now)
+        .collect();
+    timestamps.push(now);
+
+    let attempts = timestamps.len() as f64;
+    if attempts > max_attempts {
+        let next_allowed_at = timestamps.first().copied().unwrap_or(now) + window_ms + 1.0;
+        return RestartPlanNative {
+            timestamps,
+            attempts,
+            delay_ms: (next_allowed_at - now).max(1000.0),
+            cooldown: true,
+        };
+    }
+
+    let exponent = (attempts - 1.0).max(0.0);
+    let exponential_delay = base_delay_ms * 2.0_f64.powf(exponent);
+    RestartPlanNative {
+        timestamps,
+        attempts,
+        delay_ms: exponential_delay.min(max_delay_ms),
+        cooldown: false,
+    }
+}
+
+#[napi]
+pub fn restart_plan(
+    history: Vec<f64>,
+    now: f64,
+    window_ms: f64,
+    max_attempts: f64,
+    base_delay_ms: f64,
+    max_delay_ms: f64,
+) -> RestartPlanNative {
+    restart_plan_inner(history, now, window_ms, max_attempts, base_delay_ms, max_delay_ms)
+}
+
+#[cfg(test)]
+mod restart_policy_tests {
+    use super::*;
+
+    #[test]
+    fn restart_backoff_is_exponential_and_capped() {
+        let first = restart_plan_inner(vec![], 1000.0, 600_000.0, 5.0, 1000.0, 15000.0);
+        assert_eq!(first.attempts, 1.0);
+        assert_eq!(first.delay_ms, 1000.0);
+        assert!(!first.cooldown);
+
+        let second = restart_plan_inner(first.timestamps, 1200.0, 600_000.0, 5.0, 1000.0, 15000.0);
+        assert_eq!(second.attempts, 2.0);
+        assert_eq!(second.delay_ms, 2000.0);
+
+        let third = restart_plan_inner(second.timestamps, 1500.0, 600_000.0, 5.0, 1000.0, 15000.0);
+        assert_eq!(third.attempts, 3.0);
+        assert_eq!(third.delay_ms, 4000.0);
+    }
+
+    #[test]
+    fn cooldown_uses_the_oldest_retained_timestamp_and_minimum_one_second() {
+        let plan = restart_plan_inner(
+            vec![100.0, 200.0, 300.0, 400.0, 500.0],
+            600.0,
+            10_000.0,
+            5.0,
+            1000.0,
+            15000.0,
+        );
+        assert_eq!(plan.attempts, 6.0);
+        assert_eq!(plan.delay_ms, 9501.0);
+        assert!(plan.cooldown);
+    }
+
+    #[test]
+    fn filtering_is_strict_and_preserves_input_order() {
+        let plan = restart_plan_inner(
+            vec![100.0, 950.0, 1200.0, f64::NAN, f64::INFINITY, 900.0],
+            1000.0,
+            500.0,
+            5.0,
+            1000.0,
+            15000.0,
+        );
+        assert_eq!(plan.timestamps, vec![950.0, 900.0, 1000.0]);
+        assert_eq!(plan.attempts, 3.0);
+    }
+
+    #[test]
+    fn zero_base_or_max_delay_is_valid_and_not_forced_to_default() {
+        let plan = restart_plan_inner(vec![], 1000.0, 500.0, 5.0, 0.0, 0.0);
+        assert_eq!(plan.delay_ms, 0.0);
+        assert!(!plan.cooldown);
+    }
+}

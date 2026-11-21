@@ -7,6 +7,7 @@ Domain chứa quy tắc nghiệp vụ thuần, không biết về Zalo SDK, HTTP
 - users/requesterGreeting.js: xác định chủ bot/admin/support và câu chào; hỗ trợ truyền config/users tường minh để test không cần khởi tạo bot. Phân loại vai trò và chuẩn hóa UID chạy Rust qua N-API; adapter JS giữ nguyên API cũ.
 - moderation/protectionState.js: danh sách feature Anti, đọc trạng thái boolean nghiêm ngặt và cập nhật một flag mà không mất các thiết lập khác. Schema 21 cờ và ánh xạ trạng thái chạy Rust qua N-API; setter JS giữ nguyên kiểm tra lỗi và mutation.
 - core/runtime/middleware/permissions.js: phần policy role và quyền nhóm được xử lý bằng Rust; lookup group-admin bất đồng bộ qua Zalo vẫn do JS điều phối.
+- core/runtime/restartPolicy.js: tính rolling-window, cooldown và exponential backoff chạy Rust; supervisor vẫn đặt timer và restart process bằng JS.
 
 ## Miền tiếp theo
 - games/engines/: caroEngine, noituEngine, samEngine và tlmnEngine là luật chơi thuần, không phụ thuộc Zalo, file hay network.

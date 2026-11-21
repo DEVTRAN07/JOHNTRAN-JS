@@ -137,10 +137,22 @@ latency improvement.
 - Verification: Rust unit tests, JS/Rust decision parity, synchronous fast-path
   and asynchronous live-admin-check tests, and CI N-API smoke test.
 
+## Stage 10 — restart backoff policy
+
+- Rust crate: `native/domain-core-rs`.
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `core/runtime/restartPolicy.js`.
+- Scope: rolling-window timestamp filtering, attempt counting, cooldown
+  calculation and capped exponential delay. The JS supervisor continues to own
+  process restart, timers and shutdown lifecycle.
+- Rollback: set `JT_RUST_RESTART_POLICY=0`.
+- Verification: Rust unit tests, JavaScript/Rust plan parity fixtures and CI
+  N-API smoke test.
+
 ## Later migration order
 
-1. Continue auditing pure command validation, restart and HTTP policy helpers;
-   keep Zalo SDK calls, file access and timers in the orchestration adapter.
+1. Continue auditing remaining command-validation and HTTP request policy
+   helpers; leave all network calls and process/timer orchestration in JS.
 2. Media/image work: expand the existing Rust sticker path. Only activate
    canvas/FFmpeg Rust prototypes after platform builds, output parity and
    realistic performance tests pass.

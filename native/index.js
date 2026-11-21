@@ -113,6 +113,42 @@ function tryPermissionPolicyOperation(operation, args = []) {
   }
 }
 
+let restartPolicyLastError = null;
+
+function tryRestartPlan(args = []) {
+  if (process.env.JT_RUST_RESTART_POLICY === "0" || !domainCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const planner = domainCoreNative.mod.restart_plan || domainCoreNative.mod.restartPlan;
+  if (typeof planner !== "function") {
+    restartPolicyLastError = "Rust restart policy export is missing";
+    return { used: false, value: null };
+  }
+  try {
+    const value = planner(...args);
+    restartPolicyLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    restartPolicyLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function getRestartPolicyDiagnostics() {
+  const planner = domainCoreNative.ok
+    ? domainCoreNative.mod.restart_plan || domainCoreNative.mod.restartPlan
+    : null;
+  const enabled = process.env.JT_RUST_RESTART_POLICY !== "0";
+  return {
+    loaded: domainCoreNative.ok,
+    enabled,
+    active: enabled && typeof planner === "function",
+    exports: domainCoreNative.ok ? Object.keys(domainCoreNative.mod || {}) : [],
+    lastError: restartPolicyLastError,
+    loadError: domainCoreNative.ok ? null : String(domainCoreNative.err?.message || domainCoreNative.err)
+  };
+}
+
 function getPermissionPolicyDiagnostics() {
   const required = [
     "permission_check_command_role",
@@ -679,6 +715,8 @@ const nativeApi = {
   getAntiProtectionDiagnostics,
   tryPermissionPolicyOperation,
   getPermissionPolicyDiagnostics,
+  tryRestartPlan,
+  getRestartPolicyDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,

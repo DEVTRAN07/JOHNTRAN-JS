@@ -1,11 +1,13 @@
 "use strict";
 
+const nativeCore = require("../../native");
+
 const DEFAULT_WINDOW_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_BASE_DELAY_MS = 1000;
 const DEFAULT_MAX_DELAY_MS = 15000;
 
-function getRestartPlan(history = [], now = Date.now(), options = {}) {
+function getRestartPlanFallback(history = [], now = Date.now(), options = {}) {
   const windowMs = Number.isFinite(options.windowMs) && options.windowMs > 0
     ? options.windowMs
     : DEFAULT_WINDOW_MS;
@@ -44,4 +46,58 @@ function getRestartPlan(history = [], now = Date.now(), options = {}) {
   };
 }
 
-module.exports = { getRestartPlan };
+
+function getRestartPlan(history = [], now = Date.now(), options = {}) {
+  const windowMs = Number.isFinite(options.windowMs) && options.windowMs > 0
+    ? options.windowMs
+    : DEFAULT_WINDOW_MS;
+  const maxAttempts = Number.isInteger(options.maxAttempts) && options.maxAttempts >= 1
+    ? options.maxAttempts
+    : DEFAULT_MAX_ATTEMPTS;
+  const baseDelayMs = Number.isFinite(options.baseDelayMs) && options.baseDelayMs >= 0
+    ? options.baseDelayMs
+    : DEFAULT_BASE_DELAY_MS;
+  const maxDelayMs = Number.isFinite(options.maxDelayMs) && options.maxDelayMs >= 0
+    ? options.maxDelayMs
+    : DEFAULT_MAX_DELAY_MS;
+
+  // Date.now() and production callers use numeric timestamps. Keep unusual
+  // coercible/non-numeric values on the exact legacy JavaScript path.
+  if (typeof now !== "number" || !Number.isFinite(now)) {
+    return getRestartPlanFallback(history, now, options);
+  }
+
+  const nativeHistory = Array.isArray(history)
+    ? history.map(timestamp => Number.isFinite(timestamp) ? timestamp : Number.NaN)
+    : [];
+  const result = nativeCore.tryRestartPlan([
+    nativeHistory,
+    now,
+    windowMs,
+    maxAttempts,
+    baseDelayMs,
+    maxDelayMs
+  ]);
+  if (result.used && result.value && Array.isArray(result.value.timestamps)) {
+    const plan = result.value;
+    const delayMs = plan.delayMs ?? plan.delay_ms;
+    if (typeof plan.attempts === "number" &&
+        typeof delayMs === "number" &&
+        typeof plan.cooldown === "boolean" &&
+        plan.timestamps.every(timestamp => typeof timestamp === "number")) {
+      return {
+        timestamps: plan.timestamps,
+        attempts: plan.attempts,
+        delayMs,
+        cooldown: plan.cooldown
+      };
+    }
+  }
+  return getRestartPlanFallback(history, now, options);
+}
+
+module.exports = {
+  getRestartPlan,
+  getNativeDiagnostics: nativeCore.getRestartPolicyDiagnostics,
+  __test: { getRestartPlanFallback }
+};
