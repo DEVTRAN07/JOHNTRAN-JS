@@ -9,6 +9,7 @@ Domain chứa quy tắc nghiệp vụ thuần, không biết về Zalo SDK, HTTP
 - core/runtime/middleware/permissions.js: phần policy role và quyền nhóm được xử lý bằng Rust; lookup group-admin bất đồng bộ qua Zalo vẫn do JS điều phối.
 - core/runtime/restartPolicy.js: tính rolling-window, cooldown và exponential backoff chạy Rust; supervisor vẫn đặt timer và restart process bằng JS.
 - core/http/requestPolicy.js: tính giới hạn timeout/retry/delay chạy Rust; đọc cấu hình, request, DNS và retry thực tế vẫn do JS điều phối.
+- core/runtime/rateLimiter.js: sliding-window rate limiter giữ state và prune trong Rust; lớp JS duy trì API và fallback cũ.
 
 ## Miền tiếp theo
 - games/engines/: caroEngine, noituEngine, samEngine và tlmnEngine là luật chơi thuần, không phụ thuộc Zalo, file hay network.

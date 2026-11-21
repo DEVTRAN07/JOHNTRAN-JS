@@ -1,5 +1,6 @@
 use napi_derive::napi;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Mutex;
 
 #[napi(object)]
 pub struct GroupStateSnapshot {
@@ -905,5 +906,306 @@ mod http_request_policy_tests {
         assert_eq!(request_bounded_integer_inner(2.5, true, 0.5, 2.0, 7.0), 2.0);
         assert_eq!(request_bounded_integer_inner(0.1, true, 0.5, 2.0, 7.0), 0.5);
         assert_eq!(request_bounded_integer_inner(1.0, false, 0.5, 2.0, 7.0), 7.0);
+    }
+}
+
+
+struct NativeRateLimiterEntryState {
+    generation: u64,
+    timestamps: Vec<f64>,
+    cursor: usize,
+    touched_at: f64,
+}
+
+struct NativeRateLimiterState {
+    window_ms: f64,
+    max: f64,
+    max_keys: f64,
+    entries: HashMap<String, NativeRateLimiterEntryState>,
+    order: BTreeMap<u64, String>,
+    next_generation: u64,
+    prune_cursor: Option<u64>,
+    operations: u64,
+}
+
+impl NativeRateLimiterState {
+    fn new(window_ms: f64, max: f64, max_keys: f64) -> Self {
+        Self {
+            window_ms,
+            max,
+            max_keys,
+            entries: HashMap::new(),
+            order: BTreeMap::new(),
+            next_generation: 0,
+            prune_cursor: None,
+            operations: 0,
+        }
+    }
+
+    fn prune(&mut self, now: f64, force: bool) -> usize {
+        let batch_size = if force { 1024usize } else { 256usize };
+        let start = match self.prune_cursor {
+            Some(cursor) => cursor,
+            None => match self.order.keys().next().copied() {
+                Some(generation) => generation,
+                None => {
+                    self.prune_cursor = None;
+                    return 0;
+                }
+            },
+        };
+
+        let candidates: Vec<(u64, String)> = self.order
+            .range(start..)
+            .take(batch_size)
+            .map(|(generation, key)| (*generation, key.clone()))
+            .collect();
+
+        if candidates.is_empty() {
+            self.prune_cursor = None;
+            return 0;
+        }
+
+        for (generation, key) in &candidates {
+            let expired = self.entries.get(key)
+                .map(|entry| now - entry.touched_at > self.window_ms)
+                .unwrap_or(false);
+            if expired {
+                self.entries.remove(key);
+                self.order.remove(generation);
+            }
+        }
+
+        if candidates.len() < batch_size {
+            // The Map iterator would have observed done within this pass.
+            self.prune_cursor = None;
+        } else {
+            // It stops exactly at the bounded batch; done is discovered only
+            // on the following prune call, matching the old JS iterator.
+            self.prune_cursor = candidates.last().and_then(|(generation, _)| generation.checked_add(1));
+        }
+
+        candidates.len()
+    }
+
+    fn allow(&mut self, key: String, now: f64) -> bool {
+        if key.is_empty() {
+            return false;
+        }
+
+        if !self.entries.contains_key(&key) {
+            if (self.entries.len() as f64) >= self.max_keys {
+                self.prune(now, true);
+                if (self.entries.len() as f64) >= self.max_keys {
+                    if let Some(generation) = self.order.keys().next().copied() {
+                        if let Some(oldest_key) = self.order.remove(&generation) {
+                            self.entries.remove(&oldest_key);
+                        }
+                    }
+                }
+            }
+
+            let generation = self.next_generation;
+            self.next_generation = self.next_generation.saturating_add(1);
+            self.order.insert(generation, key.clone());
+            self.entries.insert(key.clone(), NativeRateLimiterEntryState {
+                generation,
+                timestamps: Vec::new(),
+                cursor: 0,
+                touched_at: now,
+            });
+        }
+
+        let entry = match self.entries.get_mut(&key) {
+            Some(entry) => entry,
+            None => return false,
+        };
+
+        while entry.cursor < entry.timestamps.len()
+            && now - entry.timestamps[entry.cursor] > self.window_ms
+        {
+            entry.cursor += 1;
+        }
+
+        if ((entry.timestamps.len() - entry.cursor) as f64) >= self.max {
+            entry.touched_at = now;
+            return false;
+        }
+
+        entry.timestamps.push(now);
+        entry.touched_at = now;
+        if entry.cursor >= 64 && entry.cursor * 2 >= entry.timestamps.len() {
+            entry.timestamps = entry.timestamps[entry.cursor..].to_vec();
+            entry.cursor = 0;
+        }
+
+        self.operations = self.operations.wrapping_add(1);
+        if (self.operations & 1023) == 0 {
+            self.prune(now, false);
+        }
+        true
+    }
+}
+
+#[napi(object)]
+pub struct NativeRateLimiterEntrySnapshot {
+    pub key: String,
+    pub timestamps: Vec<f64>,
+    pub cursor: u32,
+    pub touched_at: f64,
+}
+
+#[napi(object)]
+pub struct NativeRateLimiterSnapshot {
+    pub entries: Vec<NativeRateLimiterEntrySnapshot>,
+    pub operations: f64,
+    pub has_prune_cursor: bool,
+    pub prune_cursor_next_key: Option<String>,
+}
+
+#[napi]
+pub struct NativeSlidingWindowLimiter {
+    state: Mutex<NativeRateLimiterState>,
+}
+
+#[napi]
+impl NativeSlidingWindowLimiter {
+    #[napi(constructor)]
+    pub fn new(window_ms: f64, max: f64, max_keys: f64) -> Self {
+        Self {
+            state: Mutex::new(NativeRateLimiterState::new(window_ms, max, max_keys)),
+        }
+    }
+
+    #[napi]
+    pub fn allow(&self, key: String, now: f64) -> bool {
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.allow(key, now)
+    }
+
+    #[napi]
+    pub fn prune(&self, now: f64, force: bool) {
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.prune(now, force);
+    }
+
+    #[napi]
+    pub fn clear(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.entries.clear();
+        state.order.clear();
+        state.prune_cursor = None;
+        // Match the legacy limiter: clear() does not reset its operation count.
+    }
+
+    #[napi(getter)]
+    pub fn size(&self) -> u32 {
+        let state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.entries.len().min(u32::MAX as usize) as u32
+    }
+
+    #[napi(getter)]
+    pub fn operations(&self) -> f64 {
+        let state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.operations as f64
+    }
+
+    #[napi(getter)]
+    pub fn has_prune_cursor(&self) -> bool {
+        let state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.prune_cursor.is_some()
+    }
+
+    #[napi]
+    pub fn has_key(&self, key: String) -> bool {
+        let state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.entries.contains_key(&key)
+    }
+
+    #[napi]
+    pub fn snapshot(&self) -> NativeRateLimiterSnapshot {
+        let state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let entries = state.order.iter().filter_map(|(generation, key)| {
+            let entry = state.entries.get(key)?;
+            if entry.generation != *generation {
+                return None;
+            }
+            Some(NativeRateLimiterEntrySnapshot {
+                key: key.clone(),
+                timestamps: entry.timestamps.clone(),
+                cursor: entry.cursor.min(u32::MAX as usize) as u32,
+                touched_at: entry.touched_at,
+            })
+        }).collect();
+        let prune_cursor_next_key = state.prune_cursor.and_then(|cursor| {
+            state.order.range(cursor..).next().map(|(_, key)| key.clone())
+        });
+        NativeRateLimiterSnapshot {
+            entries,
+            operations: state.operations as f64,
+            has_prune_cursor: state.prune_cursor.is_some(),
+            prune_cursor_next_key,
+        }
+    }
+}
+
+#[cfg(test)]
+mod native_rate_limiter_tests {
+    use super::*;
+
+    #[test]
+    fn allows_max_requests_then_blocks_and_expires_strictly_after_window() {
+        let mut limiter = NativeRateLimiterState::new(10_000.0, 2.0, 100.0);
+        assert!(limiter.allow("u1".to_string(), 1000.0));
+        assert!(limiter.allow("u1".to_string(), 2000.0));
+        assert!(!limiter.allow("u1".to_string(), 3000.0));
+        assert!(!limiter.allow("u1".to_string(), 11000.0));
+        assert!(limiter.allow("u1".to_string(), 11001.0));
+    }
+
+    #[test]
+    fn capacity_cleanup_prunes_expired_keys_before_evicting_a_live_key() {
+        let mut limiter = NativeRateLimiterState::new(1000.0, 1.0, 2.0);
+        assert!(limiter.allow("old-a".to_string(), 1000.0));
+        assert!(limiter.allow("old-b".to_string(), 1000.0));
+        assert!(limiter.allow("new-live".to_string(), 5000.0));
+        assert!(!limiter.entries.contains_key("old-a"));
+        assert!(!limiter.entries.contains_key("old-b"));
+        assert!(limiter.entries.contains_key("new-live"));
+        assert_eq!(limiter.entries.len(), 1);
+    }
+
+    #[test]
+    fn prune_runs_in_bounded_rotating_batches_and_resets_after_done() {
+        let mut limiter = NativeRateLimiterState::new(1000.0, 1.0, 2000.0);
+        for index in 0..700 {
+            assert!(limiter.allow(format!("idle-{}", index), 1000.0));
+        }
+        limiter.prune(2001.0, false);
+        assert_eq!(limiter.entries.len(), 444);
+        assert!(limiter.prune_cursor.is_some());
+        limiter.prune(2001.0, false);
+        assert_eq!(limiter.entries.len(), 188);
+        assert!(limiter.prune_cursor.is_some());
+        limiter.prune(2001.0, false);
+        assert_eq!(limiter.entries.len(), 0);
+        assert!(limiter.prune_cursor.is_none());
+    }
+
+    #[test]
+    fn clear_resets_entries_and_prune_cursor_without_resetting_operations() {
+        let mut limiter = NativeRateLimiterState::new(1000.0, 1.0, 1000.0);
+        for index in 0..400 {
+            assert!(limiter.allow(format!("cursor-{}", index), 1000.0));
+        }
+        limiter.prune(2001.0, false);
+        assert!(limiter.prune_cursor.is_some());
+        let operations = limiter.operations;
+        limiter.entries.clear();
+        limiter.order.clear();
+        limiter.prune_cursor = None;
+        assert!(limiter.entries.is_empty());
+        assert!(limiter.prune_cursor.is_none());
+        assert_eq!(limiter.operations, operations);
     }
 }

@@ -176,6 +176,20 @@ function tryResolveHttpRequestPolicy(args = []) {
   }
 }
 
+function getRateLimiterDiagnostics() {
+  const limiterClass = domainCoreNative.ok
+    ? domainCoreNative.mod.NativeSlidingWindowLimiter
+    : null;
+  const enabled = process.env.JT_RUST_RATE_LIMITER !== "0";
+  return {
+    loaded: domainCoreNative.ok,
+    enabled,
+    active: enabled && typeof limiterClass === "function",
+    exports: domainCoreNative.ok ? Object.keys(domainCoreNative.mod || {}) : [],
+    loadError: domainCoreNative.ok ? null : String(domainCoreNative.err?.message || domainCoreNative.err)
+  };
+}
+
 function getHttpRequestPolicyDiagnostics() {
   const bounded = domainCoreNative.ok
     ? domainCoreNative.mod.request_bounded_integer || domainCoreNative.mod.requestBoundedInteger
@@ -780,6 +794,8 @@ const nativeApi = {
   tryRequestBoundedInteger,
   tryResolveHttpRequestPolicy,
   getHttpRequestPolicyDiagnostics,
+  NativeSlidingWindowLimiter: domainCoreNative.ok ? domainCoreNative.mod.NativeSlidingWindowLimiter : null,
+  getRateLimiterDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,

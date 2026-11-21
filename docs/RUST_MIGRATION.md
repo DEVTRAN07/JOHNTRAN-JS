@@ -162,10 +162,25 @@ latency improvement.
 - Verification: Rust unit tests, JS/Rust parity for config/env edge values,
   property-getter and `valueOf()` evaluation order, and CI N-API smoke test.
 
+## Stage 13 — command sliding-window rate limiter
+
+- Rust crate: `native/domain-core-rs`.
+- Runtime bridge: `native/index.js` exports `NativeSlidingWindowLimiter`.
+- Compatibility facade: `core/runtime/rateLimiter.js`.
+- Scope: per-key timestamp windows, max-request decisions, insertion-order
+  capacity eviction, bounded rotating prune batches and clear semantics. Rust
+  owns the limiter state so the command hot path crosses N-API once per check.
+- JS retains the original class API, command key stringification, a fallback
+  implementation and snapshots for the existing `entries`/operation diagnostics.
+- Rollback: set `JT_RUST_RATE_LIMITER=0`.
+- Verification: Rust unit tests, full JS/Rust state-and-decision parity,
+  cursor continuation when falling back to JS, existing rate-limit tests and CI
+  N-API smoke test.
+
 ## Later migration order
 
-1. Continue auditing remaining pure command-validation and parsing helpers;
-   leave all network calls and process/timer orchestration in JS.
+1. Continue auditing remaining pure command-validation, event payload and
+   formatting helpers; leave network calls and async event dispatch in JS.
 2. Media/image work: expand the existing Rust sticker path. Only activate
    canvas/FFmpeg Rust prototypes after platform builds, output parity and
    realistic performance tests pass.
