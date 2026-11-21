@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const updateReport = require("../../core/runtime/updateReport");
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -51,6 +52,17 @@ module.exports.run = async ({ event, api, reply }) => {
   } catch (error) {
     requested = false;
     return reply.error("Không gửi được thông báo cập nhật: " + (error?.message || error));
+  }
+
+  try {
+    updateReport.writeUpdateRequest(ROOT, {
+      botName: process.env.JT_BOT_NAME || "main",
+      threadId,
+      threadType: type
+    });
+  } catch (error) {
+    requested = false;
+    return reply.error("Không lưu được nơi nhận kết quả cập nhật: " + (error?.message || error));
   }
 
   return new Promise(resolve => {
