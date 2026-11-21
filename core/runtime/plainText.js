@@ -6,6 +6,22 @@
 // "Cannot convert object to primitive value".
 const TEXT_FIELDS = ["title", "text", "content", "caption"];
 
+function safePrimitiveString(value) {
+  switch (typeof value) {
+    case "string":
+      return value.trim();
+    case "number":
+      return Number.isFinite(value) ? String(value) : "";
+    case "bigint":
+    case "boolean":
+      return String(value);
+    default:
+      // SDK model objects (including null-prototype objects) are not IDs.
+      // Never invoke arbitrary toString/valueOf/Symbol.toPrimitive hooks.
+      return "";
+  }
+}
+
 function extractPlainText(value) {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -27,4 +43,4 @@ function extractPlainText(value) {
   return "";
 }
 
-module.exports = { extractPlainText };
+module.exports = { extractPlainText, safePrimitiveString };
