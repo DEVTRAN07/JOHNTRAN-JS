@@ -38,6 +38,12 @@ const DEFAULT_LANES = {
   media: { concurrency: 1, maxPending: 20, maxInFlight: 21 }
 };
 
+// CPU-heavy built-in queues may be tuned downward per caller, but a caller
+// must never bypass the host's safe lane ceiling (especially STK/FFmpeg).
+const CPU_BOUNDED_LANES = new Set([
+  "sticker", "image", "gif", "video", "download", "music-audio", "canvas", "media"
+]);
+
 const lanes = new Map();
 const DEFAULT_GLOBAL_CONCURRENCY = resolveGlobalJobConcurrency(AVAILABLE_CPUS);
 const GLOBAL_CONCURRENCY = Math.min(
@@ -69,8 +75,12 @@ function getLane(name, options = {}) {
   let lane = lanes.get(name);
   if (!lane) {
     const defaults = DEFAULT_LANES[name] || { concurrency: 1, maxPending: 20, maxInFlight: 21 };
+    const requestedConcurrency = positiveInt(options.concurrency, defaults.concurrency);
+    const concurrency = CPU_BOUNDED_LANES.has(name)
+      ? Math.min(requestedConcurrency, defaults.concurrency)
+      : requestedConcurrency;
     lane = {
-      concurrency: positiveInt(options.concurrency, defaults.concurrency),
+      concurrency,
       maxPending: positiveInt(options.maxPending, defaults.maxPending),
       maxInFlight: positiveInt(options.maxInFlight, defaults.maxInFlight),
       // Small JSON/metadata requests must not sit behind media/FFmpeg jobs.
