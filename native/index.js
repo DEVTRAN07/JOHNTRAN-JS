@@ -122,6 +122,45 @@ function getTextStyleDiagnostics() {
   };
 }
 
+
+let stickerCompositorLastError = null;
+
+async function composeStaticCircleSticker(options) {
+  if (process.env.JT_RUST_STICKER_COMPOSITOR === "0" || !stickerNative.ok) return null;
+  const compositor = stickerNative.mod.compose_static_circle_sticker ||
+    stickerNative.mod.composeStaticCircleSticker;
+  if (typeof compositor !== "function") {
+    stickerCompositorLastError = "Rust sticker addon does not export compose_static_circle_sticker";
+    return null;
+  }
+  try {
+    const result = await compositor(options);
+    if (!result || !result.buffer || result.format !== "webp") {
+      throw new Error("Rust circle compositor returned an invalid result");
+    }
+    stickerCompositorLastError = null;
+    return result;
+  } catch (error) {
+    stickerCompositorLastError = String(error?.stack || error?.message || error);
+    return null;
+  }
+}
+
+function getStickerDiagnostics() {
+  const compositor = stickerNative.ok
+    ? stickerNative.mod.compose_static_circle_sticker || stickerNative.mod.composeStaticCircleSticker
+    : null;
+  const enabled = process.env.JT_RUST_STICKER_COMPOSITOR !== "0";
+  return {
+    loaded: stickerNative.ok,
+    enabled,
+    active: enabled && typeof compositor === "function",
+    exports: stickerNative.ok ? Object.keys(stickerNative.mod || {}) : [],
+    loadError: stickerNative.ok ? null : String(stickerNative.err?.message || stickerNative.err),
+    lastError: stickerCompositorLastError
+  };
+}
+
 function wrap(fn) {
   return async function (options) {
     let lastErr;
@@ -227,6 +266,8 @@ const nativeApi = {
   encode: wrap({ name: "encode", native: ffmpegNative, fallback: (o) => jsEncode(o.input, o.output) }),
   randomColorStyles,
   getTextStyleDiagnostics,
+  composeStaticCircleSticker,
+  getStickerDiagnostics,
   parseCommand,
   getCommandParserDiagnostics,
   __test: { parseCommandFallback },

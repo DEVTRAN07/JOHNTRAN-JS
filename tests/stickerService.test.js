@@ -8,6 +8,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { createCanvas } = require("canvas");
 const service = require("../core/stickerService");
+const native = require("../native");
 
 const SOURCE_SHA = "804611c782965a2c3a8050e1135c9a91882a8ce7";
 const CDN_GIF = "https://cdn.jsdelivr.net/gh/uhidontkno/DiscordAvatarDecorations@" + SOURCE_SHA + "/archive/test/gif/sample.gif";
@@ -157,7 +158,7 @@ test("custom Zalo sticker methods register only once on the base API object", as
   assert.match(requests[1].url, /group\/photo_url/);
 });
 
-test("FFmpeg composes a transparent decoration overlay over a still image and respects the 512 KB cap", {
+test("FFmpeg fallback composes a transparent decoration overlay over a still image and respects the 512 KB cap", {
   skip: spawnSync(service.resolveFfmpegBinary(), ["-version"], { stdio: "ignore" }).status !== 0
 }, async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-sticker-compose-"));
@@ -182,7 +183,16 @@ test("FFmpeg composes a transparent decoration overlay over a still image and re
   overlayCtx.strokeRect(8, 8, 144, 144);
   fs.writeFileSync(overlay, overlayCanvas.toBuffer("image/png"));
 
-  const result = await service.convertMedia(source, overlay, outputBase);
+  const previousRustFlag = process.env.JT_RUST_STICKER_COMPOSITOR;
+  process.env.JT_RUST_STICKER_COMPOSITOR = "0";
+  let result;
+  try {
+    result = await service.convertMedia(source, overlay, outputBase);
+  } finally {
+    if (previousRustFlag === undefined) delete process.env.JT_RUST_STICKER_COMPOSITOR;
+    else process.env.JT_RUST_STICKER_COMPOSITOR = previousRustFlag;
+  }
+  assert.equal(result.engine, "ffmpeg", "the documented rollback flag must keep FFmpeg available");
   assert.ok(result.size > 100);
   assert.ok(result.size <= service.MAX_STICKER_BYTES);
   assert.equal(result.width, result.height);
@@ -206,6 +216,55 @@ test("FFmpeg composes a transparent decoration overlay over a still image and re
     "circle centre must remain opaque");
 });
 
+
+
+test("Rust uses the asynchronous static-image STK path when the addon is available", {
+  skip: !native.nativeAvailable.sticker ||
+    process.env.JT_RUST_STICKER_COMPOSITOR === "0"
+}, async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jt-rust-sticker-compose-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const source = path.join(dir, "source.png");
+  const overlay = path.join(dir, "decoration.png");
+  const outputBase = path.join(dir, "sticker-");
+
+  const sourceCanvas = createCanvas(160, 160);
+  const sourceContext = sourceCanvas.getContext("2d");
+  const gradient = sourceContext.createLinearGradient(0, 0, 160, 160);
+  gradient.addColorStop(0, "#ff542e");
+  gradient.addColorStop(1, "#ffda63");
+  sourceContext.fillStyle = gradient;
+  sourceContext.fillRect(0, 0, 160, 160);
+  fs.writeFileSync(source, sourceCanvas.toBuffer("image/png"));
+
+  const frameCanvas = createCanvas(160, 160);
+  const frameContext = frameCanvas.getContext("2d");
+  frameContext.strokeStyle = "#9b72ff";
+  frameContext.lineWidth = 12;
+  frameContext.strokeRect(8, 8, 144, 144);
+  fs.writeFileSync(overlay, frameCanvas.toBuffer("image/png"));
+
+  const result = await service.convertMedia(source, overlay, outputBase);
+  assert.equal(result.engine, "rust");
+  assert.equal(result.format, "webp");
+  assert.equal(result.animated, false);
+  assert.ok(result.size > 100);
+  assert.ok(result.size <= service.MAX_STICKER_BYTES);
+  assert.equal(result.width, result.height);
+
+  const decoded = spawnSync(service.resolveFfmpegBinary(), [
+    "-hide_banner", "-loglevel", "error", "-i", result.path,
+    "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"
+  ], { encoding: null, maxBuffer: 4 * 1024 * 1024 });
+  assert.equal(decoded.status, 0, String(decoded.stderr || ""));
+  const pixelAlpha = (x, y) => decoded.stdout[(y * result.width + x) * 4 + 3];
+  assert.equal(pixelAlpha(0, 0), 0, "Rust output must keep the top-left corner transparent");
+  assert.equal(pixelAlpha(result.width - 1, 0), 0, "Rust output must keep the top-right corner transparent");
+  assert.equal(pixelAlpha(0, result.height - 1), 0, "Rust output must keep the bottom-left corner transparent");
+  assert.equal(pixelAlpha(result.width - 1, result.height - 1), 0, "Rust output must keep the bottom-right corner transparent");
+  assert.equal(pixelAlpha(Math.floor(result.width / 2), Math.floor(result.height / 2)), 255,
+    "Rust output must keep the circle centre opaque");
+});
 
 test("Zalo request supports per-request timeout and retry overrides for STK media", async () => {
   const zaloHttp = require("../vendor/zalo-client/dist/cjs/core/http.cjs");

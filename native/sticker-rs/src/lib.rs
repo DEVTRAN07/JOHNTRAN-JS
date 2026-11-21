@@ -26,6 +26,14 @@ pub struct ComposeOptions {
 }
 
 #[napi(object)]
+pub struct CircleComposeOptions {
+    pub source: Buffer,
+    pub overlay: Buffer,
+    pub size: Option<u32>,
+    pub quality: Option<u8>,
+}
+
+#[napi(object)]
 pub struct EncodeResult {
     pub buffer: Buffer,
     pub format: String,
@@ -145,6 +153,62 @@ fn compose_static_result(
     })
 }
 
+fn render_static_circle_composition(
+    source: &DynamicImage,
+    overlay: &DynamicImage,
+    requested_size: u32,
+) -> RgbaImage {
+    let size = requested_size.clamp(64, 512);
+    let mut output = source
+        .resize_to_fill(size, size, FilterType::Lanczos3)
+        .to_rgba8();
+    let frame = imageops::resize(
+        &overlay.to_rgba8(),
+        size,
+        size,
+        FilterType::Lanczos3,
+    );
+    imageops::overlay(&mut output, &frame, 0, 0);
+
+    // Match the existing FFmpeg path: composite the complete static frame,
+    // then apply the circular alpha mask to the finished image.
+    let center = size as f32 / 2.0;
+    let radius = center;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 + 0.5 - center;
+            let dy = y as f32 + 0.5 - center;
+            let distance = (dx * dx + dy * dy).sqrt();
+            let edge_alpha = (radius - distance).clamp(0.0, 1.0);
+            let mut pixel = *output.get_pixel(x, y);
+            pixel[3] = (pixel[3] as f32 * edge_alpha).round() as u8;
+            output.put_pixel(x, y, pixel);
+        }
+    }
+    output
+}
+
+fn compose_static_circle_result(
+    source_bytes: &[u8],
+    overlay_bytes: &[u8],
+    size: u32,
+    quality: u8,
+) -> Result<EncodeResult> {
+    let source = load_image(source_bytes)?;
+    let overlay = load_image(overlay_bytes)?;
+    let size = size.clamp(64, 512);
+    let image = render_static_circle_composition(&source, &overlay, size);
+    let encoded = encode_webp_bytes(&image, quality, false);
+    let encoded_size = encoded.len() as u32;
+    Ok(EncodeResult {
+        buffer: Buffer::from(encoded),
+        format: "webp".to_string(),
+        width: size,
+        height: size,
+        size: encoded_size,
+    })
+}
+
 #[napi]
 pub fn encode_webp(options: EncodeOptions) -> Result<EncodeResult> {
     let image = load_image(&options.buffer)?;
@@ -255,6 +319,44 @@ pub fn compose_static_sticker(options: ComposeOptions) -> AsyncTask<ComposeStati
     })
 }
 
+pub struct ComposeStaticCircleTask {
+    source: Vec<u8>,
+    overlay: Vec<u8>,
+    size: u32,
+    quality: u8,
+}
+
+#[napi]
+impl Task for ComposeStaticCircleTask {
+    type Output = EncodeResult;
+    type JsValue = EncodeResult;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        compose_static_circle_result(
+            &self.source,
+            &self.overlay,
+            self.size,
+            self.quality,
+        )
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// FFmpeg-compatible static image + transparent frame composition, executed
+/// on the N-API worker pool. The Node event loop only receives the result.
+#[napi]
+pub fn compose_static_circle_sticker(options: CircleComposeOptions) -> AsyncTask<ComposeStaticCircleTask> {
+    AsyncTask::new(ComposeStaticCircleTask {
+        source: options.source.to_vec(),
+        overlay: options.overlay.to_vec(),
+        size: options.size.unwrap_or(512),
+        quality: options.quality.unwrap_or(68).clamp(1, 100),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,4 +406,40 @@ mod tests {
         assert_eq!(width, 64);
         assert_eq!(height, 64);
     }
+    #[test]
+    fn static_circle_composition_clips_the_composite_and_keeps_center_visible() {
+        let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            32, 32, Rgba([240, 30, 20, 255])
+        ));
+        let overlay = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            32, 32, Rgba([20, 40, 240, 128])
+        ));
+        let result = render_static_circle_composition(&source, &overlay, 64);
+        assert_eq!(result.dimensions(), (64, 64));
+        assert_eq!(result.get_pixel(0, 0)[3], 0);
+        let center = result.get_pixel(32, 32);
+        assert!(center[3] > 240);
+        assert!(center[0] > 80 && center[2] > 80,
+            "overlay should be composited before the circular mask");
+    }
+
+    #[test]
+    fn compose_static_circle_emits_valid_webp() {
+        let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            32, 32, Rgba([240, 30, 20, 255])
+        ));
+        let overlay = DynamicImage::ImageRgba8(RgbaImage::new(32, 32));
+        let png = |image: &DynamicImage| {
+            let mut cursor = Cursor::new(Vec::new());
+            image.write_to(&mut cursor, ImageFormat::Png).unwrap();
+            cursor.into_inner()
+        };
+        let result = compose_static_circle_result(&png(&source), &png(&overlay), 64, 68)
+            .expect("static circle composition should encode");
+        let bytes: Vec<u8> = result.buffer.into();
+        assert_eq!(&bytes[0..4], b"RIFF");
+        assert_eq!(&bytes[8..12], b"WEBP");
+        assert_eq!((result.width, result.height), (64, 64));
+    }
+
 }

@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const http = require("./http");
 const { FFMPEG_THREADS } = require("./mediaResourceLimits");
+const native = require("../native");
 const STICKER_SIZE = 512;
 const decorations = require("./stickerDecorations");
 
@@ -205,8 +206,62 @@ async function fetchSource(api, url) {
   return { buffer: response.buffer, contentType: response.contentType || "" };
 }
 
+async function tryRustStaticCircleSticker(inputPath, overlayPath, outputBasePath, profiles) {
+  if (process.env.JT_RUST_STICKER_COMPOSITOR === "0" ||
+      typeof native.composeStaticCircleSticker !== "function") return null;
+
+  const sourceExtension = path.extname(inputPath).toLowerCase();
+  const overlayExtension = path.extname(overlayPath).toLowerCase();
+  const supportedSource = [".png", ".jpg", ".jpeg"].includes(sourceExtension);
+  const supportedOverlay = [".png", ".jpg", ".jpeg"].includes(overlayExtension);
+  if (!supportedSource || !supportedOverlay) return null;
+
+  const [source, overlay] = await Promise.all([
+    fs.promises.readFile(inputPath),
+    fs.promises.readFile(overlayPath)
+  ]);
+  if (!source.length || source.length > MAX_SOURCE_BYTES ||
+      !overlay.length || overlay.length > MAX_DECORATION_BYTES) return null;
+
+  for (const profile of profiles) {
+    const result = await native.composeStaticCircleSticker({
+      source,
+      overlay,
+      size: profile.size,
+      quality: profile.quality
+    });
+    if (!result) return null;
+
+    const buffer = Buffer.isBuffer(result.buffer)
+      ? result.buffer
+      : Buffer.from(result.buffer || []);
+    const validDimensions = Number(result.width) === profile.size &&
+      Number(result.height) === profile.size;
+    if (!buffer.length || !validDimensions || result.format !== "webp") return null;
+    if (buffer.length > MAX_STICKER_BYTES) continue;
+
+    const outputPath = outputBasePath + profile.size + ".webp";
+    await fs.promises.writeFile(outputPath, buffer);
+    return {
+      path: outputPath,
+      buffer,
+      width: profile.size,
+      height: profile.size,
+      format: "webp",
+      animated: false,
+      shape: "circle",
+      transparent: true,
+      size: buffer.length,
+      engine: "rust"
+    };
+  }
+
+  // If Rust cannot produce a sticker under the Zalo size cap, let the existing
+  // FFmpeg profile ladder try the same input rather than failing the command.
+  return null;
+}
+
 async function convertMedia(inputPath, overlayPath, outputBasePath, options = {}) {
-  const webp = await hasWebpEncoder();
   const isStaticInput = !/\.(gif|webp|mp4|webm|mov|m4v)$/i.test(inputPath);
   const overlayAnimated = options.overlayAnimated === true;
   const outputAnimated = !isStaticInput || overlayAnimated;
@@ -219,6 +274,14 @@ async function convertMedia(inputPath, overlayPath, outputBasePath, options = {}
   ];
   let lastError = null;
 
+  // Still PNG/JPG pairs can be composited and encoded by Rust without
+  // spawning FFmpeg. Animated GIF/WebP/video continues through the old path.
+  if (isStaticInput && !overlayAnimated) {
+    const rustResult = await tryRustStaticCircleSticker(inputPath, overlayPath, outputBasePath, profiles);
+    if (rustResult) return rustResult;
+  }
+
+  const webp = await hasWebpEncoder();
   for (const profile of profiles) {
     const extension = webp ? ".webp" : ".gif";
     const outputPath = outputBasePath + profile.size + extension;
@@ -279,7 +342,8 @@ async function convertMedia(inputPath, overlayPath, outputBasePath, options = {}
           animated: outputAnimated,
           shape: "circle",
           transparent: true,
-          size: stat.size
+          size: stat.size,
+          engine: "ffmpeg"
         };
       }
       lastError = new Error("Sticker đang lớn hơn giới hạn 512 KB sau khi nén.");
@@ -626,6 +690,7 @@ module.exports = {
   isAllowedDecorationAssetUrl,
   downloadDecorationOverlay,
   convertMedia,
+  tryRustStaticCircleSticker,
   // Shared low-level media helpers for the replacement /stk dis command.
   fetchSource,
   hasWebpEncoder,
