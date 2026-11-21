@@ -99,3 +99,50 @@ test("known commands expose bounded per-stage pipeline timings", async () => {
     else global.users = previousUsers;
   }
 });
+
+
+test("pipeline failures are counted once and still propagate to the listener", async () => {
+  const previousConfig = global.config;
+  const previousClient = global.client;
+  const originalTrack = metrics.track;
+  const tracked = [];
+
+  global.config = new Proxy({}, {
+    get(_target, property) {
+      if (property === "allow_private_command") {
+        throw new Error("simulated private-command config failure");
+      }
+      return undefined;
+    }
+  });
+  global.client = { commands: new Map(), cooldowns: new Map() };
+  metrics.track = (...args) => tracked.push(args);
+
+  try {
+    await assert.rejects(
+      handleCommand(
+        "/pipelinebroken",
+        {
+          threadId: "pipeline-error-group",
+          type: ThreadType.User,
+          data: { uidFrom: "pipeline-error-user", content: "/pipelinebroken" }
+        },
+        {},
+        {},
+        "/",
+        { data: {} }
+      ),
+      /simulated private-command config failure/
+    );
+    assert.deepEqual(tracked, [[
+      "error",
+      { command: "pipelinebroken", source: "pipeline" }
+    ]]);
+  } finally {
+    metrics.track = originalTrack;
+    if (previousConfig === undefined) delete global.config;
+    else global.config = previousConfig;
+    if (previousClient === undefined) delete global.client;
+    else global.client = previousClient;
+  }
+});
