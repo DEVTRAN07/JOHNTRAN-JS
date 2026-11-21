@@ -88,9 +88,9 @@ mod tests {
 
     #[test]
     fn does_not_split_on_next_line_character_that_javascript_s_does_not_treat_as_whitespace() {
-        let parsed = parse_command_inner("/menu arg\\u{0085}tail", "/");
+        let parsed = parse_command_inner("/menu arg\u{0085}tail", "/");
         assert_eq!(parsed.command, "menu");
-        assert_eq!(parsed.args, vec!["arg\\u{0085}tail"]);
+        assert_eq!(parsed.args, vec!["arg\u{0085}tail"]);
     }
 
     #[test]
