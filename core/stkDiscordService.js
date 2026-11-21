@@ -9,7 +9,7 @@ const catalog = require("./data/stkDiscord200.json");
 const { FFMPEG_THREADS } = require("./mediaResourceLimits");
 
 const { RAW_BASE_URL: BUNDLED_RAW_BASE_URL, ASSETS_DIR } = require("./stk/assets");
-const RAW_BASE_URL = String(process.env.STK_DISCORD_RAW_BASE_URL || BUNDLED_RAW_BASE_URL).replace(/\\/+$/, "");
+const RAW_BASE_URL = String(process.env.STK_DISCORD_RAW_BASE_URL || BUNDLED_RAW_BASE_URL).replace(/\/+$/, "");
 const DEFAULT_CACHE_ROOT = process.env.JT_PERSISTENT_DIR || path.join(__dirname, "..", "cache");
 const DECOR_DIR = path.resolve(process.env.STK_DISCORD_CACHE_DIR || ASSETS_DIR);
 const RESULT_CACHE_DIR = path.join(DEFAULT_CACHE_ROOT, "stk-discord");
@@ -384,28 +384,41 @@ async function createStaticRust(sourceBuffer, decorationBuffer) {
   const addon = getRustStickerAddon();
   if (typeof addon?.composeStaticSticker !== "function") return null;
 
-  const result = await addon.composeStaticSticker({
-    source: sourceBuffer,
-    overlay: decorationBuffer,
-    size: CANVAS_SIZE,
-    avatarSize: AVATAR_SIZE,
-    offset: OFFSET,
-    quality: 92
-  });
-  const buffer = Buffer.isBuffer(result?.buffer)
-    ? result.buffer
-    : Buffer.from(result?.buffer || []);
-  if (!buffer.length || buffer.length > MAX_OUTPUT_BYTES) return null;
+  // Prefer crisp output. Only lower quality when the Zalo payload cap requires it.
+  let accepted = null;
+  for (const quality of [92, 88, 84, 80]) {
+    const result = await addon.composeStaticSticker({
+      source: sourceBuffer,
+      overlay: decorationBuffer,
+      size: CANVAS_SIZE,
+      avatarSize: AVATAR_SIZE,
+      offset: OFFSET,
+      quality
+    });
+    const buffer = Buffer.isBuffer(result?.buffer)
+      ? result.buffer
+      : Buffer.from(result?.buffer || []);
+    if (!buffer.length) continue;
+    if (!accepted || buffer.length < accepted.buffer.length) {
+      accepted = { result, buffer, quality };
+    }
+    if (buffer.length <= MAX_OUTPUT_BYTES) {
+      accepted = { result, buffer, quality };
+      break;
+    }
+  }
+  if (!accepted || accepted.buffer.length > MAX_OUTPUT_BYTES) return null;
 
   fs.mkdirSync(TMP_DIR, { recursive: true });
   const outputPath = makeTempName("stk_dis_rust", ".webp");
-  await fs.promises.writeFile(outputPath, buffer);
+  await fs.promises.writeFile(outputPath, accepted.buffer);
   return {
     path: outputPath,
-    buffer,
-    width: Number(result.width) || CANVAS_SIZE,
-    height: Number(result.height) || CANVAS_SIZE,
-    size: buffer.length,
+    buffer: accepted.buffer,
+    width: Number(accepted.result.width) || CANVAS_SIZE,
+    height: Number(accepted.result.height) || CANVAS_SIZE,
+    size: accepted.buffer.length,
+    quality: accepted.quality,
     animated: false,
     format: "webp",
     renderer: "rust-native"
