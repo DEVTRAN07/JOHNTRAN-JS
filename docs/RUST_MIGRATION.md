@@ -64,18 +64,32 @@ latency improvement.
 - Rollback: set `JT_RUST_SAM_ENGINE=0` to force the JavaScript implementation.
 - Verification: Rust unit tests, N-API smoke tests and full JS/Rust fixture parity.
 
+## Stage 5 — Tiến Lên Miền Nam rules engine
+
+- Rust crate: `native/game-core-rs`, reusing the card/combo N-API data
+  structures introduced for Sâm.
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `src/domain/games/engines/tlmnEngine.js`.
+- Scope: deck/card metadata, card parsing and sorting, rank parsing, combo
+  analysis, pair-run/chop rules, play validation, removal, white-hand detection
+  and comparison, and card formatting.
+- Shuffle/deal continue to use the existing JavaScript random callback so the
+  exact seeded random-call order and room state contracts remain unchanged.
+- Command grammar parsing and room/service state remain in JavaScript for now.
+- Rollback: set `JT_RUST_TLMN_ENGINE=0` to force the JavaScript implementation.
+- Verification: Rust unit tests, N-API smoke test, full JavaScript/native
+  parity fixtures, and the existing TLMN service/command integration suite.
+
 ## Later migration order
 
-1. Continue with the Tiến Lên engine, preserving JavaScript service/state
-   contracts and comparing every rule fixture against the Rust implementation.
-2. Migrate remaining pure CPU helpers: normalize payloads, validate values and
-   deterministic formatting. Keep JS parity fixtures for each operation.
-3. Media/image work: expand the existing Rust sticker path. Only activate
+1. Migrate remaining pure CPU helpers and parsers one folder at a time, keeping
+   JavaScript fallbacks and contract parity tests.
+2. Media/image work: expand the existing Rust sticker path. Only activate
    canvas/FFmpeg Rust prototypes after platform builds, output parity and
    realistic performance tests pass.
-4. Stateful hot paths: consider cache, deduplication and queue internals only
+3. Stateful hot paths: consider cache, deduplication and queue internals only
    when profiling shows measurable JavaScript CPU or event-loop pressure.
-5. Zalo protocol/session: keep the current SDK in Node unless a Rust replacement
+4. Zalo protocol/session: keep the current SDK in Node unless a Rust replacement
    proves login, reconnect, event-ordering, rate-limit and send behaviour parity.
 
 ## Build and rollback

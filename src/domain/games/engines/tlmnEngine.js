@@ -1,5 +1,7 @@
 "use strict";
 
+const nativeCore = require("../../../../native");
+
 const SUITS = Object.freeze([
   { code: "b", name: "Bích", symbol: "♠", weight: 0 },
   { code: "ch", name: "Chuồn", symbol: "♣", weight: 1 },
@@ -20,7 +22,7 @@ const RANK_LABEL = Object.freeze(Object.fromEntries(RANKS.map(item => [item.valu
 const RANK_VALUE = Object.freeze({ j: 11, q: 12, k: 13, a: 14, "2": 15 });
 const CARD_CODE = /^(10|[3-9]|[jqka2])(ch|dt|b|r|c|t)$/i;
 
-function createDeck() {
+function createDeckFallback() {
   const deck = [];
   for (const rank of RANKS) {
     for (const suit of SUITS) {
@@ -30,19 +32,19 @@ function createDeck() {
   return deck;
 }
 
-function normalizeText(value) {
+function normalizeTextFallback(value) {
   return String(value || "").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/g, "d").replace(/Đ/g, "d")
     .toLocaleLowerCase("vi-VN").trim();
 }
 
-function cardCode(card) {
+function cardCodeFallback(card) {
   const rank = RANK_LABEL[Number(card?.rank)] || String(card?.rank ?? "");
   return rank.toLowerCase() + String(card?.suit || "");
 }
 
-function parseCardCode(value) {
+function parseCardCodeFallback(value) {
   const match = String(value || "").trim().match(CARD_CODE);
   if (!match) return null;
   const rawRank = match[1].toLowerCase();
@@ -53,12 +55,12 @@ function parseCardCode(value) {
   return { rank, suit, id: String(rank) + suit };
 }
 
-function compareCards(a, b) {
+function compareCardsFallback(a, b) {
   return a.rank - b.rank || SUIT_WEIGHT[a.suit] - SUIT_WEIGHT[b.suit];
 }
 
-function sortHand(cards) {
-  return (Array.isArray(cards) ? cards : []).slice().sort(compareCards);
+function sortHandFallback(cards) {
+  return (Array.isArray(cards) ? cards : []).slice().sort(compareCardsFallback);
 }
 
 function shuffleDeck(random = Math.random) {
@@ -90,14 +92,14 @@ function dealCards(playerIds, random = Math.random) {
   };
 }
 
-function parseRank(value) {
+function parseRankFallback(value) {
   const raw = String(value || "").toLowerCase();
   if (RANK_VALUE[raw]) return RANK_VALUE[raw];
   const number = Number(raw);
   return RANK_LABEL[number] ? number : null;
 }
 
-function parseRankSequence(value) {
+function parseRankSequenceFallback(value) {
   const source = String(value || "").replace(/[\s,._-]+/g, "").toLowerCase();
   const result = [];
   const pattern = /(10|[3-9]|[jqka2])/g;
@@ -105,7 +107,7 @@ function parseRankSequence(value) {
   let consumed = "";
   while ((match = pattern.exec(source)) !== null) {
     if (match.index !== consumed.length) return [];
-    const rank = parseRank(match[1]);
+    const rank = parseRankFallback(match[1]);
     if (!rank) return [];
     result.push(rank);
     consumed += match[0];
@@ -242,8 +244,8 @@ function parsePlayText(hand, input) {
   return { ok: true, cards: sortHand(selected) };
 }
 
-function analyzeCombo(inputCards) {
-  const cards = sortHand(inputCards);
+function analyzeComboFallback(inputCards) {
+  const cards = sortHandFallback(inputCards);
   if (!cards.length || cards.some(card => !card || !RANK_LABEL[card.rank] ||
       SUIT_WEIGHT[card.suit] === undefined)) return null;
   const ranks = cards.map(card => card.rank);
@@ -291,7 +293,7 @@ const COMBO_LABEL = Object.freeze({
   straight: "Sảnh", fourKind: "Tứ quý", pairRun: "Đôi thông"
 });
 
-function canBeat(candidate, current) {
+function canBeatFallback(candidate, current) {
   if (!candidate || !current) return Boolean(candidate);
   if (candidate.type === current.type && candidate.length === current.length) {
     return candidate.mainRank > current.mainRank ||
@@ -314,25 +316,25 @@ function canBeat(candidate, current) {
   return false;
 }
 
-function validatePlay(hand, inputCards, currentCombo = null, options = {}) {
-  const selected = sortHand(inputCards);
+function validatePlayFallback(hand, inputCards, currentCombo = null, options = {}) {
+  const selected = sortHandFallback(inputCards);
   if (!selected.length) return { ok: false, code: "EMPTY_PLAY" };
   const ids = selected.map(card => card.id);
   if (new Set(ids).size !== ids.length) return { ok: false, code: "DUPLICATE_CARD" };
   const handIds = new Set((hand || []).map(card => card.id));
   if (ids.some(id => !handIds.has(id))) return { ok: false, code: "CARD_NOT_IN_HAND" };
-  const combo = analyzeCombo(selected);
+  const combo = analyzeComboFallback(selected);
   if (!combo) return { ok: false, code: "INVALID_COMBINATION" };
   if (options.mustContainThreeOfSpades && !selected.some(card => card.id === "3b")) {
     return { ok: false, code: "MUST_PLAY_THREE_SPADES" };
   }
-  if (currentCombo && !canBeat(combo, currentCombo)) {
+  if (currentCombo && !canBeatFallback(combo, currentCombo)) {
     return { ok: false, code: "CANNOT_BEAT", combo, currentCombo };
   }
   return { ok: true, combo };
 }
 
-function removeCards(hand, playedCards) {
+function removeCardsFallback(hand, playedCards) {
   const ids = new Set((playedCards || []).map(card => card.id));
   return (hand || []).filter(card => !ids.has(card.id));
 }
@@ -352,8 +354,8 @@ const WHITE_HAND_LABEL = Object.freeze({
   sixPairs: "6 ĐÔI"
 });
 
-function detectWhiteHand(hand) {
-  const cards = sortHand(hand);
+function detectWhiteHandFallback(hand) {
+  const cards = sortHandFallback(hand);
   if (cards.length !== 13) return null;
   const counts = new Map();
   for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
@@ -384,8 +386,8 @@ function detectWhiteHand(hand) {
   return WHITE_HAND_PRIORITY.find(type => priorities.includes(type)) || null;
 }
 
-function whiteHandHighCard(hand, type) {
-  const cards = sortHand(hand);
+function whiteHandHighCardFallback(hand, type) {
+  const cards = sortHandFallback(hand);
   const counts = new Map();
   for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
   if (type === "dragonStraight") return cards.filter(card => card.rank === 14).slice(-1)[0] || null;
@@ -422,39 +424,190 @@ function whiteHandHighCard(hand, type) {
   return cards[cards.length - 1] || null;
 }
 
-function whiteHandCompareCards(hand, type) {
+function whiteHandCompareCardsFallback(hand, type) {
   // GameVH compares same-type white hands by the highest card of the
   // qualifying pattern. For pair-based patterns this is the highest card
   // in the highest pair; lower pairs/sets are not additional tie-breakers.
-  return [whiteHandHighCard(hand, type)].filter(Boolean);
+  return [whiteHandHighCardFallback(hand, type)].filter(Boolean);
 }
 
-function compareWhiteHands(handA, typeA, handB, typeB) {
+function compareWhiteHandsFallback(handA, typeA, handB, typeB) {
   const priority = WHITE_HAND_PRIORITY.indexOf(typeA) - WHITE_HAND_PRIORITY.indexOf(typeB);
   if (priority) return priority;
-  const a = whiteHandCompareCards(handA, typeA);
-  const b = whiteHandCompareCards(handB, typeB);
+  const a = whiteHandCompareCardsFallback(handA, typeA);
+  const b = whiteHandCompareCardsFallback(handB, typeB);
   const length = Math.max(a.length, b.length);
   for (let i = 0; i < length; i += 1) {
     if (!a[i]) return 1;
     if (!b[i]) return -1;
-    const comparison = compareCards(b[i], a[i]);
+    const comparison = compareCardsFallback(b[i], a[i]);
     if (comparison) return comparison;
   }
   return 0;
 }
 
-function rankLabel(rank) {
+function rankLabelFallback(rank) {
   return RANK_LABEL[rank] || String(rank);
 }
 
-function cardLabel(card) {
+function cardLabelFallback(card) {
   const suit = SUITS.find(item => item.code === card.suit);
-  return rankLabel(card.rank) + (suit?.symbol || card.suit);
+  return rankLabelFallback(card.rank) + (suit?.symbol || card.suit);
+}
+
+function formatCardsFallback(cards) {
+  return sortHandFallback(cards).map(cardLabelFallback).join("  ");
+}
+
+
+function callTlmnNative(operation, args = []) {
+  return nativeCore.tryTlmnOperation(operation, args);
+}
+
+function toNativeCombo(combo) {
+  if (!combo || typeof combo !== "object") return null;
+  const comboType = combo.type || combo.comboType || combo.combo_type;
+  const mainRank = combo.mainRank ?? combo.main_rank;
+  const highSuit = combo.highSuit ?? combo.high_suit;
+  const cardCount = combo.cardCount ?? combo.card_count;
+  return {
+    ...combo,
+    comboType, combo_type: comboType,
+    mainRank, main_rank: mainRank,
+    highSuit, high_suit: highSuit,
+    cardCount, card_count: cardCount
+  };
+}
+
+function fromNativeCombo(combo) {
+  if (!combo || typeof combo !== "object") return null;
+  return {
+    type: combo.type || combo.comboType || combo.combo_type,
+    cards: combo.cards,
+    length: combo.length,
+    mainRank: combo.mainRank ?? combo.main_rank,
+    highSuit: combo.highSuit ?? combo.high_suit,
+    cardCount: combo.cardCount ?? combo.card_count
+  };
+}
+
+function createDeck() {
+  const result = callTlmnNative("tlmn_create_deck");
+  return result.used && Array.isArray(result.value) ? result.value : createDeckFallback();
+}
+
+function normalizeText(value) {
+  const result = callTlmnNative("tlmn_normalize_text", [String(value || "")]);
+  return result.used && typeof result.value === "string" ? result.value : normalizeTextFallback(value);
+}
+
+function cardCode(card) {
+  const result = callTlmnNative("tlmn_card_code", [card]);
+  return result.used && typeof result.value === "string" ? result.value : cardCodeFallback(card);
+}
+
+function parseCardCode(value) {
+  const result = callTlmnNative("tlmn_parse_card_code", [String(value || "")]);
+  return result.used ? result.value : parseCardCodeFallback(value);
+}
+
+function compareCards(a, b) {
+  const result = callTlmnNative("tlmn_compare_cards", [a, b]);
+  return result.used && typeof result.value === "number" ? result.value : compareCardsFallback(a, b);
+}
+
+function sortHand(cards) {
+  const result = callTlmnNative("tlmn_sort_hand", [Array.isArray(cards) ? cards : []]);
+  return result.used && Array.isArray(result.value) ? result.value : sortHandFallback(cards);
+}
+
+function parseRank(value) {
+  const result = callTlmnNative("tlmn_parse_rank", [String(value || "")]);
+  return result.used ? (result.value == null ? null : Number(result.value)) : parseRankFallback(value);
+}
+
+function parseRankSequence(value) {
+  const result = callTlmnNative("tlmn_parse_rank_sequence", [String(value || "")]);
+  return result.used && Array.isArray(result.value)
+    ? result.value.map(Number)
+    : parseRankSequenceFallback(value);
+}
+
+function analyzeCombo(inputCards) {
+  const result = callTlmnNative("tlmn_analyze_combo", [inputCards]);
+  return result.used ? fromNativeCombo(result.value) : analyzeComboFallback(inputCards);
+}
+
+function canBeat(candidate, current) {
+  const result = callTlmnNative("tlmn_can_beat", [toNativeCombo(candidate), toNativeCombo(current)]);
+  return result.used ? Boolean(result.value) : canBeatFallback(candidate, current);
+}
+
+function validatePlay(hand, inputCards, currentCombo = null, options = {}) {
+  const result = callTlmnNative("tlmn_validate_play", [
+    hand,
+    inputCards,
+    toNativeCombo(currentCombo),
+    Boolean(options && options.mustContainThreeOfSpades)
+  ]);
+  if (result.used && result.value && typeof result.value.ok === "boolean") {
+    const value = result.value;
+    if (value.ok) return { ok: true, combo: fromNativeCombo(value.combo) };
+    if (value.code === "CANNOT_BEAT") {
+      return {
+        ok: false,
+        code: value.code,
+        combo: fromNativeCombo(value.combo),
+        currentCombo: fromNativeCombo(value.currentCombo ?? value.current_combo)
+      };
+    }
+    return { ok: false, code: value.code };
+  }
+  return validatePlayFallback(hand, inputCards, currentCombo, options);
+}
+
+function removeCards(hand, playedCards) {
+  const result = callTlmnNative("tlmn_remove_cards", [hand, playedCards]);
+  return result.used && Array.isArray(result.value) ? result.value : removeCardsFallback(hand, playedCards);
+}
+
+function detectWhiteHand(hand) {
+  const result = callTlmnNative("tlmn_detect_white_hand", [hand]);
+  return result.used ? result.value : detectWhiteHandFallback(hand);
+}
+
+function whiteHandHighCard(hand, type) {
+  const result = callTlmnNative("tlmn_white_hand_high_card", [hand, type]);
+  return result.used ? result.value : whiteHandHighCardFallback(hand, type);
+}
+
+function whiteHandCompareCards(hand, type) {
+  const result = callTlmnNative("tlmn_white_hand_compare_cards", [hand, type]);
+  return result.used && Array.isArray(result.value) ? result.value : whiteHandCompareCardsFallback(hand, type);
+}
+
+function compareWhiteHands(handA, typeA, handB, typeB) {
+  const result = callTlmnNative("tlmn_compare_white_hands", [handA, typeA, handB, typeB]);
+  return result.used && typeof result.value === "number"
+    ? result.value
+    : compareWhiteHandsFallback(handA, typeA, handB, typeB);
+}
+
+function rankLabel(rank) {
+  const numeric = Number(rank);
+  if (!Number.isFinite(numeric) || !RANK_LABEL[numeric]) return rankLabelFallback(rank);
+  const result = callTlmnNative("tlmn_rank_label", [numeric]);
+  return result.used && typeof result.value === "string" ? result.value : rankLabelFallback(rank);
+}
+
+function cardLabel(card) {
+  const result = callTlmnNative("tlmn_card_label", [card]);
+  return result.used && typeof result.value === "string" ? result.value : cardLabelFallback(card);
 }
 
 function formatCards(cards) {
-  return sortHand(cards).map(cardLabel).join("  ");
+  const result = callTlmnNative("tlmn_format_cards", [cards]);
+  return result.used && typeof result.value === "string" ? result.value : formatCardsFallback(cards);
 }
 
 module.exports = {
@@ -463,5 +616,12 @@ module.exports = {
   normalizeText, parseRank, parseRankSequence, parsePlayText,
   analyzeCombo, COMBO_LABEL, canBeat, validatePlay, removeCards,
   WHITE_HAND_PRIORITY, WHITE_HAND_LABEL, detectWhiteHand, compareWhiteHands,
-  rankLabel, cardLabel, formatCards
+  rankLabel, cardLabel, formatCards,
+  getNativeDiagnostics: nativeCore.getTlmnEngineDiagnostics,
+  __test: { createDeckFallback, normalizeTextFallback, cardCodeFallback,
+    parseCardCodeFallback, compareCardsFallback, sortHandFallback, parseRankFallback,
+    parseRankSequenceFallback, analyzeComboFallback, canBeatFallback, validatePlayFallback,
+    removeCardsFallback, detectWhiteHandFallback, whiteHandHighCardFallback,
+    whiteHandCompareCardsFallback, compareWhiteHandsFallback, rankLabelFallback,
+    cardLabelFallback, formatCardsFallback }
 };

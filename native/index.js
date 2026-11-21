@@ -22,6 +22,53 @@ const textStyleNative = tryLoad("text-style-rs", "text_style_rs.node");
 const commandParserNative = tryLoad("command-core-rs", "command_core_rs.node");
 const gameCoreNative = tryLoad("game-core-rs", "game_core_rs.node");
 let noituEngineLastError = null;
+let tlmnEngineLastError = null;
+
+function tryTlmnOperation(operation, args = []) {
+  if (process.env.JT_RUST_TLMN_ENGINE === "0" || !gameCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  const fn = gameCoreNative.mod[operation] || gameCoreNative.mod[camelName];
+  if (typeof fn !== "function") {
+    tlmnEngineLastError = "Rust Tiến Lên export is missing: " + operation;
+    return { used: false, value: null };
+  }
+  try {
+    const value = fn(...args);
+    tlmnEngineLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    tlmnEngineLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function getTlmnEngineDiagnostics() {
+  const required = [
+    "tlmn_create_deck", "tlmn_normalize_text", "tlmn_card_code",
+    "tlmn_parse_card_code", "tlmn_compare_cards", "tlmn_sort_hand",
+    "tlmn_parse_rank", "tlmn_parse_rank_sequence", "tlmn_analyze_combo",
+    "tlmn_can_beat", "tlmn_validate_play", "tlmn_remove_cards",
+    "tlmn_detect_white_hand", "tlmn_white_hand_high_card",
+    "tlmn_white_hand_compare_cards", "tlmn_compare_white_hands",
+    "tlmn_rank_label", "tlmn_card_label", "tlmn_format_cards"
+  ];
+  const complete = required.every(operation => {
+    const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    return typeof gameCoreNative.mod?.[operation] === "function" ||
+      typeof gameCoreNative.mod?.[camelName] === "function";
+  });
+  const enabled = process.env.JT_RUST_TLMN_ENGINE !== "0";
+  return {
+    loaded: gameCoreNative.ok,
+    enabled,
+    active: enabled && gameCoreNative.ok && complete,
+    lastError: tlmnEngineLastError,
+    loadError: gameCoreNative.ok ? null : String(gameCoreNative.err?.message || gameCoreNative.err)
+  };
+}
+
 let samEngineLastError = null;
 
 function trySamOperation(operation, args = []) {
@@ -437,6 +484,8 @@ const nativeApi = {
   getNoituEngineDiagnostics,
   trySamOperation,
   getSamEngineDiagnostics,
+  tryTlmnOperation,
+  getTlmnEngineDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,
