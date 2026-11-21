@@ -110,10 +110,9 @@ test("/stk downloads the remote menu into cache and sends the cached file", asyn
   } finally {
     service.ensureMenuFile = originalEnsureMenu;
   }
-  assert.equal(sent.length, 2);
-  assert.match(sent[0].msg, /Đang tải danh sách 200 khung STK/);
-  assert.deepEqual(sent[1].attachments, ["/tmp/stk-discord-menu.jpg"]);
-  assert.match(sent[1].msg, /AVATAR DECORATION/);
+  assert.equal(sent.length, 1, "the command sends only the final menu, without a progress message");
+  assert.deepEqual(sent[0].attachments, ["/tmp/stk-discord-menu.jpg"]);
+  assert.match(sent[0].msg, /AVATAR DECORATION/);
 });
 
 
