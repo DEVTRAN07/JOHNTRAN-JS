@@ -123,6 +123,13 @@ async function dispatchCommand({
       reply?.finishCommand?.();
     }
   } catch (error) {
+    // This outer boundary covers dispatcher setup failures, before the plugin
+    // handler can run. Track them separately from command.run() exceptions.
+    try {
+      metrics?.track?.("error", { command: commandName, source: "dispatcher" });
+    } catch {
+      // Telemetry must not interfere with dispatcher error isolation.
+    }
     const errorId = randomUUID().slice(0, 8).toUpperCase();
     logger.log(
       `[${errorId}] Lỗi pipeline lệnh '${commandName}': ${error?.stack || error?.message || String(error)}`,
