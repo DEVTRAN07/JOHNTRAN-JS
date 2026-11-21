@@ -84,7 +84,7 @@ test("STK bootstrap reports a bad frame and keeps processing instead of aborting
   assert.equal(result.missing, 1);
   const manifest = JSON.parse(await fs.readFile(path.join(directory, "assets-manifest.json"), "utf8"));
   assert.equal(manifest.items.find(item => item.id === 1).missing, true);
-  assert.equal(manifest.items.find(item => item.id === 2).missing, undefined);
+  assert.equal(manifest.items.find(item => item.id === 2).missing, false);
   await assert.rejects(fs.access(path.join(directory, "1_bad.png")));
   assert.deepEqual(await fs.readFile(path.join(directory, "2_good.png")), PNG);
 });
