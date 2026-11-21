@@ -191,3 +191,20 @@ test("TLMN reads text title from structured message payloads", () => {
 
   assert.equal(command._test.shouldQueueIncoming(context), true);
 });
+
+test("TLMN safely ignores non-primitive Zalo sender identifiers", async () => {
+  global.config = { prefix: "/" };
+  const context = {
+    isSelf: false,
+    Threads: { getCachedData: () => ({ data: { tlmn_enabled: true } }) },
+    event: {
+      type: ThreadType.Group,
+      threadId: "tlmn-object-sender-id",
+      data: { uidFrom: Object.create(null), content: "3b" }
+    }
+  };
+
+  await assert.doesNotReject(async () => {
+    assert.equal(await command.handleIncoming(context), false);
+  });
+});
