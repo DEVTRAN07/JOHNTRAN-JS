@@ -83,10 +83,6 @@ module.exports.run = async function ({ api, event, args }) {
     return api.sendMessage({ msg: "⚠️ Spam sticker đang chạy trong nhóm này. Gõ /spamsticker off để dừng." }, threadId, type);
   }
 
-  try {
-    await api.sendMessage({ msg: "⏳ Đang nạp sticker hiệu ứng từ stickers.zaloapp.com..." }, threadId, type);
-  } catch { /* không bắt buộc */ }
-
   let pool;
   try {
     pool = await stickerStore.ensure(api);
