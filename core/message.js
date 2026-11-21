@@ -516,7 +516,17 @@ function isObsoleteMenuOpeningAcknowledgement(message) {
     ? message
     : message && typeof message === "object" ? message.msg : null;
   if (typeof text !== "string") return false;
-  return /^⏳\s*Đang mở danh mục lệnh(?:\.{3}|…)?$/iu.test(text.trim());
+
+  // Older send paths may append punctuation, mention text or formatting
+  // whitespace. Suppress the legacy status phrase wherever it appears, while
+  // leaving the actual menu title/card untouched.
+  let normalized;
+  try {
+    normalized = text.normalize("NFKC").replace(/\\s+/gu, " ").trim();
+  } catch {
+    normalized = text.trim();
+  }
+  return /⏳\\s*đang mở danh mục lệnh/iu.test(normalized);
 }
 
 const guardedSendMessageApis = new WeakSet();
