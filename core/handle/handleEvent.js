@@ -143,7 +143,7 @@ async function handleEvent(eventType, eventData, api, isSelf = false, dispatchOp
     },
     onError(error, kind, name) {
       const label = kind === "event" ? "event" : "handleEvent trong command";
-      logger.log(`Lỗi khi xử lý ${label} ${name}: ${error?.message || error}`, "error", { source: kind === "event" ? "event" : "command-event", eventName: name, eventType, isGroup: isGroupEvent || eventType === "group_event", groupId: eventData?.threadId });
+      logger.log(`Lỗi khi xử lý ${label} ${name}: ${error?.stack || error?.message || error}`, "error", { source: kind === "event" ? "event" : "command-event", eventName: name, eventType, isGroup: isGroupEvent || eventType === "group_event", groupId: eventData?.threadId });
     }
   });
 }
