@@ -39,6 +39,18 @@ This is an architectural migration of deterministic domain logic. The Caro
 board workload is small, so it is not presented as a guaranteed end-to-end
 latency improvement.
 
+## Stage 3 — Nối Từ text engine
+
+- Rust crate: `native/game-core-rs` (Unicode normalization dependency).
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `src/domain/games/engines/noituEngine.js`.
+- Scope: Vietnamese syllable normalization, phrase normalization and phrase
+  parsing. The JavaScript layer continues to own session state, player order,
+  duplicate history and turn transitions.
+- Rollback: set `JT_RUST_NOITU_ENGINE=0` to force the JavaScript functions.
+- Verification: Unicode edge-case fixtures, JS/Rust parity tests and a CI
+  N-API smoke test.
+
 ## Later migration order
 
 1. Continue pure domain engines one module at a time (Nối Từ, Sâm and Tiến Lên),

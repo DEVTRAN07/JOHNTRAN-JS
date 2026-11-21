@@ -47,6 +47,8 @@ jobs:
           cp native/text-style-rs/target/release/libtext_style_rs.so native/text-style-rs/text_style_rs.node
       - name: Smoke test Rust Caro N-API addon
         run: node -e 'const native = require("./native"); if (!native.getGameCoreDiagnostics().active) throw new Error("Rust game core addon was not activated"); const result = native.tryCaroChooseAiMove(Array(256).fill(null), "O"); if (!result.used || !Number.isInteger(result.value)) throw new Error("Rust Caro engine smoke test failed")'
+      - name: Smoke test Rust Nối Từ text engine
+        run: node -e 'const native = require("./native"); if (!native.getNoituEngineDiagnostics().active) throw new Error("Rust Nối Từ functions were not activated"); if (native.tryNoituNormalizePhrase("VIÊN CHỨC!").value !== "vien chuc") throw new Error("Rust Nối Từ normalization failed"); const phrase = native.tryNoituParsePhrase("ĐIỆN-thoại").value; if (!phrase || phrase.normalized !== "dien thoai") throw new Error("Rust Nối Từ phrase parser failed")'
       # Keep the broad legacy suite lightweight; the real JSON writer is
       # exercised in its own isolated, bounded test process below.
       - name: Run Node test suite without per-test JSON workers

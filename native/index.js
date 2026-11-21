@@ -21,6 +21,7 @@ const ffmpegNative = tryLoad("ffmpeg-rs", "ffmpeg_rs.node");
 const textStyleNative = tryLoad("text-style-rs", "text_style_rs.node");
 const commandParserNative = tryLoad("command-core-rs", "command_core_rs.node");
 const gameCoreNative = tryLoad("game-core-rs", "game_core_rs.node");
+let noituEngineLastError = null;
 
 let textStyleLastError = null;
 
@@ -142,6 +143,55 @@ function getGameCoreDiagnostics() {
     exports,
     loadError: gameCoreNative.ok ? null : String(gameCoreNative.err?.message || gameCoreNative.err),
     lastError: gameCoreLastError
+  };
+}
+
+function runNoituNative(exportNames, value) {
+  if (process.env.JT_RUST_NOITU_ENGINE === "0" || !gameCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const names = Array.isArray(exportNames) ? exportNames : [exportNames];
+  const fn = names.map(name => gameCoreNative.mod[name]).find(item => typeof item === "function");
+  if (typeof fn !== "function") {
+    noituEngineLastError = "Rust Nối Từ export is missing: " + names.join("/");
+    return { used: false, value: null };
+  }
+  try {
+    const result = fn(String(value || ""));
+    noituEngineLastError = null;
+    return { used: true, value: result };
+  } catch (error) {
+    noituEngineLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function tryNoituNormalizeSyllable(value) {
+  return runNoituNative(["noitu_normalize_syllable", "noituNormalizeSyllable"], value);
+}
+
+function tryNoituNormalizePhrase(value) {
+  return runNoituNative(["noitu_normalize_phrase", "noituNormalizePhrase"], value);
+}
+
+function tryNoituParsePhrase(value) {
+  return runNoituNative(["noitu_parse_phrase", "noituParsePhrase"], value);
+}
+
+function getNoituEngineDiagnostics() {
+  const required = [
+    ["noitu_normalize_syllable", "noituNormalizeSyllable"],
+    ["noitu_normalize_phrase", "noituNormalizePhrase"],
+    ["noitu_parse_phrase", "noituParsePhrase"]
+  ];
+  const complete = required.every(names => names.some(name => typeof gameCoreNative.mod?.[name] === "function"));
+  const enabled = process.env.JT_RUST_NOITU_ENGINE !== "0";
+  return {
+    loaded: gameCoreNative.ok,
+    enabled,
+    active: enabled && gameCoreNative.ok && complete,
+    lastError: noituEngineLastError,
+    loadError: gameCoreNative.ok ? null : String(gameCoreNative.err?.message || gameCoreNative.err)
   };
 }
 
@@ -328,6 +378,10 @@ const nativeApi = {
   tryCaroEvaluateMove,
   tryCaroChooseAiMove,
   getGameCoreDiagnostics,
+  tryNoituNormalizeSyllable,
+  tryNoituNormalizePhrase,
+  tryNoituParsePhrase,
+  getNoituEngineDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,

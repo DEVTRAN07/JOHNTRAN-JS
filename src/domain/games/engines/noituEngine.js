@@ -1,29 +1,43 @@
 "use strict";
 
+const nativeCore = require("../../../../native");
+
 const START_PHRASES = Object.freeze([
   "học sinh", "bông hoa", "bầu trời", "máy tính", "mặt trời",
   "đường phố", "trường học", "sách vở", "bóng đá", "điện thoại",
   "nước biển", "cây xanh", "cá voi", "mưa rào", "bàn học"
 ]);
 
-function normalizeSyllable(value) {
+function normalizeSyllableFallback(value) {
   return String(value || "").toLocaleLowerCase("vi-VN").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
 }
 
-function normalizePhrase(value) {
-  return String(value || "").toLocaleLowerCase("vi-VN").normalize("NFC")
-    .replace(/[^\p{L}\s]/gu, " ").replace(/\s+/g, " ").trim()
-    .split(" ").filter(Boolean).map(normalizeSyllable).join(" ");
+function normalizeSyllable(value) {
+  const nativeResult = nativeCore.tryNoituNormalizeSyllable(value);
+  if (nativeResult.used && typeof nativeResult.value === "string") return nativeResult.value;
+  return normalizeSyllableFallback(value);
 }
 
-function parsePhrase(value) {
+function normalizePhraseFallback(value) {
+  return String(value || "").toLocaleLowerCase("vi-VN").normalize("NFC")
+    .replace(/[^\p{L}\s]/gu, " ").replace(/\s+/g, " ").trim()
+    .split(" ").filter(Boolean).map(normalizeSyllableFallback).join(" ");
+}
+
+function normalizePhrase(value) {
+  const nativeResult = nativeCore.tryNoituNormalizePhrase(value);
+  if (nativeResult.used && typeof nativeResult.value === "string") return nativeResult.value;
+  return normalizePhraseFallback(value);
+}
+
+function parsePhraseFallback(value) {
   const display = String(value || "").normalize("NFC").toLocaleLowerCase("vi-VN")
     .replace(/[^\p{L}\s]/gu, " ").replace(/\s+/g, " ").trim();
   if (!display) return null;
   const words = display.split(" ");
   if (words.length < 2 || words.length > 4) return null;
-  const syllables = words.map(normalizeSyllable);
+  const syllables = words.map(normalizeSyllableFallback);
   if (syllables.some(word => !word || !/^[a-z]+$/.test(word))) return null;
   return {
     display,
@@ -32,6 +46,22 @@ function parsePhrase(value) {
     last: syllables[syllables.length - 1],
     syllables
   };
+}
+
+function parsePhrase(value) {
+  const nativeResult = nativeCore.tryNoituParsePhrase(value);
+  if (nativeResult.used) {
+    const phrase = nativeResult.value;
+    if (phrase == null) return null;
+    if (phrase && typeof phrase.display === "string" &&
+        typeof phrase.normalized === "string" &&
+        typeof phrase.first === "string" &&
+        typeof phrase.last === "string" &&
+        Array.isArray(phrase.syllables)) {
+      return phrase;
+    }
+  }
+  return parsePhraseFallback(value);
 }
 
 function nextPlayer(session) {
@@ -127,4 +157,4 @@ function pass(session, uid) {
   return { ok: true, nextPlayer: nextPlayer(session) };
 }
 
-module.exports = { START_PHRASES, normalizeSyllable, normalizePhrase, parsePhrase, createSession, join, leave, play, pass };
+module.exports = { START_PHRASES, normalizeSyllable, normalizePhrase, parsePhrase, createSession, join, leave, play, pass, getNativeDiagnostics: nativeCore.getNoituEngineDiagnostics, __test: { normalizeSyllableFallback, normalizePhraseFallback, parsePhraseFallback } };

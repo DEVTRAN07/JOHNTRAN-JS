@@ -1,4 +1,5 @@
 use napi_derive::napi;
+use unicode_normalization::UnicodeNormalization;
 use std::sync::OnceLock;
 
 const BOARD_SIZE: usize = 16;
@@ -220,5 +221,151 @@ mod tests {
         let result = caro_evaluate_move(board, 4, "X".to_string());
         assert!(result.won);
         assert!(!result.draw);
+    }
+}
+
+
+#[napi(object)]
+pub struct ParsedNoituPhrase {
+    pub display: String,
+    pub normalized: String,
+    pub first: String,
+    pub last: String,
+    pub syllables: Vec<String>,
+}
+
+fn is_js_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        '\u{0009}'..='\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+            | '\u{FEFF}'
+    )
+}
+
+fn normalize_syllable_inner(value: &str) -> String {
+    value
+        .to_lowercase()
+        .nfd()
+        .filter(|character| !('\u{0300}'..='\u{036F}').contains(character))
+        .map(|character| if character == 'đ' { 'd' } else { character })
+        .collect()
+}
+
+fn clean_phrase_display(value: &str, normalize_before_lowercase: bool) -> String {
+    let source = if normalize_before_lowercase {
+        value.nfc().collect::<String>().to_lowercase()
+    } else {
+        value.to_lowercase().nfc().collect::<String>()
+    };
+    let mut cleaned = String::with_capacity(source.len());
+    for character in source.chars() {
+        if character.is_alphabetic() || is_js_whitespace(character) {
+            cleaned.push(character);
+        } else {
+            cleaned.push(' ');
+        }
+    }
+    cleaned
+        .split(is_js_whitespace)
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn normalize_phrase_inner(value: &str) -> String {
+    let display = clean_phrase_display(value, false);
+    display
+        .split(' ')
+        .filter(|word| !word.is_empty())
+        .map(normalize_syllable_inner)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn parse_phrase_inner(value: &str) -> Option<ParsedNoituPhrase> {
+    let display = clean_phrase_display(value, true);
+    if display.is_empty() {
+        return None;
+    }
+
+    let words: Vec<&str> = display.split(' ').filter(|word| !word.is_empty()).collect();
+    if !(2..=4).contains(&words.len()) {
+        return None;
+    }
+
+    let syllables: Vec<String> = words.iter().map(|word| normalize_syllable_inner(word)).collect();
+    if syllables.iter().any(|word| {
+        word.is_empty() || !word.chars().all(|character| character.is_ascii_lowercase())
+    }) {
+        return None;
+    }
+
+    Some(ParsedNoituPhrase {
+        display,
+        normalized: syllables.join(" "),
+        first: syllables.first()?.clone(),
+        last: syllables.last()?.clone(),
+        syllables,
+    })
+}
+
+#[napi]
+pub fn noitu_normalize_syllable(value: String) -> String {
+    normalize_syllable_inner(&value)
+}
+
+#[napi]
+pub fn noitu_normalize_phrase(value: String) -> String {
+    normalize_phrase_inner(&value)
+}
+
+#[napi]
+pub fn noitu_parse_phrase(value: String) -> Option<ParsedNoituPhrase> {
+    parse_phrase_inner(&value)
+}
+
+#[cfg(test)]
+mod noitu_tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_vietnamese_diacritics_punctuation_and_spacing() {
+        assert_eq!(normalize_phrase_inner("  VIÊN   CHỨC! "), "vien chuc");
+        assert_eq!(normalize_syllable_inner("ĐIỆN"), "dien");
+    }
+
+    #[test]
+    fn parses_valid_vietnamese_phrases_and_rejects_invalid_word_counts() {
+        let parsed = parse_phrase_inner("ĐIỆN-thoại").unwrap();
+        assert_eq!(parsed.display, "điện thoại");
+        assert_eq!(parsed.normalized, "dien thoai");
+        assert_eq!(parsed.first, "dien");
+        assert_eq!(parsed.last, "thoai");
+        assert_eq!(parsed.syllables, vec!["dien", "thoai"]);
+
+        assert!(parse_phrase_inner("sinh").is_none());
+        assert!(parse_phrase_inner("mot hai ba bon nam").is_none());
+    }
+
+    #[test]
+    fn handles_unicode_whitespace_and_combining_marks() {
+        assert_eq!(normalize_phrase_inner("\u{FEFF}VIÊN\u{00A0}CHỨC"), "vien chuc");
+        assert_eq!(parse_phrase_inner("a\u{0085}b c").unwrap().normalized, "a b c");
+        assert_eq!(normalize_syllable_inner("a\u{0301}"), "a");
+    }
+
+    #[test]
+    fn rejects_non_ascii_syllables_for_game_phrases() {
+        assert!(parse_phrase_inner("猫 猫").is_none());
+        assert_eq!(normalize_phrase_inner("猫 猫"), "猫 猫");
     }
 }

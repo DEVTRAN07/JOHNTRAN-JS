@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = { workspace = true }
 napi-derive = { workspace = true }
+unicode-normalization = "0.1"
 
 [build-dependencies]
 napi-build = "2"
