@@ -214,6 +214,19 @@ latency improvement.
   bundle/body priority, case handling, JSON, escaped delimiters and encoded
   equals, plus CI N-API smoke test.
 
+## Stage 16 — SoundCloud script URL attribute scanner
+
+- Rust crate: `native/domain-core-rs`.
+- Compatibility adapter: `src/application/media/music/soundcloud.js`.
+- Scope: scan `script` and `link` tags for quoted `src`, `data-src` and
+  `href` values, including the existing escaped-slash and HTML-entity
+  normalization. Rust returns the raw attribute values in document order.
+- Node retains WHATWG URL resolution, SoundCloud host allow-list, JS/MJS
+  extension checks, duplicate removal, bundle priority and all HTTP requests.
+- Rollback: set `JT_RUST_SOUNDCLOUD_PARSER=0`.
+- Verification: Rust domain-core unit tests, Node raw-attribute parity tests,
+  final URL list parity tests and CI N-API smoke test.
+
 ## Later migration order
 
 1. Continue auditing remaining pure media/text parsing and event-payload

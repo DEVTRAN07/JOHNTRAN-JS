@@ -82,6 +82,48 @@ function javascriptBatch(sources) {
   return null;
 }
 
+test("Rust SoundCloud script attribute scanner matches the JavaScript regex fallback", t => {
+  if (!native.getSoundCloudParserDiagnostics().loaded) {
+    t.skip("native domain-core addon is not built in this environment");
+    return;
+  }
+
+  const html = [
+    '<script defer src="/assets/app.js"></script>',
+    '<script type="module" src="https://a-v2.sndcdn.com/assets/chunk.mjs?v=4"></script>',
+    '<link data-src="/assets/deferred.js">',
+    '<link href="/assets/player.js">',
+    '<script src="https://example.org/not-soundcloud.js"></script>',
+    '<script async\n src="https://sndcdn.com/assets/escaped.js?x=1&amp;y=2"></script>',
+    '<script src="https:\\/\\/sndcdn.com\\/assets\\/backslash.js"></script>'
+  ].join("");
+
+  const expectedAttributes = soundcloud._test.extractScriptAttributesFallback(html);
+  const nativeAttributes = native.trySoundCloudExtractScriptAttributes(html);
+  assert.equal(nativeAttributes.used, true, "Rust script attribute API was not used");
+  assert.deepEqual(nativeAttributes.value, expectedAttributes);
+
+  const previous = process.env.JT_RUST_SOUNDCLOUD_PARSER;
+  try {
+    process.env.JT_RUST_SOUNDCLOUD_PARSER = "0";
+    const fallbackUrls = soundcloud._test.scriptUrlsFromHtml(html);
+    process.env.JT_RUST_SOUNDCLOUD_PARSER = "1";
+    const rustUrls = soundcloud._test.scriptUrlsFromHtml(html);
+    assert.deepEqual(rustUrls, fallbackUrls);
+    assert.equal(rustUrls.length, 6,
+      "relative URLs and SoundCloud CDN assets are retained while external hosts are rejected");
+    assert.ok(rustUrls.some(url => url.includes("chunk.mjs?v=4")));
+    assert.ok(rustUrls.some(url => url.includes("deferred.js")));
+    assert.ok(rustUrls.some(url => url.includes("player.js")));
+    assert.ok(rustUrls.some(url => url.includes("escaped.js?x=1&y=2")));
+    assert.ok(rustUrls.some(url => url.includes("backslash.js")));
+    assert.ok(rustUrls.every(url => !url.includes("example.org")));
+  } finally {
+    if (previous === undefined) delete process.env.JT_RUST_SOUNDCLOUD_PARSER;
+    else process.env.JT_RUST_SOUNDCLOUD_PARSER = previous;
+  }
+});
+
 test("Rust SoundCloud client_id parser is active in the built native addon", t => {
   const diagnostics = native.getSoundCloudParserDiagnostics();
   if (!diagnostics.loaded) {

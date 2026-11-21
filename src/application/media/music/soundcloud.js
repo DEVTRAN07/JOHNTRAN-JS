@@ -213,17 +213,29 @@ function isValidClientId(value) {
   return /^[A-Za-z0-9]{32}$/.test(String(value || "").trim());
 }
 
-function scriptUrlsFromHtml(html) {
+function extractScriptAttributesFallback(html) {
   const source = String(html || "")
     .replace(/\\u002[fF]/g, "/")
     .replace(/\\\//g, "/")
     .replace(/&amp;/gi, "&");
-  const urls = [];
+  const attributes = [];
   const re = /<(?:script|link)\b[^>]*?\b(?:src|data-src|href)\s*=\s*(["'])(.*?)\1/gi;
   let match;
-
   while ((match = re.exec(source)) !== null) {
-    const raw = String(match[2] || "").trim();
+    attributes.push(String(match[2] || ""));
+  }
+  return attributes;
+}
+
+function scriptUrlsFromHtml(html) {
+  const nativeResult = nativeCore.trySoundCloudExtractScriptAttributes(String(html || ""));
+  const attributes = nativeResult.used
+    ? nativeResult.value
+    : extractScriptAttributesFallback(html);
+  const urls = [];
+
+  for (const attribute of attributes || []) {
+    const raw = String(attribute || "").trim();
     if (!raw || !/\.m?js(?:[?#]|$)/i.test(raw)) continue;
     try {
       const url = new URL(raw, HOME_URL);
@@ -832,6 +844,7 @@ module.exports = {
   _test: {
     isValidClientId,
     scriptUrlsFromHtml,
+    extractScriptAttributesFallback,
     extractClientId,
     extractClientIdFallback,
     extractClientIdFromSources,

@@ -11,7 +11,7 @@ Domain chứa quy tắc nghiệp vụ thuần, không biết về Zalo SDK, HTTP
 - core/http/requestPolicy.js: tính giới hạn timeout/retry/delay chạy Rust; đọc cấu hình, request, DNS và retry thực tế vẫn do JS điều phối.
 - core/runtime/rateLimiter.js: có bản Rust giữ state và prune, nhưng JS vẫn là mặc định vì benchmark N-API chậm hơn khoảng 2,1 lần trên CI; Rust chỉ bật thử bằng `JT_RUST_RATE_LIMITER=1`.
 
-- src/application/media/music/soundcloud.js: Rust quét `client_id` trong bundle theo lô; HTTP, OAuth, cache và tải audio vẫn do Node điều phối.
+- src/application/media/music/soundcloud.js: Rust quét thuộc tính script và `client_id` theo lô; Node giữ URL resolution, host allow-list, HTTP, OAuth, cache và tải audio.
 
 ## Miền tiếp theo
 - games/engines/: caroEngine, noituEngine, samEngine và tlmnEngine là luật chơi thuần, không phụ thuộc Zalo, file hay network.

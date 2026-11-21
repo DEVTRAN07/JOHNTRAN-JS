@@ -137,6 +137,26 @@ function trySoundCloudExtractClientId(sources = []) {
   }
 }
 
+function trySoundCloudExtractScriptAttributes(html) {
+  if (process.env.JT_RUST_SOUNDCLOUD_PARSER === "0" || !domainCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const parser = domainCoreNative.mod.soundcloud_extract_script_attributes ||
+    domainCoreNative.mod.soundcloudExtractScriptAttributes;
+  if (typeof parser !== "function") {
+    soundCloudParserLastError = "Rust SoundCloud script-attribute export is missing";
+    return { used: false, value: null };
+  }
+  try {
+    const value = parser(String(html || ""));
+    soundCloudParserLastError = null;
+    return { used: true, value: Array.isArray(value) ? value : [] };
+  } catch (error) {
+    soundCloudParserLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
 function getSoundCloudParserDiagnostics() {
   const parser = domainCoreNative.ok
     ? domainCoreNative.mod.soundcloud_extract_client_id ||
@@ -830,6 +850,7 @@ const nativeApi = {
   tryRestartPlan,
   getRestartPolicyDiagnostics,
   trySoundCloudExtractClientId,
+  trySoundCloudExtractScriptAttributes,
   getSoundCloudParserDiagnostics,
   tryRequestBoundedInteger,
   tryResolveHttpRequestPolicy,

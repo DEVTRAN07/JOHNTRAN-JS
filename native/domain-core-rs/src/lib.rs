@@ -1412,6 +1412,118 @@ pub fn soundcloud_extract_client_id(
     None
 }
 
+
+fn is_js_regex_word_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn normalize_soundcloud_html_source(source: &str) -> String {
+    let unicode_slashes = replace_ascii_case_insensitive(source, "\\u002f", "/");
+    let escaped_slashes = replace_ascii_case_insensitive(&unicode_slashes, "\\/", "/");
+    replace_ascii_case_insensitive(&escaped_slashes, "&amp;", "&")
+}
+
+fn find_soundcloud_attribute_value(
+    source: &str,
+    start: usize,
+    end: usize,
+) -> Option<(String, usize)> {
+    let bytes = source.as_bytes();
+    for (relative, _) in source.get(start..end)?.char_indices() {
+        let position = start + relative;
+        if position > 0 && is_js_regex_word_byte(bytes[position - 1]) {
+            continue;
+        }
+
+        let attribute_len = if starts_with_ascii_case_insensitive_at(source, position, "src") {
+            3usize
+        } else if starts_with_ascii_case_insensitive_at(source, position, "data-src") {
+            8usize
+        } else if starts_with_ascii_case_insensitive_at(source, position, "href") {
+            4usize
+        } else {
+            continue;
+        };
+
+        let mut value_position = skip_js_whitespace(source, position + attribute_len);
+        if bytes.get(value_position) != Some(&b'=') {
+            continue;
+        }
+        value_position = skip_js_whitespace(source, value_position + 1);
+        let quote = match bytes.get(value_position) {
+            Some(b'"') => b'"',
+            Some(b'\'') => b'\'',
+            _ => continue,
+        };
+        let value_start = value_position + 1;
+
+        for (value_relative, character) in source.get(value_start..end)?.char_indices() {
+            if character == quote as char {
+                let value_end = value_start + value_relative;
+                return Some((source[value_start..value_end].to_string(), value_end + 1));
+            }
+            // JavaScript's non-dotAll regex does not allow a newline in the
+            // captured attribute value.
+            if matches!(character, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                break;
+            }
+        }
+    }
+    None
+}
+
+fn extract_soundcloud_script_attributes(source: &str) -> Vec<String> {
+    let normalized = normalize_soundcloud_html_source(source);
+    let bytes = normalized.as_bytes();
+    let mut output = Vec::new();
+    let mut cursor = 0usize;
+
+    while cursor < normalized.len() {
+        let relative = match normalized[cursor..].find('<') {
+            Some(relative) => relative,
+            None => break,
+        };
+        let opening = cursor + relative;
+        let tag_start = opening + 1;
+
+        let tag_len = if starts_with_ascii_case_insensitive_at(&normalized, tag_start, "script") {
+            6usize
+        } else if starts_with_ascii_case_insensitive_at(&normalized, tag_start, "link") {
+            4usize
+        } else {
+            cursor = opening + 1;
+            continue;
+        };
+
+        let name_end = tag_start + tag_len;
+        if name_end < bytes.len() && is_js_regex_word_byte(bytes[name_end]) {
+            cursor = opening + 1;
+            continue;
+        }
+
+        let tag_end = normalized[name_end..]
+            .find('>')
+            .map(|relative_end| name_end + relative_end)
+            .unwrap_or(normalized.len());
+
+        if let Some((value, next_cursor)) =
+            find_soundcloud_attribute_value(&normalized, name_end, tag_end)
+        {
+            output.push(value);
+            cursor = next_cursor;
+        } else {
+            cursor = opening + 1;
+        }
+    }
+
+    output
+}
+
+#[napi]
+pub fn soundcloud_extract_script_attributes(html: String) -> Vec<String> {
+    extract_soundcloud_script_attributes(&html)
+}
+
 #[cfg(test)]
 mod soundcloud_client_id_tests {
     use super::*;
@@ -1497,6 +1609,34 @@ mod soundcloud_client_id_tests {
         assert_eq!(
             soundcloud_extract_client_id(sources),
             Some(id(first_body))
+        );
+    }
+
+    #[test]
+    fn script_attribute_scanner_preserves_tag_order_and_supported_attribute_names() {
+        let html = r#"<script defer src="/assets/app.js"></script>
+            <script type="module" src="https://a-v2.sndcdn.com/assets/chunk.mjs?v=4"></script>
+            <link data-src='/assets/deferred.js'>
+            <link href="/assets/player.js">
+            <script src="https://example.org/not-soundcloud.js"></script>"#;
+        assert_eq!(
+            extract_soundcloud_script_attributes(html),
+            vec![
+                "/assets/app.js",
+                "https://a-v2.sndcdn.com/assets/chunk.mjs?v=4",
+                "/assets/deferred.js",
+                "/assets/player.js",
+                "https://example.org/not-soundcloud.js"
+            ]
+        );
+    }
+
+    #[test]
+    fn script_attribute_scanner_normalizes_escaped_slashes_and_html_ampersands() {
+        let html = r#"<script src="https:\/\/a-v2.sndcdn.com\/assets\/bundle.js?x=1&amp;y=2"></script>"#;
+        assert_eq!(
+            extract_soundcloud_script_attributes(html),
+            vec!["https://a-v2.sndcdn.com/assets/bundle.js?x=1&y=2"]
         );
     }
 
