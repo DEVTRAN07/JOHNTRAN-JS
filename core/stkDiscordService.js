@@ -8,11 +8,11 @@ const stickerService = require("./stickerService");
 const catalog = require("./data/stkDiscord200.json");
 const { FFMPEG_THREADS } = require("./mediaResourceLimits");
 
-const RAW_BASE_URL = String(process.env.STK_DISCORD_RAW_BASE_URL ||
-  "https://raw.githubusercontent.com/DEVTRAN07/Discord-decor/745a7ad1d155d03bda4466a92e52c3c578f279ab").replace(/\/+$/, "");
+const { RAW_BASE_URL: BUNDLED_RAW_BASE_URL, ASSETS_DIR } = require("../src/application/stk/assets");
+const RAW_BASE_URL = String(process.env.STK_DISCORD_RAW_BASE_URL || BUNDLED_RAW_BASE_URL).replace(/\\/+$/, "");
 const DEFAULT_CACHE_ROOT = process.env.JT_PERSISTENT_DIR || path.join(__dirname, "..", "cache");
-const DECOR_DIR = path.resolve(process.env.STK_DISCORD_CACHE_DIR ||
-  path.join(DEFAULT_CACHE_ROOT, "stk-discord"));
+const DECOR_DIR = path.resolve(process.env.STK_DISCORD_CACHE_DIR || ASSETS_DIR);
+const RESULT_CACHE_DIR = path.join(DEFAULT_CACHE_ROOT, "stk-discord");
 const TMP_DIR = path.join(__dirname, "..", "cache", "temp");
 const CANVAS_SIZE = 288;
 const AVATAR_SIZE = 240;
@@ -390,7 +390,7 @@ async function createStaticRust(sourceBuffer, decorationBuffer) {
     size: CANVAS_SIZE,
     avatarSize: AVATAR_SIZE,
     offset: OFFSET,
-    quality: 68
+    quality: 92
   });
   const buffer = Buffer.isBuffer(result?.buffer)
     ? result.buffer
@@ -632,7 +632,7 @@ function extractUploadedUrl(uploaded) {
 
 const RESULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const RESULT_CACHE_MAX_ENTRIES = 2000;
-const DEFAULT_RESULT_CACHE_FILE = path.join(DECOR_DIR, "results-v1.json");
+const DEFAULT_RESULT_CACHE_FILE = path.join(RESULT_CACHE_DIR, "results-v1.json");
 
 function createResultCacheKey(mediaUrl, decorationId) {
   const normalizedUrl = stickerService.normalizeSourceUrl(mediaUrl);
