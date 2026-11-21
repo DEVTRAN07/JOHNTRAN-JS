@@ -69,3 +69,17 @@ test("latest and failed updates produce distinct user messages", () => {
   assert.match(failed, /CẬP NHẬT JOHNTRAN-JS THẤT BẠI/);
   assert.match(failed, /git fetch failed/);
 });
+
+test("only the matching command can clear a pending update request", t => {
+  const root = makeTempRoot(t);
+  const request = updateReport.writeUpdateRequest(root, {
+    botName: "main",
+    threadId: "private-456",
+    threadType: 0
+  });
+
+  assert.equal(updateReport.clearUpdateRequest(root, "another-request"), false);
+  assert.equal(updateReport.readUpdateRequest(root).id, request.id);
+  assert.equal(updateReport.clearUpdateRequest(root, request.id), true);
+  assert.equal(updateReport.readUpdateRequest(root), null);
+});
