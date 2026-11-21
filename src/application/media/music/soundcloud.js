@@ -213,14 +213,19 @@ function isValidClientId(value) {
 }
 
 function scriptUrlsFromHtml(html) {
+  const source = String(html || "")
+    .replace(/\\u002[fF]/g, "/")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/gi, "&");
   const urls = [];
-  const re = /<script\b[^>]*?\b(?:src|data-src)\s*=\s*(["'])(.*?)\1/gi;
+  const re = /<(?:script|link)\b[^>]*?\b(?:src|data-src|href)\s*=\s*(["'])(.*?)\1/gi;
   let match;
-  while ((match = re.exec(String(html || ""))) !== null) {
-    const src = String(match[2] || "").trim();
-    if (!src || !/\.m?js(?:[?#]|$)/i.test(src)) continue;
+
+  while ((match = re.exec(source)) !== null) {
+    const raw = String(match[2] || "").trim();
+    if (!raw || !/\.m?js(?:[?#]|$)/i.test(raw)) continue;
     try {
-      const url = new URL(src, HOME_URL);
+      const url = new URL(raw, HOME_URL);
       const host = url.hostname.toLowerCase();
       if (host === "soundcloud.com" || host.endsWith(".soundcloud.com") ||
           host === "sndcdn.com" || host.endsWith(".sndcdn.com")) {
@@ -228,10 +233,24 @@ function scriptUrlsFromHtml(html) {
       }
     } catch { /* bỏ URL script không hợp lệ */ }
   }
-  return [...new Set(urls)].sort((a, b) => {
-    const score = (url) => /sndcdn\.com/i.test(url) ? 2 : /soundcloud\.com/i.test(url) ? 1 : 0;
-    return score(b) - score(a);
-  });
+
+  // SoundCloud usually places client_id in a late sndcdn asset bundle.
+  // Prefer the last asset bundle in document order, not the first scripts.
+  return [...new Set(urls)]
+    .map((url, index) => {
+      let priority = 0;
+      try {
+        const parsed = new URL(url);
+        const host = parsed.hostname.toLowerCase();
+        const assetBundle = /\/assets\//i.test(parsed.pathname) && /\.m?js$/i.test(parsed.pathname);
+        if ((host === "sndcdn.com" || host.endsWith(".sndcdn.com")) && assetBundle) priority = 3;
+        else if (host === "sndcdn.com" || host.endsWith(".sndcdn.com")) priority = 2;
+        else priority = 1;
+      } catch { /* URL đã được validate ở trên */ }
+      return { url, index, priority };
+    })
+    .sort((left, right) => right.priority - left.priority || right.index - left.index)
+    .map(item => item.url);
 }
 
 function extractClientId(source) {
@@ -254,34 +273,49 @@ function extractClientId(source) {
 
 // Resolve a rotating SoundCloud client_id from current web bundles in parallel.
 // The old serial scan could spend 25s × 25 scripts before a search failed.
-const CLIENT_ID_SCRIPT_LIMIT = 8;
-const CLIENT_ID_SCRIPT_TIMEOUT_MS = 8000;
-const CLIENT_ID_HOME_TIMEOUT_MS = 9000;
+const CLIENT_ID_SCRIPT_LIMIT = 24;
+const CLIENT_ID_SCRIPT_TIMEOUT_MS = 5000;
+const CLIENT_ID_HOME_TIMEOUT_MS = 8000;
+const CLIENT_ID_SCRIPT_BATCH_SIZE = 4;
 
 async function discoverClientIdFromScripts(scriptUrls, request = pooledAxios.get) {
   const urls = [...new Set(Array.isArray(scriptUrls) ? scriptUrls : [])]
     .slice(0, CLIENT_ID_SCRIPT_LIMIT);
   if (!urls.length) return null;
+
   const controller = new AbortController();
-  const attempts = urls.map(async scriptUrl => {
-    const response = await request(scriptUrl, {
-      timeout: CLIENT_ID_SCRIPT_TIMEOUT_MS,
-      signal: controller.signal,
-      __retryLimit: 0,
-      responseType: "text",
-      transformResponse: [(body) => body],
-      headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }
-    });
-    const js = typeof response.data === "string"
-      ? response.data
-      : Buffer.from(response.data || []).toString("utf8");
-    const clientId = extractClientId(js) || extractClientId(scriptUrl);
-    if (!clientId) throw new Error("SoundCloud bundle không chứa client_id.");
-    return clientId;
-  });
+  const fetchClientId = async (scriptUrl) => {
+    try {
+      const response = await request(scriptUrl, {
+        timeout: CLIENT_ID_SCRIPT_TIMEOUT_MS,
+        signal: controller.signal,
+        __retryLimit: 0,
+        responseType: "text",
+        transformResponse: [(body) => body],
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Accept": "*/*",
+          "Range": "bytes=0-50000"
+        }
+      });
+      const js = typeof response.data === "string"
+        ? response.data
+        : Buffer.from(response.data || []).toString("utf8");
+      return extractClientId(js) || extractClientId(scriptUrl);
+    } catch {
+      return null;
+    }
+  };
+
   try {
-    return await Promise.any(attempts);
-  } catch {
+    // Fetch in small concurrent batches, but keep the newest bundles first.
+    // If several contain an ID, use the newest bundle's result.
+    for (let offset = 0; offset < urls.length; offset += CLIENT_ID_SCRIPT_BATCH_SIZE) {
+      const batch = urls.slice(offset, offset + CLIENT_ID_SCRIPT_BATCH_SIZE);
+      const results = await Promise.all(batch.map(fetchClientId));
+      const found = results.find(Boolean);
+      if (found) return found;
+    }
     return null;
   } finally {
     controller.abort();
@@ -315,7 +349,7 @@ async function discoverClientId() {
 
   if (discovering) return discovering;
   if (Date.now() < negativeUntil) {
-    const error = new Error("Dich vu SoundCloud tam thoi khong kha dung (khong lay duoc client_id), vui long thu lai sau hoac dat music.soundcloud_client_id.");
+    const error = new Error("SoundCloud đang tạm thời không cung cấp client_id. Bot sẽ tự thử lại sau; hãy kiểm tra kết nối tới soundcloud.com nếu lỗi tiếp diễn.");
     error.notAvailable = true;
     throw error;
   }
@@ -381,7 +415,7 @@ async function discoverClientId() {
         }
       } catch { /* bo qua */ }
       negativeUntil = Date.now() + CLIENT_ID_NEGATIVE_TTL;
-      const error = new Error("Khong tim thay client_id cua SoundCloud (trang web da thay doi cau truc). Thu dat music.soundcloud_client_id trong config.");
+      const error = new Error("Không tìm thấy client_id trong trang chủ hoặc bundle SoundCloud. Có thể SoundCloud đã đổi cấu trúc hoặc chặn truy cập từ mạng hiện tại.");
       error.notAvailable = true;
       throw error;
     } finally {
@@ -792,6 +826,7 @@ module.exports = {
     pickTranscoding,
     extractResolvedStreamUrl,
     CLIENT_ID_SCRIPT_LIMIT,
-    CLIENT_ID_SCRIPT_TIMEOUT_MS
+    CLIENT_ID_SCRIPT_TIMEOUT_MS,
+    CLIENT_ID_SCRIPT_BATCH_SIZE
   }
 };
