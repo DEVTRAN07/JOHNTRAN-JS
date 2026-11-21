@@ -25,8 +25,6 @@ test("update result is persisted and delivered only to the requesting bot", t =>
   const report = updateReport.completeUpdate(root, {
     status: "success",
     updated: true,
-    oldVersion: "4.0.0",
-    newVersion: "4.0.1",
     oldSha: "1234567890abcdef",
     newSha: "abcdef1234567890",
     changedFiles: 7
@@ -35,39 +33,43 @@ test("update result is persisted and delivered only to the requesting bot", t =>
   assert.equal(updateReport.readUpdateRequest(root), null);
   assert.equal(updateReport.readPendingResult(root, "worker-b"), null);
   assert.equal(updateReport.readPendingResult(root, "worker-a").id, request.id);
-  assert.match(updateReport.formatUpdateReport(report), /v4\.0\.0 → v4\.0\.1/);
-  assert.match(updateReport.formatUpdateReport(report), /1234567 → abcdef1/);
+  const message = updateReport.formatUpdateReport(report);
+  assert.match(message, /Phiên bản cũ: 1234567/);
+  assert.match(message, /Phiên bản mới: abcdef1/);
+  assert.doesNotMatch(message, /4\.0\.0|4\.0\.1/);
   assert.equal(updateReport.clearPendingResult(root, "wrong-id"), false);
   assert.equal(updateReport.clearPendingResult(root, request.id), true);
   assert.equal(updateReport.readPendingResult(root, "worker-a"), null);
 });
 
-test("same package version still reports the updated source commit", t => {
+test("Git commit short hash is used as the version when package version is unchanged", () => {
   const message = updateReport.formatUpdateReport({
     status: "success",
     updated: true,
-    oldVersion: "4.0.0",
-    newVersion: "4.0.0",
-    oldSha: "111111111111",
-    newSha: "222222222222",
+    oldSha: "1111111111111111111111111111111111111111",
+    newSha: "2e90ba616b2878ad5345de58a25d706074099832",
     changedFiles: 3
   });
 
-  assert.match(message, /v4\.0\.0 \(số phiên bản release không đổi\)/);
-  assert.match(message, /1111111 → 2222222/);
+  assert.match(message, /Phiên bản cũ: 1111111/);
+  assert.match(message, /Phiên bản mới: 2e90ba6/);
+  assert.doesNotMatch(message, /4\.0\.0/);
 });
-
 test("latest and failed updates produce distinct user messages", () => {
   const latest = updateReport.formatUpdateReport({
-    status: "success", updated: false, newVersion: "4.0.0", newSha: "1234567890"
+    status: "success", updated: false, newSha: "1234567890abcdef"
   });
   const failed = updateReport.formatUpdateReport({
-    status: "failed", newVersion: "4.0.0", newSha: "1234567890", error: "git fetch failed"
+    status: "failed", newSha: "1234567890abcdef", error: "git fetch failed"
   });
 
   assert.match(latest, /ĐÃ Ở BẢN MỚI NHẤT/);
+  assert.match(latest, /Phiên bản hiện tại: 1234567/);
+  assert.doesNotMatch(latest, /4\.0\.0/);
   assert.match(failed, /CẬP NHẬT JOHNTRAN-JS THẤT BẠI/);
   assert.match(failed, /git fetch failed/);
+  assert.match(failed, /Phiên bản đang chạy: 1234567/);
+  assert.doesNotMatch(failed, /4\.0\.0/);
 });
 
 test("only the matching command can clear a pending update request", t => {
