@@ -111,40 +111,36 @@ function clearPendingResult(root = ROOT, reportId = "") {
   return true;
 }
 
+function shortCommit(value) {
+  const hash = String(value || "").trim();
+  return /^[a-f0-9]{7,40}$/i.test(hash) ? hash.slice(0, 7) : "unknown";
+}
+
 function formatUpdateReport(report = {}) {
-  const version = value => "v" + String(value || "unknown").replace(/^v/i, "");
-  const oldVersion = version(report.oldVersion);
-  const newVersion = version(report.newVersion);
-  const oldSha = String(report.oldSha || "").slice(0, 7) || "unknown";
-  const newSha = String(report.newSha || "").slice(0, 7) || "unknown";
+  const oldCommit = shortCommit(report.oldSha);
+  const newCommit = shortCommit(report.newSha || report.oldSha);
 
   if (report.status !== "success") {
     return [
       "❌ CẬP NHẬT JOHNTRAN-JS THẤT BẠI",
-      "Phiên bản hiện tại: " + newVersion,
-      "Commit hiện tại: " + newSha,
+      "Phiên bản đang chạy: " + newCommit,
       report.error ? "Lý do: " + String(report.error).slice(0, 450) : "Updater không hoàn tất.",
-      "Bot đã khởi động lại bằng mã nguồn hiện tại."
+      "Bot giữ nguyên mã nguồn hiện tại."
     ].join("\n");
   }
 
   if (report.updated !== true) {
     return [
       "✅ JOHNTRAN-JS ĐÃ Ở BẢN MỚI NHẤT",
-      "Phiên bản: " + newVersion,
-      "Commit: " + newSha,
-      "Không có mã nguồn mới cần tải."
+      "Phiên bản hiện tại: " + newCommit,
+      "Đã đồng bộ với GitHub main, không có commit mới."
     ].join("\n");
   }
 
-  const versionLine = oldVersion === newVersion
-    ? "Phiên bản ứng dụng: " + newVersion + " (số phiên bản release không đổi)"
-    : "Phiên bản: " + oldVersion + " → " + newVersion;
-
   return [
     "✅ CẬP NHẬT JOHNTRAN-JS THÀNH CÔNG",
-    versionLine,
-    "Commit: " + oldSha + " → " + newSha,
+    "Phiên bản cũ: " + oldCommit,
+    "Phiên bản mới: " + newCommit,
     "Số file thay đổi: " + Math.max(0, Number(report.changedFiles) || 0),
     "Bot đã khởi động lại bằng mã nguồn mới."
   ].join("\n");
