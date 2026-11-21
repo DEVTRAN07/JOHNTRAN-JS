@@ -132,6 +132,9 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
 
         const shutdown = async () => {
             logger.log("Đang dừng tất cả bot con...", "warn");
+            if (panelUpdateProcess && !panelUpdateProcess.killed) {
+              try { panelUpdateProcess.kill("SIGTERM"); } catch {}
+            }
             await manager.stopAll();
             process.exit(0);
         };
