@@ -9,7 +9,20 @@ pub struct ParsedCommand {
 }
 
 fn is_js_whitespace(character: char) -> bool {
-    character.is_whitespace() || character == '\u{FEFF}'
+    matches!(
+        character,
+        '\u{0009}'..='\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+            | '\u{FEFF}'
+    )
 }
 
 fn parse_command_inner(message_text: &str, prefix: &str) -> ParsedCommand {
@@ -71,6 +84,13 @@ mod tests {
     fn rejects_messages_without_a_nonempty_prefix() {
         assert!(!parse_command_inner("hello", "/").matched);
         assert!(!parse_command_inner("/menu", "").matched);
+    }
+
+    #[test]
+    fn does_not_split_on_next_line_character_that_javascript_s_does_not_treat_as_whitespace() {
+        let parsed = parse_command_inner("/menu arg\\u{0085}tail", "/");
+        assert_eq!(parsed.command, "menu");
+        assert_eq!(parsed.args, vec!["arg\\u{0085}tail"]);
     }
 
     #[test]

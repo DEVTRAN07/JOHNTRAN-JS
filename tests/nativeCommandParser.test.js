@@ -9,6 +9,7 @@ const cases = [
   ["prefix only", ["/ \t\n", "/"], { matched: true, command: "", args: [] }],
   ["legacy whitespace split", ["/SCL   Sơn Tùng --format=aac", "/"], { matched: true, command: "scl", args: ["Sơn", "Tùng", "--format=aac"] }],
   ["BOM and NBSP", ["/\uFEFFMENU\u00A0xin chào", "/"], { matched: true, command: "menu", args: ["xin", "chào"] }],
+  ["NEL is not JavaScript whitespace", ["/menu arg\\u0085tail", "/"], { matched: true, command: "menu", args: ["arg\\u0085tail"] }],
   ["Vietnamese lowercase", ["/ĐĂNG nhập", "/"], { matched: true, command: "đăng", args: ["nhập"] }],
   ["empty prefix", ["/menu", ""], { matched: false, command: "", args: [] }]
 ];
