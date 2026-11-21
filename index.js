@@ -44,6 +44,7 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
         // that were running before the request; manually stopped bots stay off.
         let panelUpdateProcess = null;
         let panelUpdateInProgress = false;
+        let panelShuttingDown = false;
         manager.setUpdateHandler(({ botName }) => {
           if (panelUpdateInProgress) return;
           panelUpdateInProgress = true;
@@ -52,6 +53,11 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
             .map(bot => bot.name);
 
           const restartPreviousBots = () => {
+            if (panelShuttingDown) {
+              panelUpdateProcess = null;
+              panelUpdateInProgress = false;
+              return;
+            }
             for (const name of restartNames) {
               const bot = manager.get(name);
               if (!bot || bot.process) continue;
@@ -131,6 +137,8 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
         }
 
         const shutdown = async () => {
+            if (panelShuttingDown) return;
+            panelShuttingDown = true;
             logger.log("Đang dừng tất cả bot con...", "warn");
             if (panelUpdateProcess && !panelUpdateProcess.killed) {
               try { panelUpdateProcess.kill("SIGTERM"); } catch {}
