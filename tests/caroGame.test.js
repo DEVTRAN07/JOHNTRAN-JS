@@ -637,3 +637,52 @@ test("Caro safely ignores non-primitive Zalo sender identifiers", async () => {
     assert.equal(await caroCommand.handleIncoming(context), false);
   });
 });
+
+
+test("Caro game event safely handles a non-primitive Zalo display name", async () => {
+  const sent = [];
+  const malformedName = Object.create(null);
+  const context = {
+    api: {
+      async sendMessage(payload) {
+        sent.push(payload);
+        return { ok: true };
+      }
+    },
+    isSelf: false,
+    Threads: {},
+    event: {
+      type: 2,
+      threadId: "caro-malformed-display-name",
+      data: {
+        uidFrom: "player-1",
+        dName: malformedName,
+        name: malformedName,
+        content: "join caro"
+      }
+    }
+  };
+
+  await assert.doesNotReject(() => caroCommand.handleIncoming(context));
+  assert.equal(sent.length, 1, "the game should return its normal no-room response");
+});
+
+test("Caro game event uses a safe default for a malformed configured prefix", async () => {
+  const previous = global.config;
+  try {
+    global.config = { prefix: Object.create(null) };
+    const result = await caroCommand.handleIncoming({
+      isSelf: false,
+      Threads: {},
+      event: {
+        type: 2,
+        threadId: "caro-malformed-prefix",
+        data: { uidFrom: "player-1", content: "hello" }
+      }
+    });
+    assert.equal(result, false);
+  } finally {
+    if (previous === undefined) delete global.config;
+    else global.config = previous;
+  }
+});
