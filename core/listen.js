@@ -624,6 +624,13 @@ function startListening(api) {
       }
     }
 
+    if (state.importedMessages > 0) {
+      logger.log(
+        `Topchat đã bổ sung tổng ${state.importedMessages} tin nhắn hôm nay từ lịch sử WebSocket (${state.groups.size} nhóm, ${state.pageCount} trang)`,
+        "info"
+      );
+    }
+
     logger.log(
       complete
         ? `Topchat đã quét lịch sử nhóm tới đầu ngày ${state.dateKey} (${state.pageCount} trang)`
@@ -674,6 +681,7 @@ function startListening(api) {
       dateKey: vietnamDateKey(),
       maxPages: maxHistoryPages(),
       pageCount: 0,
+      importedMessages: 0,
       cursors: new Set(),
       groups: new Set(),
       requestTimer: null,
@@ -695,12 +703,7 @@ function startListening(api) {
     }
 
     const result = await counter.recordHistoryMessages(messages, Threads);
-    if (result.messages > 0) {
-      logger.log(
-        `Topchat đã bổ sung ${result.messages} tin nhắn hôm nay từ lịch sử WebSocket (${result.groups} nhóm)`,
-        "info"
-      );
-    }
+    require("./topchat/wsBackfill").accumulateHistoryImport(state, result);
 
     // Only the response to the outstanding group-history request advances the
     // cursor. A batch may contain up to 50 messages; ask for the preceding
