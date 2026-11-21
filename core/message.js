@@ -516,7 +516,7 @@ function isObsoleteMenuOpeningAcknowledgement(message) {
     ? message
     : message && typeof message === "object" ? message.msg : null;
   if (typeof text !== "string") return false;
-  return /^⏳\\s*Đang mở danh mục lệnh(?:\\.{3}|…)?$/iu.test(text.trim());
+  return /^⏳\s*Đang mở danh mục lệnh(?:\.{3}|…)?$/iu.test(text.trim());
 }
 
 function wrapApi(api, threadId, type, commandName, event = null) {
