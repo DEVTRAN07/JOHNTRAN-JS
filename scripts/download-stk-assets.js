@@ -153,60 +153,79 @@ async function downloadAllAssets(options = {}) {
 
   const manifestItems = await runWithConcurrency(items, concurrency, async item => {
     const fileName = String(item.file || "");
-    if (!fileName || path.basename(fileName) !== fileName || !/\.png$/i.test(fileName)) {
-      throw new Error("Tên khung không hợp lệ cho ID " + item.id);
-    }
-    const targetPath = path.join(directory, fileName);
-    let buffer = !force
-      ? await readUsableFile(targetPath, isPng, MAX_FRAME_BYTES)
-      : null;
-    let wasDownloaded = false;
-    if (!buffer) {
-      const source = await fetchBuffer(fileName, {
-        fetchImpl: options.fetchImpl,
-        timeoutMs: options.timeoutMs,
-        maxBytes: MAX_FRAME_BYTES
-      });
-      if (!isPng(source)) throw new Error("Khung #" + item.id + " không phải PNG hợp lệ.");
-      buffer = await optimizeStaticPng(source);
-      await atomicWrite(targetPath, buffer);
-      wasDownloaded = true;
-    }
+    try {
+      if (!fileName || path.basename(fileName) !== fileName || !/\.png$/i.test(fileName)) {
+        throw new Error("Tên khung không hợp lệ.");
+      }
+      const targetPath = path.join(directory, fileName);
+      let buffer = !force
+        ? await readUsableFile(targetPath, isPng, MAX_FRAME_BYTES)
+        : null;
+      let wasDownloaded = false;
+      if (!buffer) {
+        const source = await fetchBuffer(fileName, {
+          fetchImpl: options.fetchImpl,
+          timeoutMs: options.timeoutMs,
+          maxBytes: MAX_FRAME_BYTES
+        });
+        if (!isPng(source)) throw new Error("Nguồn không phải PNG hợp lệ.");
+        buffer = await optimizeStaticPng(source);
+        await atomicWrite(targetPath, buffer);
+        wasDownloaded = true;
+      }
 
-    const dimensions = pngDimensions(buffer);
-    totalBytes += buffer.length;
-    if (wasDownloaded) downloaded += 1;
-    else skipped += 1;
-    return {
-      id: item.id,
-      file: fileName,
-      width: dimensions.width,
-      height: dimensions.height,
-      bytes: buffer.length,
-      sha256: sha256(buffer),
-      optimized: dimensions.width <= MAX_FRAME_SIDE && dimensions.height <= MAX_FRAME_SIDE,
-      downloaded: wasDownloaded
-    };
+      const dimensions = pngDimensions(buffer);
+      totalBytes += buffer.length;
+      if (wasDownloaded) downloaded += 1;
+      else skipped += 1;
+      return {
+        id: item.id,
+        file: fileName,
+        width: dimensions.width,
+        height: dimensions.height,
+        bytes: buffer.length,
+        sha256: sha256(buffer),
+        optimized: dimensions.width <= MAX_FRAME_SIDE && dimensions.height <= MAX_FRAME_SIDE,
+        downloaded: wasDownloaded,
+        missing: false
+      };
+    } catch (error) {
+      logger.warn?.("[stk-assets] Khung #" + item.id + " chưa tải được: " +
+        String(error?.message || error));
+      return {
+        id: item.id,
+        file: fileName,
+        missing: true,
+        error: String(error?.message || error).slice(0, 240)
+      };
+    }
   });
 
   let menu = null;
+  let menuMissing = false;
   if (includeMenu) {
-    const menuPath = path.join(directory, "menu.jpg");
-    let buffer = !force
-      ? await readUsableFile(menuPath, isJpeg, MAX_MENU_BYTES)
-      : null;
-    const wasDownloaded = !buffer;
-    if (!buffer) {
-      buffer = await fetchBuffer("menu.jpg", {
-        fetchImpl: options.fetchImpl,
-        timeoutMs: options.timeoutMs,
-        maxBytes: MAX_MENU_BYTES
-      });
-      if (!isJpeg(buffer)) throw new Error("menu.jpg tải về không phải JPEG hợp lệ.");
-      await atomicWrite(menuPath, buffer);
+    try {
+      const menuPath = path.join(directory, "menu.jpg");
+      let buffer = !force
+        ? await readUsableFile(menuPath, isJpeg, MAX_MENU_BYTES)
+        : null;
+      const wasDownloaded = !buffer;
+      if (!buffer) {
+        buffer = await fetchBuffer("menu.jpg", {
+          fetchImpl: options.fetchImpl,
+          timeoutMs: options.timeoutMs,
+          maxBytes: MAX_MENU_BYTES
+        });
+        if (!isJpeg(buffer)) throw new Error("menu.jpg tải về không phải JPEG hợp lệ.");
+        await atomicWrite(menuPath, buffer);
+      }
+      totalBytes += buffer.length;
+      menu = { file: "menu.jpg", bytes: buffer.length, sha256: sha256(buffer), downloaded: wasDownloaded };
+    } catch (error) {
+      menuMissing = true;
+      logger.warn?.("[stk-assets] Menu chưa tải được: " + String(error?.message || error));
+      menu = { file: "menu.jpg", missing: true, error: String(error?.message || error).slice(0, 240) };
     }
-    totalBytes += buffer.length;
-    menu = { file: "menu.jpg", bytes: buffer.length, sha256: sha256(buffer), downloaded: wasDownloaded };
   }
 
   const manifest = {
@@ -230,7 +249,8 @@ async function downloadAllAssets(options = {}) {
     skipped,
     totalBytes,
     elapsedMs: Date.now() - startedAt,
-    missing: manifestItems.length - downloaded - skipped
+    missing: manifestItems.filter(item => item.missing).length,
+    menuMissing
   };
   logger.info?.(
     "[stk-assets] " + result.total + "/"+ result.total +
@@ -244,7 +264,12 @@ async function downloadAllAssets(options = {}) {
 
 if (require.main === module) {
   const force = process.argv.includes("--force");
-  downloadAllAssets({ force }).catch(error => {
+  downloadAllAssets({ force }).then(result => {
+    if (result.missing > 0 || result.menuMissing) {
+      console.error("[stk-assets] Thiếu " + result.missing + " khung; menuMissing=" + result.menuMissing);
+      process.exitCode = 1;
+    }
+  }).catch(error => {
     console.error("[stk-assets] Download failed:", error?.stack || error);
     process.exitCode = 1;
   });
