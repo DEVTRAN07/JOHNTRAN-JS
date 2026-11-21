@@ -5,10 +5,19 @@
  * This module deliberately has no Zalo SDK dependency so its behavior is easy
  * to test and can be reused by message, group and system event handlers.
  */
+function isNumericThreadType(value) {
+  if (typeof value === "number") return Number.isFinite(value);
+  // Only coerce primitive strings. SDK model objects (including null-prototype
+  // objects) must never reach Number(), which can throw during event dispatch.
+  return typeof value === "string" &&
+    value.trim() !== "" &&
+    Number.isFinite(Number(value));
+}
+
 function resolveThreadType(eventData, eventType, ThreadType) {
   let threadType = eventData?.type;
   // For group events, event.type is the event name, not a ThreadType.
-  if (eventType === "group_event" || !Number.isFinite(Number(threadType))) {
+  if (eventType === "group_event" || !isNumericThreadType(threadType)) {
     threadType = ThreadType.Group;
   }
   return threadType;
@@ -56,6 +65,7 @@ function createEventContext({
 }
 
 module.exports = {
+  isNumericThreadType,
   resolveThreadType,
   buildReplyData,
   createEventContext
