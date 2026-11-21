@@ -7,7 +7,7 @@ const { withRequesterMention } = require("../../core/mentions");
 const game = require("../../core/runtime/services/games/caroService");
 const workerRender = require("../../core/canvas/workerRender");
 const { sendStyledRawMessage } = require("../../core/message");
-const { extractPlainText } = require("../../core/runtime/plainText");
+const { extractPlainText, safePrimitiveString } = require("../../core/runtime/plainText");
 
 // One live Caro canvas card per group. A replacement is sent first; only
 // after Zalo returns its message IDs do we recall the previous board image.
@@ -649,8 +649,8 @@ async function handleIncoming(context = {}) {
   if (content.startsWith(prefix)) return false;
 
   const lower = content.toLocaleLowerCase("vi-VN");
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   if (!threadId || !uid) return false;
 
   if (lower === "join caro") return joinRoom(context);
