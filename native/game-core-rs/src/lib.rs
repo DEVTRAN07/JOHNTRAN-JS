@@ -1159,7 +1159,7 @@ fn tlmn_detect_white_hand_inner(hand: Vec<SamCard>) -> Option<String> {
     if has_run(6) { priorities.push("sixPairRun"); }
     if counts.iter().filter(|(_, count)| *count >= 3).count() >= 4 { priorities.push("fourTriples"); }
     if counts.iter().filter(|(_, count)| *count == 4).count() >= 2 { priorities.push("twoFourKinds"); }
-    if ["b", "ch", "r", "c"].iter().any(|suit| cards.iter().filter(|card| card.suit.as_str() == *suit).count() >= 12) {
+    if ["b", "ch", "r", "c"].iter().any(|suit| cards.iter().filter(|card| card.suit == suit.to_string()).count() >= 12) {
         priorities.push("twelveSameSuit");
     }
     if has_run(5) { priorities.push("fivePairRun"); }
@@ -1192,8 +1192,8 @@ fn tlmn_white_hand_high_card_inner(hand: Vec<SamCard>, kind: &str) -> Option<Sam
     if kind == "dragonStraight" { return pick_highest_card_of_rank(14); }
     if kind == "fourTwos" { return pick_highest_card_of_rank(15); }
     if kind == "twelveSameSuit" {
-        let suit = ["b", "ch", "r", "c"].iter().find(|suit| cards.iter().filter(|card| card.suit.as_str() == *suit).count() >= 12)?;
-        return cards.iter().filter(|card| card.suit.as_str() == *suit).last().cloned();
+        let suit = ["b", "ch", "r", "c"].iter().find(|suit| cards.iter().filter(|card| card.suit == suit.to_string()).count() >= 12)?;
+        return cards.iter().filter(|card| card.suit == suit.to_string()).last().cloned();
     }
     if kind == "fourTriples" || kind == "twoFourKinds" {
         let minimum = if kind == "fourTriples" { 3 } else { 4 };
