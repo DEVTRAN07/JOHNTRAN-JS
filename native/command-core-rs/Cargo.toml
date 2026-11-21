@@ -10,7 +10,7 @@ name = "command_core_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { workspace = true, features = ["derive"] }
+napi = { workspace = true }
 napi-derive = { workspace = true }
 
 [build-dependencies]
