@@ -18,6 +18,7 @@ const stats = require("../../core/stats");
 const schedule = require("node-schedule");
 const { cleanOldMessages, getMessageCache } = require("../../utils/index");
 const updateReport = require("../../core/runtime/updateReport");
+const { installGlobalSendMessageGuard } = require("../../core/message");
 
 const loginMod = login;
 
@@ -179,6 +180,11 @@ try {
 }
 
 global.api = api;
+
+// Install a process-wide guard before listeners or plugins can send messages.
+if (!installGlobalSendMessageGuard(api)) {
+  logger.log("Không cài được bộ lọc tin nhắn menu cũ trên Zalo API.", "warn");
+}
 
 if (loginStatsTimer) {
   clearInterval(loginStatsTimer);
