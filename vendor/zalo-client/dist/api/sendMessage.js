@@ -108,13 +108,6 @@ export const sendMessageFactory = apiFactory()((api, ctx, utils) => {
                 const result = await resolveResponse(ctx, response);
                 // Zalo chỉ trả { msgId } → tự gắn cliMsgId = clientId đã gửi
                 // (ảnh có clientId riêng nên ưu tiên each.clientId)
-                try {
-                    const debugPath = require("path").join(__dirname, "..", "..", "..", "..", "data", "recall_debug.log");
-                    const line = `[vendor-send] clientId=${clientId} eachClientId=${each && each.clientId} result=${JSON.stringify(result)}`;
-                    require("fs").mkdirSync(require("path").dirname(debugPath), { recursive: true });
-                    require("fs").appendFileSync(debugPath, line + "\n");
-                    console.log(line);
-                } catch { /* bỏ qua */ }
                 if (result && typeof result === "object" && !result.cliMsgId) {
                     result.cliMsgId = each.clientId ? String(each.clientId) : (clientId !== undefined ? String(clientId) : undefined);
                 }
