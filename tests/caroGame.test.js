@@ -650,7 +650,7 @@ test("Caro game event safely handles a non-primitive Zalo display name", async (
       }
     },
     isSelf: false,
-    Threads: {},
+    Threads: { getCachedData: () => ({ data: {} }) },
     event: {
       type: 2,
       threadId: "caro-malformed-display-name",
