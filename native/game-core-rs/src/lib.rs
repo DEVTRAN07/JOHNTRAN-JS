@@ -369,3 +369,463 @@ mod noitu_tests {
         assert_eq!(normalize_phrase_inner("猫 猫"), "猫 猫");
     }
 }
+
+
+#[derive(Clone)]
+#[napi(object)]
+pub struct SamCard {
+    pub rank: f64,
+    pub suit: String,
+    pub id: String,
+}
+
+#[derive(Clone)]
+#[napi(object)]
+pub struct SamCombo {
+    pub combo_type: String,
+    pub cards: Vec<SamCard>,
+    pub length: u32,
+    pub main_rank: f64,
+    pub high_suit: i32,
+    pub card_count: u32,
+}
+
+#[napi(object)]
+pub struct SamValidationResult {
+    pub ok: bool,
+    pub code: Option<String>,
+    pub combo: Option<SamCombo>,
+    pub current_combo: Option<SamCombo>,
+}
+
+fn sam_suit_weight(suit: &str) -> i32 {
+    match suit {
+        "b" => 0,
+        "ch" => 1,
+        "r" => 2,
+        "c" => 3,
+        _ => -1,
+    }
+}
+
+fn sam_valid_rank(rank: f64) -> bool {
+    rank.is_finite() && rank.fract() == 0.0 && (3.0..=15.0).contains(&rank)
+}
+
+fn sam_sort_hand_inner(mut cards: Vec<SamCard>) -> Vec<SamCard> {
+    cards.sort_by(|left, right| {
+        left.rank.partial_cmp(&right.rank).unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| sam_suit_weight(&left.suit).cmp(&sam_suit_weight(&right.suit)))
+    });
+    cards
+}
+
+fn sam_parse_card_code_inner(value: &str) -> Option<SamCard> {
+    let source = value.trim_matches(is_js_whitespace).to_ascii_lowercase();
+    let (rank_text, suit_text) = if let Some(rest) = source.strip_prefix("10") {
+        ("10", rest)
+    } else {
+        let mut chars = source.chars();
+        let rank = chars.next()?;
+        let rest: String = chars.collect();
+        if !matches!(rank, '3'..='9' | 'j' | 'q' | 'k' | 'a' | '2') {
+            return None;
+        }
+        return sam_build_card(rank.to_string().as_str(), rest.as_str());
+    };
+    sam_build_card(rank_text, suit_text)
+}
+
+fn sam_build_card(rank_text: &str, suit_text: &str) -> Option<SamCard> {
+    let rank = match rank_text {
+        "j" => 11.0,
+        "q" => 12.0,
+        "k" => 13.0,
+        "a" => 14.0,
+        "2" => 15.0,
+        _ => rank_text.parse::<f64>().ok()?,
+    };
+    let suit = match suit_text {
+        "t" => "ch",
+        "b" | "ch" | "r" | "c" => suit_text,
+        _ => return None,
+    };
+    if !sam_valid_rank(rank) {
+        return None;
+    }
+    Some(SamCard {
+        rank,
+        suit: suit.to_string(),
+        id: format!("{}{}", rank as u32, suit),
+    })
+}
+
+fn sam_analyze_combo_inner(input_cards: Vec<SamCard>) -> Option<SamCombo> {
+    let cards = sam_sort_hand_inner(input_cards);
+    if cards.is_empty() || cards.iter().any(|card| !sam_valid_rank(card.rank) || sam_suit_weight(&card.suit) < 0) {
+        return None;
+    }
+
+    let mut counts: Vec<(i64, usize)> = Vec::new();
+    for card in &cards {
+        let rank = card.rank as i64;
+        if let Some((_, count)) = counts.iter_mut().find(|(existing, _)| *existing == rank) {
+            *count += 1;
+        } else {
+            counts.push((rank, 1));
+        }
+    }
+    counts.sort_by_key(|(rank, _)| *rank);
+    let ranks: Vec<i64> = counts.iter().map(|(rank, _)| *rank).collect();
+
+    let max_card = cards.last()?;
+    let mut combo_type = String::new();
+    let mut main_rank = max_card.rank;
+    if cards.len() == 1 {
+        combo_type = "single".to_string();
+    } else if cards.len() == 2 && counts.len() == 1 {
+        combo_type = "pair".to_string();
+    } else if cards.len() == 3 && counts.len() == 1 {
+        combo_type = "triple".to_string();
+    } else if cards.len() == 4 && counts.len() == 1 {
+        combo_type = "fourKind".to_string();
+    } else if cards.len() >= 3 && counts.len() == cards.len()
+        && !ranks.contains(&15)
+        && ranks.iter().enumerate().all(|(index, rank)| index == 0 || *rank == ranks[index - 1] + 1)
+    {
+        combo_type = "straight".to_string();
+        main_rank = *ranks.last()? as f64;
+    }
+    if combo_type.is_empty() {
+        return None;
+    }
+
+    let high_suit = cards.iter().map(|card| sam_suit_weight(&card.suit)).max().unwrap_or(-1);
+    Some(SamCombo {
+        combo_type,
+        length: cards.len() as u32,
+        main_rank,
+        high_suit,
+        card_count: cards.len() as u32,
+        cards,
+    })
+}
+
+fn sam_can_beat_inner(candidate: Option<&SamCombo>, current: Option<&SamCombo>) -> bool {
+    let Some(candidate) = candidate else { return false; };
+    let Some(current) = current else { return true; };
+
+    if candidate.combo_type == "fourKind" && current.combo_type == "single" && current.main_rank == 15.0 {
+        return true;
+    }
+    if candidate.combo_type == "fourKind" && current.combo_type == "fourKind" {
+        return candidate.main_rank > current.main_rank;
+    }
+    if candidate.combo_type != current.combo_type || candidate.length != current.length {
+        return false;
+    }
+    candidate.main_rank > current.main_rank
+}
+
+fn sam_validation_error(code: &str, combo: Option<SamCombo>, current_combo: Option<SamCombo>) -> SamValidationResult {
+    SamValidationResult {
+        ok: false,
+        code: Some(code.to_string()),
+        combo,
+        current_combo,
+    }
+}
+
+fn sam_validate_play_inner(
+    hand: Vec<SamCard>,
+    input_cards: Vec<SamCard>,
+    current_combo: Option<SamCombo>,
+    must_contain_three_of_spades: bool,
+) -> SamValidationResult {
+    let selected = sam_sort_hand_inner(input_cards);
+    if selected.is_empty() {
+        return sam_validation_error("EMPTY_PLAY", None, None);
+    }
+
+    let mut ids = std::collections::HashSet::new();
+    if selected.iter().any(|card| !ids.insert(card.id.clone())) {
+        return sam_validation_error("DUPLICATE_CARD", None, None);
+    }
+
+    let hand_ids: std::collections::HashSet<String> = hand.into_iter().map(|card| card.id).collect();
+    if selected.iter().any(|card| !hand_ids.contains(&card.id)) {
+        return sam_validation_error("CARD_NOT_IN_HAND", None, None);
+    }
+
+    let Some(combo) = sam_analyze_combo_inner(selected.clone()) else {
+        return sam_validation_error("INVALID_COMBINATION", None, None);
+    };
+
+    if must_contain_three_of_spades && !ids.contains("3b") {
+        return sam_validation_error("MUST_PLAY_THREE_SPADES", None, None);
+    }
+
+    if let Some(current) = current_combo.as_ref() {
+        if !sam_can_beat_inner(Some(&combo), Some(current)) {
+            return SamValidationResult {
+                ok: false,
+                code: Some("CANNOT_BEAT".to_string()),
+                combo: Some(combo),
+                current_combo,
+            };
+        }
+    }
+
+    SamValidationResult {
+        ok: true,
+        code: None,
+        combo: Some(combo),
+        current_combo: None,
+    }
+}
+
+fn sam_detect_white_hand_inner(input_hand: Vec<SamCard>) -> Option<String> {
+    let cards = sam_sort_hand_inner(input_hand);
+    if cards.len() != 10 {
+        return None;
+    }
+
+    let mut counts: Vec<(i64, usize)> = Vec::new();
+    for card in &cards {
+        let rank = card.rank as i64;
+        if let Some((_, count)) = counts.iter_mut().find(|(existing, _)| *existing == rank) {
+            *count += 1;
+        } else {
+            counts.push((rank, 1));
+        }
+    }
+    counts.sort_by_key(|(rank, _)| *rank);
+    let ranks: Vec<i64> = counts.iter().map(|(rank, _)| *rank).collect();
+    let mut priorities: Vec<&str> = Vec::new();
+
+    if ranks.len() == 10 && !ranks.contains(&15)
+        && ranks.iter().enumerate().all(|(index, rank)| index == 0 || *rank == ranks[index - 1] + 1)
+    {
+        priorities.push("longStraight");
+    }
+    if counts.iter().any(|(rank, count)| *rank == 15 && *count == 4) {
+        priorities.push("fourTwos");
+    }
+    let is_red = |suit: &str| suit != "b" && suit != "ch";
+    if cards.iter().all(|card| is_red(&card.suit)) || cards.iter().all(|card| !is_red(&card.suit)) {
+        priorities.push("sameColor");
+    }
+    if counts.iter().filter(|(_, count)| *count == 3).count() >= 3 {
+        priorities.push("threeTriples");
+    }
+    let pair_units: usize = counts.iter().map(|(_, count)| count / 2).sum();
+    if pair_units >= 5 {
+        priorities.push("fivePairs");
+    }
+
+    ["longStraight", "fourTwos", "sameColor", "threeTriples", "fivePairs"]
+        .iter()
+        .find(|kind| priorities.contains(kind))
+        .map(|kind| (*kind).to_string())
+}
+
+fn sam_white_hand_priority(kind: &str) -> i32 {
+    match kind {
+        "longStraight" => 0,
+        "fourTwos" => 1,
+        "sameColor" => 2,
+        "threeTriples" => 3,
+        "fivePairs" => 4,
+        _ => -1,
+    }
+}
+
+fn sam_white_hand_score(hand: Vec<SamCard>, kind: &str) -> f64 {
+    let cards = sam_sort_hand_inner(hand);
+    let mut counts: Vec<(f64, usize)> = Vec::new();
+    for card in &cards {
+        if let Some((_, count)) = counts.iter_mut().find(|(rank, _)| *rank == card.rank) {
+            *count += 1;
+        } else {
+            counts.push((card.rank, 1));
+        }
+    }
+    cards.iter()
+        .filter(|card| {
+            let count = counts.iter().find(|(rank, _)| *rank == card.rank).map(|(_, count)| *count).unwrap_or(0);
+            if kind == "threeTriples" { count == 3 }
+            else if kind == "fivePairs" { count >= 2 }
+            else { true }
+        })
+        .map(|card| card.rank)
+        .fold(0.0_f64, f64::max)
+}
+
+fn sam_card_label_inner(card: &SamCard) -> String {
+    let rank = match card.rank as i32 {
+        3..=10 if sam_valid_rank(card.rank) => format!("{}", card.rank as i32),
+        11 if card.rank == 11.0 => "J".to_string(),
+        12 if card.rank == 12.0 => "Q".to_string(),
+        13 if card.rank == 13.0 => "K".to_string(),
+        14 if card.rank == 14.0 => "A".to_string(),
+        15 if card.rank == 15.0 => "2".to_string(),
+        _ => card.rank.to_string(),
+    };
+    let suit = match card.suit.as_str() {
+        "b" => "♠",
+        "ch" => "♣",
+        "r" => "♦",
+        "c" => "♥",
+        _ => card.suit.as_str(),
+    };
+    format!("{}{}", rank, suit)
+}
+
+#[napi]
+pub fn sam_create_deck() -> Vec<SamCard> {
+    let mut deck = Vec::with_capacity(52);
+    for rank in 3..=15 {
+        for suit in ["b", "ch", "r", "c"] {
+            deck.push(SamCard { rank: rank as f64, suit: suit.to_string(), id: format!("{}{}", rank, suit) });
+        }
+    }
+    deck
+}
+
+#[napi]
+pub fn sam_sort_hand(cards: Vec<SamCard>) -> Vec<SamCard> {
+    sam_sort_hand_inner(cards)
+}
+
+#[napi]
+pub fn sam_parse_card_code(value: String) -> Option<SamCard> {
+    sam_parse_card_code_inner(&value)
+}
+
+#[napi]
+pub fn sam_analyze_combo(cards: Vec<SamCard>) -> Option<SamCombo> {
+    sam_analyze_combo_inner(cards)
+}
+
+#[napi]
+pub fn sam_can_beat(candidate: Option<SamCombo>, current: Option<SamCombo>) -> bool {
+    sam_can_beat_inner(candidate.as_ref(), current.as_ref())
+}
+
+#[napi]
+pub fn sam_validate_play(
+    hand: Vec<SamCard>,
+    input_cards: Vec<SamCard>,
+    current_combo: Option<SamCombo>,
+    must_contain_three_of_spades: bool,
+) -> SamValidationResult {
+    sam_validate_play_inner(hand, input_cards, current_combo, must_contain_three_of_spades)
+}
+
+#[napi]
+pub fn sam_remove_cards(hand: Vec<SamCard>, played_cards: Vec<SamCard>) -> Vec<SamCard> {
+    let removed: std::collections::HashSet<String> = played_cards.into_iter().map(|card| card.id).collect();
+    hand.into_iter().filter(|card| !removed.contains(&card.id)).collect()
+}
+
+#[napi]
+pub fn sam_detect_white_hand(hand: Vec<SamCard>) -> Option<String> {
+    sam_detect_white_hand_inner(hand)
+}
+
+#[napi]
+pub fn sam_compare_white_hands(hand_a: Vec<SamCard>, type_a: String, hand_b: Vec<SamCard>, type_b: String) -> i32 {
+    let priority = sam_white_hand_priority(&type_a) - sam_white_hand_priority(&type_b);
+    if priority != 0 { return priority; }
+    let score_a = sam_white_hand_score(hand_a, &type_a);
+    let score_b = sam_white_hand_score(hand_b, &type_b);
+    (score_b - score_a) as i32
+}
+
+#[napi]
+pub fn sam_card_label(card: SamCard) -> String {
+    sam_card_label_inner(&card)
+}
+
+#[napi]
+pub fn sam_format_cards(cards: Vec<SamCard>) -> String {
+    sam_sort_hand_inner(cards)
+        .iter()
+        .map(sam_card_label_inner)
+        .collect::<Vec<_>>()
+        .join("  ")
+}
+
+
+fn sam_normalize_text_inner(value: &str) -> String {
+    value
+        .nfd()
+        .filter(|character| !('\u{0300}'..='\u{036F}').contains(character))
+        .map(|character| if character == 'đ' || character == 'Đ' { 'd' } else { character })
+        .collect::<String>()
+        .to_lowercase()
+        .trim_matches(is_js_whitespace)
+        .to_string()
+}
+
+#[napi]
+pub fn sam_normalize_text(value: String) -> String {
+    sam_normalize_text_inner(&value)
+}
+
+#[cfg(test)]
+mod sam_tests {
+    use super::*;
+
+    fn card(rank: f64, suit: &str) -> SamCard {
+        SamCard { rank, suit: suit.to_string(), id: format!("{}{}", rank as u32, suit) }
+    }
+
+    #[test]
+    fn creates_and_sorts_the_standard_deck() {
+        let deck = sam_create_deck();
+        assert_eq!(deck.len(), 52);
+        let mut sorted = deck.clone();
+        sorted.reverse();
+        sorted = sam_sort_hand_inner(sorted);
+        assert_eq!(sorted.first().unwrap().id, "3b");
+        assert_eq!(sorted.last().unwrap().id, "15c");
+    }
+
+    #[test]
+    fn parses_card_codes_and_normalizes_vietnamese_text() {
+        assert_eq!(sam_parse_card_code_inner("10CH").unwrap().id, "10ch");
+        assert_eq!(sam_parse_card_code_inner("At").unwrap().id, "14ch");
+        assert!(sam_parse_card_code_inner("16b").is_none());
+        assert_eq!(sam_normalize_text_inner("  ĐIỆN THOẠI! "), "dien thoai!");
+    }
+
+    #[test]
+    fn analyzes_combinations_and_compares_four_of_a_kind() {
+        let pair = sam_analyze_combo_inner(vec![card(3.0, "b"), card(3.0, "r")]).unwrap();
+        assert_eq!(pair.combo_type, "pair");
+        let four = sam_analyze_combo_inner(vec![
+            card(7.0, "b"), card(7.0, "ch"), card(7.0, "r"), card(7.0, "c")
+        ]).unwrap();
+        let two = sam_analyze_combo_inner(vec![card(15.0, "c")]).unwrap();
+        assert!(sam_can_beat_inner(Some(&four), Some(&two)));
+        assert!(!sam_can_beat_inner(Some(&pair), Some(&two)));
+    }
+
+    #[test]
+    fn white_hand_tiebreak_returns_the_full_rank_difference() {
+        let low = vec![card(5.0, "b")];
+        let high = vec![card(8.0, "b")];
+        assert_eq!(sam_compare_white_hands(low, "sameColor".to_string(), high, "sameColor".to_string()), 3);
+    }
+
+    #[test]
+    fn detects_white_hand_priorities() {
+        let long_straight: Vec<SamCard> = (3..=12).map(|rank| card(rank as f64, "b")).collect();
+        assert_eq!(sam_detect_white_hand_inner(long_straight), Some("longStraight".to_string()));
+        let five_pairs: Vec<SamCard> = (3..=7).flat_map(|rank| {
+            vec![card(rank as f64, "b"), card(rank as f64, "c")]
+        }).collect();
+        assert_eq!(sam_detect_white_hand_inner(five_pairs), Some("fivePairs".to_string()));
+    }
+}

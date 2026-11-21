@@ -1,5 +1,7 @@
 "use strict";
 
+const nativeCore = require("../../../../native");
+
 const SUITS = Object.freeze([
   { code: "b", symbol: "♠", color: "black", weight: 0 },
   { code: "ch", symbol: "♣", color: "black", weight: 1 },
@@ -24,7 +26,7 @@ const WHITE_HAND_LABEL = Object.freeze({
   fivePairs: "5 ĐÔI"
 });
 
-function createDeck() {
+function createDeckFallback() {
   return Object.entries(RANK_LABEL).flatMap(([rank, label]) =>
     SUITS.map(suit => ({
       rank: Number(rank), suit: suit.code, id: String(rank) + suit.code
@@ -32,7 +34,7 @@ function createDeck() {
   );
 }
 
-function sortHand(cards) {
+function sortHandFallback(cards) {
   return (Array.isArray(cards) ? cards : []).slice().sort((a, b) =>
     Number(a.rank) - Number(b.rank) ||
     (SUIT_WEIGHT[a.suit] ?? -1) - (SUIT_WEIGHT[b.suit] ?? -1)
@@ -67,14 +69,14 @@ function dealCards(playerIds, random = Math.random) {
   };
 }
 
-function normalizeText(value) {
+function normalizeTextFallback(value) {
   return String(value || "").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/g, "d").replace(/Đ/g, "d")
     .toLocaleLowerCase("vi-VN").trim();
 }
 
-function parseCardCode(value) {
+function parseCardCodeFallback(value) {
   const match = String(value || "").trim().match(CARD_CODE);
   if (!match) return null;
   const rawRank = match[1].toLowerCase();
@@ -156,8 +158,8 @@ function parsePlayText(hand, input) {
   return { ok: true, cards: sortHand(cards) };
 }
 
-function analyzeCombo(inputCards) {
-  const cards = sortHand(inputCards);
+function analyzeComboFallback(inputCards) {
+  const cards = sortHandFallback(inputCards);
   if (!cards.length || cards.some(card => !RANK_LABEL[card.rank] || SUIT_WEIGHT[card.suit] === undefined)) return null;
   const counts = new Map();
   for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
@@ -182,7 +184,7 @@ function analyzeCombo(inputCards) {
   };
 }
 
-function canBeat(candidate, current) {
+function canBeatFallback(candidate, current) {
   if (!candidate || !current) return Boolean(candidate);
   if (candidate.type === "fourKind" && current.type === "single" && current.mainRank === 15) return true;
   if (candidate.type === "fourKind" && current.type === "fourKind") {
@@ -193,31 +195,31 @@ function canBeat(candidate, current) {
   return candidate.mainRank > current.mainRank;
 }
 
-function validatePlay(hand, inputCards, currentCombo = null, options = {}) {
-  const selected = sortHand(inputCards);
+function validatePlayFallback(hand, inputCards, currentCombo = null, options = {}) {
+  const selected = sortHandFallback(inputCards);
   if (!selected.length) return { ok: false, code: "EMPTY_PLAY" };
   const ids = selected.map(card => card.id);
   if (new Set(ids).size !== ids.length) return { ok: false, code: "DUPLICATE_CARD" };
   const handIds = new Set((hand || []).map(card => card.id));
   if (ids.some(id => !handIds.has(id))) return { ok: false, code: "CARD_NOT_IN_HAND" };
-  const combo = analyzeCombo(selected);
+  const combo = analyzeComboFallback(selected);
   if (!combo) return { ok: false, code: "INVALID_COMBINATION" };
   if (options.mustContainThreeOfSpades && !ids.includes("3b")) {
     return { ok: false, code: "MUST_PLAY_THREE_SPADES" };
   }
-  if (currentCombo && !canBeat(combo, currentCombo)) {
+  if (currentCombo && !canBeatFallback(combo, currentCombo)) {
     return { ok: false, code: "CANNOT_BEAT", combo, currentCombo };
   }
   return { ok: true, combo };
 }
 
-function removeCards(hand, playedCards) {
+function removeCardsFallback(hand, playedCards) {
   const ids = new Set((playedCards || []).map(card => card.id));
   return (hand || []).filter(card => !ids.has(card.id));
 }
 
-function detectWhiteHand(hand) {
-  const cards = sortHand(hand);
+function detectWhiteHandFallback(hand) {
+  const cards = sortHandFallback(hand);
   if (cards.length !== 10) return null;
   const counts = new Map();
   for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
@@ -239,11 +241,11 @@ function detectWhiteHand(hand) {
   return WHITE_HAND_PRIORITY.find(type => priorities.includes(type)) || null;
 }
 
-function compareWhiteHands(handA, typeA, handB, typeB) {
+function compareWhiteHandsFallback(handA, typeA, handB, typeB) {
   const priority = WHITE_HAND_PRIORITY.indexOf(typeA) - WHITE_HAND_PRIORITY.indexOf(typeB);
   if (priority) return priority;
   const score = (hand, type) => {
-    const cards = sortHand(hand);
+    const cards = sortHandFallback(hand);
     const qualifying = cards.filter(card => {
       const count = cards.filter(other => other.rank === card.rank).length;
       if (type === "threeTriples") return count === 3;
@@ -255,18 +257,138 @@ function compareWhiteHands(handA, typeA, handB, typeB) {
   return score(handB, typeB) - score(handA, typeA);
 }
 
-function cardLabel(card) {
+function cardLabelFallback(card) {
   const suit = SUITS.find(item => item.code === card.suit);
   return (RANK_LABEL[card.rank] || card.rank) + (suit?.symbol || card.suit);
 }
 
+function formatCardsFallback(cards) {
+  return sortHandFallback(cards).map(cardLabelFallback).join("  ");
+}
+
+
+function callSamNative(operation, args) {
+  return nativeCore.trySamOperation(operation, args);
+}
+
+function toNativeCombo(combo) {
+  if (!combo || typeof combo !== "object") return null;
+  const comboType = combo.type || combo.comboType || combo.combo_type;
+  const mainRank = combo.mainRank ?? combo.main_rank;
+  const highSuit = combo.highSuit ?? combo.high_suit;
+  const cardCount = combo.cardCount ?? combo.card_count;
+  return {
+    ...combo,
+    comboType,
+    combo_type: comboType,
+    mainRank,
+    main_rank: mainRank,
+    highSuit,
+    high_suit: highSuit,
+    cardCount,
+    card_count: cardCount
+  };
+}
+
+function fromNativeCombo(combo) {
+  if (!combo || typeof combo !== "object") return null;
+  return {
+    type: combo.type || combo.comboType || combo.combo_type,
+    cards: combo.cards,
+    length: combo.length,
+    mainRank: combo.mainRank ?? combo.main_rank,
+    highSuit: combo.highSuit ?? combo.high_suit,
+    cardCount: combo.cardCount ?? combo.card_count
+  };
+}
+
+function createDeck() {
+  const result = callSamNative("sam_create_deck", []);
+  return result.used && Array.isArray(result.value) ? result.value : createDeckFallback();
+}
+
+function sortHand(cards) {
+  const result = callSamNative("sam_sort_hand", [cards]);
+  return result.used && Array.isArray(result.value) ? result.value : sortHandFallback(cards);
+}
+
+function normalizeText(value) {
+  const result = callSamNative("sam_normalize_text", [String(value || "")]);
+  return result.used && typeof result.value === "string" ? result.value : normalizeTextFallback(value);
+}
+
+function parseCardCode(value) {
+  const result = callSamNative("sam_parse_card_code", [String(value || "")]);
+  return result.used ? result.value : parseCardCodeFallback(value);
+}
+
+function analyzeCombo(inputCards) {
+  const result = callSamNative("sam_analyze_combo", [inputCards]);
+  return result.used ? fromNativeCombo(result.value) : analyzeComboFallback(inputCards);
+}
+
+function canBeat(candidate, current) {
+  const result = callSamNative("sam_can_beat", [toNativeCombo(candidate), toNativeCombo(current)]);
+  return result.used ? Boolean(result.value) : canBeatFallback(candidate, current);
+}
+
+function validatePlay(hand, inputCards, currentCombo = null, options = {}) {
+  const result = callSamNative("sam_validate_play", [
+    hand,
+    inputCards,
+    toNativeCombo(currentCombo),
+    Boolean(options && options.mustContainThreeOfSpades)
+  ]);
+  if (result.used && result.value && typeof result.value.ok === "boolean") {
+    const value = result.value;
+    if (value.ok) return { ok: true, combo: fromNativeCombo(value.combo) };
+    if (value.code === "CANNOT_BEAT") {
+      return {
+        ok: false,
+        code: value.code,
+        combo: fromNativeCombo(value.combo),
+        currentCombo: fromNativeCombo(value.currentCombo ?? value.current_combo)
+      };
+    }
+    return { ok: false, code: value.code };
+  }
+  return validatePlayFallback(hand, inputCards, currentCombo, options);
+}
+
+function removeCards(hand, playedCards) {
+  const result = callSamNative("sam_remove_cards", [hand, playedCards]);
+  return result.used && Array.isArray(result.value) ? result.value : removeCardsFallback(hand, playedCards);
+}
+
+function detectWhiteHand(hand) {
+  const result = callSamNative("sam_detect_white_hand", [hand]);
+  return result.used ? result.value : detectWhiteHandFallback(hand);
+}
+
+function compareWhiteHands(handA, typeA, handB, typeB) {
+  const result = callSamNative("sam_compare_white_hands", [handA, typeA, handB, typeB]);
+  return result.used && typeof result.value === "number"
+    ? result.value
+    : compareWhiteHandsFallback(handA, typeA, handB, typeB);
+}
+
+function cardLabel(card) {
+  const result = callSamNative("sam_card_label", [card]);
+  return result.used && typeof result.value === "string" ? result.value : cardLabelFallback(card);
+}
+
 function formatCards(cards) {
-  return sortHand(cards).map(cardLabel).join("  ");
+  const result = callSamNative("sam_format_cards", [cards]);
+  return result.used && typeof result.value === "string" ? result.value : formatCardsFallback(cards);
 }
 
 module.exports = {
   SUITS, SUIT_WEIGHT, RANK_LABEL, WHITE_HAND_PRIORITY, WHITE_HAND_LABEL,
   createDeck, sortHand, shuffleDeck, dealCards, normalizeText, parseCardCode,
   parsePlayText, analyzeCombo, canBeat, validatePlay, removeCards,
-  detectWhiteHand, compareWhiteHands, cardLabel, formatCards
+  detectWhiteHand, compareWhiteHands, cardLabel, formatCards,
+  getNativeDiagnostics: nativeCore.getSamEngineDiagnostics,
+  __test: { createDeckFallback, sortHandFallback, normalizeTextFallback, parseCardCodeFallback,
+    analyzeComboFallback, canBeatFallback, validatePlayFallback, removeCardsFallback,
+    detectWhiteHandFallback, compareWhiteHandsFallback, cardLabelFallback, formatCardsFallback }
 };

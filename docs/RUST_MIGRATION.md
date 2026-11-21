@@ -51,10 +51,23 @@ latency improvement.
 - Verification: Unicode edge-case fixtures, JS/Rust parity tests and a CI
   N-API smoke test.
 
+## Stage 4 — Sâm card-rule engine
+
+- Rust crate: `native/game-core-rs`.
+- Runtime bridge: `native/index.js`.
+- Compatibility facade: `src/domain/games/engines/samEngine.js`.
+- Scope: deck creation/sorting, Vietnamese text cleanup, card parsing, combo
+  analysis, beating rules, play validation, card removal, white-hand detection,
+  white-hand comparison and card formatting.
+- Shuffle/deal keeps the existing JavaScript random callback so seeded tests and
+  the current service contract retain their exact random-call order.
+- Rollback: set `JT_RUST_SAM_ENGINE=0` to force the JavaScript implementation.
+- Verification: Rust unit tests, N-API smoke tests and full JS/Rust fixture parity.
+
 ## Later migration order
 
-1. Continue pure domain engines one module at a time (Nối Từ, Sâm and Tiến Lên),
-   keeping JavaScript state/service contracts stable and parity-tested.
+1. Continue with the Tiến Lên engine, preserving JavaScript service/state
+   contracts and comparing every rule fixture against the Rust implementation.
 2. Migrate remaining pure CPU helpers: normalize payloads, validate values and
    deterministic formatting. Keep JS parity fixtures for each operation.
 3. Media/image work: expand the existing Rust sticker path. Only activate

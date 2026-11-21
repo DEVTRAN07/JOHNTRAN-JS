@@ -22,6 +22,59 @@ const textStyleNative = tryLoad("text-style-rs", "text_style_rs.node");
 const commandParserNative = tryLoad("command-core-rs", "command_core_rs.node");
 const gameCoreNative = tryLoad("game-core-rs", "game_core_rs.node");
 let noituEngineLastError = null;
+let samEngineLastError = null;
+
+function trySamOperation(operation, args = []) {
+  if (process.env.JT_RUST_SAM_ENGINE === "0" || !gameCoreNative.ok) {
+    return { used: false, value: null };
+  }
+  const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  const fn = gameCoreNative.mod[operation] || gameCoreNative.mod[camelName];
+  if (typeof fn !== "function") {
+    samEngineLastError = "Rust Sâm export is missing: " + operation;
+    return { used: false, value: null };
+  }
+  try {
+    const value = fn(...args);
+    samEngineLastError = null;
+    return { used: true, value };
+  } catch (error) {
+    samEngineLastError = String(error?.stack || error?.message || error);
+    return { used: false, value: null };
+  }
+}
+
+function getSamEngineDiagnostics() {
+  const required = [
+    "sam_create_deck",
+    "sam_sort_hand",
+    "sam_normalize_text",
+    "sam_parse_card_code",
+    "sam_analyze_combo",
+    "sam_can_beat",
+    "sam_validate_play",
+    "sam_remove_cards",
+    "sam_detect_white_hand",
+    "sam_compare_white_hands",
+    "sam_card_label",
+    "sam_format_cards"
+  ];
+  const complete = required.every(operation => {
+    const camelName = operation.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    return typeof gameCoreNative.mod?.[operation] === "function" ||
+      typeof gameCoreNative.mod?.[camelName] === "function";
+  });
+  const enabled = process.env.JT_RUST_SAM_ENGINE !== "0";
+  return {
+    loaded: gameCoreNative.ok,
+    enabled,
+    active: enabled && gameCoreNative.ok && complete,
+    lastError: samEngineLastError,
+    loadError: gameCoreNative.ok ? null : String(gameCoreNative.err?.message || gameCoreNative.err)
+  };
+}
+
+
 
 let textStyleLastError = null;
 
@@ -382,6 +435,8 @@ const nativeApi = {
   tryNoituNormalizePhrase,
   tryNoituParsePhrase,
   getNoituEngineDiagnostics,
+  trySamOperation,
+  getSamEngineDiagnostics,
   __test: { parseCommandFallback },
   nativeAvailable: {
     sticker: stickerNative.ok,
