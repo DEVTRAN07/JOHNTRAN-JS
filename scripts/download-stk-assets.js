@@ -263,14 +263,56 @@ async function downloadAllAssets(options = {}) {
   return result;
 }
 
-if (require.main === module) {
-  const force = process.argv.includes("--force");
-  downloadAllAssets({ force }).then(result => {
+async function acquireDownloadLock(directory) {
+  const lockPath = path.join(directory, ".download.lock");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const handle = await fsp.open(lockPath, "wx");
+      await handle.writeFile(JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+      return { handle, lockPath };
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      let stale = false;
+      try {
+        const lock = JSON.parse(await fsp.readFile(lockPath, "utf8"));
+        const pid = Number(lock.pid);
+        if (!Number.isInteger(pid) || pid <= 0) stale = true;
+        else {
+          try { process.kill(pid, 0); }
+          catch (probeError) { stale = probeError.code === "ESRCH"; }
+        }
+      } catch {
+        stale = true;
+      }
+      if (!stale) return null;
+      await fsp.rm(lockPath, { force: true });
+    }
+  }
+  return null;
+}
+
+async function main() {
+  await fsp.mkdir(ASSETS_DIR, { recursive: true });
+  const lock = await acquireDownloadLock(ASSETS_DIR);
+  if (!lock) {
+    console.info("[stk-assets] Một tiến trình khác đang tải bộ khung; bỏ qua lần chạy trùng.");
+    return;
+  }
+  try {
+    const force = process.argv.includes("--force");
+    const result = await downloadAllAssets({ force });
     if (result.missing > 0 || result.menuMissing) {
       console.error("[stk-assets] Thiếu " + result.missing + " khung; menuMissing=" + result.menuMissing);
       process.exitCode = 1;
     }
-  }).catch(error => {
+  } finally {
+    await lock.handle.close().catch(() => {});
+    await fsp.rm(lock.lockPath, { force: true }).catch(() => {});
+  }
+}
+
+if (require.main === module) {
+  main().catch(error => {
     console.error("[stk-assets] Download failed:", error?.stack || error);
     process.exitCode = 1;
   });
