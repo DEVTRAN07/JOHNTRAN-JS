@@ -9,6 +9,17 @@ const workerRender = require("../../core/canvas/workerRender");
 const { sendStyledRawMessage } = require("../../core/message");
 const { extractPlainText, safePrimitiveString } = require("../../core/runtime/plainText");
 
+function safeEventName(event, fallback = "Người chơi") {
+  return safePrimitiveString(event?.data?.dName) ||
+    safePrimitiveString(event?.data?.name) ||
+    fallback;
+}
+
+function safeCommandPrefix(fallback = "/") {
+  const prefix = global.config?.prefix;
+  return typeof prefix === "string" && prefix.length > 0 ? prefix : fallback;
+}
+
 // One live Caro canvas card per group. A replacement is sent first; only
 // after Zalo returns its message IDs do we recall the previous board image.
 const boardCards = new Map();
@@ -264,14 +275,14 @@ function modeMenuText(prefix) {
 
 async function openModeMenu(context) {
   const { api, event } = context;
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   const current = game.get(threadId);
   if (current && current.status !== "ended") {
     return sendBoard(api, event, current, "⚔️ BÀN CỜ CARO HIỆN TẠI");
   }
   rememberModeSelection(threadId, uid);
-  const prefix = global.config?.prefix || "/";
+  const prefix = safeCommandPrefix("/");
   return send(api, event, modeMenuText(prefix));
 }
 
@@ -337,7 +348,7 @@ function boardMessage(session, heading = "⚔️ BÀN CỜ CARO 16×16") {
 }
 
 async function sendBoard(api, event, session, heading, extraLines = []) {
-  const threadId = String(event?.threadId || session?.threadId || "");
+  const threadId = safePrimitiveString(event?.threadId) || safePrimitiveString(session?.threadId);
   const boardSession = snapshotBoardSession(session);
   return enqueueBoardUpdate(threadId, async () => {
     let imagePath;
@@ -540,14 +551,14 @@ async function afterAcceptedMove({ api, event, Users }, result) {
 }
 
 async function joinRoom({ api, event, Users, Threads }) {
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   if (!threadId || !uid) return;
   if (!await isGameEnabled(Threads, threadId)) {
     return send(api, event, "🚫 Game Caro đã được Admin tắt trong nhóm này.");
   }
 
-  const result = game.join(threadId, uid, event?.data?.dName || event?.data?.name || "Người chơi");
+  const result = game.join(threadId, uid, safeEventName(event));
   if (!result.ok) {
     const messages = {
       NO_GAME: "⚠️ Chưa có phòng Caro. Gõ !caro pvp để tạo phòng.",
@@ -567,8 +578,8 @@ async function joinRoom({ api, event, Users, Threads }) {
 }
 
 async function handleSpecial({ api, event, Users }, action) {
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   const session = game.get(threadId);
   if (!session) return false;
 
@@ -611,8 +622,8 @@ async function handleSpecial({ api, event, Users }, action) {
 }
 
 async function handleMove({ api, event, Users }, text) {
-  const threadId = String(event?.threadId || "");
-  const uid = String(event?.data?.uidFrom || "");
+  const threadId = safePrimitiveString(event?.threadId);
+  const uid = safePrimitiveString(event?.data?.uidFrom);
   const session = game.get(threadId);
   if (!session || session.status !== "active") return false;
 
@@ -645,7 +656,7 @@ async function handleIncoming(context = {}) {
 
   const content = extractPlainText(event?.data?.content);
   if (!content) return false;
-  const prefix = global.config?.prefix || "/";
+  const prefix = safeCommandPrefix("/");
   if (content.startsWith(prefix)) return false;
 
   const lower = content.toLocaleLowerCase("vi-VN");
@@ -752,9 +763,9 @@ async function resetScores(Users, mode, allUsers, requesterUid) {
 }
 
 module.exports.run = async function ({ args = [], api, event, Users, Threads }) {
-  const uid = String(event?.data?.uidFrom || "");
-  const threadId = String(event?.threadId || "");
-  const prefix = global.config?.prefix || "/";
+  const uid = safePrimitiveString(event?.data?.uidFrom);
+  const threadId = safePrimitiveString(event?.threadId);
+  const prefix = safeCommandPrefix("/");
   if (!uid || !threadId) return;
 
   const actionText = args.map(value => String(value)).join(" ").trim();
@@ -864,7 +875,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     const humanFirst = order ? order === "truoc" : symbol === "X";
     const result = game.startSolo(threadId, {
       uid,
-      name: event?.data?.dName || event?.data?.name || "Người chơi",
+      name: safeEventName(event),
       symbol,
       humanFirst
     });
@@ -887,7 +898,7 @@ module.exports.run = async function ({ args = [], api, event, Users, Threads }) 
     const symbol = rest.includes("o") ? "O" : "X";
     const result = game.startPvp(threadId, {
       uid,
-      name: event?.data?.dName || event?.data?.name || "Người tạo phòng",
+      name: safeEventName(event, "Người tạo phòng"),
       symbol
     });
     if (!result.ok) return send(api, event, "⚠️ Nhóm đang có ván Caro. Gõ board để xem hoặc stop để hủy.");
@@ -933,5 +944,7 @@ module.exports._test = {
   leaderboard,
   updateCaroStats,
   help,
-  currentMonthKey
+  currentMonthKey,
+  safeEventName,
+  safeCommandPrefix
 };
