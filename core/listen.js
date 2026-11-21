@@ -624,17 +624,13 @@ function startListening(api) {
       }
     }
 
-    if (state.importedMessages > 0) {
-      logger.log(
-        `Topchat đã bổ sung tổng ${state.importedMessages} tin nhắn hôm nay từ lịch sử WebSocket (${state.groups.size} nhóm, ${state.pageCount} trang)`,
-        "info"
-      );
-    }
-
+    const importedSummary = state.importedMessages > 0
+      ? `, bổ sung ${state.importedMessages} tin nhắn trong ${state.groups.size} nhóm`
+      : "";
     logger.log(
       complete
-        ? `Topchat đã quét lịch sử nhóm tới đầu ngày ${state.dateKey} (${state.pageCount} trang)`
-        : `Topchat dừng đồng bộ lịch sử chưa đủ ngày (${state.pageCount} trang, ${reason})`,
+        ? `Topchat đã quét lịch sử nhóm tới đầu ngày ${state.dateKey} (${state.pageCount} trang)${importedSummary}`
+        : `Topchat dừng đồng bộ lịch sử chưa đủ ngày (${state.pageCount} trang, ${reason})${importedSummary}`,
       complete ? "info" : "warn"
     );
   }
