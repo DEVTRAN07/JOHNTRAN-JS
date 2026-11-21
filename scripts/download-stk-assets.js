@@ -212,7 +212,7 @@ async function downloadAllAssets(options = {}) {
   const manifest = {
     version: 1,
     source: "DEVTRAN07/Discord-decor",
-    sourceCommit: require("../src/application/stk/assets").SOURCE_COMMIT,
+    sourceCommit: require("../core/stk/assets").SOURCE_COMMIT,
     downloadedAt: new Date().toISOString(),
     total: manifestItems.length,
     menu,
