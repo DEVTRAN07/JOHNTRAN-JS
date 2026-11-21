@@ -39,6 +39,76 @@ const { getRestartPlan } = require("./core/runtime/restartPolicy");
         });
         startPanel({ manager, config });
 
+        // Route /update from a Panel child through the master so every running
+        // bot is stopped before tracked files are replaced. Restart only bots
+        // that were running before the request; manually stopped bots stay off.
+        let panelUpdateProcess = null;
+        let panelUpdateInProgress = false;
+        manager.setUpdateHandler(({ botName }) => {
+          if (panelUpdateInProgress) return;
+          panelUpdateInProgress = true;
+          const restartNames = manager.list()
+            .filter(bot => bot.status === "online" || bot.status === "restarting")
+            .map(bot => bot.name);
+
+          const restartPreviousBots = () => {
+            for (const name of restartNames) {
+              const bot = manager.get(name);
+              if (!bot || bot.process) continue;
+              try {
+                bot.start();
+              } catch (error) {
+                logger.log("Không thể khởi động lại bot '" + name + "' sau update: " + (error.message || error), "error");
+              }
+            }
+            panelUpdateProcess = null;
+            panelUpdateInProgress = false;
+          };
+
+          void (async () => {
+            logger.log("Panel nhận /update từ bot '" + botName + "'. Đang dừng bot con để cập nhật an toàn...", "info");
+            try {
+              await manager.stopAll();
+            } catch (error) {
+              logger.log("Lỗi khi dừng bot con trước update: " + (error.message || error), "error");
+              restartPreviousBots();
+              return;
+            }
+
+            let updater;
+            try {
+              updater = spawn(process.execPath, [path.join(__dirname, "scripts", "update.js")], {
+                cwd: __dirname,
+                stdio: "inherit",
+                env: { ...process.env, JT_UPDATE_TRIGGER: "panel-zalo-command" }
+              });
+            } catch (error) {
+              logger.log("Không thể chạy updater trong Panel: " + (error.message || error), "error");
+              restartPreviousBots();
+              return;
+            }
+
+            panelUpdateProcess = updater;
+            let settled = false;
+            const finish = (code, error = null) => {
+              if (settled) return;
+              settled = true;
+              if (error) logger.log("Updater trong Panel gặp lỗi: " + (error.message || error), "error");
+              if (code === 0) {
+                logger.log("Panel cập nhật mã nguồn thành công; đang khởi động lại các bot trước đó.", "info");
+              } else {
+                logger.log("Panel cập nhật không hoàn tất; khởi động lại phiên bản hiện tại.", "warn");
+              }
+              restartPreviousBots();
+            };
+            updater.once("error", error => finish(1, error));
+            updater.once("close", code => finish(code));
+          })().catch(error => {
+            logger.log("Luồng cập nhật Panel thất bại: " + (error.message || error), "error");
+            restartPreviousBots();
+          });
+        });
+
         logger.log("Panel mode: dùng web panel để tạo và quản lý bot con", "info");
         console.log(`Bot con đã lưu: ${manager.list().map((b) => b.name).join(", ") || "(chưa có)"}`);
 
