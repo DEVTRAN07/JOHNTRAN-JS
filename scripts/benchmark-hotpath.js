@@ -7,6 +7,7 @@ const { performance } = require("node:perf_hooks");
 
 const folderMenu = require("../core/runtime/folderMenu");
 const { createAdminGroupsStore } = require("../core/runtime/adminGroups");
+const { SlidingWindowLimiter, getNativeDiagnostics } = require("../core/runtime/rateLimiter");
 
 function measure(label, iterations, operation) {
   const samples = [];
@@ -26,6 +27,70 @@ function measure(label, iterations, operation) {
 
 function makeCommand(name, category, role = 0) {
   return { config: { name, category, role, usage: name, description: name } };
+}
+
+function benchmarkRateLimiter() {
+  const previous = process.env.JT_RUST_RATE_LIMITER;
+  const iterations = 100000;
+  const users = 1000;
+  const trials = 3;
+
+  function run(useRust) {
+    if (useRust) delete process.env.JT_RUST_RATE_LIMITER;
+    else process.env.JT_RUST_RATE_LIMITER = "0";
+
+    const samples = [];
+    let nativeActive = false;
+
+    for (let trial = 0; trial < trials + 1; trial++) {
+      const limiter = new SlidingWindowLimiter({
+        windowMs: 60000,
+        max: 2000,
+        maxKeys: users + 100
+      });
+      nativeActive = Boolean(limiter._native);
+      const started = performance.now();
+      for (let index = 0; index < iterations; index++) {
+        limiter.allow("user-" + (index % users), 1000000 + index);
+      }
+      const elapsed = performance.now() - started;
+      if (trial > 0) samples.push(elapsed);
+      limiter.clear();
+    }
+
+    const sorted = samples.slice().sort((a, b) => a - b);
+    const medianMs = sorted[Math.floor(sorted.length / 2)];
+    return {
+      iterations,
+      trials,
+      nativeActive,
+      medianTotalMs: Number(medianMs.toFixed(2)),
+      avgUs: Number((medianMs * 1000 / iterations).toFixed(3))
+    };
+  }
+
+  try {
+    if (!getNativeDiagnostics().loaded) {
+      return {
+        available: false,
+        reason: "Rust domain-core addon is not built",
+        javascript: run(false)
+      };
+    }
+
+    const javascript = run(false);
+    const rust = run(true);
+    return {
+      available: true,
+      javascript,
+      rust,
+      speedup: Number((javascript.avgUs / Math.max(rust.avgUs, 0.001)).toFixed(2)),
+      note: "Synthetic local limiter throughput only; this does not include Zalo event or network latency."
+    };
+  } finally {
+    if (previous === undefined) delete process.env.JT_RUST_RATE_LIMITER;
+    else process.env.JT_RUST_RATE_LIMITER = previous;
+  }
 }
 
 function benchmarkMenuLookup() {
@@ -153,6 +218,7 @@ async function main() {
     benchmark: "JOHNTRAN-JS hot-path microbenchmark",
     node: process.version,
     note: "Synthetic in-process measurements only; Zalo network/API latency is not included.",
+    rateLimiter: benchmarkRateLimiter(),
     menu: benchmarkMenuLookup(),
     adminGroups: benchmarkAdminGroupRead(),
     topchatCommandFilter: await benchmarkTopchatCommandFilter()
