@@ -133,7 +133,6 @@ function helpText(prefix = PREFIX()) {
 
 async function sendMenu(api, event) {
   try {
-    await safeSend(api, event, "⏳ Đang tải danh sách 200 khung STK...");
     const menuPath = await stkDiscord.ensureMenuFile();
     return await api.sendMessage(
       {
