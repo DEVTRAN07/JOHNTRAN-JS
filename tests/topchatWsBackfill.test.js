@@ -96,6 +96,20 @@ test("an empty WebSocket history response is not proof of complete daily coverag
 });
 
 
+test("Topchat aggregates imported messages across history pages for one summary", () => {
+  const state = { active: true, importedMessages: 0 };
+  const { accumulateHistoryImport } = require("../core/topchat/wsBackfill");
+
+  assert.equal(accumulateHistoryImport(state, { groups: 1, messages: 1 }), true);
+  assert.equal(accumulateHistoryImport(state, { groups: 2, messages: 1 }), true);
+  assert.equal(accumulateHistoryImport(state, { groups: 0, messages: 0 }), true);
+  assert.equal(state.importedMessages, 2);
+
+  state.active = false;
+  assert.equal(accumulateHistoryImport(state, { messages: 3 }), false);
+  assert.equal(state.importedMessages, 2);
+});
+
 test("Topchat history coverage includes only groups present in old_messages pages", () => {
   const ids = historyGroupIds([
     groupMessage("history-a", Date.now()),
